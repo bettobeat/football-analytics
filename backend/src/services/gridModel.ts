@@ -54,6 +54,10 @@ const ROWS: RowDef[] = [
   { id: '#16', name: 'Derby / stakes flag', rel: { mismatch: 4, standard: 3, even: 3, big: 5 }, kind: 'draw' }
 ];
 
+/** Relevance overrides (sweep only): row id → match type → relevance. null = use ROWS. */
+export type RelOverride = Record<string, Partial<Record<MatchType, number>>>;
+let REL_OVERRIDE: RelOverride | null = null;
+
 /** Conversion constants — placeholders until calibrated on the backtest. */
 export const CONV = {
   drawBase: { mismatch: 150, standard: 270, even: 320, big: 290 } as Record<MatchType, number>,
@@ -359,7 +363,7 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   let totH = 0, totA = 0, drawFactors = 0;
 
   const push = (def: RowDef, vh: number, va: number, note?: string) => {
-    const rel = def.rel[type];
+    const rel = REL_OVERRIDE?.[def.id]?.[type] ?? def.rel[type];
     if (def.kind === 'team') {
       const ph = vh * rel, pa = va * rel;
       totH += ph; totA += pa;
@@ -563,4 +567,158 @@ export async function runBacktestV3All(season: string, conv: Partial<typeof CONV
     try { out[group] = await runBacktestV3(season, group, conv); } catch (error: any) { out[group] = { error: error.message }; }
   }
   return out;
+}
+
+/* ------------------------------------------------------------------ */
+/* Sweep: many variants of CONV / relevance, in memory, one table back  */
+/* ------------------------------------------------------------------ */
+
+export interface SweepVariant {
+  name: string;
+  conv?: Partial<typeof CONV>;
+  rel?: RelOverride;
+}
+
+interface SweepMetrics {
+  n: number;
+  hitRate: number;
+  brier: number;
+  logLoss: number;
+  picks: { H: number; D: number; A: number };
+  avgDraw: number; // mean predicted draw %
+}
+
+const MATCH_TYPES: MatchType[] = ['mismatch', 'standard', 'even', 'big'];
+
+/** Deep-merge conv overrides (drawBase / drawCap are nested). */
+function mergeConv(base: typeof CONV, over: Partial<typeof CONV> | undefined): typeof CONV {
+  const out: any = { ...base, drawBase: { ...base.drawBase }, drawCap: { ...base.drawCap } };
+  if (!over) return out;
+  for (const [k, v] of Object.entries(over)) {
+    if (v && typeof v === 'object') out[k] = { ...out[k], ...(v as any) };
+    else if (v !== undefined) out[k] = v;
+  }
+  return out;
+}
+
+/** Automatic variant lists for a coordinate-descent style search. */
+export function autoVariants(kind: string, step = 1): SweepVariant[] {
+  const out: SweepVariant[] = [];
+  if (kind === 'rel') {
+    for (const row of ROWS)
+      for (const t of MATCH_TYPES)
+        for (const d of [-step, step]) {
+          const r = row.rel[t] + d;
+          if (r < 0 || r > 6) continue;
+          out.push({ name: `${row.id} ${t} ${row.rel[t]}→${r}`, rel: { [row.id]: { [t]: r } } });
+        }
+  } else if (kind === 'conv') {
+    for (const g of [-0.04, -0.02, 0.02, 0.04]) out.push({ name: `gapScale ${(CONV.gapScale + g).toFixed(2)}`, conv: { gapScale: CONV.gapScale + g } });
+    for (const g of [-0.02, -0.01, 0.01, 0.02]) out.push({ name: `homeGap ${(CONV.homeGap + g).toFixed(3)}`, conv: { homeGap: CONV.homeGap + g } });
+    for (const k of [1, 3, 4]) out.push({ name: `kDraw ${k}`, conv: { kDraw: k } });
+    for (const t of MATCH_TYPES)
+      for (const d of [-40, -20, 20, 40])
+        out.push({ name: `drawBase.${t} ${CONV.drawBase[t] + d}`, conv: { drawBase: { [t]: CONV.drawBase[t] + d } as any } });
+    for (const hl of [60, 90, 180]) out.push({ name: `halfLifeProd ${hl}`, conv: { halfLifeProd: hl } });
+  }
+  return out;
+}
+
+/**
+ * Score every variant on one season, walk-forward like the real backtest, without touching the
+ * DB. States are built once per week and shared by all variants (they depend only on the
+ * half-lives, which the sweep keeps fixed), so 50 variants cost about as much as one run.
+ */
+export async function sweepV3(season: string, variants: SweepVariant[], baseConv: Partial<typeof CONV> = {}, groups?: string[]) {
+  const savedConv = { ...CONV, drawBase: { ...CONV.drawBase }, drawCap: { ...CONV.drawCap } };
+  const savedRel = REL_OVERRIDE;
+  const t0 = Date.now();
+  try {
+    // 1) collect (state, match) pairs, weekly walk-forward, with the base conv (half-lives)
+    Object.assign(CONV, mergeConv(savedConv, baseConv));
+    type Item = { state: GroupState; all: HistoryMatch[]; m: HistoryMatch; from: string };
+    const items: Item[] = [];
+    for (const group of groups?.length ? groups : Object.keys(GROUPS)) {
+      const divs = GROUPS[group]?.divisions || [];
+      if (!divs.length) continue;
+      const all = loadGroupMatches(group);
+      const target = all.filter(m => m.season === season && m.division === divs[0]);
+      if (!target.length) continue;
+      let cursor = new Date(target[0].date);
+      const last = new Date(target[target.length - 1].date);
+      while (cursor <= last) {
+        const from = cursor.toISOString().slice(0, 10);
+        const to = new Date(cursor.getTime() + 7 * DAY).toISOString().slice(0, 10);
+        const week = target.filter(m => m.date >= from && m.date < to);
+        if (week.length) {
+          const state = buildState(group, all, from);
+          for (const m of week) items.push({ state, all, m, from });
+          await new Promise<void>(resolve => setImmediate(() => resolve()));
+        }
+        cursor = new Date(cursor.getTime() + 7 * DAY);
+      }
+    }
+
+    // 2) market reference (closing odds, margin removed)
+    const market = { n: 0, hit: 0, brier: 0, ll: 0 };
+    for (const { m } of items) {
+      const oh = m.close_h ?? m.odds_h, od = m.close_d ?? m.odds_d, oa = m.close_a ?? m.odds_a;
+      if (!oh || !od || !oa) continue;
+      const s = 1 / oh + 1 / od + 1 / oa;
+      const p = { H: 1 / oh / s, D: 1 / od / s, A: 1 / oa / s };
+      const o = m.hg > m.ag ? 'H' : m.hg < m.ag ? 'A' : 'D';
+      market.n++;
+      market.brier += (p.H - (o === 'H' ? 1 : 0)) ** 2 + (p.D - (o === 'D' ? 1 : 0)) ** 2 + (p.A - (o === 'A' ? 1 : 0)) ** 2;
+      market.ll += -Math.log(Math.max(1e-6, p[o]));
+      const pick = p.H >= p.D && p.H >= p.A ? 'H' : p.A >= p.D ? 'A' : 'D';
+      if (pick === o) market.hit++;
+    }
+
+    // 3) score each variant
+    const evalVariant = (v: SweepVariant): SweepMetrics => {
+      Object.assign(CONV, mergeConv(mergeConv(savedConv, baseConv), v.conv));
+      REL_OVERRIDE = v.rel || null;
+      let n = 0, hit = 0, brier = 0, ll = 0, drawSum = 0;
+      const picks = { H: 0, D: 0, A: 0 };
+      for (const it of items) {
+        const p = scoreMatch(it.state, it.all, it.m.home, it.m.away, it.from);
+        if (!p) continue;
+        const pH = p.home / 100, pD = p.draw / 100, pA = p.away / 100;
+        const o = it.m.hg > it.m.ag ? 'H' : it.m.hg < it.m.ag ? 'A' : 'D';
+        n++;
+        brier += (pH - (o === 'H' ? 1 : 0)) ** 2 + (pD - (o === 'D' ? 1 : 0)) ** 2 + (pA - (o === 'A' ? 1 : 0)) ** 2;
+        ll += -Math.log(Math.max(1e-6, o === 'H' ? pH : o === 'D' ? pD : pA));
+        drawSum += pD;
+        const pick = pH >= pD && pH >= pA ? 'H' : pA >= pD ? 'A' : 'D';
+        picks[pick]++;
+        if (pick === o) hit++;
+      }
+      const r3 = (x: number) => Math.round(x * 1000) / 1000;
+      return { n, hitRate: Math.round((hit / Math.max(1, n)) * 1000) / 10, brier: r3(brier / Math.max(1, n)), logLoss: r3(ll / Math.max(1, n)), picks, avgDraw: Math.round((drawSum / Math.max(1, n)) * 1000) / 10 };
+    };
+
+    const base = evalVariant({ name: 'base' });
+    const results = variants.map(v => {
+      const m = evalVariant(v);
+      return { name: v.name, ...m, dBrier: Math.round((m.brier - base.brier) * 1000) / 1000, dLogLoss: Math.round((m.logLoss - base.logLoss) * 1000) / 1000, conv: v.conv, rel: v.rel };
+    });
+    results.sort((a, b) => a.brier - b.brier || a.logLoss - b.logLoss);
+
+    let outcomes = { H: 0, D: 0, A: 0 };
+    for (const { m } of items) outcomes[m.hg > m.ag ? 'H' : m.hg < m.ag ? 'A' : 'D']++;
+
+    return {
+      season,
+      matches: items.length,
+      outcomes,
+      market: { n: market.n, hitRate: Math.round((market.hit / Math.max(1, market.n)) * 1000) / 10, brier: Math.round((market.brier / Math.max(1, market.n)) * 1000) / 1000, logLoss: Math.round((market.ll / Math.max(1, market.n)) * 1000) / 1000 },
+      baseConv: mergeConv(savedConv, baseConv),
+      base,
+      variants: results,
+      ms: Date.now() - t0
+    };
+  } finally {
+    Object.assign(CONV, savedConv);
+    REL_OVERRIDE = savedRel;
+  }
 }
