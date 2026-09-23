@@ -59,7 +59,9 @@ export const CONV = {
   drawBase: { mismatch: 150, standard: 270, even: 320, big: 290 } as Record<MatchType, number>,
   drawCap: { mismatch: 260, standard: 380, even: 400, big: 380 } as Record<MatchType, number>,
   kDraw: 2.0, // points per (value−5) × relevance for draw rows
-  gapScale: 0.45, // logistic scale on the relative gap between team totals (backtest-calibrated)
+  gapScale: 0.28, // logistic scale on the relative gap between team totals (backtest-calibrated)
+  homeGap: 0.06, // added to the relative gap for the home side: the league-wide home advantage
+                 // (row #23 compares the two sides' home/away records but is centred, so it carries no league-level edge)
   floorOutsider: 35,
   floorDraw: 60,
   halfLifeProd: 120, // days, production/form rows
@@ -389,7 +391,7 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   let drawPts = clamp(base + drawFactors + volatility, CONV.floorDraw, CONV.drawCap[type]);
 
   // --- split the rest by the relative gap
-  const gap = (totH - totA) / (totH + totA);
+  const gap = (totH - totA) / (totH + totA) + CONV.homeGap;
   const pH = 1 / (1 + Math.exp(-gap / CONV.gapScale));
   let rest = 1000 - drawPts;
   let ptsH = rest * pH, ptsA = rest - ptsH;
