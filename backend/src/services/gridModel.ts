@@ -56,10 +56,10 @@ const ROWS: RowDef[] = [
 
 /** Conversion constants — placeholders until calibrated on the backtest. */
 export const CONV = {
-  drawBase: { mismatch: 100, standard: 200, even: 260, big: 220 } as Record<MatchType, number>,
-  drawCap: { mismatch: 200, standard: 300, even: 340, big: 330 } as Record<MatchType, number>,
+  drawBase: { mismatch: 150, standard: 270, even: 320, big: 290 } as Record<MatchType, number>,
+  drawCap: { mismatch: 260, standard: 380, even: 400, big: 380 } as Record<MatchType, number>,
   kDraw: 2.0, // points per (value−5) × relevance for draw rows
-  gapScale: 0.1, // logistic scale on the relative gap between team totals (0.1 ≈ a 10% gap → 73/27)
+  gapScale: 0.45, // logistic scale on the relative gap between team totals (backtest-calibrated)
   floorOutsider: 35,
   floorDraw: 60,
   halfLifeProd: 120, // days, production/form rows
@@ -123,12 +123,22 @@ const days = (a: string, b: string) => (new Date(b).getTime() - new Date(a).getT
 const decay = (age: number, halfLife: number) => Math.pow(0.5, age / halfLife);
 const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x));
 
-/** Rank-based 1–10 value within a list (higher raw = higher value unless invert). */
+/**
+ * 1–10 value within a league from the metric itself (standardised), not just the rank:
+ * 5.5 = league average, ±4.5 at two standard deviations. Keeps the size of the gap between
+ * teams (rank alone makes #1 vs #2 look the same as #10 vs #11).
+ */
 function rankValues(items: { name: string; raw: number }[], invert = false): Map<string, number> {
   const out = new Map<string, number>();
-  const sorted = [...items].sort((a, b) => (invert ? a.raw - b.raw : b.raw - a.raw));
-  const n = sorted.length;
-  sorted.forEach((it, i) => out.set(it.name, n <= 1 ? 5.5 : Math.round((1 + 9 * (1 - i / (n - 1))) * 10) / 10));
+  const n = items.length;
+  if (!n) return out;
+  const mean = items.reduce((s, it) => s + it.raw, 0) / n;
+  const sd = Math.sqrt(items.reduce((s, it) => s + (it.raw - mean) ** 2, 0) / Math.max(1, n - 1)) || 1e-9;
+  for (const it of items) {
+    let z = (it.raw - mean) / sd;
+    if (invert) z = -z;
+    out.set(it.name, Math.round(clamp(5.5 + 2.25 * z, 1, 10) * 10) / 10);
+  }
   return out;
 }
 
