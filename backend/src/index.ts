@@ -349,9 +349,9 @@ app.get('/api/backtest', (req, res) => {
     );
     res.json({
       data: {
-        ...metrics,
+        ...metrics, // includes `model` (the model's metrics) and `market`
         season,
-        model,
+        modelName: model,
         group: group || null,
         minEvidence,
         odds: oddsKind,
