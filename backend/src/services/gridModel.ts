@@ -42,7 +42,7 @@ interface RowDef {
 }
 
 const ROWS: RowDef[] = [
-  { id: '#1', name: 'Strength (table, decayed)', rel: { mismatch: 5, standard: 5, even: 4, big: 4 }, kind: 'team', note: 'proxy for lineup value until squad values are loaded' },
+  { id: '#1', name: 'Strength (Elo)', rel: { mismatch: 5, standard: 5, even: 4, big: 4 }, kind: 'team', note: 'Elo over all results; proxy for lineup value until squad values are loaded' },
   { id: '#19', name: 'Attack vs opponent tier', rel: { mismatch: 4, standard: 5, even: 5, big: 4 }, kind: 'team' },
   { id: '#14', name: 'Defence vs opponent tier', rel: { mismatch: 4, standard: 4, even: 4, big: 3 }, kind: 'team' },
   { id: '#10', name: 'Freshness (fixture load)', rel: { mismatch: 3, standard: 4, even: 4, big: 3 }, kind: 'team' },
@@ -96,7 +96,8 @@ interface TeamFeat {
   played: number; // this season, own division
   tier: 1 | 2 | 3 | 4;
   rank: number; // strength rank within division (1 = top)
-  ppgSeason: number; // decayed ppg proxy for strength
+  ppgSeason: number; // decayed ppg
+  elo: number; // Elo rating (all divisions, margin-aware)
   attack: number; // opponent-adjusted goals for / game (decayed)
   defence: number; // opponent-adjusted goals against / game (decayed), lower = better
   formPts: number; // points in last 6 league games
@@ -170,7 +171,7 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string): Gr
     let t = teams.get(name);
     if (!t) {
       t = {
-        name, division: divOf.get(name) || divisions[0], played: 0, tier: 3, rank: 10, ppgSeason: 1, attack: 1.3, defence: 1.3,
+        name, division: divOf.get(name) || divisions[0], played: 0, tier: 3, rank: 10, ppgSeason: 1, elo: 1450, attack: 1.3, defence: 1.3,
         formPts: 6, homePpg: 1.5, awayPpg: 1.1, drawRate: 0.25, gamesLast8: 0, lastMatch: null, v: {}
       };
       teams.set(name, t);
@@ -192,6 +193,23 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string): Gr
     leagueDrawRate[div] = w ? draws / w : 0.25;
     leagueAvgGoals[div] = w ? goals / w / 2 : 1.35;
     homeAdv[div] = ag ? hg / ag : 1.25;
+  }
+
+  // --- Elo over every past match, in order: strength of opposition is built in, second-division
+  //     seasons count at their own level, so a promoted side arrives with an honest rating.
+  const elo = new Map<string, number>();
+  {
+    const K = 20, HA = 60;
+    const sorted = [...past].sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : 0));
+    for (const m of sorted) {
+      const rh = elo.get(m.home) ?? 1500, ra = elo.get(m.away) ?? 1500;
+      const exp = 1 / (1 + Math.pow(10, (ra - rh - HA) / 400));
+      const res = m.hg > m.ag ? 1 : m.hg === m.ag ? 0.5 : 0;
+      const gd = Math.abs(m.hg - m.ag);
+      const mult = gd <= 1 ? 1 : gd === 2 ? 1.5 : 1.75 + (gd - 3) / 8;
+      const delta = K * mult * (res - exp);
+      elo.set(m.home, rh + delta); elo.set(m.away, ra - delta);
+    }
   }
 
   // --- raw decayed aggregates per team
@@ -231,16 +249,16 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string): Gr
     rawDef.set(n, (x.ga + pr.def * PRIOR_W) / (x.w + PRIOR_W));
   });
   // --- second pass: opponent-adjusted (divide by opponent's defence / attack relative to league)
-  const adjAtt = new Map<string, number>(), adjDef = new Map<string, number>();
-  {
+  const adjAtt = new Map<string, number>(rawAtt), adjDef = new Map<string, number>(rawDef);
+  for (let iter = 0; iter < 4; iter++) {
     const acc = new Map<string, { w: number; att: number; def: number }>();
     for (const m of past) {
       const k = decay(days(m.date, asOf), CONV.halfLifeProd);
       const avg = leagueAvgGoals[m.division] || 1.35;
-      const oppDefH = (rawDef.get(m.away) || avg) / avg; // how leaky the away side is
-      const oppAttH = (rawAtt.get(m.away) || avg) / avg;
-      const oppDefA = (rawDef.get(m.home) || avg) / avg;
-      const oppAttA = (rawAtt.get(m.home) || avg) / avg;
+      const oppDefH = (adjDef.get(m.away) || avg) / avg; // how leaky the away side is
+      const oppAttH = (adjAtt.get(m.away) || avg) / avg;
+      const oppDefA = (adjDef.get(m.home) || avg) / avg;
+      const oppAttA = (adjAtt.get(m.home) || avg) / avg;
       if (divOf.get(m.home) === m.division) { const h = acc.get(m.home) || { w: 0, att: 0, def: 0 }; h.w += k; h.att += k * m.hg / Math.max(0.5, oppDefH); h.def += k * m.ag / Math.max(0.5, oppAttH); acc.set(m.home, h); }
       if (divOf.get(m.away) === m.division) { const a = acc.get(m.away) || { w: 0, att: 0, def: 0 }; a.w += k; a.att += k * m.ag / Math.max(0.5, oppDefA); a.def += k * m.hg / Math.max(0.5, oppAttA); acc.set(m.away, a); }
     }
@@ -261,6 +279,7 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string): Gr
     t.attack = adjAtt.get(t.name) ?? 1.3;
     t.defence = adjDef.get(t.name) ?? 1.3;
     const pr = priorFor(t.name);
+    t.elo = elo.get(t.name) ?? 1450;
     t.ppgSeason = (x.pts + pr.ppg * PRIOR_W) / (x.w + PRIOR_W);
     t.drawRate = (x.d + pr.draw * PRIOR_W) / (x.w + PRIOR_W);
     t.homePpg = (x.hpts + 1.5 * PRIOR_W) / (x.hw + PRIOR_W);
@@ -275,9 +294,9 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string): Gr
   for (const div of divisions) {
     const list = Array.from(teams.values()).filter(t => t.division === div);
     if (!list.length) continue;
-    // strength = decayed ppg (early season this naturally leans on last season)
-    const strength = rankValues(list.map(t => ({ name: t.name, raw: t.ppgSeason })));
-    const sortedStrength = [...list].sort((a, b) => b.ppgSeason - a.ppgSeason);
+    // strength = Elo (carries across seasons and divisions; margin-aware)
+    const strength = rankValues(list.map(t => ({ name: t.name, raw: t.elo })));
+    const sortedStrength = [...list].sort((a, b) => b.elo - a.elo);
     sortedStrength.forEach((t, i) => { t.tier = (Math.min(3, Math.floor((i / sortedStrength.length) * 4)) + 1) as 1 | 2 | 3 | 4; t.rank = i + 1; });
     const att = rankValues(list.map(t => ({ name: t.name, raw: t.attack })));
     const def = rankValues(list.map(t => ({ name: t.name, raw: t.defence })), true);
