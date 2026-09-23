@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import logger from '../utils/logger';
 import { predictFromStandings, Prediction, StandingsResponse } from './predictionModel';
 import { predictV2, prepareModelV2 } from './historyModel';
+import { predictV3, prepareModelV3 } from './gridModel';
 import { withMarket, oddsFor } from './odds';
 
 // Competitions to load. Override with COMPETITIONS=PL,PD,... in .env
@@ -279,6 +280,12 @@ class FootballDataAPI {
     } catch (error: any) {
       logger.warn('Prediction v2 failed', { matchId: match.id, message: error.message });
     }
+    try {
+      const v3 = predictV3(match);
+      if (v3) out.push(v3);
+    } catch (error: any) {
+      logger.warn('Prediction v3 failed', { matchId: match.id, message: error.message });
+    }
     return out;
   }
 
@@ -301,6 +308,8 @@ class FootballDataAPI {
     try {
       const r = await prepareModelV2(this.standingsByCode, forceSync);
       console.log(`🧠 Model v2 ready: ${r.fitted} groups fitted`);
+      const g = prepareModelV3();
+      console.log(`🧮 Model v3 (grid) ready: ${g} groups`);
       return r;
     } catch (error: any) {
       logger.error('Model v2 preparation failed', { message: error.message });

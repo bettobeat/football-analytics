@@ -271,15 +271,15 @@ export interface BacktestRow {
   evidence: number;
 }
 
-export function backtestRows(season: string, group?: string, minEvidence: number = 0): BacktestRow[] {
+export function backtestRows(season: string, group?: string, minEvidence: number = 0, model: string = MODEL_V2): BacktestRow[] {
   const sql = `
     SELECT b.* FROM backtest_predictions b
     JOIN backtest_runs r ON r.id = b.run_id
     WHERE r.season = ? AND r.model = ? ${group ? 'AND r.grp = ?' : ''} AND b.evidence >= ?
     ORDER BY b.date DESC`;
   return group
-    ? db.prepare(sql).all(season, MODEL_V2, group, minEvidence)
-    : db.prepare(sql).all(season, MODEL_V2, minEvidence);
+    ? db.prepare(sql).all(season, model, group, minEvidence)
+    : db.prepare(sql).all(season, model, minEvidence);
 }
 
 export function backtestRunsList() {

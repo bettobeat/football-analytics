@@ -56,6 +56,15 @@ export interface Prediction {
     gamesPlayed: { home: number; away: number };
     leagueAvgGoals: number; // per team per game
   };
+  /** Grid model (v3) extras — absent on v1/v2 */
+  grid?: {
+    matchType: 'mismatch' | 'standard' | 'even' | 'big';
+    points: { home: number; draw: number; away: number }; // out of 1000
+    totals: { home: number; away: number };
+    rows: { id: string; name: string; rel: number; home: number; away: number; edge: number; note?: string }[];
+    drawPot: { base: number; factors: number; volatility: number; total: number };
+    reasons: string[];
+  };
 }
 
 const SHRINK_K = 5; // games of "prior" weight for strengths

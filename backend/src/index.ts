@@ -21,6 +21,7 @@ import { recordPredictions, settlePending, accuracy, recentSettled, trackingStat
 import { historyStatus, teamMapStatus, GROUPS } from './services/history';
 import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestRows, backtestRunsList } from './services/historyModel';
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
+import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV } from './services/gridModel';
 
 const isDev = (process.env.NODE_ENV || 'development') !== 'production';
 
@@ -250,7 +251,7 @@ app.post('/api/accuracy/settle', async (_req, res) => {
 
 app.get('/api/history/status', (_req, res) => {
   try {
-    res.json({ data: { history: historyStatus(), model: modelV2Status(), groups: GROUPS }, timestamp: new Date().toISOString() });
+    res.json({ data: { history: historyStatus(), model: modelV2Status(), modelV3: modelV3Status(), groups: GROUPS }, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Failed to read history status');
   }
@@ -274,21 +275,52 @@ app.post('/api/history/sync', async (_req, res) => {
   }
 });
 
-// Start a walk-forward backtest (runs in the background). ?season=2425&group=E (group optional = all)
-app.post('/api/backtest/run', (req, res) => {
-  const season = String(req.query.season || '2425');
-  const group = req.query.group ? String(req.query.group).toUpperCase() : undefined;
-  if (backtestProgress()) {
-    res.status(409).json({ error: 'A backtest is already running', progress: backtestProgress() });
-    return;
+// Model v3 (grid): rebuild state now, or read its configuration
+app.post('/api/model/v3/rebuild', (_req, res) => {
+  try {
+    res.json({ data: { groups: prepareModelV3(), status: modelV3Status() }, timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Model v3 rebuild failed');
   }
-  const job = group ? runBacktest(season, group) : runBacktestAll(season);
-  job.catch(err => logger.error('Backtest failed', { message: err.message }));
-  res.json({ data: { started: true, season, group: group || 'ALL' }, timestamp: new Date().toISOString() });
+});
+app.get('/api/model/v3/status', (_req, res) => {
+  res.json({ data: modelV3Status(), timestamp: new Date().toISOString() });
 });
 
+// Start a walk-forward backtest (runs in the background).
+// ?season=2526&group=E (group optional = all) &model=dc-history-v2|grid-v3
+// For grid-v3, conversion constants can be overridden for calibration: &gapScale=0.05&kDraw=1.5&drawBase.big=240 …
+const runBacktestHandler = (req: express.Request, res: express.Response) => {
+  const season = String(req.query.season || '2526');
+  const group = req.query.group ? String(req.query.group).toUpperCase() : undefined;
+  const model = String(req.query.model || 'dc-history-v2');
+  if (backtestProgress() || backtestProgressV3()) {
+    res.status(409).json({ error: 'A backtest is already running', progress: backtestProgress() || backtestProgressV3() });
+    return;
+  }
+  let job: Promise<any>;
+  if (model === MODEL_V3) {
+    const conv: any = {};
+    for (const [k, v] of Object.entries(req.query)) {
+      if (['season', 'group', 'model'].includes(k)) continue;
+      const num = parseFloat(String(v));
+      if (!Number.isFinite(num)) continue;
+      const [a, b] = k.split('.');
+      if (b) conv[a] = { ...((CONV as any)[a] || {}), ...(conv[a] || {}), [b]: num };
+      else conv[a] = num;
+    }
+    job = group ? runBacktestV3(season, group, conv) : runBacktestV3All(season, conv);
+  } else {
+    job = group ? runBacktest(season, group) : runBacktestAll(season);
+  }
+  job.catch(err => logger.error('Backtest failed', { message: err.message }));
+  res.json({ data: { started: true, season, group: group || 'ALL', model }, timestamp: new Date().toISOString() });
+};
+app.post('/api/backtest/run', runBacktestHandler);
+app.get('/api/backtest/run', runBacktestHandler); // GET alias so a run can be started from a browser tab
+
 app.get('/api/backtest/progress', (_req, res) => {
-  res.json({ data: backtestProgress(), timestamp: new Date().toISOString() });
+  res.json({ data: backtestProgress() || backtestProgressV3(), timestamp: new Date().toISOString() });
 });
 
 // Backtest results. ?season=2425&group=E&minEvidence=0
@@ -299,7 +331,8 @@ app.get('/api/backtest', (req, res) => {
     const minEvidence = parseFloat(String(req.query.minEvidence || '0')) || 0;
     const oddsKind = String(req.query.odds || 'close') === 'early' ? 'early' : 'close';
     const edge = parseFloat(String(req.query.edge || '0.05')) || 0.05;
-    const rows = backtestRows(season, group, minEvidence);
+    const model = String(req.query.model || 'dc-history-v2');
+    const rows = backtestRows(season, group, minEvidence, model);
     const metrics = computeMetrics(
       rows.map(r => ({
         p_home: r.p_home,
@@ -316,14 +349,15 @@ app.get('/api/backtest', (req, res) => {
     );
     res.json({
       data: {
+        ...metrics,
         season,
+        model,
         group: group || null,
         minEvidence,
         odds: oddsKind,
         edge,
         runs: backtestRunsList(),
-        progress: backtestProgress(),
-        ...metrics,
+        progress: backtestProgress() || backtestProgressV3(),
         sample: rows.slice(0, 200)
       },
       timestamp: new Date().toISOString()
