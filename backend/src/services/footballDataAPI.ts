@@ -170,6 +170,11 @@ class FootballDataAPI {
     if (this.refreshing) return this.refreshing;
     this.refreshing = this.fetchWindow()
       .then(async matches => {
+        // A partial refresh (some competitions failed) must not shrink a healthy window
+        if (this.window && matches.length < this.window.length * 0.5) {
+          logger.warn(`Window refresh returned ${matches.length} matches vs ${this.window.length} before — keeping the previous window`);
+          return;
+        }
         this.window = matches;
         this.windowLoadedAt = Date.now();
         await this.refreshStandings();
@@ -200,7 +205,7 @@ class FootballDataAPI {
     // Re-sync the current season's results and refit v2 every 6 hours
     setInterval(() => this.prepareHistoryModel().catch(() => {}), 6 * 60 * 60 * 1000);
     // Warm the usual-XI cache for the next two days of fixtures (slowly, in the background)
-    setTimeout(() => this.prefetchUsualLineups().catch(() => {}), 2 * 60 * 1000);
+    setTimeout(() => this.prefetchUsualLineups().catch(() => {}), 6 * 60 * 1000);
     setInterval(() => this.prefetchUsualLineups().catch(() => {}), 60 * 60 * 1000);
   }
 
@@ -222,6 +227,8 @@ class FootballDataAPI {
       let built = 0;
       for (const id of teamIds) {
         if (this.getCached(`usual:${id}:5`)) continue;
+        // Lowest priority: only spend quota when plenty is left this minute
+        while (this.quotaLeft < 8 && this.quotaResetAt > Date.now()) await new Promise(r => setTimeout(r, 5000));
         try {
           await this.getUsualLineup(id);
           built++;
@@ -338,8 +345,10 @@ class FootballDataAPI {
     );
 
     const all: any[] = [];
+    let ok = 0;
     for (const r of results) {
       if (r.status === 'fulfilled') {
+        ok++;
         console.log(`  ✅ ${r.value.code}: ${r.value.matches.length} matches`);
         all.push(...r.value.matches);
       } else {
@@ -350,6 +359,9 @@ class FootballDataAPI {
         logger.warn('Competition fetch failed', { status, msg });
       }
     }
+
+    // Every competition failed (rate limit burst, outage): treat as a failed refresh so the previous window is kept
+    if (ok === 0) throw new Error('all competition fetches failed');
 
     // Keep only upcoming/live, dedupe, sort by kickoff
     const byId = new Map<number, any>();
