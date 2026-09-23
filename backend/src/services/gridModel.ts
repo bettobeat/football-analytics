@@ -95,6 +95,7 @@ interface TeamFeat {
   division: string;
   played: number; // this season, own division
   tier: 1 | 2 | 3 | 4;
+  rank: number; // strength rank within division (1 = top)
   ppgSeason: number; // decayed ppg proxy for strength
   attack: number; // opponent-adjusted goals for / game (decayed)
   defence: number; // opponent-adjusted goals against / game (decayed), lower = better
@@ -159,7 +160,7 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string): Gr
     let t = teams.get(name);
     if (!t) {
       t = {
-        name, division: divOf.get(name) || divisions[0], played: 0, tier: 3, ppgSeason: 1, attack: 1.3, defence: 1.3,
+        name, division: divOf.get(name) || divisions[0], played: 0, tier: 3, rank: 10, ppgSeason: 1, attack: 1.3, defence: 1.3,
         formPts: 6, homePpg: 1.5, awayPpg: 1.1, drawRate: 0.25, gamesLast8: 0, lastMatch: null, v: {}
       };
       teams.set(name, t);
@@ -187,24 +188,38 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string): Gr
   interface Agg { w: number; gf: number; ga: number; pts: number; hw: number; hpts: number; aw: number; apts: number; d: number; games: { date: string; pts: number; season: string; division: string }[] }
   const agg = new Map<string, Agg>();
   const A = (n: string) => { let a = agg.get(n); if (!a) { a = { w: 0, gf: 0, ga: 0, pts: 0, hw: 0, hpts: 0, aw: 0, apts: 0, d: 0, games: [] }; agg.set(n, a); } return a; };
+  // Only matches played in the team's CURRENT division count toward its ratings: a promoted side's
+  // second-division numbers say nothing about the top flight. Few same-division games → shrink to a prior.
   for (const m of past) {
+    ensure(m.home); ensure(m.away);
     const age = days(m.date, asOf);
     const kP = decay(age, CONV.halfLifeProd);
     const kL = decay(age, CONV.halfLifeLong);
     const hPts = m.hg > m.ag ? 3 : m.hg === m.ag ? 1 : 0;
     const aPts = m.hg < m.ag ? 3 : m.hg === m.ag ? 1 : 0;
     const h = A(m.home), a = A(m.away);
-    h.w += kP; h.gf += kP * m.hg; h.ga += kP * m.ag; h.pts += kP * hPts; h.d += kP * (hPts === 1 ? 1 : 0);
-    a.w += kP; a.gf += kP * m.ag; a.ga += kP * m.hg; a.pts += kP * aPts; a.d += kP * (aPts === 1 ? 1 : 0);
-    h.hw += kL; h.hpts += kL * hPts; a.aw += kL; a.apts += kL * aPts;
     h.games.push({ date: m.date, pts: hPts, season: m.season, division: m.division });
     a.games.push({ date: m.date, pts: aPts, season: m.season, division: m.division });
-    ensure(m.home); ensure(m.away);
+    if (divOf.get(m.home) === m.division) {
+      h.w += kP; h.gf += kP * m.hg; h.ga += kP * m.ag; h.pts += kP * hPts; h.d += kP * (hPts === 1 ? 1 : 0);
+      h.hw += kL; h.hpts += kL * hPts;
+    }
+    if (divOf.get(m.away) === m.division) {
+      a.w += kP; a.gf += kP * m.ag; a.ga += kP * m.hg; a.pts += kP * aPts; a.d += kP * (aPts === 1 ? 1 : 0);
+      a.aw += kL; a.apts += kL * aPts;
+    }
   }
 
   // --- first pass: unadjusted attack/defence per game
+  // Prior for a team with little same-division evidence: a newcomer (promoted / relegated) profile
+  const PRIOR_W = 4; // worth ~4 matches of evidence
+  const priorFor = (n: string) => { const avg = leagueAvgGoals[divOf.get(n) || divisions[0]] || 1.35; return { att: avg * 0.8, def: avg * 1.2, ppg: 1.0, draw: 0.26 }; };
   const rawAtt = new Map<string, number>(), rawDef = new Map<string, number>();
-  agg.forEach((x, n) => { rawAtt.set(n, x.w ? x.gf / x.w : 1.3); rawDef.set(n, x.w ? x.ga / x.w : 1.3); });
+  agg.forEach((x, n) => {
+    const pr = priorFor(n);
+    rawAtt.set(n, (x.gf + pr.att * PRIOR_W) / (x.w + PRIOR_W));
+    rawDef.set(n, (x.ga + pr.def * PRIOR_W) / (x.w + PRIOR_W));
+  });
   // --- second pass: opponent-adjusted (divide by opponent's defence / attack relative to league)
   const adjAtt = new Map<string, number>(), adjDef = new Map<string, number>();
   {
@@ -216,10 +231,15 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string): Gr
       const oppAttH = (rawAtt.get(m.away) || avg) / avg;
       const oppDefA = (rawDef.get(m.home) || avg) / avg;
       const oppAttA = (rawAtt.get(m.home) || avg) / avg;
-      const h = acc.get(m.home) || { w: 0, att: 0, def: 0 }; h.w += k; h.att += k * m.hg / Math.max(0.5, oppDefH); h.def += k * m.ag / Math.max(0.5, oppAttH); acc.set(m.home, h);
-      const a = acc.get(m.away) || { w: 0, att: 0, def: 0 }; a.w += k; a.att += k * m.ag / Math.max(0.5, oppDefA); a.def += k * m.hg / Math.max(0.5, oppAttA); acc.set(m.away, a);
+      if (divOf.get(m.home) === m.division) { const h = acc.get(m.home) || { w: 0, att: 0, def: 0 }; h.w += k; h.att += k * m.hg / Math.max(0.5, oppDefH); h.def += k * m.ag / Math.max(0.5, oppAttH); acc.set(m.home, h); }
+      if (divOf.get(m.away) === m.division) { const a = acc.get(m.away) || { w: 0, att: 0, def: 0 }; a.w += k; a.att += k * m.ag / Math.max(0.5, oppDefA); a.def += k * m.hg / Math.max(0.5, oppAttA); acc.set(m.away, a); }
     }
-    acc.forEach((x, n) => { adjAtt.set(n, x.w ? x.att / x.w : 1.3); adjDef.set(n, x.w ? x.def / x.w : 1.3); });
+    agg.forEach((_, n) => {
+      const x = acc.get(n) || { w: 0, att: 0, def: 0 };
+      const pr = priorFor(n);
+      adjAtt.set(n, (x.att + pr.att * PRIOR_W) / (x.w + PRIOR_W));
+      adjDef.set(n, (x.def + pr.def * PRIOR_W) / (x.w + PRIOR_W));
+    });
   }
 
   // --- per-team features
@@ -230,10 +250,11 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string): Gr
     t.played = thisSeason.length;
     t.attack = adjAtt.get(t.name) ?? 1.3;
     t.defence = adjDef.get(t.name) ?? 1.3;
-    t.ppgSeason = x.w ? x.pts / x.w : 1;
-    t.drawRate = x.w ? x.d / x.w : 0.25;
-    t.homePpg = x.hw ? x.hpts / x.hw : 1.5;
-    t.awayPpg = x.aw ? x.apts / x.aw : 1.1;
+    const pr = priorFor(t.name);
+    t.ppgSeason = (x.pts + pr.ppg * PRIOR_W) / (x.w + PRIOR_W);
+    t.drawRate = (x.d + pr.draw * PRIOR_W) / (x.w + PRIOR_W);
+    t.homePpg = (x.hpts + 1.5 * PRIOR_W) / (x.hw + PRIOR_W);
+    t.awayPpg = (x.apts + 1.1 * PRIOR_W) / (x.aw + PRIOR_W);
     const recent = [...x.games].sort((p, q) => (p.date < q.date ? 1 : -1)).slice(0, 6);
     t.formPts = recent.reduce((s, g) => s + g.pts, 0) + (6 - recent.length) * 1; // pad missing games with a draw
     t.gamesLast8 = x.games.filter(g => days(g.date, asOf) <= 8).length;
@@ -247,7 +268,7 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string): Gr
     // strength = decayed ppg (early season this naturally leans on last season)
     const strength = rankValues(list.map(t => ({ name: t.name, raw: t.ppgSeason })));
     const sortedStrength = [...list].sort((a, b) => b.ppgSeason - a.ppgSeason);
-    sortedStrength.forEach((t, i) => { t.tier = (Math.min(3, Math.floor((i / sortedStrength.length) * 4)) + 1) as 1 | 2 | 3 | 4; });
+    sortedStrength.forEach((t, i) => { t.tier = (Math.min(3, Math.floor((i / sortedStrength.length) * 4)) + 1) as 1 | 2 | 3 | 4; t.rank = i + 1; });
     const att = rankValues(list.map(t => ({ name: t.name, raw: t.attack })));
     const def = rankValues(list.map(t => ({ name: t.name, raw: t.defence })), true);
     const form = rankValues(list.map(t => ({ name: t.name, raw: t.formPts })));
@@ -286,7 +307,7 @@ export function matchTypeFor(h: TeamFeat, a: TeamFeat, derby: boolean): MatchTyp
   if (derby) return 'big';
   const gap = Math.abs(h.tier - a.tier);
   if (gap >= 2) return 'mismatch';
-  if (h.tier === 1 && a.tier === 1) return 'big';
+  if (h.rank <= 3 && a.rank <= 3) return 'big'; // top-of-the-table clash
   if (gap === 0) return 'even';
   return 'standard';
 }
