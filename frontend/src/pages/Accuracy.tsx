@@ -544,9 +544,13 @@ function MetricsView({ m, groupLabel = 'League' }: { m: Metrics; groupLabel?: st
 
 const DIVISION_NAME: Record<string, string> = {
   E0: 'Premier League', E1: 'Championship', SP1: 'La Liga', SP2: 'Segunda', I1: 'Serie A', I2: 'Serie B',
-  D1: 'Bundesliga', D2: '2. Bundesliga', F1: 'Ligue 1', F2: 'Ligue 2', N1: 'Eredivisie', P1: 'Primeira Liga'
+  D1: 'Bundesliga', D2: '2. Bundesliga', F1: 'Ligue 1', F2: 'Ligue 2', N1: 'Eredivisie', P1: 'Primeira Liga',
+  B1: 'Belgian Pro League', T1: 'Süper Lig', SC0: 'Scottish Premiership', SC1: 'Scottish Championship', G1: 'Greek Super League'
 }
-const GROUP_NAME: Record<string, string> = { E: 'England', SP: 'Spain', I: 'Italy', D: 'Germany', F: 'France', N: 'Netherlands', P: 'Portugal' }
+const GROUP_NAME: Record<string, string> = {
+  E: 'England', SP: 'Spain', I: 'Italy', D: 'Germany', F: 'France', N: 'Netherlands', P: 'Portugal',
+  B: 'Belgium', T: 'Turkey', SC: 'Scotland', G: 'Greece'
+}
 
 function Backtest() {
   const [group, setGroup] = useState<string>('ALL')

@@ -10,6 +10,9 @@
 import logger from '../utils/logger';
 import { afGet, afConfigured } from './apiFootball';
 import { predictFromStandings, Prediction } from './predictionModel';
+import { groupForCompetition, buildTeamMap } from './history';
+import { predictV2 } from './historyModel';
+import { predictV3 } from './gridModel';
 
 export const AF_OFFSET = 1_000_000_000;
 export const isAfMatchId = (id: number) => id >= AF_OFFSET;
@@ -321,7 +324,16 @@ export async function getAfStandings(code: string) {
     if (!season) return null;
     const j = await afGet('/standings', { league: id, season });
     const s = toFdStandings(j.response);
-    if (s) standingsByCode.set(`AF${id}`, s);
+    if (s) {
+      standingsByCode.set(`AF${id}`, s);
+      // leagues with football-data.co.uk history (Belgium, Turkey, Scotland, Greece): map team names for v2/v3
+      const group = groupForCompetition(`AF${id}`);
+      if (group) {
+        const teams = new Map<number, any>();
+        for (const t of s.standings) for (const r of t.table) teams.set(r.team.id, { id: r.team.id, name: r.team.name, shortName: r.team.shortName });
+        try { buildTeamMap(group, [...teams.values()]); } catch (e: any) { logger.warn(`AF team map ${group}: ${e.message}`); }
+      }
+    }
     return s;
   });
 }
@@ -357,10 +369,21 @@ export function afPrediction(m: any): Prediction | null {
   try { return predictFromStandings(st, m.homeTeam.id, m.awayTeam.id); } catch { return null; }
 }
 
+/** Every model that covers the match: v1 (table), plus v2/v3 where the league has history (Belgium, Turkey, Scotland, Greece). */
+export function afPredictions(m: any): Prediction[] {
+  const out: Prediction[] = [];
+  const v1 = afPrediction(m);
+  if (v1) out.push(v1);
+  for (const f of [predictV2, predictV3]) {
+    try { const p = f(m); if (p) out.push(p); } catch { /* not covered */ }
+  }
+  return out;
+}
+
 export function afWithPredictions(matches: any[]) {
   return matches.map(m => {
-    const p = afPrediction(m);
-    return { ...m, prediction: p, predictions: p ? [p] : [] };
+    const predictions = afPredictions(m);
+    return { ...m, prediction: predictions.find(p => p.model.startsWith('dc-history')) || predictions[0] || null, predictions };
   });
 }
 
@@ -440,11 +463,11 @@ export async function getAfMatchDetails(matchId: number) {
     afH2H(raw.teams.home.id, raw.teams.away.id, match.homeTeam.id, match.awayTeam.id).catch(() => null),
     match.status === 'FINISHED' ? Promise.resolve(null) : afMarket(fixtureId).catch(() => null)
   ]);
-  const p = afPrediction(match);
+  const predictions = afPredictions(match);
   return {
     match,
-    prediction: p,
-    predictions: p ? [p] : [],
+    prediction: predictions.find(p => p.model.startsWith('dc-history')) || predictions[0] || null,
+    predictions,
     head2head: h2h,
     standings: { home: standingRow(standings, match.homeTeam.id), away: standingRow(standings, match.awayTeam.id) },
     form: { home: homeForm, away: awayForm },

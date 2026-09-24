@@ -15,7 +15,12 @@ export const GROUPS: Record<string, { divisions: string[]; competitions: string[
   D: { divisions: ['D1', 'D2'], competitions: ['BL1'] },
   F: { divisions: ['F1', 'F2'], competitions: ['FL1'] },
   N: { divisions: ['N1'], competitions: ['DED'] },
-  P: { divisions: ['P1'], competitions: ['PPL'] }
+  P: { divisions: ['P1'], competitions: ['PPL'] },
+  // Extra leagues served from API-Football (codes AF<league id>); history from the same football-data.co.uk CSVs
+  B: { divisions: ['B1'], competitions: ['AF144'] }, // Belgium — Jupiler Pro League
+  T: { divisions: ['T1'], competitions: ['AF203'] }, // Turkey — Süper Lig
+  SC: { divisions: ['SC0', 'SC1'], competitions: ['AF179'] }, // Scotland — Premiership (+ Championship for promoted teams)
+  G: { divisions: ['G1'], competitions: ['AF197'] } // Greece — Super League 1
 };
 
 export function groupForCompetition(code: string): string | null {
@@ -289,7 +294,23 @@ export const ALIASES: Record<string, string> = {
   'zwolle': 'pec zwolle',
   'for sittard': 'fortuna sittard',
   'waalwijk': 'rkc waalwijk',
-  'sparta rotterdam': 'sparta rotterdam'
+  'sparta rotterdam': 'sparta rotterdam',
+  // Belgium / Turkey / Scotland / Greece (football-data.co.uk → API-Football spelling)
+  'club brugge': 'club brugge kv',
+  'st truiden': 'sint-truiden',
+  'st. gilloise': 'union st. gilloise',
+  'waregem': 'zulte waregem',
+  'oud-heverlee leuven': 'oh leuven',
+  'fenerbahce': 'fenerbahce',
+  'buyuksehyr': 'istanbul basaksehir',
+  'ad. demirspor': 'adana demirspor',
+  'celtic': 'celtic',
+  'rangers': 'rangers',
+  'st mirren': 'st. mirren',
+  'st johnstone': 'st johnstone',
+  'olympiakos': 'olympiakos piraeus',
+  'paok': 'paok',
+  'aek': 'aek athens fc'
 };
 
 // Club-name filler that carries no identity. Distinguishing words such as "Real",

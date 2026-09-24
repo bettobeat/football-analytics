@@ -294,6 +294,17 @@ app.get('/api/history/sync-season', async (req, res) => {
   }
 });
 
+// Refit v2 and rebuild v3 now (GET, e.g. after loading new leagues' history)
+app.get('/api/history/refit', async (_req, res) => {
+  try {
+    const r = await footballDataAPI.prepareHistoryModel(false);
+    prepareModelV3();
+    res.json({ data: r, timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Refit failed');
+  }
+});
+
 // Re-download history and refit (force)
 app.post('/api/history/sync', async (_req, res) => {
   try {

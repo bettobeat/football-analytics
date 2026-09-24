@@ -23,7 +23,8 @@ const TOP_N = 15;
 
 /** Transfermarkt competition codes → model group. */
 const COMPETITION_GROUP: Record<string, string> = {
-  GB1: 'E', GB2: 'E', ES1: 'SP', ES2: 'SP', IT1: 'I', IT2: 'I', L1: 'D', L2: 'D', FR1: 'F', FR2: 'F', NL1: 'N', PO1: 'P'
+  GB1: 'E', GB2: 'E', ES1: 'SP', ES2: 'SP', IT1: 'I', IT2: 'I', L1: 'D', L2: 'D', FR1: 'F', FR2: 'F', NL1: 'N', PO1: 'P',
+  BE1: 'B', TR1: 'T', SC1: 'SC', GR1: 'G'
 };
 
 /** Extra hints for club names as Transfermarkt writes them (lowercased fd name → hint). */
