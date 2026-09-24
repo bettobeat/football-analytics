@@ -22,7 +22,7 @@ import { historyStatus, teamMapStatus, GROUPS } from './services/history';
 import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestRows, backtestRunsList } from './services/historyModel';
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
 import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler } from './services/squadValues';
-import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, SweepVariant } from './services/gridModel';
+import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, backfillV3, SweepVariant } from './services/gridModel';
 
 const isDev = (process.env.NODE_ENV || 'development') !== 'production';
 
@@ -302,6 +302,17 @@ const squadSyncHandler = async (_req: express.Request, res: express.Response) =>
   }
 };
 app.post('/api/model/v3/squad/sync', squadSyncHandler);
+
+// Backfill v3 predictions for the tracked matches v2 already has (walk-forward, flagged backfilled=1)
+const backfillHandler = (_req: express.Request, res: express.Response) => {
+  try {
+    res.json({ data: backfillV3(), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'v3 backfill failed');
+  }
+};
+app.post('/api/model/v3/backfill', backfillHandler);
+app.get('/api/model/v3/backfill', backfillHandler);
 app.get('/api/model/v3/squad/sync', squadSyncHandler);
 
 // Start a walk-forward backtest (runs in the background).

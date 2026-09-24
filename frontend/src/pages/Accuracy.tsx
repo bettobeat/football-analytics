@@ -182,6 +182,13 @@ function Accuracy() {
         )}
       </div>
 
+      {model === 'grid-v3' && (
+        <p className="text-xs text-faint -mt-3 mb-5">
+          v3 went live on 24 Sep 2026. Its earlier matches here were scored retroactively, each from the data available before that
+          kick-off (walk-forward, same market odds as v2) — a like-for-like comparison, not live predictions.
+        </p>
+      )}
+
       {comps.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-6">
           <Chip active={competition === 'ALL'} onClick={() => setCompetition('ALL')}>All leagues</Chip>

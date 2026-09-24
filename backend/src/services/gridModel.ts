@@ -661,11 +661,12 @@ export function parseCompactVariants(text: string): SweepVariant[] {
   return text.split(';').map(s => s.trim()).filter(Boolean).map(spec => {
     const rel: RelOverride = {};
     for (const part of spec.split('/')) {
-      const [id, vals] = part.split(':');
-      if (!id || !vals) continue;
+      const [rawId, vals] = part.split(':');
+      if (!rawId || !vals) continue;
+      const id = rawId.trim().startsWith('#') ? rawId.trim() : `#${rawId.trim()}`; // '#' is a URL fragment, so "1e:..." works too
       const nums = vals.split(',');
-      rel[id.trim()] = {};
-      MATCH_TYPES.forEach((t, i) => { const n = parseFloat(nums[i]); if (Number.isFinite(n)) rel[id.trim()][t] = n; });
+      rel[id] = {};
+      MATCH_TYPES.forEach((t, i) => { const n = parseFloat(nums[i]); if (Number.isFinite(n)) rel[id][t] = n; });
     }
     return { name: spec, rel };
   });
@@ -774,4 +775,78 @@ export async function sweepV3(season: string, variants: SweepVariant[], baseConv
     REL_OVERRIDE = savedRel;
     sweepProgress = null;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Backfill: v3 predictions for tracked matches that predate the model  */
+/* ------------------------------------------------------------------ */
+
+let backfillColumnReady = false;
+function ensureBackfillColumn() {
+  if (backfillColumnReady) return;
+  const cols = (db.prepare(`PRAGMA table_info(predictions)`).all() as any[]).map(c => c.name);
+  if (!cols.includes('backfilled')) db.exec(`ALTER TABLE predictions ADD COLUMN backfilled INTEGER NOT NULL DEFAULT 0`);
+  backfillColumnReady = true;
+}
+
+/**
+ * Give v3 the same tracked history as v2: for every settled v2 prediction without a v3 row,
+ * score the match with the state as of its kick-off date (only matches before that date are
+ * used, exactly like the backtest), copy the market odds, and store it locked + settled and
+ * flagged `backfilled = 1` so it can be told apart from predictions made live.
+ */
+export function backfillV3(model = 'dc-history-v2') {
+  ensureBackfillColumn();
+  const rows = db.prepare(`
+    SELECT p.match_id, p.competition_code, p.competition_name, p.utc_date, p.home_team_id, p.home_team, p.away_team_id, p.away_team,
+           p.odds_home, p.odds_draw, p.odds_away, p.settled, p.locked
+    FROM predictions p
+    WHERE p.model = ? AND p.locked = 1
+      AND NOT EXISTS (SELECT 1 FROM predictions q WHERE q.match_id = p.match_id AND q.model = ?)
+    ORDER BY p.utc_date
+  `).all(model, MODEL_V3) as any[];
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO predictions (
+      match_id, model, competition_code, competition_name, utc_date, home_team_id, home_team, away_team_id, away_team,
+      p_home, p_draw, p_away, xg_home, xg_away, over25, btts, confidence, games_home, games_away,
+      odds_home, odds_draw, odds_away, locked, locked_at, settled, created_at, updated_at, backfilled
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 1)
+  `);
+  const states = new Map<string, { state: GroupState; all: HistoryMatch[] }>();
+  const now = new Date().toISOString();
+  let done = 0, skipped = 0;
+  const skippedWhy: Record<string, number> = {};
+  db.exec('BEGIN');
+  try {
+    for (const r of rows) {
+      const group = r.competition_code ? groupForCompetition(r.competition_code) : null;
+      if (!group) { skipped++; skippedWhy['no group'] = (skippedWhy['no group'] || 0) + 1; continue; }
+      const home = fdNameFor(group, r.home_team_id);
+      const away = fdNameFor(group, r.away_team_id);
+      if (!home || !away) { skipped++; skippedWhy['team not mapped'] = (skippedWhy['team not mapped'] || 0) + 1; continue; }
+      const asOf = String(r.utc_date).slice(0, 10); // matches strictly before kick-off day
+      const key = `${group}|${asOf}`;
+      let s = states.get(key);
+      if (!s) {
+        const all = loadGroupMatches(group);
+        s = { state: buildState(group, all, asOf), all };
+        states.set(key, s);
+      }
+      const p = scoreMatch(s.state, s.all, home, away, asOf);
+      if (!p) { skipped++; skippedWhy['no prediction'] = (skippedWhy['no prediction'] || 0) + 1; continue; }
+      insert.run(
+        r.match_id, MODEL_V3, r.competition_code, r.competition_name, r.utc_date, r.home_team_id, r.home_team, r.away_team_id, r.away_team,
+        p.home, p.draw, p.away, p.expectedGoals.home, p.expectedGoals.away, p.over25, p.btts, p.confidence,
+        p.factors.gamesPlayed.home, p.factors.gamesPlayed.away,
+        r.odds_home, r.odds_draw, r.odds_away, r.utc_date, r.settled, now, now
+      );
+      done++;
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  logger.info(`v3 backfill: ${done} predictions added, ${skipped} skipped`, skippedWhy);
+  return { candidates: rows.length, added: done, skipped, skippedWhy };
 }
