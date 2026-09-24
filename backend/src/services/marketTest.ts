@@ -216,3 +216,46 @@ export function drawTest(season: string, model: string) {
     note: withBest ? undefined : 'best/average prices missing — re-sync history seasons to load the Max/Avg columns'
   };
 }
+
+/**
+ * Market-anchored draw model: p = market early draw + k × (v3 draw − market early draw).
+ * Trust the market's level, v3's direction. Picks priced at the best early price.
+ */
+export function anchoredDrawTest(season: string, model: string) {
+  const rows = db.prepare(`
+    SELECT b.division, b.outcome, b.p_draw, b.odds_home AS ch, b.odds_draw AS cd, b.odds_away AS ca,
+           b.early_h AS eh, b.early_d AS ed, b.early_a AS ea, h.max_d
+    FROM backtest_predictions b
+    JOIN backtest_runs r ON r.id = b.run_id AND r.season = ? AND r.model = ?
+    LEFT JOIN history_matches h ON h.division = b.division AND h.date = b.date AND h.home = b.home AND h.away = b.away
+  `).all(season, model) as any[];
+  const run = (k: number, edge: number, opts: { noSpain?: boolean; v3Min?: number } = {}) => {
+    let bets = 0, wins = 0, profit = 0, clvSum = 0, clvN = 0, moved = 0;
+    for (const r of rows) {
+      if (opts.noSpain && r.division.startsWith('SP')) continue;
+      if (opts.v3Min && r.p_draw < opts.v3Min) continue;
+      const ef = fair([r.eh, r.ed, r.ea]);
+      const o = r.max_d;
+      if (!ef || !o) continue;
+      const p = ef[1] + k * (r.p_draw / 100 - ef[1]);
+      if (p * o - 1 < edge) continue;
+      bets++;
+      const won = r.outcome === 'D';
+      if (won) wins++;
+      profit += won ? o - 1 : -1;
+      const cf = fair([r.ch, r.cd, r.ca]);
+      if (cf) { clvSum += o * cf[1] - 1; clvN++; if (cf[1] > ef[1]) moved++; }
+    }
+    return {
+      k, edge, ...opts, bets, wins,
+      roi: bets ? r1((profit / bets) * 100) : null,
+      avgClv: clvN ? r1((clvSum / clvN) * 100) : null,
+      lineMovedOurWay: clvN ? r1((moved / clvN) * 100) : null
+    };
+  };
+  const out: any[] = [];
+  for (const k of [0.25, 0.5, 0.75, 1])
+    for (const e of [0, 0.02, 0.04, 0.06])
+      out.push(run(k, e), run(k, e, { noSpain: true }), run(k, e, { noSpain: true, v3Min: 30 }));
+  return { season, model, matches: rows.length, results: out };
+}

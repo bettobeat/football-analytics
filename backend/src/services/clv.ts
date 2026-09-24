@@ -2,7 +2,7 @@
  * Live closing-line value (CLV) — "are we beating the market?", measured the way professionals do.
  *
  * For every top-league fixture:
- *   OPEN   when kick-off is ≤ 48 h away: store the bookmaker price (Pinnacle if offered, else Bet365, else
+ *   OPEN   when kick-off is ≤ 7 days away (as soon as prices appear): store the bookmaker price (Pinnacle if offered, else Bet365, else
  *          the first book) AND v3's prediction at that moment (no lineups yet — what you could bet on).
  *   CLOSE  in the last 35 min before kick-off: store the price again (refreshed every tick until kick-off).
  *   RESULT once the match is finished.
@@ -20,7 +20,7 @@ import { afGet, afBudgetLeft, afConfigured, AF_LEAGUES } from './apiFootball';
 import { predictV3ByNames } from './gridModel';
 
 type O = 'H' | 'D' | 'A';
-const OPEN_WINDOW_MS = 48 * 3600 * 1000;
+const OPEN_WINDOW_MS = 7 * 24 * 3600 * 1000; // open as soon as prices are published (the line moves toward v3 on draws → earliest price is best)
 const CLOSE_WINDOW_MS = 35 * 60 * 1000;
 const BOOK_PREFERENCE = ['Pinnacle', 'Bet365', '1xBet', 'Unibet', 'Bwin', 'William Hill'];
 
