@@ -641,7 +641,15 @@ function MatchCard({ match, delay = 0 }: { match: APIMatch; delay?: number }) {
 }
 
 function SpotlightCard({ match }: { match: APIMatch }) {
-  const p = match.prediction!
+  // Matches without a model prediction (friendlies, knockout ties) use the market's probabilities
+  const mk = match.market
+  const p: Prediction | null =
+    match.prediction ||
+    (mk
+      ? ({ home: mk.probs.home, draw: mk.probs.draw, away: mk.probs.away } as unknown as Prediction)
+      : null)
+  if (!p) return <MatchCard match={match} />
+  const fromMarket = !match.prediction
   const pick = pickOf(p)
   const favName = pick === 'H' ? match.homeTeam.shortName || match.homeTeam.name : pick === 'A' ? match.awayTeam.shortName || match.awayTeam.name : 'Draw'
   const favProb = pick === 'H' ? p.home : pick === 'A' ? p.away : p.draw
@@ -677,7 +685,7 @@ function SpotlightCard({ match }: { match: APIMatch }) {
 
       <div className="relative mt-5">
         <div className="flex items-baseline justify-between gap-2 mb-2">
-          <span className="label whitespace-nowrap">Pick</span>
+          <span className="label whitespace-nowrap">{fromMarket ? 'Market favourite' : 'Pick'}</span>
           <span className={`font-display font-bold truncate ${PICK_COLOR[pick]}`}>
             {favName} <span className="num">{Math.round(favProb)}%</span>
           </span>
@@ -686,7 +694,8 @@ function SpotlightCard({ match }: { match: APIMatch }) {
         <div className="mt-2">
           <ProbRow p={p} pick={pick} />
         </div>
-        {match.market && <MarketRow p={p} m={match.market} pick={pick} />}
+        {match.market && !fromMarket && <MarketRow p={p} m={match.market} pick={pick} />}
+        {fromMarket && <div className="mt-2 text-[11px] text-faint">No model prediction for this competition · bookmaker odds</div>}
       </div>
     </Link>
   )
