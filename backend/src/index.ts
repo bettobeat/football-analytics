@@ -21,6 +21,7 @@ import { recordPredictions, settlePending, accuracy, recentSettled, trackingStat
 import { historyStatus, teamMapStatus, GROUPS } from './services/history';
 import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestRows, backtestRunsList } from './services/historyModel';
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
+import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler } from './services/squadValues';
 import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, SweepVariant } from './services/gridModel';
 
 const isDev = (process.env.NODE_ENV || 'development') !== 'production';
@@ -287,6 +288,22 @@ app.get('/api/model/v3/status', (_req, res) => {
   res.json({ data: modelV3Status(), timestamp: new Date().toISOString() });
 });
 
+// Squad values (v3 row #1): status, or force a re-download and rebuild v3 state
+app.get('/api/model/v3/squad', (_req, res) => {
+  res.json({ data: squadValuesStatus(), timestamp: new Date().toISOString() });
+});
+const squadSyncHandler = async (_req: express.Request, res: express.Response) => {
+  try {
+    const r = await syncSquadValues(true);
+    if (r) prepareModelV3();
+    res.json({ data: { synced: r, status: squadValuesStatus() }, timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Squad values sync failed');
+  }
+};
+app.post('/api/model/v3/squad/sync', squadSyncHandler);
+app.get('/api/model/v3/squad/sync', squadSyncHandler);
+
 // Start a walk-forward backtest (runs in the background).
 // ?season=2526&group=E (group optional = all) &model=dc-history-v2|grid-v3
 // For grid-v3, conversion constants can be overridden for calibration: &gapScale=0.05&kDraw=1.5&drawBase.big=240 …
@@ -493,6 +510,8 @@ server.listen(PORT, () => {
       .catch(err => logger.warn('Odds job failed', { message: err.message }));
   setTimeout(odds, 90 * 1000);
   setInterval(odds, parseInt(process.env.ODDS_TICK_MS || '600000', 10));
+  // Squad market values for model v3 (weekly; first attempt after the history sync has team names)
+  startSquadValuesScheduler(() => prepareModelV3());
 });
 
 export { app, io };

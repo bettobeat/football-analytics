@@ -224,7 +224,7 @@ export function historyStatus() {
 
 /* ---------------- team name matching ---------------- */
 
-const ALIASES: Record<string, string> = {
+export const ALIASES: Record<string, string> = {
   // football-data.co.uk name (lowercased) → hint matching Football-Data.org name/shortName
   'man united': 'manchester united',
   'man city': 'manchester city',

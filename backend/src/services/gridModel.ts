@@ -22,6 +22,7 @@ import { db } from '../db';
 import logger from '../utils/logger';
 import { GROUPS, groupForCompetition, loadGroupMatches, fdNameFor, HistoryMatch } from './history';
 import { Prediction } from './predictionModel';
+import { squadValueFor } from './squadValues';
 
 export const MODEL_V3 = 'grid-v3';
 
@@ -42,7 +43,8 @@ interface RowDef {
 }
 
 const ROWS: RowDef[] = [
-  { id: '#1', name: 'Strength (Elo)', rel: { mismatch: 5, standard: 5, even: 4, big: 4 }, kind: 'team', note: 'Elo over all results; proxy for lineup value until squad values are loaded' },
+  { id: '#1', name: 'Squad value', rel: { mismatch: 5, standard: 4, even: 3, big: 3 }, kind: 'team', note: 'market value of the 15 most valuable players (transfermarkt-datasets snapshot); stands in for lineup value until lineups are priced' },
+  { id: '#1e', name: 'Strength (Elo)', rel: { mismatch: 5, standard: 5, even: 4, big: 4 }, kind: 'team', note: 'Elo over all results, margin-aware' },
   { id: '#19', name: 'Attack vs opponent tier', rel: { mismatch: 4, standard: 5, even: 5, big: 4 }, kind: 'team' },
   { id: '#14', name: 'Defence vs opponent tier', rel: { mismatch: 4, standard: 4, even: 4, big: 3 }, kind: 'team' },
   { id: '#10', name: 'Freshness (fixture load)', rel: { mismatch: 3, standard: 4, even: 4, big: 3 }, kind: 'team' },
@@ -114,6 +116,7 @@ interface TeamFeat {
   drawRate: number; // decayed share of draws
   gamesLast8: number; // matches in the 8 days before asOf
   lastMatch: string | null;
+  squadEur: number | null; // top-15 squad value, EUR (null = unknown)
   /** values 1–10 (rank within division) */
   v: Record<string, number>;
 }
@@ -180,7 +183,7 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string): Gr
     if (!t) {
       t = {
         name, division: divOf.get(name) || divisions[0], played: 0, tier: 3, rank: 10, ppgSeason: 1, elo: 1450, attack: 1.3, defence: 1.3,
-        formPts: 6, homePpg: 1.5, awayPpg: 1.1, drawRate: 0.25, gamesLast8: 0, lastMatch: null, v: {}
+        formPts: 6, homePpg: 1.5, awayPpg: 1.1, drawRate: 0.25, gamesLast8: 0, lastMatch: null, squadEur: null, v: {}
       };
       teams.set(name, t);
     }
@@ -312,10 +315,15 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string): Gr
     const home = rankValues(list.map(t => ({ name: t.name, raw: t.homePpg })));
     const away = rankValues(list.map(t => ({ name: t.name, raw: t.awayPpg })));
     const draws = rankValues(list.map(t => ({ name: t.name, raw: t.drawRate })));
+    // squad value: log scale (a €900m squad vs €300m is the same step as €300m vs €100m); neutral when unknown
+    const withValue = list.map(t => ({ name: t.name, raw: squadValueFor(group, t.name)?.top || 0 })).filter(x => x.raw > 0);
+    const squad = rankValues(withValue.map(x => ({ name: x.name, raw: Math.log(x.raw) })));
     for (const t of list) {
+      t.squadEur = squadValueFor(group, t.name)?.top || null;
       t.v = {
         strength: strength.get(t.name)!, attack: att.get(t.name)!, defence: def.get(t.name)!, form: form.get(t.name)!,
         home: home.get(t.name)!, away: away.get(t.name)!, draws: draws.get(t.name)!,
+        squad: squad.get(t.name) ?? 5,
         fresh: t.gamesLast8 === 0 ? 8 : t.gamesLast8 === 1 ? 6 : t.gamesLast8 === 2 ? 4 : 2
       };
     }
@@ -378,7 +386,9 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   };
   const R = (id: string) => ROWS.find(r => r.id === id)!;
 
-  push(R('#1'), h.v.strength, a.v.strength);
+  const eur = (x: number | null) => (x ? `€${Math.round(x / 1e6)}m` : 'n/a');
+  push(R('#1'), h.v.squad, a.v.squad, h.squadEur || a.squadEur ? `top-15 value ${eur(h.squadEur)} vs ${eur(a.squadEur)}` : 'no squad values loaded — neutral');
+  push(R('#1e'), h.v.strength, a.v.strength);
   push(R('#19'), h.v.attack, a.v.attack);
   push(R('#14'), h.v.defence, a.v.defence);
   push(R('#10'), h.v.fresh, a.v.fresh, `${h.gamesLast8} vs ${a.gamesLast8} games in the last 8 days`);
