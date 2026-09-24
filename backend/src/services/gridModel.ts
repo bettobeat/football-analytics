@@ -551,6 +551,13 @@ export function predictV3(match: any): Prediction | null {
   return scoreMatch(live.state, live.all, home, away, live.state.asOf, String(match.utcDate || '').slice(0, 10) || undefined);
 }
 
+/** v3 prediction by football-data.co.uk names (used by CLV tracking, which works from API-Football fixtures). */
+export function predictV3ByNames(group: string, home: string, away: string, date: string): Prediction | null {
+  const live = liveState.get(group);
+  if (!live) return null;
+  return scoreMatch(live.state, live.all, home, away, live.state.asOf, date.slice(0, 10));
+}
+
 export function modelV3Status() {
   const groups: Record<string, any> = {};
   liveState.forEach((v, g) => {

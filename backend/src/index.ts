@@ -24,6 +24,7 @@ import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './servic
 import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler } from './services/squadValues';
 import { compareModels } from './services/compareModels';
 import { marketTest } from './services/marketTest';
+import { clvTick, clvReport, startClvScheduler } from './services/clv';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures } from './services/apiFootball';
 import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, backfillV3, SweepVariant } from './services/gridModel';
 
@@ -317,6 +318,18 @@ app.get('/api/af/status', async (_req, res) => {
     sendError(res, error, 'API-Football status failed');
   }
 });
+// Live closing-line value: v3 at the open price vs the closing price
+app.get('/api/clv', (req, res) => {
+  try {
+    res.json({ data: clvReport(parseInt(String(req.query.days || '90'), 10) || 90), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'CLV report failed');
+  }
+});
+app.get('/api/clv/tick', async (_req, res) => {
+  res.json({ data: await clvTick(), timestamp: new Date().toISOString() });
+});
+
 app.get('/api/af/sync', (_req, res) => {
   afTick(true).catch(() => undefined);
   res.json({ data: { started: true }, timestamp: new Date().toISOString() });
@@ -566,6 +579,8 @@ server.listen(PORT, () => {
   startSquadValuesScheduler(() => { prepareModelV3(); rebuildAfFeatures(); });
   // Injuries / suspensions / confirmed lineups (API-Football) for model v3 rows #12 and #13
   startApiFootballScheduler();
+  // Live closing-line value tracking (open price + v3 at 48 h, closing price in the last 35 min)
+  startClvScheduler();
 });
 
 export { app, io };

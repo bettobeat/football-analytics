@@ -214,6 +214,8 @@ function Accuracy() {
         </div>
       )}
 
+      {tab === 'live' && <ClvPanel days={days} />}
+
       {summary && summary.settled > 0 && summary.model && (
         <>
           <MetricsView m={summary} />
@@ -764,6 +766,140 @@ function Strategy({ title, s }: { title: string; s: { bets: number; wins: number
         </div>
       </div>
     </div>
+  )
+}
+
+/* ---------- live closing-line value ---------- */
+
+interface ClvData {
+  tracked: number
+  withClose: number
+  settled: number
+  distanceToClose: { openPrice: number | null; openPlus25pctV3: number | null; openPlus50pctV3: number | null }
+  brier: { v3AtOpen: number | null; marketOpen: number | null; marketClose: number | null } | null
+  value: { edge: number; bets: number; avgClv: number | null; clvPositive: number | null; lineMovedOurWay: number | null; settled: number; wins: number; roi: number | null }[]
+  recent: { kickoff: string; match: string; book: string; selection: 'H' | 'D' | 'A'; v3: number; openOdds: number; closeOdds: number; edge: number; clv: number; outcome: string | null }[]
+}
+
+function ClvPanel({ days }: { days: number }) {
+  const [d, setD] = useState<ClvData | null>(null)
+  useEffect(() => {
+    axios
+      .get(`${API_URL}/clv`, { params: { days } })
+      .then(r => setD(r.data.data))
+      .catch(() => setD(null))
+  }, [days])
+  if (!d) return null
+  const v5 = d.value.find(v => v.edge === 0.05)
+  const closer =
+    d.distanceToClose.openPrice !== null && d.distanceToClose.openPlus25pctV3 !== null
+      ? d.distanceToClose.openPlus25pctV3 < d.distanceToClose.openPrice
+      : null
+  return (
+    <Section title="Beat the market · live closing-line value (v3)">
+      {d.withClose === 0 ? (
+        <p className="text-sm text-muted">
+          Tracking starts with the next matchday: for every top-league match v3's prediction and the bookmaker price are stored 48 h
+          before kick-off, and the price again just before kick-off. {d.tracked > 0 && `${d.tracked} matches opened so far.`}
+        </p>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Tile label="Matches tracked" value={d.withClose} sub={`${d.settled} finished`} />
+            <Tile
+              label="Line moved toward v3"
+              value={v5?.lineMovedOurWay !== null && v5?.lineMovedOurWay !== undefined ? `${v5.lineMovedOurWay}%` : '–'}
+              sub={`${v5?.bets || 0} value picks (edge ≥ 5%) · 50% = coin flip`}
+              good={v5?.lineMovedOurWay != null ? v5.lineMovedOurWay > 50 : undefined}
+            />
+            <Tile
+              label="Average CLV"
+              value={v5?.avgClv !== null && v5?.avgClv !== undefined ? `${v5.avgClv > 0 ? '+' : ''}${v5.avgClv}%` : '–'}
+              sub="open price vs fair closing price"
+              good={v5?.avgClv != null ? v5.avgClv > 0 : undefined}
+              hint="Above 0 = we got a better price than the market's final one"
+            />
+            <Tile
+              label="v3 pulls toward the close"
+              value={closer === null ? '–' : closer ? 'Yes' : 'No'}
+              sub={
+                d.distanceToClose.openPrice !== null
+                  ? `open ${d.distanceToClose.openPrice} → with 25% v3 ${d.distanceToClose.openPlus25pctV3}`
+                  : undefined
+              }
+              good={closer ?? undefined}
+              hint="Does mixing v3 into the early price land closer to where the market ends? Yes = v3 knows something early."
+            />
+          </div>
+          <div className="overflow-x-auto mt-4">
+            <table className="w-full text-sm">
+              <thead className="label">
+                <tr className="text-left">
+                  <th className="py-2 pr-3">Edge ≥</th>
+                  <th className="py-2 pr-3 text-right">Picks</th>
+                  <th className="py-2 pr-3 text-right">Moved our way</th>
+                  <th className="py-2 pr-3 text-right">CLV &gt; 0</th>
+                  <th className="py-2 pr-3 text-right">Avg CLV</th>
+                  <th className="py-2 pr-3 text-right">Settled</th>
+                  <th className="py-2 text-right">ROI at open price</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.value.map(v => (
+                  <tr key={v.edge} className="border-t border-line/50">
+                    <td className="py-2 pr-3 num">{Math.round(v.edge * 100)}%</td>
+                    <td className="py-2 pr-3 text-right num">{v.bets}</td>
+                    <td className="py-2 pr-3 text-right num">{v.lineMovedOurWay ?? '–'}{v.lineMovedOurWay !== null ? '%' : ''}</td>
+                    <td className="py-2 pr-3 text-right num">{v.clvPositive ?? '–'}{v.clvPositive !== null ? '%' : ''}</td>
+                    <td className={`py-2 pr-3 text-right num ${v.avgClv !== null && v.avgClv > 0 ? 'text-win' : ''}`}>
+                      {v.avgClv !== null ? `${v.avgClv > 0 ? '+' : ''}${v.avgClv}%` : '–'}
+                    </td>
+                    <td className="py-2 pr-3 text-right num">{v.settled}</td>
+                    <td className={`py-2 text-right num ${v.roi !== null ? (v.roi >= 0 ? 'text-win' : 'text-loss') : ''}`}>
+                      {v.roi !== null ? `${v.roi > 0 ? '+' : ''}${v.roi}%` : '–'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {d.brier && (
+            <p className="text-xs text-muted mt-3">
+              Brier on finished matches: v3 at open <span className="num text-ink">{d.brier.v3AtOpen}</span> · market at open{' '}
+              <span className="num text-ink">{d.brier.marketOpen}</span> · market at close <span className="num text-ink">{d.brier.marketClose}</span>
+            </p>
+          )}
+          {d.recent.length > 0 && (
+            <details className="mt-3">
+              <summary className="cursor-pointer text-xs text-muted hover:text-ink select-none">Latest tracked matches</summary>
+              <div className="overflow-x-auto mt-2">
+                <table className="w-full text-xs">
+                  <tbody>
+                    {d.recent.map((r, i) => (
+                      <tr key={i} className="border-t border-line/40">
+                        <td className="py-1.5 pr-3 text-faint num">{new Date(r.kickoff).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</td>
+                        <td className="py-1.5 pr-3 text-ink">{r.match}</td>
+                        <td className="py-1.5 pr-3 text-muted">
+                          {r.selection === 'H' ? 'Home' : r.selection === 'D' ? 'Draw' : 'Away'} · v3 {r.v3}%
+                        </td>
+                        <td className="py-1.5 pr-3 num text-muted">{r.openOdds} → {r.closeOdds}</td>
+                        <td className={`py-1.5 pr-3 num ${r.clv > 0 ? 'text-win' : 'text-loss'}`}>CLV {r.clv > 0 ? '+' : ''}{r.clv}%</td>
+                        <td className="py-1.5 text-faint">{r.outcome ?? 'pending'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          )}
+          <p className="text-xs text-faint mt-3">
+            How professionals measure an edge: take v3's view and the price 48 h before kick-off, then compare with the price just before
+            kick-off. If the market keeps moving toward v3 (above 50%) and the average CLV is positive, the edge is real — regardless of
+            short-run wins and losses. Prices: {d.recent[0]?.book || 'Pinnacle / Bet365'} via API-Football.
+          </p>
+        </>
+      )}
+    </Section>
   )
 }
 

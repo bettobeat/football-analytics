@@ -158,6 +158,10 @@ async function af(path: string, params: Record<string, string | number> = {}, re
 }
 
 const budgetLeft = () => (remainingDay === null ? Infinity : remainingDay - RESERVE);
+/** Shared client for other services (CLV tracking). */
+export const afGet = (path: string, params: Record<string, string | number> = {}) => af(path, params);
+export const afBudgetLeft = () => budgetLeft();
+export const afConfigured = () => !!KEY();
 
 /* ------------------------------------------------------------------ */
 /* Sync                                                                 */
