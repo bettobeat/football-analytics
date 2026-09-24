@@ -41,6 +41,9 @@ export const EXTRA_COMPETITIONS: { id: number; kind: Kind; name?: string }[] = [
   { id: 207, kind: 'league' } // Switzerland — Super League
 ];
 const KIND_RANK: Record<Kind, number> = { cup: 1, league: 2, national: 3 };
+/** Senior men's teams only: API-Football's "Friendlies" also carries U17–U23 and women's sides. */
+const YOUTH = /\bU-?(1[5-9]|2[0-3])\b|\bUnder[- ]?\d{2}\b|\b(W|Women)$/i;
+const senior = (f: any) => !YOUTH.test(f.teams?.home?.name || '') && !YOUTH.test(f.teams?.away?.name || '');
 const WINDOW_DAYS = 30;
 
 /* ------------------------------------------------------------------ */
@@ -242,7 +245,7 @@ export async function refreshAfWindow() {
       const season = await currentSeason(c.id);
       if (!season) continue;
       const j = await afGet('/fixtures', { league: c.id, season, from, to });
-      for (const f of j.response || []) all.push(toFdMatch(f));
+      for (const f of j.response || []) if (senior(f)) all.push(toFdMatch(f));
     } catch (e: any) {
       failed++;
       logger.warn(`AF window ${c.id}: ${e.message}`);
@@ -269,7 +272,7 @@ export async function pollAfLive() {
   try {
     const ids = EXTRA_COMPETITIONS.map(c => c.id).join('-');
     const j = await afGet('/fixtures', { live: ids });
-    const live = (j.response || []).map(toFdMatch);
+    const live = (j.response || []).filter(senior).map(toFdMatch);
     liveById = new Map(live.map((m: any) => [m.id, m]));
     // fold live status/score into the window; matches that just finished get their final state
     const liveIds = new Set(liveById.keys());
