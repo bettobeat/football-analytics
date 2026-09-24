@@ -18,6 +18,7 @@
 import { db } from '../db';
 import logger from '../utils/logger';
 import { GROUPS, ALIASES, similarity, seasonCodes } from './history';
+import { playerValue } from './squadValues';
 
 const BASE = 'https://v3.football.api-sports.io';
 const KEY = () => process.env.API_FOOTBALL_KEY || '';
@@ -298,6 +299,7 @@ export interface MatchAvail { fixtureId: number; home: TeamAvail; away: TeamAvai
 
 const features = new Map<string, MatchAvail>(); // `${grp}|${fdHome}|${fdAway}|${date}`
 let featuresBuiltAt: string | null = null;
+let lastValueMatch: { players: number; withValue: number } | null = null;
 
 /** Rebuild the availability features of one group (walk-forward over its fixtures). */
 function buildFeatures(group: string) {
@@ -332,26 +334,42 @@ function buildFeatures(group: string) {
   const prefix = `${group}|`;
   for (const key of [...features.keys()]) if (key.startsWith(prefix)) features.delete(key);
 
-  const teamAvail = (teamId: number, fixtureId: number): TeamAvail => {
+  // player importance = how often he starts × how valuable he is relative to the team's usual XI
+  const valueCache = new Map<number, number | null>();
+  const valueOf = (id: number, name: string, club: string | null) => {
+    if (!valueCache.has(id)) valueCache.set(id, playerValue(name, club));
+    return valueCache.get(id)!;
+  };
+
+  const teamAvail = (teamId: number, fixtureId: number, club: string | null): TeamAvail => {
     const past = (history.get(teamId) || []).slice(-REGULAR_WINDOW);
     const out: TeamAvail = { missing: null, absent: null, missingNames: [], absentNames: [], lineups: past.length };
     if (past.length < 3) return out;
     const weight = new Map<number, number>();
     const names = new Map<number, string>();
     for (const xi of past) xi.ids.forEach(id => { weight.set(id, (weight.get(id) || 0) + 1 / past.length); names.set(id, xi.names.get(id) || String(id)); });
+    const top11 = [...weight.entries()].sort((a, b) => b[1] - a[1]).slice(0, 11);
+    const known = top11.map(([id]) => valueOf(id, names.get(id) || '', club)).filter((v): v is number => v !== null);
+    const ref = known.length >= 5 ? known.reduce((s, v) => s + v, 0) / known.length : null;
+    const quality = (id: number, name: string) => {
+      if (ref === null) return 1;
+      const v = valueOf(id, name, club);
+      return v === null ? 0.7 : Math.max(0.2, Math.min(4, v / ref));
+    };
+    const imp = (id: number, name: string) => (weight.get(id) || 0) * quality(id, name);
+
     // injuries / suspensions
     let missing = 0;
-    const listed = (inj.get(fixtureId)?.get(teamId) || []).map(p => ({ ...p, w: (weight.get(p.id) || 0) * (/question|doubt/i.test(p.type) ? 0.5 : 1) }));
+    const listed = (inj.get(fixtureId)?.get(teamId) || []).map(p => ({ ...p, w: imp(p.id, p.name) * (/question|doubt/i.test(p.type) ? 0.5 : 1) }));
     for (const p of listed) missing += p.w;
     out.missing = Math.round(missing * 100) / 100;
     out.missingNames = listed.filter(p => p.w >= 0.3).sort((a, b) => b.w - a.w).slice(0, 4).map(p => p.name);
     // confirmed XI
     const xi = starters.get(fixtureId)?.get(teamId);
     if (xi && xi.ids.size >= 10) {
-      const top11 = [...weight.entries()].sort((a, b) => b[1] - a[1]).slice(0, 11);
       let absent = 0;
       const absentList: { name: string; w: number }[] = [];
-      for (const [id, w] of top11) if (!xi.ids.has(id)) { absent += w; absentList.push({ name: names.get(id) || String(id), w }); }
+      for (const [id] of top11) if (!xi.ids.has(id)) { const w = imp(id, names.get(id) || ''); absent += w; absentList.push({ name: names.get(id) || String(id), w }); }
       out.absent = Math.round(absent * 100) / 100;
       out.absentNames = absentList.sort((a, b) => b.w - a.w).slice(0, 4).map(p => p.name);
     }
@@ -359,12 +377,17 @@ function buildFeatures(group: string) {
   };
 
   let n = 0;
+  const countValues = () => {
+    let withValue = 0;
+    valueCache.forEach(v => { if (v !== null) withValue++; });
+    return { players: valueCache.size, withValue };
+  };
   for (const f of fixtures) {
     if (f.fd_home && f.fd_away) {
       features.set(`${group}|${f.fd_home}|${f.fd_away}|${f.date}`, {
         fixtureId: f.fixture_id,
-        home: teamAvail(f.home_id, f.fixture_id),
-        away: teamAvail(f.away_id, f.fixture_id)
+        home: teamAvail(f.home_id, f.fixture_id, f.fd_home),
+        away: teamAvail(f.away_id, f.fixture_id, f.fd_away)
       });
       n++;
     }
@@ -376,6 +399,8 @@ function buildFeatures(group: string) {
       if (h.length > REGULAR_WINDOW * 2) h.shift();
     });
   }
+  const vm = countValues();
+  lastValueMatch = lastValueMatch && group !== 'E' ? { players: lastValueMatch.players + vm.players, withValue: lastValueMatch.withValue + vm.withValue } : vm;
   return n;
 }
 
@@ -528,6 +553,7 @@ export async function afStatus(withAccount = true) {
     lastError,
     featuresBuiltAt,
     features: features.size,
+    playerValueMatch: lastValueMatch,
     injuries: injuries?.n || 0,
     perLeague,
     unmatchedTeams: unmatched,

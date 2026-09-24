@@ -82,6 +82,13 @@ db.exec(`
     fetched_at  TEXT NOT NULL,
     PRIMARY KEY (grp, fd_name)
   );
+  CREATE TABLE IF NOT EXISTS squad_players (
+    pkey TEXT NOT NULL,        -- "<last name>|<first initial>" (normalised), for matching lineup names
+    name TEXT NOT NULL,
+    club TEXT,
+    value_eur REAL NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_squad_players_key ON squad_players(pkey);
   CREATE TABLE IF NOT EXISTS squad_values_sync (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     fetched_at TEXT NOT NULL,
@@ -118,7 +125,50 @@ let cache = new Map<string, { total: number; top: number; club: string }>(); // 
 let lastFetchedAt: string | null = null;
 let lastError: string | null = null;
 
+/** "Lionel Messi" / "L. Messi" / "Messi" → "messi|l"; single names → "pedri|p". */
+export function playerKey(name: string): string {
+  const n = String(name || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z .'-]+/g, ' ')
+    .replace(/[.'-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const parts = n.split(' ').filter(Boolean);
+  if (!parts.length) return '';
+  const last = parts[parts.length - 1];
+  return `${last}|${parts[0][0]}`;
+}
+
+let players = new Map<string, { name: string; club: string | null; value: number }[]>();
+function loadPlayers() {
+  players = new Map();
+  for (const r of db.prepare(`SELECT pkey, name, club, value_eur FROM squad_players`).all() as any[]) {
+    const l = players.get(r.pkey) || players.set(r.pkey, []).get(r.pkey)!;
+    l.push({ name: r.name, club: r.club, value: r.value_eur });
+  }
+}
+
+/** Market value (EUR) of a player by name; club hint breaks ties between namesakes. */
+export function playerValue(name: string, clubHint?: string | null): number | null {
+  const list = players.get(playerKey(name));
+  if (!list || !list.length) return null;
+  if (list.length === 1) return list[0].value;
+  if (clubHint) {
+    let best: { v: number; s: number } | null = null;
+    for (const p of list) {
+      const s = p.club ? similarity(p.club, clubHint) : 0;
+      if (!best || s > best.s) best = { v: p.value, s };
+    }
+    if (best && best.s >= 0.5) return best.v;
+  }
+  return null; // ambiguous namesakes, no club to decide
+}
+export const playerValuesLoaded = () => players.size;
+
 function loadCache() {
+  loadPlayers();
   cache = new Map();
   for (const r of db.prepare(`SELECT grp, fd_name, club_name, total_eur, top_eur FROM squad_values`).all() as any[])
     cache.set(`${r.grp}|${r.fd_name}`, { total: r.total_eur, top: r.top_eur, club: r.club_name });
@@ -186,11 +236,19 @@ export async function syncSquadValues(force = false): Promise<{ clubs: number; m
     const header = rows[0].map(h => h.trim());
     const col = (n: string) => header.indexOf(n);
     const iName = col('current_club_name'), iComp = col('current_club_domestic_competition_id'),
-      iVal = col('market_value_in_eur'), iSeason = col('last_season');
+      iVal = col('market_value_in_eur'), iSeason = col('last_season'), iPlayer = col('name');
     if (iName < 0 || iComp < 0 || iVal < 0) throw new Error(`Unexpected columns: ${header.slice(0, 12).join(',')}`);
     const seasonMin = new Date().getUTCFullYear() - 1; // only players active this or last season
     const clubs = new Map<string, ClubAgg>();
+    const playerRows: [string, string, string | null, number][] = [];
     for (const r of rows.slice(1)) {
+      // every recently active player with a value, any league (players change clubs; lineups need their value)
+      if (iPlayer >= 0 && r[iPlayer]) {
+        const pv = parseFloat(r[iVal]);
+        const ls = iSeason >= 0 ? parseInt(r[iSeason], 10) : NaN;
+        if (Number.isFinite(pv) && pv > 0 && (!Number.isFinite(ls) || ls >= new Date().getUTCFullYear() - 3))
+          playerRows.push([playerKey(r[iPlayer]), r[iPlayer], r[iName] || null, pv]);
+      }
       const comp = r[iComp];
       const group = COMPETITION_GROUP[comp];
       if (!group) continue;
@@ -209,6 +267,9 @@ export async function syncSquadValues(force = false): Promise<{ clubs: number; m
     db.exec('BEGIN');
     try {
       db.prepare(`DELETE FROM squad_values`).run();
+      db.prepare(`DELETE FROM squad_players`).run();
+      const insP = db.prepare(`INSERT INTO squad_players (pkey, name, club, value_eur) VALUES (?, ?, ?, ?)`);
+      for (const pr of playerRows) if (pr[0]) insP.run(...pr);
       for (const group of Object.keys(GROUPS)) {
         const list: ClubAgg[] = [];
         clubs.forEach((agg, key) => { if (key.startsWith(`${group}|`)) list.push(agg); });
@@ -240,7 +301,7 @@ export function squadValuesStatus() {
     g.teams++;
     if (g.top.length < 5) g.top.push({ team: r.fd_name, club: r.club_name, topEur: Math.round(r.top_eur) });
   }
-  return { source: SOURCE_URL, sync: s || null, lastError, byGroup };
+  return { source: SOURCE_URL, sync: s || null, lastError, playerKeys: players.size, byGroup };
 }
 
 /** Weekly refresh; first attempt shortly after start so history names exist. */

@@ -23,7 +23,7 @@ import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestR
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
 import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler } from './services/squadValues';
 import { compareModels } from './services/compareModels';
-import { startApiFootballScheduler, afStatus, afTick } from './services/apiFootball';
+import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures } from './services/apiFootball';
 import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, backfillV3, SweepVariant } from './services/gridModel';
 
 const isDev = (process.env.NODE_ENV || 'development') !== 'production';
@@ -297,7 +297,7 @@ app.get('/api/model/v3/squad', (_req, res) => {
 const squadSyncHandler = async (_req: express.Request, res: express.Response) => {
   try {
     const r = await syncSquadValues(true);
-    if (r) prepareModelV3();
+    if (r) { prepareModelV3(); rebuildAfFeatures(); }
     res.json({ data: { synced: r, status: squadValuesStatus() }, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Squad values sync failed');
@@ -549,7 +549,7 @@ server.listen(PORT, () => {
   setTimeout(odds, 90 * 1000);
   setInterval(odds, parseInt(process.env.ODDS_TICK_MS || '600000', 10));
   // Squad market values for model v3 (weekly; first attempt after the history sync has team names)
-  startSquadValuesScheduler(() => prepareModelV3());
+  startSquadValuesScheduler(() => { prepareModelV3(); rebuildAfFeatures(); });
   // Injuries / suspensions / confirmed lineups (API-Football) for model v3 rows #12 and #13
   startApiFootballScheduler();
 });

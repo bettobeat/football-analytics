@@ -425,19 +425,20 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   push(R('#1e'), h.v.strength, a.v.strength);
   // availability (API-Football): confirmed XI supersedes the injury list; rows without data are neutral and not counted
   const av = availabilityFor(state.group, home, away, matchDate || asOf);
-  // a side without enough lineup history counts as neutral (5.5); the row is used when at least one side is known
+  // a side without enough lineup history counts as neutral (5.5); the row is used when at least one side is known.
+  // Availability rows are pure adjustments: they add their edge but never count in Σrel, so no news = no effect.
   const xiKnown = !!av && (av.home.absent !== null || av.away.absent !== null) && CONV.useLineups === 1;
   const avVal = (x: number | null, k: number) => (x === null ? 5.5 : Math.round(clamp(5.5 - k * x, CONV.valueLo, CONV.valueHi) * 10) / 10);
   const names = (l: string[], known: boolean) => (known ? l.join(', ') || 'none' : 'n/a');
   if (xiKnown) {
     push(R('#12'), avVal(av!.home.absent, CONV.xiK), avVal(av!.away.absent, CONV.xiK),
-      `usual starters out: ${names(av!.home.absentNames, av!.home.absent !== null)} | ${names(av!.away.absentNames, av!.away.absent !== null)}`);
+      `usual starters out: ${names(av!.home.absentNames, av!.home.absent !== null)} | ${names(av!.away.absentNames, av!.away.absent !== null)}`, false);
     push(R('#13'), 5.5, 5.5, 'covered by the confirmed XI', false);
   } else {
     push(R('#12'), 5.5, 5.5, 'XI not published yet', false);
     if (av && (av.home.missing !== null || av.away.missing !== null))
       push(R('#13'), avVal(av.home.missing, CONV.injK), avVal(av.away.missing, CONV.injK),
-        `out: ${names(av.home.missingNames, av.home.missing !== null)} | ${names(av.away.missingNames, av.away.missing !== null)}`);
+        `out: ${names(av.home.missingNames, av.home.missing !== null)} | ${names(av.away.missingNames, av.away.missing !== null)}`, false);
     else push(R('#13'), 5.5, 5.5, 'no injury data for this match', false);
   }
   push(R('#19'), h.v.attack, a.v.attack);
@@ -696,8 +697,8 @@ export function autoVariants(kind: string, step = 1): SweepVariant[] {
     for (const gs of [0.24, 0.28, 0.32, 0.36]) for (const ds of [1.0, 1.1])
       out.push({ name: `both gapScale ${gs} drawScale ${ds}`, conv: { gapMode: 1, gapScale: gs, drawMode: 1, drawPoisScale: ds, kDraw: 1 } });
   } else if (kind === 'avail') {
-    for (const k of [0, 0.5, 1, 1.5, 2, 3]) out.push({ name: `injK ${k}`, conv: { injK: k } });
-    for (const k of [0, 0.5, 1, 1.5, 2, 3]) out.push({ name: `xiK ${k}`, conv: { xiK: k } });
+    for (const k of [0, 1, 2, 3, 4, 6, 8]) out.push({ name: `injK ${k}`, conv: { injK: k } });
+    for (const k of [0, 1, 2, 3, 4, 6, 8]) out.push({ name: `xiK ${k}`, conv: { xiK: k } });
     out.push({ name: 'provisional (no XI)', conv: { useLineups: 0 } });
   } else if (kind === 'conv') {
     for (const g of [-0.04, -0.02, 0.02, 0.04]) out.push({ name: `gapScale ${(CONV.gapScale + g).toFixed(2)}`, conv: { gapScale: CONV.gapScale + g } });
