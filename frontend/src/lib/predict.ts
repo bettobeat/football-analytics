@@ -20,6 +20,22 @@ export interface Prediction {
     gamesPlayed: { home: number; away: number }
     leagueAvgGoals: number
   }
+  /** Grid model (v3) breakdown — absent on v1/v2 */
+  grid?: {
+    matchType: 'mismatch' | 'standard' | 'even' | 'big'
+    points: { home: number; draw: number; away: number } // out of 1000
+    totals: { home: number; away: number }
+    rows: { id: string; name: string; rel: number; home: number; away: number; edge: number; note?: string }[]
+    drawPot: { base: number; factors: number; volatility: number; closeness?: number; total: number }
+    reasons: string[]
+  }
+}
+
+export const MATCH_TYPE_LABEL: Record<NonNullable<Prediction['grid']>['matchType'], string> = {
+  mismatch: 'Mismatch',
+  standard: 'Standard',
+  even: 'Even match',
+  big: 'Big match'
 }
 
 /** Fair (no-margin) decimal odds implied by a probability in %. */
@@ -57,7 +73,8 @@ export function bookLabel(m: Market) {
 /** Short and long labels for each model id. */
 export const MODEL_INFO: Record<string, { tag: string; name: string; desc: string }> = {
   'poisson-dc-v1': { tag: 'v1', name: 'Standings model', desc: 'Poisson from the current league table' },
-  'dc-history-v2': { tag: 'v2', name: 'History model', desc: 'Dixon-Coles fitted on 3 seasons of results' }
+  'dc-history-v2': { tag: 'v2', name: 'History model', desc: 'Dixon-Coles fitted on 3 seasons of results' },
+  'grid-v3': { tag: 'v3', name: 'Grid model', desc: 'Scoring grid: value × relevance per parameter, 1000-point split' }
 }
 
 export function modelInfo(model: string) {

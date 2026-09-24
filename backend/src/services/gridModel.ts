@@ -60,13 +60,13 @@ let REL_OVERRIDE: RelOverride | null = null;
 
 /** Conversion constants — placeholders until calibrated on the backtest. */
 export const CONV = {
-  drawBase: { mismatch: 150, standard: 270, even: 320, big: 290 } as Record<MatchType, number>,
+  drawBase: { mismatch: 190, standard: 270, even: 320, big: 290 } as Record<MatchType, number>, // backtest-calibrated (2025-26)
   drawCap: { mismatch: 260, standard: 380, even: 400, big: 380 } as Record<MatchType, number>,
   kDraw: 2.0, // points per (value−5) × relevance for draw rows
   drawClose: 0, // extra draw points when the two totals are level, fading to 0 as |gap| reaches drawCloseSpan
   drawCloseSpan: 0.3,
-  gapScale: 0.28, // logistic scale on the relative gap between team totals (backtest-calibrated)
-  homeGap: 0.06, // added to the relative gap for the home side: the league-wide home advantage
+  gapScale: 0.24, // logistic scale on the relative gap between team totals (backtest-calibrated)
+  homeGap: 0.08, // added to the relative gap for the home side: the league-wide home advantage
                  // (row #23 compares the two sides' home/away records but is centred, so it carries no league-level edge)
   floorOutsider: 35,
   floorDraw: 60,

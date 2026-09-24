@@ -85,7 +85,8 @@ const DAY_OPTIONS = [7, 30, 90, 365]
 const OUTCOME_LABEL: Record<Outcome, string> = { H: 'Home', D: 'Draw', A: 'Away' }
 const MODEL_LABEL: Record<string, string> = {
   'poisson-dc-v1': 'v1 · standings',
-  'dc-history-v2': 'v2 · history (Dixon-Coles)'
+  'dc-history-v2': 'v2 · history (Dixon-Coles)',
+  'grid-v3': 'v3 · scoring grid'
 }
 // Last complete season (football-data.co.uk code: 2526 = 2025/26)
 const BACKTEST_SEASON = '2526'
@@ -236,7 +237,7 @@ function Accuracy() {
                         </Link>
                         <span className="text-xs text-faint ml-2 hidden md:inline">{r.competition}</span>
                         {model === 'ALL' && (
-                          <span className="text-[10px] text-faint ml-2">{r.model === 'dc-history-v2' ? 'v2' : 'v1'}</span>
+                          <span className="text-[10px] text-faint ml-2">{r.model === 'grid-v3' ? 'v3' : r.model === 'dc-history-v2' ? 'v2' : 'v1'}</span>
                         )}
                       </td>
                       <td className="text-center font-semibold num">{r.score}</td>
@@ -475,6 +476,7 @@ const GROUP_NAME: Record<string, string> = { E: 'England', SP: 'Spain', I: 'Ital
 
 function Backtest() {
   const [group, setGroup] = useState<string>('ALL')
+  const [btModel, setBtModel] = useState<'dc-history-v2' | 'grid-v3'>('dc-history-v2')
   const [oddsKind, setOddsKind] = useState<'close' | 'early'>('close')
   const [edge, setEdge] = useState<number>(0.05)
   const [data, setData] = useState<BacktestData | null>(null)
@@ -483,7 +485,7 @@ function Backtest() {
   const [starting, setStarting] = useState(false)
 
   const load = () => {
-    const params: Record<string, string | number> = { season: BACKTEST_SEASON, odds: oddsKind, edge }
+    const params: Record<string, string | number> = { season: BACKTEST_SEASON, odds: oddsKind, edge, model: btModel }
     if (group !== 'ALL') params.group = group
     Promise.all([axios.get(`${API_URL}/backtest`, { params }), axios.get(`${API_URL}/history/status`)])
       .then(([b, h]) => {
@@ -494,7 +496,7 @@ function Backtest() {
       .catch(err => setError(err.response?.data?.message || err.message))
   }
 
-  useEffect(load, [group, oddsKind, edge])
+  useEffect(load, [group, oddsKind, edge, btModel])
 
   // poll while a run is in progress
   useEffect(() => {
@@ -506,7 +508,7 @@ function Backtest() {
   const start = () => {
     setStarting(true)
     axios
-      .post(`${API_URL}/backtest/run`, null, { params: { season: BACKTEST_SEASON } })
+      .post(`${API_URL}/backtest/run`, null, { params: { season: BACKTEST_SEASON, model: btModel } })
       .then(() => setTimeout(load, 1500))
       .catch(err => setError(err.response?.data?.message || err.message))
       .finally(() => setStarting(false))
@@ -527,6 +529,13 @@ function Backtest() {
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="seg" title="Which model to score">
+            {(['dc-history-v2', 'grid-v3'] as const).map(k => (
+              <button key={k} onClick={() => setBtModel(k)} className={`seg-btn ${btModel === k ? 'seg-btn-active' : ''}`}>
+                {k === 'grid-v3' ? 'v3 grid' : 'v2 history'}
+              </button>
+            ))}
+          </div>
           <div className="seg" title="Which bookmaker price to score against">
             {(['close', 'early'] as const).map(k => (
               <button
@@ -554,7 +563,7 @@ function Backtest() {
           disabled={starting || !!data?.progress}
           className="px-4 py-2 text-sm font-semibold rounded-xl bg-accent text-bg hover:opacity-90 disabled:opacity-40 transition"
         >
-          {data?.progress ? `Running ${GROUP_NAME[data.progress.group] || data.progress.group} · ${data.progress.done}/${data.progress.total}` : 'Run backtest 2025–26'}
+          {data?.progress ? `Running ${GROUP_NAME[data.progress.group] || data.progress.group} · ${data.progress.done}/${data.progress.total}` : `Run ${btModel === 'grid-v3' ? 'v3' : 'v2'} backtest 2025–26`}
         </button>
         </div>
       </div>

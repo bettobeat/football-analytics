@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
-import { fairOdds, bookLabel, modelInfo, CONFIDENCE_LABEL, type Market, type Prediction } from '../lib/predict'
+import { fairOdds, bookLabel, modelInfo, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, type Market, type Prediction } from '../lib/predict'
 
 /* ---------- types (Football-Data.org v4 shapes, loosely) ---------- */
 
@@ -176,6 +176,90 @@ const STAT_LABELS: Record<string, string> = {
 }
 
 /* ---------- page ---------- */
+
+
+/** v3 grid breakdown: match type, 1000-point split, per-parameter values × relevance. */
+function GridBreakdown({ p, home, away }: { p: Prediction; home: Team; away: Team }) {
+  const g = p.grid!
+  const hn = home.shortName || home.name
+  const an = away.shortName || away.name
+  const DRAW_ROWS = new Set(['#15', '#30', '#16'])
+  const teamRows = g.rows.filter(r => !DRAW_ROWS.has(r.id))
+  const drawRows = g.rows.filter(r => DRAW_ROWS.has(r.id))
+  return (
+    <div className="mt-5 rounded-xl border border-line/70 bg-surface/60 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div className="text-xs text-muted">
+          <span className="font-semibold text-ink">{MATCH_TYPE_LABEL[g.matchType]}</span>
+          <span className="text-faint"> · relevance weights for this match type</span>
+        </div>
+        <div className="num text-xs text-muted">
+          <span className="text-home font-semibold">{g.points.home}</span> · <span className="text-draw font-semibold">{g.points.draw}</span> ·{' '}
+          <span className="text-away font-semibold">{g.points.away}</span> <span className="text-faint">/ 1000</span>
+        </div>
+      </div>
+      {g.reasons.length > 0 && (
+        <ul className="mb-3 space-y-0.5 text-xs text-muted">
+          {g.reasons.map((r, i) => (
+            <li key={i}>· {r}</li>
+          ))}
+        </ul>
+      )}
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-faint">
+            <th className="text-left font-medium py-1">Parameter</th>
+            <th className="text-right font-medium py-1 w-12">Rel.</th>
+            <th className="text-right font-medium py-1 w-16">{hn}</th>
+            <th className="text-right font-medium py-1 w-16">{an}</th>
+            <th className="text-right font-medium py-1 w-16">Edge</th>
+          </tr>
+        </thead>
+        <tbody>
+          {teamRows.map(r => (
+            <tr key={r.id} className="border-t border-line/40" title={r.note}>
+              <td className="py-1 text-muted">{r.name}</td>
+              <td className="py-1 text-right num text-faint">{r.rel}</td>
+              <td className="py-1 text-right num text-ink">{r.home}</td>
+              <td className="py-1 text-right num text-ink">{r.away}</td>
+              <td className={`py-1 text-right num font-semibold ${r.edge > 0 ? 'text-home' : r.edge < 0 ? 'text-away' : 'text-faint'}`}>
+                {r.edge > 0 ? '+' : ''}{r.edge}
+              </td>
+            </tr>
+          ))}
+          <tr className="border-t border-line/70 font-semibold">
+            <td className="py-1 text-ink">Total</td>
+            <td />
+            <td className="py-1 text-right num text-ink">{g.totals.home}</td>
+            <td className="py-1 text-right num text-ink">{g.totals.away}</td>
+            <td className={`py-1 text-right num ${g.totals.home > g.totals.away ? 'text-home' : 'text-away'}`}>
+              {g.totals.home - g.totals.away > 0 ? '+' : ''}{Math.round((g.totals.home - g.totals.away) * 10) / 10}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      {drawRows.length > 0 && (
+        <div className="mt-3 pt-2 border-t border-line/40 text-xs text-muted flex flex-wrap gap-x-4 gap-y-1">
+          <span className="text-faint">Draw pot</span>
+          {drawRows.map(r => (
+            <span key={r.id} title={r.note}>
+              {r.name} <span className="num text-ink">{r.home}</span>
+              <span className="text-faint">×{r.rel}</span>
+            </span>
+          ))}
+          <span>
+            base <span className="num text-ink">{g.drawPot.base}</span> {g.drawPot.factors >= 0 ? '+' : '−'} <span className="num text-ink">{Math.abs(g.drawPot.factors)}</span> ={' '}
+            <span className="num text-draw font-semibold">{g.drawPot.total}</span>
+          </span>
+        </div>
+      )}
+      <p className="mt-3 text-[11px] text-faint">
+        Each parameter is scored 1–10 within the league (5 = average) and weighted by its relevance (1–5) for this match type. The two totals set the
+        home/away split of the points left after the draw pot; the split is calibrated on last season's results.
+      </p>
+    </div>
+  )
+}
 
 function MatchDetail() {
   const { id } = useParams()
@@ -442,8 +526,10 @@ function MatchDetail() {
                   <Stat label="Most likely score" value={p.topScores[0] ? `${p.topScores[0].home}–${p.topScores[0].away}` : '–'} sub={p.topScores[0] ? `${Math.round(p.topScores[0].prob)}%` : undefined} />
                 </div>
 
+                {p.grid && <GridBreakdown p={p} home={home} away={away} />}
+
                 <details className="mt-4 group">
-                  <summary className="cursor-pointer text-xs text-muted hover:text-ink select-none">How this was calculated</summary>
+                  <summary className="cursor-pointer text-xs text-muted hover:text-ink select-none">{p.grid ? 'Goal model behind the extras' : 'How this was calculated'}</summary>
                   <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-muted">
                     <span>{home.shortName || home.name} attack / defence</span>
                     <span className="num text-ink">{p.factors.homeAttack} / {p.factors.homeDefence}</span>
