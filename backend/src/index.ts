@@ -29,6 +29,7 @@ import {
   isAfMatchId, isAfCode, afUpcoming, afLive, afWithPredictions, getAfMatchDetails, getAfStandings, getAfScorers,
   afCompetitions, pollAfLive, startAfMatchesScheduler, afWindowStatus, refreshAfWindow
 } from './services/afMatches';
+import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNationalEloScheduler } from './services/nationalElo';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures } from './services/apiFootball';
 import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, backfillV3, setRelOverride, SweepVariant } from './services/gridModel';
 
@@ -291,6 +292,17 @@ app.get('/api/history/sync-season', async (req, res) => {
     res.json({ data: { total: r.total, summary: r.summary.filter(x => x.season === season) }, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Season sync failed');
+  }
+});
+
+// National-team Elo: status, or ?sync=1 to (re)load international results first
+app.get('/api/model/elo', async (req, res) => {
+  try {
+    if (req.query.sync === '1') { await syncNationalHistory(req.query.force === '1'); buildNationalElo(); }
+    else if (req.query.rebuild === '1') buildNationalElo();
+    res.json({ data: nationalEloStatus(), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'National Elo failed');
   }
 });
 
@@ -649,6 +661,8 @@ server.listen(PORT, () => {
   startClvScheduler();
   // Extra competitions (national teams, Europa/Conference League, Israel, Saudi, more European leagues)
   startAfMatchesScheduler();
+  // National-team Elo from international results since 2014 (API-Football)
+  startNationalEloScheduler();
 });
 
 export { app, io };

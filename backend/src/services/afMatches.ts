@@ -13,6 +13,7 @@ import { predictFromStandings, Prediction } from './predictionModel';
 import { groupForCompetition, buildTeamMap } from './history';
 import { predictV2 } from './historyModel';
 import { predictV3 } from './gridModel';
+import { predictNational } from './nationalElo';
 
 export const AF_OFFSET = 1_000_000_000;
 export const isAfMatchId = (id: number) => id >= AF_OFFSET;
@@ -372,6 +373,10 @@ export function afPrediction(m: any): Prediction | null {
 /** Every model that covers the match: v1 (table), plus v2/v3 where the league has history (Belgium, Turkey, Scotland, Greece). */
 export function afPredictions(m: any): Prediction[] {
   const out: Prediction[] = [];
+  // national teams: international Elo first (the main prediction), table model as a second opinion
+  if (m.competition?.type === 'NATIONAL') {
+    try { const e = predictNational(m, (m.competition.id || 0) - AF_OFFSET); if (e) out.push(e); } catch { /* not rated */ }
+  }
   const v1 = afPrediction(m);
   if (v1) out.push(v1);
   for (const f of [predictV2, predictV3]) {

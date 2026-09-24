@@ -74,7 +74,8 @@ export function bookLabel(m: Market) {
 export const MODEL_INFO: Record<string, { tag: string; name: string; desc: string }> = {
   'poisson-dc-v1': { tag: 'v1', name: 'Standings model', desc: 'Poisson from the current league table' },
   'dc-history-v2': { tag: 'v2', name: 'History model', desc: 'Dixon-Coles fitted on 3 seasons of results' },
-  'grid-v3': { tag: 'v3', name: 'Grid model', desc: 'Scoring grid: value × relevance per parameter, 1000-point split' }
+  'grid-v3': { tag: 'v3', name: 'Grid model', desc: 'Scoring grid: value × relevance per parameter, 1000-point split' },
+  'elo-intl': { tag: 'Elo', name: 'National-team Elo', desc: 'Elo rating from every senior international result since 2014' }
 }
 
 export function modelInfo(model: string) {

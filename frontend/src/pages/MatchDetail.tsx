@@ -580,6 +580,18 @@ function MatchDetail() {
 
                 <details className="mt-4 group">
                   <summary className="cursor-pointer text-xs text-muted hover:text-ink select-none">{p.grid ? 'Goal model behind the extras' : 'How this was calculated'}</summary>
+                  {p.model === 'elo-intl' ? (
+                  <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-muted">
+                    <span>{home.shortName || home.name} Elo</span>
+                    <span className="num text-ink">{p.factors.homeAttack}</span>
+                    <span>{away.shortName || away.name} Elo</span>
+                    <span className="num text-ink">{p.factors.awayAttack}</span>
+                    <span>Home advantage (Elo points)</span>
+                    <span className="num text-ink">{p.factors.homeAdvantage}</span>
+                    <span>International matches rated</span>
+                    <span className="num text-ink">{p.factors.gamesPlayed.home} / {p.factors.gamesPlayed.away}</span>
+                  </div>
+                  ) : (
                   <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-muted">
                     <span>{home.shortName || home.name} attack / defence</span>
                     <span className="num text-ink">{p.factors.homeAttack} / {p.factors.homeDefence}</span>
@@ -594,6 +606,7 @@ function MatchDetail() {
                     <span>Other likely scores</span>
                     <span className="num text-ink">{p.topScores.slice(1).map(sc => `${sc.home}–${sc.away} (${Math.round(sc.prob)}%)`).join(' · ')}</span>
                   </div>
+                  )}
                   <p className="mt-3 text-xs text-faint">
                     Strength = goals per game relative to the league average, adjusted for opponent quality and shrunk toward average
                     early in the season (1.00 = average). Attack above 1 is good; defence below 1 is good.
