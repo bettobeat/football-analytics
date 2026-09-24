@@ -218,6 +218,7 @@ export interface MetricRow {
   outcome: Outcome;
   groupKey: string;
   groupName: string;
+  drawAlertEligible?: boolean; // v3 prediction outside La Liga
 }
 
 function oddsOf(r: MetricRow, o: Outcome) {
@@ -265,6 +266,8 @@ export function computeMetrics(rows: MetricRow[], opts: { edgeThreshold?: number
   const tiers = TIERS.map(t => ({ min: t, n: 0, hits: 0, profit: 0, bets: 0, mN: 0, mHits: 0 }));
   // two options (double chance): the two most likely results; "close" = no result reaches 50%
   const two = { n: 0, hits: 0, profit: 0, bets: 0, closeN: 0, closeHits: 0 };
+  // draw alerts (v3 rule, priced at the recorded market odds): see DRAW_ALERT in the frontend
+  const da = { n: 0, wins: 0, profit: 0 };
   const byGroup = new Map<string, { name: string; n: number; hits: number; brier: number; mBrier: number; mN: number; profit: number; bets: number }>();
 
   for (const r of rows) {
@@ -315,6 +318,10 @@ export function computeMetrics(rows: MetricRow[], opts: { edgeThreshold?: number
       const mPick = (['H', 'D', 'A'] as Outcome[]).reduce((best, o) => (mp[o] > mp[best] ? o : best), 'H' as Outcome);
       mHits += mPick === r.outcome ? 1 : 0;
       for (const t of tiers) if (mp[mPick] >= t.min) { t.mN++; if (mPick === r.outcome) t.mHits++; }
+      if (r.drawAlertEligible && r.odds_draw && p.D >= 0.3) {
+        const anchored = mp.D + 0.75 * (p.D - mp.D);
+        if (anchored * r.odds_draw - 1 >= 0.02) { da.n++; if (r.outcome === 'D') { da.wins++; da.profit += r.odds_draw - 1; } else da.profit -= 1; }
+      }
       const mb = brier(mp, r.outcome);
       mBrier += mb;
       mLogLoss += -Math.log(Math.max(1e-6, mp[r.outcome]));
@@ -367,6 +374,7 @@ export function computeMetrics(rows: MetricRow[], opts: { edgeThreshold?: number
       roi: t.bets ? pct(t.profit / t.bets) : null,
       market: t.mN ? { n: t.mN, hitRate: pct(t.mHits / t.mN) } : null
     })),
+    drawAlerts: da.n ? { n: da.n, wins: da.wins, hitRate: pct(da.wins / da.n), roi: pct(da.profit / da.n) } : { n: 0, wins: 0, hitRate: null, roi: null },
     twoOptions: {
       n: two.n,
       hitRate: two.n ? pct(two.hits / two.n) : null,
@@ -403,7 +411,8 @@ export function accuracy(days: number = 90, competition?: string, model?: string
       odds_away: r.odds_away,
       outcome: r.outcome,
       groupKey: r.competition_code || '?',
-      groupName: r.competition_name || r.competition_code || '?'
+      groupName: r.competition_name || r.competition_code || '?',
+      drawAlertEligible: r.model === 'grid-v3' && r.competition_code !== 'PD'
     }))
   );
   return {

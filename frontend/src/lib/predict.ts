@@ -80,3 +80,21 @@ export const MODEL_INFO: Record<string, { tag: string; name: string; desc: strin
 export function modelInfo(model: string) {
   return MODEL_INFO[model] || { tag: model, name: model, desc: '' }
 }
+
+/**
+ * Draw alert (backtested 2024-25 + 2025-26): market-anchored draw chance = market draw + 0.75 × (v3 draw − market draw);
+ * flag when v3's draw ≥ 30%, anchored chance × best draw price − 1 ≥ 2%, and the league is not La Liga.
+ * History: the draw price shortened toward v3 by kick-off 2 times in 3; ROI small positive in both seasons.
+ */
+export const DRAW_ALERT = { k: 0.75, minEdge: 0.02, minV3Draw: 30, excluded: ['PD'] }
+export function drawAlert(p: Prediction, m: Market | null | undefined, competitionCode?: string) {
+  if (!m || p.model !== 'grid-v3' || p.draw < DRAW_ALERT.minV3Draw) return null
+  if (competitionCode && DRAW_ALERT.excluded.includes(competitionCode)) return null
+  const price = m.best?.draw || m.msw.draw
+  if (!price) return null
+  const mkt = m.probs.draw / 100
+  const anchored = mkt + DRAW_ALERT.k * (p.draw / 100 - mkt)
+  const edge = anchored * price - 1
+  if (edge < DRAW_ALERT.minEdge) return null
+  return { anchored: Math.round(anchored * 1000) / 10, price, edge: Math.round(edge * 1000) / 10, market: m.probs.draw }
+}

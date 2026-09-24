@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
-import { fairOdds, bookLabel, modelInfo, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, type Market, type Prediction } from '../lib/predict'
+import { fairOdds, bookLabel, modelInfo, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, drawAlert, type Market, type Prediction } from '../lib/predict'
 
 /* ---------- types (Football-Data.org v4 shapes, loosely) ---------- */
 
@@ -546,6 +546,26 @@ function MatchDetail() {
                   <div className={`rounded-full bg-draw ${pick === 'D' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.draw}% - 3px)` }} />
                   <div className={`rounded-full bg-away ${pick === 'A' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.away}% - 3px)` }} />
                 </div>
+
+                {(() => {
+                  const da = drawAlert(p, details.market, m.competition.code)
+                  if (!da) return null
+                  return (
+                    <div className="mt-4 rounded-xl border border-draw/50 bg-draw/10 p-3 text-sm">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="px-2.5 py-1 rounded-full text-xs font-bold border bg-draw/20 text-draw border-draw/50">Draw alert</span>
+                        <span className="text-ink">
+                          The market prices the draw at <span className="num font-semibold">{da.market.toFixed(1)}%</span>; v3 rates it higher
+                          (<span className="num font-semibold">{da.anchored}%</span> after anchoring to the market).
+                        </span>
+                      </div>
+                      <div className="text-xs text-muted mt-1.5">
+                        Best draw price <span className="num text-ink">{da.price.toFixed(2)}</span> · edge <span className="num text-ink">+{da.edge}%</span>.
+                        In 2024-25 and 2025-26, the draw price moved toward v3 by kick-off in about 2 of 3 such matches.
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 {details.market && <MarketStrip p={p} m={details.market} home={home} away={away} />}
 

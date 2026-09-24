@@ -19,6 +19,7 @@ interface Metrics {
   calibration: { range: string; n: number; predicted: number; actual: number }[]
   strongPicks?: { min: number; n: number; share: number; hitRate: number | null; roi: number | null; market: { n: number; hitRate: number } | null }[]
   twoOptions?: { n: number; hitRate: number | null; closeGames: { n: number; hitRate: number | null }; roi: number | null }
+  drawAlerts?: { n: number; wins: number; hitRate: number | null; roi: number | null }
   byCompetition: { code: string; name: string; n: number; hitRate: number; brier: number; marketBrier: number | null; bets: number; profit: number }[]
 }
 
@@ -426,6 +427,18 @@ function MetricsView({ m, groupLabel = 'League' }: { m: Metrics; groupLabel?: st
                 <div className="num text-2xl font-bold text-ink">{m.twoOptions.closeGames.hitRate ?? '–'}{m.twoOptions.closeGames.hitRate !== null ? '%' : ''}</div>
                 <div className="text-xs text-faint mt-1">{m.twoOptions.closeGames.n} matches</div>
               </div>
+            </div>
+          )}
+          {m.drawAlerts && m.drawAlerts.n > 0 && (
+            <div className="mt-3 rounded-xl border border-draw/40 bg-draw/10 p-4">
+              <div className="label mb-1">Draw alerts (v3) · draws the market underrates</div>
+              <div className="num text-2xl font-bold text-ink">
+                {m.drawAlerts.wins} / {m.drawAlerts.n} <span className="text-base text-muted">({m.drawAlerts.hitRate}%)</span>
+              </div>
+              <div className={`text-xs mt-1 num ${m.drawAlerts.roi !== null && m.drawAlerts.roi >= 0 ? 'text-win' : 'text-loss'}`}>
+                ROI at market odds {m.drawAlerts.roi !== null && m.drawAlerts.roi > 0 ? '+' : ''}{m.drawAlerts.roi}%
+              </div>
+              <div className="text-xs text-faint mt-1">A draw alert wins about 1 time in 3–4 at odds around 3.5 — judge it over many matches, not a weekend.</div>
             </div>
           )}
           <p className="text-xs text-faint mt-3">
