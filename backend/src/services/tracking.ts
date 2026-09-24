@@ -260,6 +260,11 @@ export function computeMetrics(rows: MetricRow[], opts: { edgeThreshold?: number
   }));
   const edgeBets = { bets: 0, wins: 0, profit: 0 };
   const favBets = { bets: 0, wins: 0, profit: 0 };
+  // strong picks: the model's pick when it is at least X% sure (and the market's, for comparison)
+  const TIERS = [0.5, 0.6, 0.7];
+  const tiers = TIERS.map(t => ({ min: t, n: 0, hits: 0, profit: 0, bets: 0, mN: 0, mHits: 0 }));
+  // two options (double chance): the two most likely results; "close" = no result reaches 50%
+  const two = { n: 0, hits: 0, profit: 0, bets: 0, closeN: 0, closeHits: 0 };
   const byGroup = new Map<string, { name: string; n: number; hits: number; brier: number; mBrier: number; mN: number; profit: number; bets: number }>();
 
   for (const r of rows) {
@@ -280,6 +285,25 @@ export function computeMetrics(rows: MetricRow[], opts: { edgeThreshold?: number
       bin.predSum += p[pk];
     }
 
+    const top2 = (['H', 'D', 'A'] as Outcome[]).sort((x, y) => p[y] - p[x]).slice(0, 2);
+    const twoHit = top2.includes(r.outcome);
+    two.n++;
+    if (twoHit) two.hits++;
+    if (p[pk] < 0.5) { two.closeN++; if (twoHit) two.closeHits++; }
+    const oa = oddsOf(r, top2[0]), ob = oddsOf(r, top2[1]);
+    if (oa && ob) {
+      const dc = 1 / (1 / oa + 1 / ob); // double-chance price implied by the 1X2 odds
+      two.bets++;
+      two.profit += twoHit ? dc - 1 : -1;
+    }
+    for (const t of tiers) {
+      if (p[pk] < t.min) continue;
+      t.n++;
+      if (hit) t.hits++;
+      const o = oddsOf(r, pk);
+      if (o) { t.bets++; t.profit += hit ? o - 1 : -1; }
+    }
+
     const g = byGroup.get(r.groupKey) || { name: r.groupName, n: 0, hits: 0, brier: 0, mBrier: 0, mN: 0, profit: 0, bets: 0 };
     g.n++;
     g.hits += hit ? 1 : 0;
@@ -290,6 +314,7 @@ export function computeMetrics(rows: MetricRow[], opts: { edgeThreshold?: number
       mN++;
       const mPick = (['H', 'D', 'A'] as Outcome[]).reduce((best, o) => (mp[o] > mp[best] ? o : best), 'H' as Outcome);
       mHits += mPick === r.outcome ? 1 : 0;
+      for (const t of tiers) if (mp[mPick] >= t.min) { t.mN++; if (mPick === r.outcome) t.mHits++; }
       const mb = brier(mp, r.outcome);
       mBrier += mb;
       mLogLoss += -Math.log(Math.max(1e-6, mp[r.outcome]));
@@ -334,6 +359,20 @@ export function computeMetrics(rows: MetricRow[], opts: { edgeThreshold?: number
       : null,
     outcomes,
     picks,
+    strongPicks: tiers.map(t => ({
+      min: Math.round(t.min * 100),
+      n: t.n,
+      share: n ? pct(t.n / n) : 0, // % of all matches that qualify
+      hitRate: t.n ? pct(t.hits / t.n) : null,
+      roi: t.bets ? pct(t.profit / t.bets) : null,
+      market: t.mN ? { n: t.mN, hitRate: pct(t.mHits / t.mN) } : null
+    })),
+    twoOptions: {
+      n: two.n,
+      hitRate: two.n ? pct(two.hits / two.n) : null,
+      closeGames: { n: two.closeN, hitRate: two.closeN ? pct(two.closeHits / two.closeN) : null },
+      roi: two.bets ? pct(two.profit / two.bets) : null
+    },
     calibration: bins
       .filter(x => x.n > 0)
       .map(x => ({ range: `${Math.round(x.from * 100)}–${Math.min(100, Math.round(x.to * 100))}%`, n: x.n, predicted: pct(x.predSum / x.n), actual: pct(x.hits / x.n) })),

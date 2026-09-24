@@ -17,6 +17,8 @@ interface Metrics {
   outcomes: Record<Outcome, number>
   picks: Record<Outcome, number>
   calibration: { range: string; n: number; predicted: number; actual: number }[]
+  strongPicks?: { min: number; n: number; share: number; hitRate: number | null; roi: number | null; market: { n: number; hitRate: number } | null }[]
+  twoOptions?: { n: number; hitRate: number | null; closeGames: { n: number; hitRate: number | null }; roi: number | null }
   byCompetition: { code: string; name: string; n: number; hitRate: number; brier: number; marketBrier: number | null; bets: number; profit: number }[]
 }
 
@@ -380,6 +382,56 @@ function MetricsView({ m, groupLabel = 'League' }: { m: Metrics; groupLabel?: st
           hint="1.099 = always 1/3 each"
         />
       </div>
+
+      {m.strongPicks && m.strongPicks.length > 0 && (
+        <Section title="Strong picks · how often the pick wins when the model is confident">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div className="rounded-xl border border-line/70 bg-surface/60 p-4">
+              <div className="label mb-1">All picks</div>
+              <div className="num text-2xl font-bold text-ink">{m.model.hitRate}%</div>
+              <div className="text-xs text-faint mt-1">
+                {m.settled} matches{m.market ? ` · market ${m.market.hitRate}%` : ''}
+              </div>
+            </div>
+            {m.strongPicks.map(t => (
+              <div key={t.min} className="rounded-xl border border-line/70 bg-surface/60 p-4">
+                <div className="label mb-1">Model ≥ {t.min}%</div>
+                <div className={`num text-2xl font-bold ${t.hitRate !== null && t.hitRate >= 55 ? 'text-accent' : 'text-ink'}`}>
+                  {t.hitRate !== null ? `${t.hitRate}%` : '–'}
+                </div>
+                <div className="text-xs text-faint mt-1">
+                  {t.n} matches ({t.share}% of all)
+                  {t.market ? ` · market ≥${t.min}%: ${t.market.hitRate}% of ${t.market.n}` : ''}
+                </div>
+                {t.roi !== null && (
+                  <div className={`text-xs mt-1 num ${t.roi >= 0 ? 'text-win' : 'text-loss'}`}>ROI at market odds {t.roi > 0 ? '+' : ''}{t.roi}%</div>
+                )}
+              </div>
+            ))}
+          </div>
+          {m.twoOptions && m.twoOptions.n > 0 && (
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="rounded-xl border border-line/70 bg-surface/60 p-4">
+                <div className="label mb-1">Two options · the two most likely results</div>
+                <div className="num text-2xl font-bold text-ink">{m.twoOptions.hitRate}%</div>
+                <div className="text-xs text-faint mt-1">
+                  {m.twoOptions.n} matches
+                  {m.twoOptions.roi !== null ? ` · ROI as a double-chance bet ${m.twoOptions.roi > 0 ? '+' : ''}${m.twoOptions.roi}%` : ''}
+                </div>
+              </div>
+              <div className="rounded-xl border border-line/70 bg-surface/60 p-4">
+                <div className="label mb-1">Two options · close games only (no result ≥ 50%)</div>
+                <div className="num text-2xl font-bold text-ink">{m.twoOptions.closeGames.hitRate ?? '–'}{m.twoOptions.closeGames.hitRate !== null ? '%' : ''}</div>
+                <div className="text-xs text-faint mt-1">{m.twoOptions.closeGames.n} matches</div>
+              </div>
+            </div>
+          )}
+          <p className="text-xs text-faint mt-3">
+            A confident pick wins more often, but also pays less. Hit rate shows reliability; the ROI line shows whether it would
+            have paid at the bookmaker's price.
+          </p>
+        </Section>
+      )}
 
       {m.betting && (
         <Section title={`Betting at market odds · flat 1-unit stakes · ${m.market?.n} matches with odds`}>

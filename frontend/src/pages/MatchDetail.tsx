@@ -512,6 +512,35 @@ function MatchDetail() {
                   <OutcomeTile k="D" label="Draw" v={p.draw} active={pick === 'D'} />
                   <OutcomeTile k="A" label={away.shortName || away.name} v={p.away} active={pick === 'A'} />
                 </div>
+                {(() => {
+                  const opts = [
+                    { k: 'H' as const, label: home.shortName || home.name, v: p.home },
+                    { k: 'D' as const, label: 'Draw', v: p.draw },
+                    { k: 'A' as const, label: away.shortName || away.name, v: p.away }
+                  ].sort((x, y) => y.v - x.v)
+                  const top = opts[0]
+                  if (top.v >= 50)
+                    return (
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${top.v >= 60 ? 'bg-accent/15 text-accent border-accent/40' : 'bg-surface2 text-ink border-line'}`}>
+                          {top.v >= 70 ? 'Very strong pick' : top.v >= 60 ? 'Strong pick' : 'Pick'}
+                        </span>
+                        <span className="text-muted">
+                          {top.label} <span className="num text-ink font-semibold">{Math.round(top.v)}%</span>
+                        </span>
+                      </div>
+                    )
+                  const pair = opts.slice(0, 2)
+                  return (
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                      <span className="px-2.5 py-1 rounded-full text-xs font-bold border bg-surface2 text-ink border-line">Close game · two options</span>
+                      <span className="text-muted">
+                        {pair[0].label} or {pair[1].label.toLowerCase() === 'draw' ? 'draw' : pair[1].label}{' '}
+                        <span className="num text-ink font-semibold">{Math.round(pair[0].v + pair[1].v)}%</span>
+                      </span>
+                    </div>
+                  )
+                })()}
                 <div className="flex h-2.5 gap-[3px] mt-4">
                   <div className={`rounded-full bg-home ${pick === 'H' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.home}% - 3px)` }} />
                   <div className={`rounded-full bg-draw ${pick === 'D' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.draw}% - 3px)` }} />

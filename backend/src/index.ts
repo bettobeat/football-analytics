@@ -39,6 +39,8 @@ const corsOrigin = isDev ? true : allowedOrigins;
 const SITE_USER = process.env.SITE_USER || '';
 const SITE_PASSWORD = process.env.SITE_PASSWORD || '';
 const SITE_AUTH = SITE_PASSWORD ? 'Basic ' + Buffer.from(`${SITE_USER}:${SITE_PASSWORD}`).toString('base64') : '';
+// Read token for maintenance: GET /api/...?token=<API_READ_TOKEN> passes the gate (pages and sockets stay locked)
+const API_READ_TOKEN = process.env.API_READ_TOKEN || '';
 
 const app = express();
 const server = http.createServer(app);
@@ -60,7 +62,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use((req, _res, next) => {
-  logger.info(`${req.method} ${req.originalUrl}`);
+  logger.info(`${req.method} ${req.originalUrl.replace(/([?&]token=)[^&]+/, '$1***')}`);
   next();
 });
 
@@ -72,6 +74,7 @@ if (SITE_PASSWORD) {
   app.use((req, res, next) => {
     if (req.path === '/api/health') return next();
     if (req.headers.authorization === SITE_AUTH) return next();
+    if (API_READ_TOKEN && req.method === 'GET' && req.path.startsWith('/api/') && req.query.token === API_READ_TOKEN) return next();
     res.set('WWW-Authenticate', 'Basic realm="Bet To Beat - private beta", charset="UTF-8"');
     res.status(401).send('Private beta. Sign in to continue.');
   });
