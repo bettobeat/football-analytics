@@ -22,6 +22,7 @@ import { historyStatus, teamMapStatus, GROUPS } from './services/history';
 import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestRows, backtestRunsList } from './services/historyModel';
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
 import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler } from './services/squadValues';
+import { compareModels } from './services/compareModels';
 import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, backfillV3, SweepVariant } from './services/gridModel';
 
 const isDev = (process.env.NODE_ENV || 'development') !== 'production';
@@ -388,6 +389,18 @@ app.get('/api/backtest/sweep', sweepHandler);
 app.post('/api/backtest/sweep', sweepHandler);
 app.get('/api/backtest/sweep/result', (_req, res) => {
   res.json({ data: sweeping ? { running: true, progress: sweepProgress } : lastSweep, timestamp: new Date().toISOString() });
+});
+
+// Head-to-head diagnostics on the same backtested matches: ?season=2526&a=dc-history-v2&b=grid-v3
+app.get('/api/backtest/compare', (req, res) => {
+  try {
+    const season = String(req.query.season || '2526');
+    const a = String(req.query.a || 'dc-history-v2');
+    const b = String(req.query.b || MODEL_V3);
+    res.json({ data: compareModels(season, a, b), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Compare failed');
+  }
 });
 
 app.get('/api/backtest/progress', (_req, res) => {
