@@ -254,8 +254,9 @@ function GridBreakdown({ p, home, away }: { p: Prediction; home: Team; away: Tea
         </div>
       )}
       <p className="mt-3 text-[11px] text-faint">
-        Each parameter is scored 1–10 within the league (5 = average) and weighted by its relevance (1–5) for this match type. The two totals set the
-        home/away split of the points left after the draw pot; the split is calibrated on last season's results.
+        Each parameter is scored within the league (5.5 = average; most teams land between 1 and 10, standouts like the league's superteams can
+        go above 10) and multiplied by its relevance for this match type. The difference between the two totals sets the home/away split of the
+        points left after the draw pot, which starts from the goals-based chance of a draw. Calibrated on the 2025-26 and 2026-27 results.
       </p>
     </div>
   )

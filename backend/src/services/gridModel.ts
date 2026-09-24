@@ -43,7 +43,7 @@ interface RowDef {
 }
 
 const ROWS: RowDef[] = [
-  { id: '#1', name: 'Squad value', rel: { mismatch: 5, standard: 4, even: 3, big: 3 }, kind: 'team', note: 'market value of the 15 most valuable players (transfermarkt-datasets snapshot); stands in for lineup value until lineups are priced' },
+  { id: '#1', name: 'Squad value', rel: { mismatch: 10, standard: 10, even: 10, big: 10 }, kind: 'team', note: 'market value of the 15 most valuable players (transfermarkt-datasets snapshot); stands in for lineup value until lineups are priced' },
   { id: '#1e', name: 'Strength (Elo)', rel: { mismatch: 5, standard: 5, even: 4, big: 4 }, kind: 'team', note: 'Elo over all results, margin-aware' },
   { id: '#19', name: 'Attack vs opponent tier', rel: { mismatch: 4, standard: 5, even: 5, big: 4 }, kind: 'team' },
   { id: '#14', name: 'Defence vs opponent tier', rel: { mismatch: 4, standard: 4, even: 4, big: 3 }, kind: 'team' },
@@ -64,20 +64,20 @@ let REL_OVERRIDE: RelOverride | null = null;
 export const CONV = {
   drawBase: { mismatch: 190, standard: 270, even: 320, big: 290 } as Record<MatchType, number>, // backtest-calibrated (2025-26)
   drawCap: { mismatch: 260, standard: 380, even: 400, big: 380 } as Record<MatchType, number>,
-  kDraw: 2.0, // points per (value−5) × relevance for draw rows
+  kDraw: 1.0, // points per (value−5) × relevance for draw rows (backtest: 1)
   // value scale (state build): 5.5 + spread·z, clamped to [valueLo, valueHi]. The 1–10 clamp flattens outliers
   // such as Bayern / PSG / Barcelona, so the range is a calibration knob.
-  valueLo: 1,
-  valueHi: 10,
+  valueLo: -2, // open scale: most teams still land in 1–10, superteams can reach 13 (backtest-calibrated)
+  valueHi: 13,
   valueSpread: 2.25,
   // gapMode 0: (totH−totA)/(totH+totA) — ratio;  1: (totH−totA)/(11·Σrel) — linear difference (robust to wide value ranges)
-  gapMode: 0,
+  gapMode: 1,
   // drawMode 0: draw pot base by match type (drawBase);  1: base = goals-model draw chance (Poisson + Dixon-Coles) × drawPoisScale
-  drawMode: 0,
+  drawMode: 1,
   drawPoisScale: 1.0,
   drawClose: 0, // extra draw points when the two totals are level, fading to 0 as |gap| reaches drawCloseSpan
   drawCloseSpan: 0.3,
-  gapScale: 0.24, // logistic scale on the relative gap between team totals (backtest-calibrated)
+  gapScale: 0.2, // logistic scale on the relative gap between team totals (backtest-calibrated)
   homeGap: 0.08, // added to the relative gap for the home side: the league-wide home advantage
                  // (row #23 compares the two sides' home/away records but is centred, so it carries no league-level edge)
   floorOutsider: 35,
@@ -832,8 +832,9 @@ function ensureBackfillColumn() {
  * used, exactly like the backtest), copy the market odds, and store it locked + settled and
  * flagged `backfilled = 1` so it can be told apart from predictions made live.
  */
-export function backfillV3(model = 'dc-history-v2') {
+export function backfillV3(model = 'dc-history-v2', redo = false) {
   ensureBackfillColumn();
+  if (redo) db.prepare(`DELETE FROM predictions WHERE model = ? AND backfilled = 1`).run(MODEL_V3);
   const rows = db.prepare(`
     SELECT p.match_id, p.competition_code, p.competition_name, p.utc_date, p.home_team_id, p.home_team, p.away_team_id, p.away_team,
            p.odds_home, p.odds_draw, p.odds_away, p.settled, p.locked

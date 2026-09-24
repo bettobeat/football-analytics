@@ -305,9 +305,9 @@ const squadSyncHandler = async (_req: express.Request, res: express.Response) =>
 app.post('/api/model/v3/squad/sync', squadSyncHandler);
 
 // Backfill v3 predictions for the tracked matches v2 already has (walk-forward, flagged backfilled=1)
-const backfillHandler = (_req: express.Request, res: express.Response) => {
+const backfillHandler = (req: express.Request, res: express.Response) => {
   try {
-    res.json({ data: backfillV3(), timestamp: new Date().toISOString() });
+    res.json({ data: backfillV3('dc-history-v2', req.query.redo === '1'), timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'v3 backfill failed');
   }
