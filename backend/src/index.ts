@@ -25,6 +25,10 @@ import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler } from '.
 import { compareModels } from './services/compareModels';
 import { marketTest, drawTest, anchoredDrawTest } from './services/marketTest';
 import { clvTick, clvReport, startClvScheduler, clvProbe } from './services/clv';
+import {
+  isAfMatchId, isAfCode, afUpcoming, afLive, afWithPredictions, getAfMatchDetails, getAfStandings, getAfScorers,
+  afCompetitions, pollAfLive, startAfMatchesScheduler, afWindowStatus, refreshAfWindow
+} from './services/afMatches';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures } from './services/apiFootball';
 import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, backfillV3, setRelOverride, SweepVariant } from './services/gridModel';
 
@@ -99,7 +103,9 @@ app.get('/api/health', (_req, res) => {
 app.get('/api/matches/upcoming', async (req, res) => {
   try {
     const days = parseInt(String(req.query.days || '30'), 10) || 30;
-    const matches = footballDataAPI.withPredictions(await footballDataAPI.getUpcomingMatches(days));
+    const fd = footballDataAPI.withPredictions(await footballDataAPI.getUpcomingMatches(days));
+    // + extra competitions from API-Football (national teams, cups, more leagues)
+    const matches = [...fd, ...afWithPredictions(afUpcoming(days))].sort((a: any, b: any) => a.utcDate.localeCompare(b.utcDate));
     res.json({
       data: matches,
       count: matches.length,
@@ -114,7 +120,7 @@ app.get('/api/matches/upcoming', async (req, res) => {
 
 app.get('/api/matches/live', async (_req, res) => {
   try {
-    const matches = footballDataAPI.withPredictions(await footballDataAPI.getLiveMatches());
+    const matches = [...footballDataAPI.withPredictions(await footballDataAPI.getLiveMatches()), ...afWithPredictions(afLive())];
     res.json({ data: matches, count: matches.length, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Failed to fetch live matches');
@@ -124,7 +130,7 @@ app.get('/api/matches/live', async (_req, res) => {
 app.get('/api/matches/:id(\\d+)', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const match = await footballDataAPI.getMatch(id);
+    const match = isAfMatchId(id) ? (await getAfMatchDetails(id)).match : await footballDataAPI.getMatch(id);
     res.json({ data: match, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Failed to fetch match');
@@ -135,7 +141,7 @@ app.get('/api/matches/:id(\\d+)', async (req, res) => {
 app.get('/api/matches/:id(\\d+)/details', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const details = await footballDataAPI.getMatchDetails(id);
+    const details = isAfMatchId(id) ? await getAfMatchDetails(id) : await footballDataAPI.getMatchDetails(id);
     res.json({ data: details, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Failed to fetch match details');
@@ -145,7 +151,7 @@ app.get('/api/matches/:id(\\d+)/details', async (req, res) => {
 app.get('/api/matches/:id(\\d+)/head2head', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const h2h = await footballDataAPI.getHeadToHead(id);
+    const h2h = isAfMatchId(id) ? (await getAfMatchDetails(id)).head2head : await footballDataAPI.getHeadToHead(id);
     res.json({ data: h2h, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Failed to fetch head-to-head');
@@ -154,7 +160,7 @@ app.get('/api/matches/:id(\\d+)/head2head', async (req, res) => {
 
 app.get('/api/leagues', async (_req, res) => {
   try {
-    const leagues = await footballDataAPI.getLeagues();
+    const leagues = [...(await footballDataAPI.getLeagues()), ...afCompetitions()];
     res.json({ data: leagues, count: leagues.length, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Failed to fetch leagues');
@@ -163,7 +169,8 @@ app.get('/api/leagues', async (_req, res) => {
 
 app.get('/api/leagues/:code/standings', async (req, res) => {
   try {
-    const standings = await footballDataAPI.getStandings(req.params.code.toUpperCase());
+    const code = req.params.code.toUpperCase();
+    const standings = isAfCode(code) ? await getAfStandings(code) : await footballDataAPI.getStandings(code);
     res.json({ data: standings, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Failed to fetch standings');
@@ -173,7 +180,8 @@ app.get('/api/leagues/:code/standings', async (req, res) => {
 app.get('/api/leagues/:code/scorers', async (req, res) => {
   try {
     const limit = parseInt(String(req.query.limit || '40'), 10) || 40;
-    const scorers = await footballDataAPI.getScorers(req.params.code.toUpperCase(), limit);
+    const code = req.params.code.toUpperCase();
+    const scorers = isAfCode(code) ? await getAfScorers(code, limit) : await footballDataAPI.getScorers(code, limit);
     res.json({ data: scorers, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Failed to fetch scorers');
@@ -348,6 +356,11 @@ app.get('/api/clv/probe', async (req, res) => {
 });
 app.get('/api/clv/tick', async (_req, res) => {
   res.json({ data: await clvTick(), timestamp: new Date().toISOString() });
+});
+
+app.get('/api/af/window', async (req, res) => {
+  if (req.query.refresh === '1') await refreshAfWindow().catch(() => undefined);
+  res.json({ data: afWindowStatus(), timestamp: new Date().toISOString() });
 });
 
 app.get('/api/af/sync', (_req, res) => {
@@ -557,8 +570,9 @@ app.set('io', io);
 const LIVE_POLL_MS = parseInt(process.env.LIVE_POLL_MS || '60000', 10);
 setInterval(async () => {
   try {
-    const live = footballDataAPI.withPredictions(await footballDataAPI.getLiveMatches());
-    recordPredictions(live); // locks anything that has kicked off
+    const fdLive = footballDataAPI.withPredictions(await footballDataAPI.getLiveMatches());
+    recordPredictions(fdLive); // locks anything that has kicked off (Football-Data.org matches only)
+    const live = [...fdLive, ...afWithPredictions(await pollAfLive())];
     io.emit('matches:live', { data: live, timestamp: new Date().toISOString() });
     // Per-match rooms get their own update (score / status / minute)
     for (const m of live) {
@@ -622,6 +636,8 @@ server.listen(PORT, () => {
   startApiFootballScheduler();
   // Live closing-line value tracking (open price + v3 at 48 h, closing price in the last 35 min)
   startClvScheduler();
+  // Extra competitions (national teams, Europa/Conference League, Israel, Saudi, more European leagues)
+  startAfMatchesScheduler();
 });
 
 export { app, io };

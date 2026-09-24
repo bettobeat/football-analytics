@@ -17,7 +17,11 @@ interface Competition {
   name: string
   code: string
   emblem?: string
+  type?: string // NATIONAL / CUP / LEAGUE (extra competitions from API-Football)
+  rank?: number // 0 = core leagues, 1 = European cups, 2 = more leagues, 3 = national teams
 }
+
+const GROUP_TITLE: Record<number, string> = { 0: 'Top leagues', 1: 'European cups', 2: 'More leagues', 3: 'National teams' }
 
 interface APIMatch {
   id: number
@@ -130,7 +134,7 @@ function Dashboard() {
   const competitions = useMemo(() => {
     const map = new Map<string, Competition>()
     matches.forEach(m => map.set(m.competition.code, m.competition))
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))
+    return Array.from(map.values()).sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0) || a.name.localeCompare(b.name))
   }, [matches])
 
   const visible = useMemo(() => {
@@ -212,10 +216,13 @@ function Dashboard() {
                   <span className="ml-auto num text-xs text-faint">{matches.length}</span>
                 </button>
               </li>
-              {competitions.map(c => {
+              {competitions.map((c, i) => {
                 const n = matches.filter(m => m.competition.code === c.code).length
+                const g = c.rank ?? 0
+                const newGroup = i === 0 || (competitions[i - 1].rank ?? 0) !== g
                 return (
                   <li key={c.code}>
+                    {newGroup && <div className="px-2 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-faint">{GROUP_TITLE[g] || ''}</div>}
                     <button onClick={() => setLeague(c.code)} className={`side-item ${league === c.code ? 'side-item-active' : ''}`}>
                       {c.emblem ? (
                         <img src={c.emblem} alt="" className="w-5 h-5 object-contain" />
