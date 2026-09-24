@@ -91,6 +91,28 @@ function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [days, setDays] = useState(7)
+  // League menu categories: Top leagues open by default; remembered in this browser
+  const [openGroups, setOpenGroups] = useState<Set<number>>(() => {
+    try {
+      const saved = localStorage.getItem('b2b-league-groups')
+      if (saved) return new Set(JSON.parse(saved) as number[])
+    } catch {
+      /* storage unavailable */
+    }
+    return new Set([0])
+  })
+  const toggleGroup = (g: number) =>
+    setOpenGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(g)) next.delete(g)
+      else next.add(g)
+      try {
+        localStorage.setItem('b2b-league-groups', JSON.stringify([...next]))
+      } catch {
+        /* storage unavailable */
+      }
+      return next
+    })
   const [league, setLeague] = useState<string>('ALL')
 
   useEffect(() => {
@@ -134,7 +156,9 @@ function Dashboard() {
   const competitions = useMemo(() => {
     const map = new Map<string, Competition>()
     matches.forEach(m => map.set(m.competition.code, m.competition))
-    return Array.from(map.values()).sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0) || a.name.localeCompare(b.name))
+    return Array.from(map.values())
+      .map(c => ({ ...c, rank: c.rank ?? (c.code === 'CL' ? 1 : 0) }))
+      .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0) || a.name.localeCompare(b.name))
   }, [matches])
 
   const visible = useMemo(() => {
@@ -216,22 +240,43 @@ function Dashboard() {
                   <span className="ml-auto num text-xs text-faint">{matches.length}</span>
                 </button>
               </li>
-              {competitions.map((c, i) => {
-                const n = matches.filter(m => m.competition.code === c.code).length
-                const g = c.rank ?? 0
-                const newGroup = i === 0 || (competitions[i - 1].rank ?? 0) !== g
+              {[0, 1, 2, 3].map(g => {
+                const list = competitions.filter(c => (c.rank ?? 0) === g)
+                if (!list.length) return null
+                const total = list.reduce((s, c) => s + matches.filter(m => m.competition.code === c.code).length, 0)
+                const hasActive = list.some(c => c.code === league)
+                const open = openGroups.has(g) || hasActive
                 return (
-                  <li key={c.code}>
-                    {newGroup && <div className="px-2 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-faint">{GROUP_TITLE[g] || ''}</div>}
-                    <button onClick={() => setLeague(c.code)} className={`side-item ${league === c.code ? 'side-item-active' : ''}`}>
-                      {c.emblem ? (
-                        <img src={c.emblem} alt="" className="w-5 h-5 object-contain" />
-                      ) : (
-                        <span className="w-5 h-5 rounded-md bg-surface2" />
-                      )}
-                      <span className="truncate">{c.name}</span>
-                      <span className="ml-auto num text-xs text-faint">{n}</span>
+                  <li key={`g${g}`}>
+                    <button
+                      onClick={() => toggleGroup(g)}
+                      className="w-full flex items-center gap-2 px-2 pt-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-faint hover:text-muted transition-colors"
+                      aria-expanded={open}
+                    >
+                      <span className={`inline-block transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
+                      {GROUP_TITLE[g]}
+                      <span className="ml-auto num normal-case tracking-normal font-medium">{total}</span>
                     </button>
+                    {open && (
+                      <ul className="space-y-0.5">
+                        {list.map(c => {
+                          const n = matches.filter(m => m.competition.code === c.code).length
+                          return (
+                            <li key={c.code}>
+                              <button onClick={() => setLeague(c.code)} className={`side-item ${league === c.code ? 'side-item-active' : ''}`}>
+                                {c.emblem ? (
+                                  <img src={c.emblem} alt="" className="w-5 h-5 object-contain" />
+                                ) : (
+                                  <span className="w-5 h-5 rounded-md bg-surface2" />
+                                )}
+                                <span className="truncate">{c.name}</span>
+                                <span className="ml-auto num text-xs text-faint">{n}</span>
+                              </button>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    )}
                   </li>
                 )
               })}
