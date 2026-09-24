@@ -79,7 +79,7 @@ export const CONV = {
   drawMode: 1,
   drawPoisScale: 1.0,
   // availability rows (#13 injuries, #12 confirmed XI): value = 5.5 − k × (starter-equivalents missing)
-  injK: 1.0,
+  injK: 2.0, // backtest 2025-26: 1–4 all help a little, 2 best on hit rate
   xiK: 1.0,
   useLineups: 1, // backtest/sweep: 1 = final prediction (with confirmed XI), 0 = provisional (injuries only)
   drawClose: 0, // extra draw points when the two totals are level, fading to 0 as |gap| reaches drawCloseSpan
@@ -575,14 +575,14 @@ const insertBt = () =>
 let running: { season: string; group: string; done: number; total: number } | null = null;
 export const backtestProgressV3 = () => running;
 
-export async function runBacktestV3(season: string, group: string, conv: Partial<typeof CONV> = {}) {
+export async function runBacktestV3(season: string, group: string, conv: Partial<typeof CONV> = {}, allDivisions = false) {
   const saved = { ...CONV };
   Object.assign(CONV, conv);
   try {
     const divs = GROUPS[group]?.divisions || [];
     if (!divs.length) throw new Error(`Unknown group ${group}`);
     const all = loadGroupMatches(group);
-    const target = all.filter(m => m.season === season && m.division === divs[0]);
+    const target = all.filter(m => m.season === season && (allDivisions ? divs.includes(m.division) : m.division === divs[0]));
     if (!target.length) throw new Error(`No matches for ${group} ${season}`);
 
     db.prepare(`DELETE FROM backtest_predictions WHERE run_id IN (SELECT id FROM backtest_runs WHERE season = ? AND grp = ? AND model = ?)`).run(season, group, MODEL_V3);
@@ -631,10 +631,10 @@ export async function runBacktestV3(season: string, group: string, conv: Partial
   }
 }
 
-export async function runBacktestV3All(season: string, conv: Partial<typeof CONV> = {}) {
+export async function runBacktestV3All(season: string, conv: Partial<typeof CONV> = {}, allDivisions = false) {
   const out: Record<string, any> = {};
   for (const group of Object.keys(GROUPS)) {
-    try { out[group] = await runBacktestV3(season, group, conv); } catch (error: any) { out[group] = { error: error.message }; }
+    try { out[group] = await runBacktestV3(season, group, conv, allDivisions); } catch (error: any) { out[group] = { error: error.message }; }
   }
   return out;
 }

@@ -23,6 +23,7 @@ import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestR
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
 import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler } from './services/squadValues';
 import { compareModels } from './services/compareModels';
+import { marketTest } from './services/marketTest';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures } from './services/apiFootball';
 import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, backfillV3, SweepVariant } from './services/gridModel';
 
@@ -345,14 +346,15 @@ const runBacktestHandler = (req: express.Request, res: express.Response) => {
   if (model === MODEL_V3) {
     const conv: any = {};
     for (const [k, v] of Object.entries(req.query)) {
-      if (['season', 'group', 'model'].includes(k)) continue;
+      if (['season', 'group', 'model', 'divisions'].includes(k)) continue;
       const num = parseFloat(String(v));
       if (!Number.isFinite(num)) continue;
       const [a, b] = k.split('.');
       if (b) conv[a] = { ...((CONV as any)[a] || {}), ...(conv[a] || {}), [b]: num };
       else conv[a] = num;
     }
-    job = group ? runBacktestV3(season, group, conv) : runBacktestV3All(season, conv);
+    const allDivs = req.query.divisions === 'all'; // include second divisions (Championship, Segunda, Serie B, 2. BL, Ligue 2)
+    job = group ? runBacktestV3(season, group, conv, allDivs) : runBacktestV3All(season, conv, allDivs);
   } else {
     job = group ? runBacktest(season, group) : runBacktestAll(season);
   }
@@ -403,6 +405,15 @@ app.get('/api/backtest/sweep', sweepHandler);
 app.post('/api/backtest/sweep', sweepHandler);
 app.get('/api/backtest/sweep/result', (_req, res) => {
   res.json({ data: sweeping ? { running: true, progress: sweepProgress } : lastSweep, timestamp: new Date().toISOString() });
+});
+
+// Can we beat the market? Information (blend), closing-line value and per-division edges: ?season=2526&model=grid-v3
+app.get('/api/backtest/market', (req, res) => {
+  try {
+    res.json({ data: marketTest(String(req.query.season || '2526'), String(req.query.model || MODEL_V3)), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Market test failed');
+  }
 });
 
 // Head-to-head diagnostics on the same backtested matches: ?season=2526&a=dc-history-v2&b=grid-v3
