@@ -65,6 +65,16 @@ export const CONV = {
   drawBase: { mismatch: 190, standard: 270, even: 320, big: 290 } as Record<MatchType, number>, // backtest-calibrated (2025-26)
   drawCap: { mismatch: 260, standard: 380, even: 400, big: 380 } as Record<MatchType, number>,
   kDraw: 2.0, // points per (value−5) × relevance for draw rows
+  // value scale (state build): 5.5 + spread·z, clamped to [valueLo, valueHi]. The 1–10 clamp flattens outliers
+  // such as Bayern / PSG / Barcelona, so the range is a calibration knob.
+  valueLo: 1,
+  valueHi: 10,
+  valueSpread: 2.25,
+  // gapMode 0: (totH−totA)/(totH+totA) — ratio;  1: (totH−totA)/(11·Σrel) — linear difference (robust to wide value ranges)
+  gapMode: 0,
+  // drawMode 0: draw pot base by match type (drawBase);  1: base = goals-model draw chance (Poisson + Dixon-Coles) × drawPoisScale
+  drawMode: 0,
+  drawPoisScale: 1.0,
   drawClose: 0, // extra draw points when the two totals are level, fading to 0 as |gap| reaches drawCloseSpan
   drawCloseSpan: 0.3,
   gapScale: 0.24, // logistic scale on the relative gap between team totals (backtest-calibrated)
@@ -149,7 +159,7 @@ function rankValues(items: { name: string; raw: number }[], invert = false): Map
   for (const it of items) {
     let z = (it.raw - mean) / sd;
     if (invert) z = -z;
-    out.set(it.name, Math.round(clamp(5.5 + 2.25 * z, 1, 10) * 10) / 10);
+    out.set(it.name, Math.round(clamp(5.5 + CONV.valueSpread * z, CONV.valueLo, CONV.valueHi) * 10) / 10);
   }
   return out;
 }
@@ -360,6 +370,23 @@ export function matchTypeFor(h: TeamFeat, a: TeamFeat, derby: boolean): MatchTyp
 /** Poisson helpers for the goal-based extras (xG, over 2.5, BTTS, top scores) */
 function poisson(l: number, k: number) { let p = Math.exp(-l); for (let i = 1; i <= k; i++) p *= l / i; return p; }
 
+/** Draw probability from two goal rates, with the Dixon-Coles low-score correction (rho = −0.1). */
+function poissonDraw(lh: number, la: number) {
+  const RHO = -0.1;
+  let draw = 0, mass = 0;
+  for (let i = 0; i <= 10; i++)
+    for (let j = 0; j <= 10; j++) {
+      let p = poisson(lh, i) * poisson(la, j);
+      if (i === 0 && j === 0) p *= 1 - lh * la * RHO;
+      else if (i === 0 && j === 1) p *= 1 + lh * RHO;
+      else if (i === 1 && j === 0) p *= 1 + la * RHO;
+      else if (i === 1 && j === 1) p *= 1 - RHO;
+      mass += p;
+      if (i === j) draw += p;
+    }
+  return draw / mass;
+}
+
 export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string, away: string, asOf: string): Prediction | null {
   const h = state.teams.get(home), a = state.teams.get(away);
   if (!h || !a) return null;
@@ -370,13 +397,13 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
 
   const h2h = h2hLast10(all, home, away, asOf);
   const rows: NonNullable<Prediction['grid']>['rows'] = [];
-  let totH = 0, totA = 0, drawFactors = 0;
+  let totH = 0, totA = 0, drawFactors = 0, relSum = 0;
 
   const push = (def: RowDef, vh: number, va: number, note?: string) => {
     const rel = REL_OVERRIDE?.[def.id]?.[type] ?? def.rel[type];
     if (def.kind === 'team') {
       const ph = vh * rel, pa = va * rel;
-      totH += ph; totA += pa;
+      totH += ph; totA += pa; relSum += rel;
       rows.push({ id: def.id, name: def.name, rel, home: vh, away: va, edge: Math.round((ph - pa) * 10) / 10, note: note || def.note });
     } else {
       // draw rows: a single value (how much this pushes toward the draw), stored in both columns
@@ -401,11 +428,19 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   push(R('#30'), clamp(5 + (leagueDraw - 0.25) * 60, 1, 10), 0, `league draw rate ${Math.round(leagueDraw * 100)}%`);
   push(R('#16'), derby ? 8 : 5, 0, derby ? 'derby' : undefined);
 
-  // --- draw pot
-  const base = CONV.drawBase[type];
-  const volatility = 0; // no card/referee feed yet
+  // --- goal rates (used by the draw pot in drawMode 1 and for the extras: xG / O2.5 / BTTS / scores)
+  const avg = state.leagueAvgGoals[div] || 1.35;
+  const ha = state.homeAdv[div] || 1.25;
+  const lamH = clamp((h.attack / avg) * (a.defence / avg) * avg * Math.sqrt(ha), 0.3, 4);
+  const lamA = clamp((a.attack / avg) * (h.defence / avg) * avg / Math.sqrt(ha), 0.3, 4);
+
   // --- relative gap between the two totals (+ league home advantage)
-  const gap = (totH - totA) / (totH + totA) + CONV.homeGap;
+  const gap =
+    (CONV.gapMode === 1 ? (totH - totA) / (11 * Math.max(1, relSum)) : (totH - totA) / (totH + totA)) + CONV.homeGap;
+
+  // --- draw pot
+  const base = CONV.drawMode === 1 ? Math.round(1000 * poissonDraw(lamH, lamA) * CONV.drawPoisScale) : CONV.drawBase[type];
+  const volatility = 0; // no card/referee feed yet
   // closeness: draws are likelier when the sides are level
   const closeness = CONV.drawClose * Math.max(0, 1 - Math.abs(gap) / CONV.drawCloseSpan);
   let drawPts = clamp(base + drawFactors + volatility + closeness, CONV.floorDraw, CONV.drawCap[type]);
@@ -418,11 +453,6 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   if (ptsH < CONV.floorOutsider) { ptsA -= CONV.floorOutsider - ptsH; ptsH = CONV.floorOutsider; }
   ptsH = Math.round(ptsH); ptsA = Math.round(ptsA); drawPts = 1000 - ptsH - ptsA;
 
-  // --- goal extras from a plain Poisson on the adjusted rates (for xG / O2.5 / BTTS / top scores on the UI)
-  const avg = state.leagueAvgGoals[div] || 1.35;
-  const ha = state.homeAdv[div] || 1.25;
-  const lamH = clamp((h.attack / avg) * (a.defence / avg) * avg * Math.sqrt(ha), 0.3, 4);
-  const lamA = clamp((a.attack / avg) * (h.defence / avg) * avg / Math.sqrt(ha), 0.3, 4);
   const grid: number[][] = [];
   let over25 = 0, btts = 0;
   const scores: { home: number; away: number; prob: number }[] = [];
@@ -634,6 +664,13 @@ export function autoVariants(kind: string, step = 1): SweepVariant[] {
       out.push({ name: `${row.id} half`, rel: { [row.id]: mk(r => r / 2) } });
       out.push({ name: `${row.id} x2`, rel: { [row.id]: mk(r => r * 2) } });
     }
+  } else if (kind === 'shape') {
+    // score-time structure: linear gap, goals-based draw pot, and both
+    for (const gs of [0.2, 0.24, 0.28, 0.32, 0.36, 0.42]) out.push({ name: `gapMode 1 gapScale ${gs}`, conv: { gapMode: 1, gapScale: gs } });
+    for (const ds of [0.9, 1.0, 1.1]) for (const k of [0, 1, 2])
+      out.push({ name: `drawMode 1 scale ${ds} kDraw ${k}`, conv: { drawMode: 1, drawPoisScale: ds, kDraw: k } });
+    for (const gs of [0.24, 0.28, 0.32, 0.36]) for (const ds of [1.0, 1.1])
+      out.push({ name: `both gapScale ${gs} drawScale ${ds}`, conv: { gapMode: 1, gapScale: gs, drawMode: 1, drawPoisScale: ds, kDraw: 1 } });
   } else if (kind === 'conv') {
     for (const g of [-0.04, -0.02, 0.02, 0.04]) out.push({ name: `gapScale ${(CONV.gapScale + g).toFixed(2)}`, conv: { gapScale: CONV.gapScale + g } });
     for (const g of [-0.02, -0.01, 0.01, 0.02]) out.push({ name: `homeGap ${(CONV.homeGap + g).toFixed(3)}`, conv: { homeGap: CONV.homeGap + g } });
