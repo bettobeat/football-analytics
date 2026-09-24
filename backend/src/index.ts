@@ -21,7 +21,7 @@ import { recordPredictions, settlePending, accuracy, recentSettled, trackingStat
 import { historyStatus, teamMapStatus, GROUPS } from './services/history';
 import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestRows, backtestRunsList } from './services/historyModel';
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
-import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, SweepVariant } from './services/gridModel';
+import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, SweepVariant } from './services/gridModel';
 
 const isDev = (process.env.NODE_ENV || 'development') !== 'production';
 
@@ -319,27 +319,29 @@ const runBacktestHandler = (req: express.Request, res: express.Response) => {
 app.post('/api/backtest/run', runBacktestHandler);
 app.get('/api/backtest/run', runBacktestHandler); // GET alias so a run can be started from a browser tab
 
-// v3 sweep: score many variants in memory and return one comparison table (nothing is stored).
-//   GET  /api/backtest/sweep?season=2526&auto=rel            → every relevance cell ±1
-//   GET  /api/backtest/sweep?season=2526&auto=conv           → gapScale / homeGap / kDraw / drawBase / half-life nudges
-//   GET  /api/backtest/sweep?season=2526&v=[{"name":"x","conv":{"gapScale":0.2},"rel":{"#1":{"even":5}}}]
-//   POST /api/backtest/sweep  { season, variants: [...], base: {...conv}, groups: ["E","SP"] }
-// Base conv overrides for every variant: dot-params like the run endpoint (&homeGap=0.07&drawBase.even=340).
+// v3 sweep: score many variants in memory, in the background; nothing is stored in the DB.
+//   GET /api/backtest/sweep?season=2526&auto=rel|rows|conv     → start (auto lists: every relevance cell ±1 / each row off,half,x2 / conv nudges)
+//   GET /api/backtest/sweep?season=2526&r=#1:0,0,0,0;#7:2,4,6,8/#21:4,6,8,6   → compact relevance variants (mismatch,standard,even,big)
+//   GET /api/backtest/sweep?season=2526&v=[{"name":"x","conv":{"gapScale":0.2},"rel":{"#1":{"even":5}}}]
+//   GET /api/backtest/sweep/result                              → progress while running, then the last table
+// Base conv for every variant: dot-params as on the run endpoint (&homeGap=0.07&drawBase.even=340). &groups=E,SP limits leagues.
 let sweeping = false;
-const sweepHandler = async (req: express.Request, res: express.Response) => {
-  if (sweeping || backtestProgressV3()) { res.status(409).json({ error: 'A sweep or backtest is already running' }); return; }
+let lastSweep: any = null;
+const sweepHandler = (req: express.Request, res: express.Response) => {
+  if (sweeping || backtestProgressV3()) { res.status(409).json({ error: 'A sweep or backtest is already running', progress: sweepProgress }); return; }
   const q: any = { ...(req.query || {}), ...(req.body || {}) };
   const season = String(q.season || '2526');
   const groups = q.groups ? (Array.isArray(q.groups) ? q.groups : String(q.groups).split(',')).map((g: string) => g.toUpperCase()) : undefined;
   let variants: SweepVariant[] = [];
   try {
     if (q.variants) variants = q.variants;
-    else if (q.v) variants = JSON.parse(String(q.v));
-    if (q.auto) variants = variants.concat(autoVariants(String(q.auto), q.step ? Number(q.step) : 1));
+    if (q.v) variants = variants.concat(JSON.parse(String(q.v)));
+    if (q.r) variants = variants.concat(parseCompactVariants(String(q.r)));
+    if (q.auto) for (const a of String(q.auto).split(',')) variants = variants.concat(autoVariants(a, q.step ? Number(q.step) : 1));
   } catch (err: any) { res.status(400).json({ error: `Bad variants: ${err.message}` }); return; }
   const base: any = q.base && typeof q.base === 'object' ? q.base : {};
   for (const [k, v] of Object.entries(req.query)) {
-    if (['season', 'groups', 'auto', 'step', 'v'].includes(k)) continue;
+    if (['season', 'groups', 'auto', 'step', 'v', 'r'].includes(k)) continue;
     const num = parseFloat(String(v));
     if (!Number.isFinite(num)) continue;
     const [a, b] = k.split('.');
@@ -347,15 +349,18 @@ const sweepHandler = async (req: express.Request, res: express.Response) => {
     else base[a] = num;
   }
   sweeping = true;
-  try {
-    const out = await sweepV3(season, variants, base, groups);
-    res.json({ data: out, timestamp: new Date().toISOString() });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  } finally { sweeping = false; }
+  lastSweep = { running: true, startedAt: new Date().toISOString(), variants: variants.length };
+  sweepV3(season, variants, base, groups)
+    .then(out => { lastSweep = { running: false, ...out }; })
+    .catch(err => { lastSweep = { running: false, error: err.message }; logger.error('Sweep failed', { message: err.message }); })
+    .finally(() => { sweeping = false; });
+  res.json({ data: { started: true, season, variants: variants.length, groups: groups || 'ALL', base }, timestamp: new Date().toISOString() });
 };
 app.get('/api/backtest/sweep', sweepHandler);
 app.post('/api/backtest/sweep', sweepHandler);
+app.get('/api/backtest/sweep/result', (_req, res) => {
+  res.json({ data: sweeping ? { running: true, progress: sweepProgress } : lastSweep, timestamp: new Date().toISOString() });
+});
 
 app.get('/api/backtest/progress', (_req, res) => {
   res.json({ data: backtestProgress() || backtestProgressV3(), timestamp: new Date().toISOString() });

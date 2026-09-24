@@ -612,6 +612,13 @@ export function autoVariants(kind: string, step = 1): SweepVariant[] {
           if (r < 0 || r > 6) continue;
           out.push({ name: `${row.id} ${t} ${row.rel[t]}→${r}`, rel: { [row.id]: { [t]: r } } });
         }
+  } else if (kind === 'rows') {
+    for (const row of ROWS) {
+      const mk = (f: (r: number) => number) => Object.fromEntries(MATCH_TYPES.map(t => [t, f(row.rel[t])])) as Partial<Record<MatchType, number>>;
+      out.push({ name: `${row.id} off`, rel: { [row.id]: mk(() => 0) } });
+      out.push({ name: `${row.id} half`, rel: { [row.id]: mk(r => r / 2) } });
+      out.push({ name: `${row.id} x2`, rel: { [row.id]: mk(r => r * 2) } });
+    }
   } else if (kind === 'conv') {
     for (const g of [-0.04, -0.02, 0.02, 0.04]) out.push({ name: `gapScale ${(CONV.gapScale + g).toFixed(2)}`, conv: { gapScale: CONV.gapScale + g } });
     for (const g of [-0.02, -0.01, 0.01, 0.02]) out.push({ name: `homeGap ${(CONV.homeGap + g).toFixed(3)}`, conv: { homeGap: CONV.homeGap + g } });
@@ -625,10 +632,30 @@ export function autoVariants(kind: string, step = 1): SweepVariant[] {
 }
 
 /**
+ * Compact variant syntax for URLs: variants separated by ';', rows by '/', e.g.
+ *   r=#1:0,0,0,0;#7:2,4,6,8/#21:4,6,8,6      (order: mismatch,standard,even,big; '-' keeps the default)
+ */
+export function parseCompactVariants(text: string): SweepVariant[] {
+  return text.split(';').map(s => s.trim()).filter(Boolean).map(spec => {
+    const rel: RelOverride = {};
+    for (const part of spec.split('/')) {
+      const [id, vals] = part.split(':');
+      if (!id || !vals) continue;
+      const nums = vals.split(',');
+      rel[id.trim()] = {};
+      MATCH_TYPES.forEach((t, i) => { const n = parseFloat(nums[i]); if (Number.isFinite(n)) rel[id.trim()][t] = n; });
+    }
+    return { name: spec, rel };
+  });
+}
+
+/**
  * Score every variant on one season, walk-forward like the real backtest, without touching the
  * DB. States are built once per week and shared by all variants (they depend only on the
  * half-lives, which the sweep keeps fixed), so 50 variants cost about as much as one run.
  */
+export let sweepProgress: { done: number; total: number } | null = null;
+
 export async function sweepV3(season: string, variants: SweepVariant[], baseConv: Partial<typeof CONV> = {}, groups?: string[]) {
   const savedConv = { ...CONV, drawBase: { ...CONV.drawBase }, drawCap: { ...CONV.drawCap } };
   const savedRel = REL_OVERRIDE;
@@ -698,10 +725,13 @@ export async function sweepV3(season: string, variants: SweepVariant[], baseConv
     };
 
     const base = evalVariant({ name: 'base' });
-    const results = variants.map(v => {
+    const results: any[] = [];
+    for (const v of variants) {
       const m = evalVariant(v);
-      return { name: v.name, ...m, dBrier: Math.round((m.brier - base.brier) * 1000) / 1000, dLogLoss: Math.round((m.logLoss - base.logLoss) * 1000) / 1000, conv: v.conv, rel: v.rel };
-    });
+      results.push({ name: v.name, ...m, dBrier: Math.round((m.brier - base.brier) * 1000) / 1000, dLogLoss: Math.round((m.logLoss - base.logLoss) * 1000) / 1000, conv: v.conv, rel: v.rel });
+      sweepProgress = { done: results.length, total: variants.length };
+      await new Promise<void>(resolve => setImmediate(() => resolve()));
+    }
     results.sort((a, b) => a.brier - b.brier || a.logLoss - b.logLoss);
 
     let outcomes = { H: 0, D: 0, A: 0 };
@@ -720,5 +750,6 @@ export async function sweepV3(season: string, variants: SweepVariant[], baseConv
   } finally {
     Object.assign(CONV, savedConv);
     REL_OVERRIDE = savedRel;
+    sweepProgress = null;
   }
 }
