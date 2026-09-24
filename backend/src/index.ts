@@ -18,15 +18,15 @@ console.log('API Key:', process.env.FOOTBALL_DATA_API_KEY ? '✅ SET' : '❌ NOT
 // Import after env is loaded
 import footballDataAPI from './services/footballDataAPI';
 import { recordPredictions, settlePending, accuracy, recentSettled, trackingStatus, computeMetrics } from './services/tracking';
-import { historyStatus, teamMapStatus, GROUPS } from './services/history';
+import { historyStatus, teamMapStatus, GROUPS, syncAll } from './services/history';
 import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestRows, backtestRunsList } from './services/historyModel';
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
 import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler } from './services/squadValues';
 import { compareModels } from './services/compareModels';
 import { marketTest } from './services/marketTest';
-import { clvTick, clvReport, startClvScheduler } from './services/clv';
+import { clvTick, clvReport, startClvScheduler, clvProbe } from './services/clv';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures } from './services/apiFootball';
-import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, backfillV3, SweepVariant } from './services/gridModel';
+import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, backfillV3, setRelOverride, SweepVariant } from './services/gridModel';
 
 const isDev = (process.env.NODE_ENV || 'development') !== 'production';
 
@@ -273,6 +273,19 @@ app.get('/api/history/teams', (_req, res) => {
   }
 });
 
+// Load one extra (older) season of results, e.g. ?season=2324 — for out-of-sample backtests
+app.get('/api/history/sync-season', async (req, res) => {
+  try {
+    const season = String(req.query.season || '');
+    if (!/^\d{4}$/.test(season)) { res.status(400).json({ error: 'season=YYYY (e.g. 2324)' }); return; }
+    const r = await syncAll([season], false);
+    prepareModelV3();
+    res.json({ data: { total: r.total, summary: r.summary.filter(x => x.season === season) }, timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Season sync failed');
+  }
+});
+
 // Re-download history and refit (force)
 app.post('/api/history/sync', async (_req, res) => {
   try {
@@ -326,6 +339,13 @@ app.get('/api/clv', (req, res) => {
     sendError(res, error, 'CLV report failed');
   }
 });
+app.get('/api/clv/probe', async (req, res) => {
+  try {
+    res.json({ data: await clvProbe(req.query.fixture ? Number(req.query.fixture) : undefined), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'CLV probe failed');
+  }
+});
 app.get('/api/clv/tick', async (_req, res) => {
   res.json({ data: await clvTick(), timestamp: new Date().toISOString() });
 });
@@ -362,7 +382,7 @@ const runBacktestHandler = (req: express.Request, res: express.Response) => {
   if (model === MODEL_V3) {
     const conv: any = {};
     for (const [k, v] of Object.entries(req.query)) {
-      if (['season', 'group', 'model', 'divisions'].includes(k)) continue;
+      if (['season', 'group', 'model', 'divisions', 'r', 'token'].includes(k)) continue;
       const num = parseFloat(String(v));
       if (!Number.isFinite(num)) continue;
       const [a, b] = k.split('.');
@@ -370,7 +390,10 @@ const runBacktestHandler = (req: express.Request, res: express.Response) => {
       else conv[a] = num;
     }
     const allDivs = req.query.divisions === 'all'; // include second divisions (Championship, Segunda, Serie B, 2. BL, Ligue 2)
-    job = group ? runBacktestV3(season, group, conv, allDivs) : runBacktestV3All(season, conv, allDivs);
+    // relevance override for this run only, compact syntax: r=1:0,0,0,0 (row #1 off)
+    const rel = req.query.r ? parseCompactVariants(String(req.query.r))[0]?.rel || null : null;
+    if (rel) setRelOverride(rel);
+    job = (group ? runBacktestV3(season, group, conv, allDivs) : runBacktestV3All(season, conv, allDivs)).finally(() => { if (rel) setRelOverride(null); });
   } else {
     job = group ? runBacktest(season, group) : runBacktestAll(season);
   }

@@ -36,7 +36,7 @@ db.exec(`
   );
 `);
 
-async function fetchOdds(fixtureId: number): Promise<{ book: string; h: number; d: number; a: number } | null> {
+export async function fetchOdds(fixtureId: number): Promise<{ book: string; h: number; d: number; a: number } | null> {
   const json = await afGet('/odds', { fixture: fixtureId, bet: 1 }); // bet 1 = Match Winner
   const books: any[] = json.response?.[0]?.bookmakers || [];
   if (!books.length) return null;
@@ -116,6 +116,22 @@ export async function clvTick() {
     last = { at: new Date().toISOString(), opened, closed, settled, note: notes.slice(0, 5).join(' · ') };
   }
   return last;
+}
+
+/** Debug: fetch the odds for one fixture (or the next top-league fixture) and show what we would store. */
+export async function clvProbe(fixtureId?: number) {
+  let id = fixtureId;
+  let fixture: any = null;
+  if (!id) {
+    const top = AF_LEAGUES.filter(l => l.top).map(l => l.id).join(',');
+    fixture = db.prepare(`SELECT fixture_id, kickoff, home_name, away_name FROM af_fixtures WHERE league_id IN (${top}) AND kickoff > ? ORDER BY kickoff LIMIT 1`)
+      .get(new Date().toISOString());
+    id = fixture?.fixture_id;
+  }
+  if (!id) return { error: 'no upcoming fixture' };
+  const raw = await afGet('/odds', { fixture: id, bet: 1 });
+  const books = (raw.response?.[0]?.bookmakers || []).map((b: any) => b.name);
+  return { fixture: fixture || { fixture_id: id }, bookmakers: books, parsed: await fetchOdds(id), results: raw.results, errors: raw.errors };
 }
 
 export function startClvScheduler() {

@@ -62,6 +62,8 @@ const ROWS: RowDef[] = [
 /** Relevance overrides (sweep only): row id → match type → relevance. null = use ROWS. */
 export type RelOverride = Record<string, Partial<Record<MatchType, number>>>;
 let REL_OVERRIDE: RelOverride | null = null;
+/** Set (or clear with null) a relevance override for a backtest run. */
+export function setRelOverride(r: RelOverride | null) { REL_OVERRIDE = r; }
 
 /** Conversion constants — placeholders until calibrated on the backtest. */
 export const CONV = {
