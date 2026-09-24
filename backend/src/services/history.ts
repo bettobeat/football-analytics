@@ -70,6 +70,13 @@ db.exec(`
   );
 `);
 
+// Schema upgrade: best price across bookmakers (Max*) and market average (Avg*), early and closing
+{
+  const cols = (db.prepare(`PRAGMA table_info(history_matches)`).all() as any[]).map(c => c.name);
+  for (const c of ['max_h', 'max_d', 'max_a', 'avg_h', 'avg_d', 'avg_a', 'maxc_h', 'maxc_d', 'maxc_a'])
+    if (!cols.includes(c)) db.exec(`ALTER TABLE history_matches ADD COLUMN ${c} REAL`);
+}
+
 /* ---------------- CSV ---------------- */
 
 function parseCSV(text: string): Record<string, string>[] {
@@ -114,8 +121,9 @@ const num = (s?: string) => {
 
 const insertMatch = db.prepare(`
   INSERT OR REPLACE INTO history_matches
-    (division, season, date, home, away, hg, ag, odds_h, odds_d, odds_a, close_h, close_d, close_a)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (division, season, date, home, away, hg, ag, odds_h, odds_d, odds_a, close_h, close_d, close_a,
+     max_h, max_d, max_a, avg_h, avg_d, avg_a, maxc_h, maxc_d, maxc_a)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 const upsertSync = db.prepare(
   `INSERT OR REPLACE INTO history_sync (division, season, rows, synced_at) VALUES (?, ?, ?, ?)`
@@ -148,7 +156,13 @@ export async function syncDivision(division: string, season: string) {
       const ch = num(r.PSCH) ?? num(r.B365CH) ?? num(r.AvgCH);
       const cd = num(r.PSCD) ?? num(r.B365CD) ?? num(r.AvgCD);
       const ca = num(r.PSCA) ?? num(r.B365CA) ?? num(r.AvgCA);
-      insertMatch.run(division, season, date, r.HomeTeam, r.AwayTeam, hg, ag, oh, od, oa, ch, cd, ca);
+      // Best price across bookmakers and market average (early), best price at close
+      insertMatch.run(
+        division, season, date, r.HomeTeam, r.AwayTeam, hg, ag, oh, od, oa, ch, cd, ca,
+        num(r.MaxH) ?? num(r.BbMxH), num(r.MaxD) ?? num(r.BbMxD), num(r.MaxA) ?? num(r.BbMxA),
+        num(r.AvgH) ?? num(r.BbAvH), num(r.AvgD) ?? num(r.BbAvD), num(r.AvgA) ?? num(r.BbAvA),
+        num(r.MaxCH), num(r.MaxCD), num(r.MaxCA)
+      );
       stored++;
     }
     upsertSync.run(division, season, stored, new Date().toISOString());

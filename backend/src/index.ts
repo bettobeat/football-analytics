@@ -23,7 +23,7 @@ import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestR
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
 import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler } from './services/squadValues';
 import { compareModels } from './services/compareModels';
-import { marketTest } from './services/marketTest';
+import { marketTest, drawTest } from './services/marketTest';
 import { clvTick, clvReport, startClvScheduler, clvProbe } from './services/clv';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures } from './services/apiFootball';
 import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, backfillV3, setRelOverride, SweepVariant } from './services/gridModel';
@@ -444,6 +444,15 @@ app.get('/api/backtest/sweep', sweepHandler);
 app.post('/api/backtest/sweep', sweepHandler);
 app.get('/api/backtest/sweep/result', (_req, res) => {
   res.json({ data: sweeping ? { running: true, progress: sweepProgress } : lastSweep, timestamp: new Date().toISOString() });
+});
+
+// Draw value test: v3's draw picks priced at Pinnacle / average / best available / best at close
+app.get('/api/backtest/draws', (req, res) => {
+  try {
+    res.json({ data: drawTest(String(req.query.season || '2526'), String(req.query.model || MODEL_V3)), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Draw test failed');
+  }
 });
 
 // Can we beat the market? Information (blend), closing-line value and per-division edges: ?season=2526&model=grid-v3

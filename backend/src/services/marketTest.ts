@@ -145,3 +145,74 @@ export function marketTest(season: string, model: string) {
     })
   };
 }
+
+/* ------------------------------------------------------------------ */
+/* Draw value test: v3's draw picks at different prices                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * For every match, a "draw pick" = the model's draw probability × price − 1 ≥ edge.
+ * The same picks are priced four ways: Pinnacle early, market average early, BEST price across
+ * bookmakers early, and best price at close. The question: does line shopping turn the draw signal
+ * (line moves toward v3) into profit?
+ */
+export function drawTest(season: string, model: string) {
+  const rows = db.prepare(`
+    SELECT b.division, b.date, b.home, b.away, b.outcome, b.p_home, b.p_draw, b.p_away,
+           b.odds_home AS ch, b.odds_draw AS cd, b.odds_away AS ca, b.early_h AS eh, b.early_d AS ed, b.early_a AS ea,
+           h.max_d, h.avg_d, h.maxc_d, h.max_h, h.max_a
+    FROM backtest_predictions b
+    JOIN backtest_runs r ON r.id = b.run_id AND r.season = ? AND r.model = ?
+    LEFT JOIN history_matches h ON h.division = b.division AND h.date = b.date AND h.home = b.home AND h.away = b.away
+  `).all(season, model) as any[];
+  const withBest = rows.filter(r => r.max_d).length;
+  type Src = 'pinnacle' | 'average' | 'best' | 'bestClose';
+  const price = (r: any, src: Src): number | null =>
+    src === 'pinnacle' ? r.ed : src === 'average' ? r.avg_d : src === 'best' ? r.max_d : r.maxc_d;
+
+  const run = (edge: number, src: Src, filter?: (r: any) => boolean) => {
+    let bets = 0, wins = 0, profit = 0, oddsSum = 0, clvSum = 0, moved = 0, clvN = 0;
+    for (const r of rows) {
+      if (filter && !filter(r)) continue;
+      const o = price(r, src);
+      if (!o || o <= 1) continue;
+      const pd = r.p_draw / 100;
+      if (pd * o - 1 < edge) continue;
+      bets++;
+      oddsSum += o;
+      const won = r.outcome === 'D';
+      if (won) wins++;
+      profit += won ? o - 1 : -1;
+      const cf = fair([r.ch, r.cd, r.ca]);
+      const ef = fair([r.eh, r.ed, r.ea]);
+      if (cf) { clvSum += o * cf[1] - 1; clvN++; if (ef && cf[1] > ef[1]) moved++; }
+    }
+    return {
+      edge, price: src, bets, wins,
+      hitRate: bets ? r1((wins / bets) * 100) : null,
+      avgOdds: bets ? Math.round((oddsSum / bets) * 100) / 100 : null,
+      roi: bets ? r1((profit / bets) * 100) : null,
+      avgClv: clvN ? r1((clvSum / clvN) * 100) : null,
+      lineMovedOurWay: clvN ? r1((moved / clvN) * 100) : null
+    };
+  };
+  const srcs: Src[] = ['pinnacle', 'average', 'best', 'bestClose'];
+  const edges = [0, 0.03, 0.05, 0.1];
+  // how much better is the best price than Pinnacle's, on draws?
+  const gaps = rows.filter(r => r.max_d && r.ed).map(r => r.max_d / r.ed - 1);
+  const avgGap = gaps.length ? r1((gaps.reduce((a, b) => a + b, 0) / gaps.length) * 100) : null;
+  const byDivision = [...new Set(rows.map(r => r.division))].sort().map(d => ({ division: d, ...run(0.05, 'best', r => r.division === d) }));
+  const bands = [
+    { name: 'v3 draw < 26%', f: (r: any) => r.p_draw < 26 },
+    { name: 'v3 draw 26–30%', f: (r: any) => r.p_draw >= 26 && r.p_draw < 30 },
+    { name: 'v3 draw ≥ 30%', f: (r: any) => r.p_draw >= 30 }
+  ].map(b => ({ band: b.name, ...run(0.05, 'best', b.f) }));
+  return {
+    season, model, matches: rows.length, withBestPrice: withBest,
+    bestVsPinnacleDraw: avgGap, // % higher odds on average
+    grid: edges.map(e => ({ edge: e, byPrice: srcs.map(s => run(e, s)) })),
+    byDrawBand: bands,
+    byDivision,
+    note: withBest ? undefined : 'best/average prices missing — re-sync history seasons to load the Max/Avg columns'
+  };
+}
