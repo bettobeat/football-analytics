@@ -23,6 +23,7 @@ import logger from '../utils/logger';
 import { GROUPS, groupForCompetition, loadGroupMatches, fdNameFor, HistoryMatch } from './history';
 import { Prediction } from './predictionModel';
 import { squadValueFor } from './squadValues';
+import { availabilityFor } from './apiFootball';
 
 export const MODEL_V3 = 'grid-v3';
 
@@ -44,6 +45,8 @@ interface RowDef {
 
 const ROWS: RowDef[] = [
   { id: '#1', name: 'Squad value', rel: { mismatch: 10, standard: 10, even: 10, big: 10 }, kind: 'team', note: 'market value of the 15 most valuable players (transfermarkt-datasets snapshot); stands in for lineup value until lineups are priced' },
+  { id: '#13', name: 'Missing players (injuries / suspensions)', rel: { mismatch: 3, standard: 4, even: 5, big: 5 }, kind: 'team', note: 'regulars listed out for this match, weighted by how often they started the last 10 (API-Football)' },
+  { id: '#12', name: 'Confirmed XI vs usual XI', rel: { mismatch: 4, standard: 5, even: 5, big: 5 }, kind: 'team', note: 'usual starters left out of the confirmed XI (published ~1 h before kick-off)' },
   { id: '#1e', name: 'Strength (Elo)', rel: { mismatch: 5, standard: 5, even: 4, big: 4 }, kind: 'team', note: 'Elo over all results, margin-aware' },
   { id: '#19', name: 'Attack vs opponent tier', rel: { mismatch: 4, standard: 5, even: 5, big: 4 }, kind: 'team' },
   { id: '#14', name: 'Defence vs opponent tier', rel: { mismatch: 4, standard: 4, even: 4, big: 3 }, kind: 'team' },
@@ -75,6 +78,10 @@ export const CONV = {
   // drawMode 0: draw pot base by match type (drawBase);  1: base = goals-model draw chance (Poisson + Dixon-Coles) × drawPoisScale
   drawMode: 1,
   drawPoisScale: 1.0,
+  // availability rows (#13 injuries, #12 confirmed XI): value = 5.5 − k × (starter-equivalents missing)
+  injK: 1.0,
+  xiK: 1.0,
+  useLineups: 1, // backtest/sweep: 1 = final prediction (with confirmed XI), 0 = provisional (injuries only)
   drawClose: 0, // extra draw points when the two totals are level, fading to 0 as |gap| reaches drawCloseSpan
   drawCloseSpan: 0.3,
   gapScale: 0.2, // logistic scale on the relative gap between team totals (backtest-calibrated)
@@ -387,7 +394,7 @@ function poissonDraw(lh: number, la: number) {
   return draw / mass;
 }
 
-export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string, away: string, asOf: string): Prediction | null {
+export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string, away: string, asOf: string, matchDate?: string): Prediction | null {
   const h = state.teams.get(home), a = state.teams.get(away);
   if (!h || !a) return null;
   const derby = isDerby(home, away);
@@ -399,11 +406,11 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   const rows: NonNullable<Prediction['grid']>['rows'] = [];
   let totH = 0, totA = 0, drawFactors = 0, relSum = 0;
 
-  const push = (def: RowDef, vh: number, va: number, note?: string) => {
+  const push = (def: RowDef, vh: number, va: number, note?: string, counted = true) => {
     const rel = REL_OVERRIDE?.[def.id]?.[type] ?? def.rel[type];
     if (def.kind === 'team') {
       const ph = vh * rel, pa = va * rel;
-      totH += ph; totA += pa; relSum += rel;
+      totH += ph; totA += pa; if (counted) relSum += rel;
       rows.push({ id: def.id, name: def.name, rel, home: vh, away: va, edge: Math.round((ph - pa) * 10) / 10, note: note || def.note });
     } else {
       // draw rows: a single value (how much this pushes toward the draw), stored in both columns
@@ -416,6 +423,23 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   const eur = (x: number | null) => (x ? `€${Math.round(x / 1e6)}m` : 'n/a');
   push(R('#1'), h.v.squad, a.v.squad, h.squadEur || a.squadEur ? `top-15 value ${eur(h.squadEur)} vs ${eur(a.squadEur)}` : 'no squad values loaded — neutral');
   push(R('#1e'), h.v.strength, a.v.strength);
+  // availability (API-Football): confirmed XI supersedes the injury list; rows without data are neutral and not counted
+  const av = availabilityFor(state.group, home, away, matchDate || asOf);
+  // a side without enough lineup history counts as neutral (5.5); the row is used when at least one side is known
+  const xiKnown = !!av && (av.home.absent !== null || av.away.absent !== null) && CONV.useLineups === 1;
+  const avVal = (x: number | null, k: number) => (x === null ? 5.5 : Math.round(clamp(5.5 - k * x, CONV.valueLo, CONV.valueHi) * 10) / 10);
+  const names = (l: string[], known: boolean) => (known ? l.join(', ') || 'none' : 'n/a');
+  if (xiKnown) {
+    push(R('#12'), avVal(av!.home.absent, CONV.xiK), avVal(av!.away.absent, CONV.xiK),
+      `usual starters out: ${names(av!.home.absentNames, av!.home.absent !== null)} | ${names(av!.away.absentNames, av!.away.absent !== null)}`);
+    push(R('#13'), 5.5, 5.5, 'covered by the confirmed XI', false);
+  } else {
+    push(R('#12'), 5.5, 5.5, 'XI not published yet', false);
+    if (av && (av.home.missing !== null || av.away.missing !== null))
+      push(R('#13'), avVal(av.home.missing, CONV.injK), avVal(av.away.missing, CONV.injK),
+        `out: ${names(av.home.missingNames, av.home.missing !== null)} | ${names(av.away.missingNames, av.away.missing !== null)}`);
+    else push(R('#13'), 5.5, 5.5, 'no injury data for this match', false);
+  }
   push(R('#19'), h.v.attack, a.v.attack);
   push(R('#14'), h.v.defence, a.v.defence);
   push(R('#10'), h.v.fresh, a.v.fresh, `${h.gamesLast8} vs ${a.gamesLast8} games in the last 8 days`);
@@ -523,7 +547,7 @@ export function predictV3(match: any): Prediction | null {
   const home = fdNameFor(group, match.homeTeam?.id);
   const away = fdNameFor(group, match.awayTeam?.id);
   if (!home || !away) return null;
-  return scoreMatch(live.state, live.all, home, away, live.state.asOf);
+  return scoreMatch(live.state, live.all, home, away, live.state.asOf, String(match.utcDate || '').slice(0, 10) || undefined);
 }
 
 export function modelV3Status() {
@@ -579,7 +603,7 @@ export async function runBacktestV3(season: string, group: string, conv: Partial
         const state = buildState(group, all, from);
         db.exec('BEGIN');
         for (const m of week) {
-          const p = scoreMatch(state, all, m.home, m.away, from);
+          const p = scoreMatch(state, all, m.home, m.away, from, m.date);
           if (!p) continue;
           const outcome = m.hg > m.ag ? 'H' : m.hg < m.ag ? 'A' : 'D';
           insertBt().run(
@@ -671,6 +695,10 @@ export function autoVariants(kind: string, step = 1): SweepVariant[] {
       out.push({ name: `drawMode 1 scale ${ds} kDraw ${k}`, conv: { drawMode: 1, drawPoisScale: ds, kDraw: k } });
     for (const gs of [0.24, 0.28, 0.32, 0.36]) for (const ds of [1.0, 1.1])
       out.push({ name: `both gapScale ${gs} drawScale ${ds}`, conv: { gapMode: 1, gapScale: gs, drawMode: 1, drawPoisScale: ds, kDraw: 1 } });
+  } else if (kind === 'avail') {
+    for (const k of [0, 0.5, 1, 1.5, 2, 3]) out.push({ name: `injK ${k}`, conv: { injK: k } });
+    for (const k of [0, 0.5, 1, 1.5, 2, 3]) out.push({ name: `xiK ${k}`, conv: { xiK: k } });
+    out.push({ name: 'provisional (no XI)', conv: { useLineups: 0 } });
   } else if (kind === 'conv') {
     for (const g of [-0.04, -0.02, 0.02, 0.04]) out.push({ name: `gapScale ${(CONV.gapScale + g).toFixed(2)}`, conv: { gapScale: CONV.gapScale + g } });
     for (const g of [-0.02, -0.01, 0.01, 0.02]) out.push({ name: `homeGap ${(CONV.homeGap + g).toFixed(3)}`, conv: { homeGap: CONV.homeGap + g } });
@@ -768,7 +796,7 @@ export async function sweepV3(season: string, variants: SweepVariant[], baseConv
       let n = 0, hit = 0, brier = 0, ll = 0, drawSum = 0;
       const picks = { H: 0, D: 0, A: 0 };
       for (const it of items) {
-        const p = scoreMatch(it.state, it.all, it.m.home, it.m.away, it.from);
+        const p = scoreMatch(it.state, it.all, it.m.home, it.m.away, it.from, it.m.date);
         if (!p) continue;
         const pH = p.home / 100, pD = p.draw / 100, pA = p.away / 100;
         const o = it.m.hg > it.m.ag ? 'H' : it.m.hg < it.m.ag ? 'A' : 'D';
@@ -870,7 +898,7 @@ export function backfillV3(model = 'dc-history-v2', redo = false) {
         s = { state: buildState(group, all, asOf), all };
         states.set(key, s);
       }
-      const p = scoreMatch(s.state, s.all, home, away, asOf);
+      const p = scoreMatch(s.state, s.all, home, away, asOf, asOf);
       if (!p) { skipped++; skippedWhy['no prediction'] = (skippedWhy['no prediction'] || 0) + 1; continue; }
       insert.run(
         r.match_id, MODEL_V3, r.competition_code, r.competition_name, r.utc_date, r.home_team_id, r.home_team, r.away_team_id, r.away_team,

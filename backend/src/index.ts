@@ -23,6 +23,7 @@ import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestR
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
 import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler } from './services/squadValues';
 import { compareModels } from './services/compareModels';
+import { startApiFootballScheduler, afStatus, afTick } from './services/apiFootball';
 import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, backfillV3, SweepVariant } from './services/gridModel';
 
 const isDev = (process.env.NODE_ENV || 'development') !== 'production';
@@ -304,6 +305,19 @@ const squadSyncHandler = async (_req: express.Request, res: express.Response) =>
 };
 app.post('/api/model/v3/squad/sync', squadSyncHandler);
 
+// API-Football feed (injuries, suspensions, confirmed lineups): status and a manual sync
+app.get('/api/af/status', async (_req, res) => {
+  try {
+    res.json({ data: await afStatus(), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'API-Football status failed');
+  }
+});
+app.get('/api/af/sync', (_req, res) => {
+  afTick(true).catch(() => undefined);
+  res.json({ data: { started: true }, timestamp: new Date().toISOString() });
+});
+
 // Backfill v3 predictions for the tracked matches v2 already has (walk-forward, flagged backfilled=1)
 const backfillHandler = (req: express.Request, res: express.Response) => {
   try {
@@ -536,6 +550,8 @@ server.listen(PORT, () => {
   setInterval(odds, parseInt(process.env.ODDS_TICK_MS || '600000', 10));
   // Squad market values for model v3 (weekly; first attempt after the history sync has team names)
   startSquadValuesScheduler(() => prepareModelV3());
+  // Injuries / suspensions / confirmed lineups (API-Football) for model v3 rows #12 and #13
+  startApiFootballScheduler();
 });
 
 export { app, io };
