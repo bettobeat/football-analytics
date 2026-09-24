@@ -63,6 +63,8 @@ export const CONV = {
   drawBase: { mismatch: 150, standard: 270, even: 320, big: 290 } as Record<MatchType, number>,
   drawCap: { mismatch: 260, standard: 380, even: 400, big: 380 } as Record<MatchType, number>,
   kDraw: 2.0, // points per (value−5) × relevance for draw rows
+  drawClose: 0, // extra draw points when the two totals are level, fading to 0 as |gap| reaches drawCloseSpan
+  drawCloseSpan: 0.3,
   gapScale: 0.28, // logistic scale on the relative gap between team totals (backtest-calibrated)
   homeGap: 0.06, // added to the relative gap for the home side: the league-wide home advantage
                  // (row #23 compares the two sides' home/away records but is centred, so it carries no league-level edge)
@@ -392,10 +394,13 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   // --- draw pot
   const base = CONV.drawBase[type];
   const volatility = 0; // no card/referee feed yet
-  let drawPts = clamp(base + drawFactors + volatility, CONV.floorDraw, CONV.drawCap[type]);
-
-  // --- split the rest by the relative gap
+  // --- relative gap between the two totals (+ league home advantage)
   const gap = (totH - totA) / (totH + totA) + CONV.homeGap;
+  // closeness: draws are likelier when the sides are level
+  const closeness = CONV.drawClose * Math.max(0, 1 - Math.abs(gap) / CONV.drawCloseSpan);
+  let drawPts = clamp(base + drawFactors + volatility + closeness, CONV.floorDraw, CONV.drawCap[type]);
+
+  // --- split the rest by the gap
   const pH = 1 / (1 + Math.exp(-gap / CONV.gapScale));
   let rest = 1000 - drawPts;
   let ptsH = rest * pH, ptsA = rest - ptsH;
@@ -440,7 +445,7 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
       points: { home: ptsH, draw: drawPts, away: ptsA },
       totals: { home: Math.round(totH), away: Math.round(totA) },
       rows,
-      drawPot: { base, factors: Math.round(drawFactors), volatility, total: drawPts },
+      drawPot: { base, factors: Math.round(drawFactors), volatility, closeness: Math.round(closeness), total: drawPts },
       reasons
     }
   };
@@ -623,6 +628,13 @@ export function autoVariants(kind: string, step = 1): SweepVariant[] {
     for (const g of [-0.04, -0.02, 0.02, 0.04]) out.push({ name: `gapScale ${(CONV.gapScale + g).toFixed(2)}`, conv: { gapScale: CONV.gapScale + g } });
     for (const g of [-0.02, -0.01, 0.01, 0.02]) out.push({ name: `homeGap ${(CONV.homeGap + g).toFixed(3)}`, conv: { homeGap: CONV.homeGap + g } });
     for (const k of [1, 3, 4]) out.push({ name: `kDraw ${k}`, conv: { kDraw: k } });
+    for (const c of [40, 80, 120, 160]) for (const sp of [0.2, 0.3, 0.45]) out.push({ name: `drawClose ${c} span ${sp}`, conv: { drawClose: c, drawCloseSpan: sp } });
+    // closeness paid for by a lower base, so the average draw stays put
+    for (const c of [60, 100, 140, 180]) for (const sp of [0.2, 0.3]) for (const f of [0.4, 0.6]) {
+      const shift = Math.round(c * f);
+      const drawBase = Object.fromEntries(MATCH_TYPES.map(t => [t, CONV.drawBase[t] - shift])) as Record<MatchType, number>;
+      out.push({ name: `drawClose ${c} span ${sp} base -${shift}`, conv: { drawClose: c, drawCloseSpan: sp, drawBase } });
+    }
     for (const t of MATCH_TYPES)
       for (const d of [-40, -20, 20, 40])
         out.push({ name: `drawBase.${t} ${CONV.drawBase[t] + d}`, conv: { drawBase: { [t]: CONV.drawBase[t] + d } as any } });

@@ -62,7 +62,7 @@ export interface Prediction {
     points: { home: number; draw: number; away: number }; // out of 1000
     totals: { home: number; away: number };
     rows: { id: string; name: string; rel: number; home: number; away: number; edge: number; note?: string }[];
-    drawPot: { base: number; factors: number; volatility: number; total: number };
+    drawPot: { base: number; factors: number; volatility: number; closeness?: number; total: number };
     reasons: string[];
   };
 }
