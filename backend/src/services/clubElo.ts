@@ -86,7 +86,9 @@ const CLUB_STOP = new Set([
   'sad', 'ev', 'fk', 'sk', 'nk', 'hnk', 'gnk', 'bk', 'if', 'ik', 'kv', 'krc', 'rsc', 'kf', 'pfc', 'ofk', 'sa', 'spa', 'ag', 'gmbh', 'plc',
   'club', 'clube', 'calcio', 'futebol', 'football', 'futbol', 'fussball', 'fotbal', 'fotball', 'fodbold', 'voetbal', 'associazione',
   'sportiva', 'sportivo', 'sportif', 'sport', 'sporting', 'de', 'del', 'di', 'da', 'do', 'of', 'the', 'and', 'y', 'e', 'la', 'le', 'il',
-  'societa', 'company', 'limited', 'ltd', 'spor', 'kulubu', 'kulubü'
+  'societa', 'company', 'limited', 'ltd', 'spor', 'kulubu', 'ff', 'gf', 'il', 'aif', 'ifk', 'ksv', 'kaa', 'ogc', 'losc', 'acf', 'sl', 'jk', 'ks',
+  'fotballklubb', 'fotballklub', 'idrettslag', 'sportsklubb', 'sportklub', 'idrottsforening', 'ballklub', 'fussballclub', 'athlitikos', 'omilos',
+  'spolka', 'akcyjna'
 ]);
 // Written differently on the two sides (after normalising)
 const CLUB_ALIASES: Record<string, string> = {
@@ -101,12 +103,21 @@ const CLUB_ALIASES: Record<string, string> = {
   'sparta praha': 'sparta prag',
   'sporting cp': 'sporting clube portugal',
   'sporting lisbon': 'sporting clube portugal',
+  // Same name as a different, richer club in the data: no squad value rather than a wrong one
+  'cska 1948': '-',
+  velez: '-',
+  partizani: '-',
+  bohemians: '-',
+  'olympiakos piraeus': 'olympiakos',
+  paok: 'panthessalonikios',
+  'aek athens': 'athlitiki enosi',
+  'aek athens fc': 'athlitiki enosi',
+  rennes: 'rennais',
+  'stade rennais': 'rennais',
   'psv eindhoven': 'eindhoven',
   psv: 'eindhoven',
   'rb leipzig': 'leipzig',
-  'olympiakos piraeus': 'olympiakos',
   olympiacos: 'olympiakos',
-  'paok': 'paok thessaloniki',
   'dinamo zagreb': 'dinamo zagreb',
   'ferencvarosi tc': 'ferencvaros',
   'salzburg': 'red bull salzburg',
@@ -135,19 +146,23 @@ function clubNorm(s: string): string {
 function clubTokens(s: string): string[] {
   const n = clubNorm(s);
   const aliased = CLUB_ALIASES[n] || n;
-  const t = aliased.split(' ').filter(w => w && !CLUB_STOP.has(w) && !/^\d+$/.test(w) && w.length > 1);
+  const words = aliased.split(' ').map(w => (w === 'utd' ? 'united' : w === 'st' ? 'saint' : w));
+  const t = words.filter(w => w && !CLUB_STOP.has(w) && !/^\d+$/.test(w) && w.length > 1);
   // keep something for names made only of stop words ("Sporting", "Club")
-  return t.length ? t : aliased.split(' ').filter(w => w && !/^\d+$/.test(w));
+  return t.length ? t : words.filter(w => w && !/^\d+$/.test(w));
 }
-const tokEq = (a: string, b: string) =>
-  a === b ||
-  (Math.min(a.length, b.length) >= 4 && (a.startsWith(b) || b.startsWith(a))) ||
-  (Math.min(a.length, b.length) >= 7 && a.slice(0, 6) === b.slice(0, 6)); // olympiakos ~ olympiacos
+// Same word, or one is a clear abbreviation of the other (prag ~ praha, eindhoven ~ eindhovense)
+const tokEq = (a: string, b: string) => {
+  if (a === b) return true;
+  const [s, l] = a.length <= b.length ? [a, b] : [b, a];
+  return s.length >= 4 && s.length / l.length >= 0.6 && l.startsWith(s);
+};
 
 function matchScore(a: string[], b: string[]): number {
   const ca = a.filter(x => b.some(y => tokEq(x, y))).length;
   const cb = b.filter(y => a.some(x => tokEq(x, y))).length;
-  if (ca < a.length && cb < b.length) return 0; // one side must be fully covered
+  // Every word of the API-Football name must be found ("Arsenal Tivat" is not "Arsenal", "Inter Turku" is not "Inter")
+  if (ca < a.length) return 0;
   const exact = a.filter(x => b.includes(x)).length / Math.max(a.length, b.length);
   return (ca / a.length + cb / b.length) / 2 + 0.1 * exact;
 }
