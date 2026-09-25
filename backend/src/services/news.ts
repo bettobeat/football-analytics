@@ -9,7 +9,7 @@ const FEEDS: { source: string; url: string }[] = [
   { source: 'BBC Sport', url: 'https://feeds.bbci.co.uk/sport/football/rss.xml' },
   { source: 'The Guardian', url: 'https://www.theguardian.com/football/rss' },
   { source: 'ESPN', url: 'https://www.espn.com/espn/rss/soccer/news' },
-  { source: 'Sky Sports', url: 'https://www.skysports.com/rss/12040' }
+  { source: 'Sky Sports', url: 'https://www.skysports.com/rss/11095' }
 ];
 const TTL = 20 * 60 * 1000;
 
@@ -45,6 +45,8 @@ async function fetchFeed(f: { source: string; url: string }): Promise<NewsItem[]
     const title = tag(b, 'title');
     const link = tag(b, 'link') || (b.match(/<guid[^>]*>(https?:[^<]+)<\/guid>/i)?.[1] ?? '');
     if (!title || !/^https:\/\//.test(link)) continue;
+    // football only: some feeds mix in other sports (tennis, F1, cricket…)
+    if (/\/(tennis|f1|formula-1|cricket|golf|boxing|rugby-union|rugby-league|nfl|nba|darts|racing|cycling|snooker|netball|athletics)\//i.test(link)) continue;
     const pub = tag(b, 'pubDate') || tag(b, 'dc:date');
     const d = pub ? new Date(pub) : null;
     const summary = tag(b, 'description').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(); // some feeds escape their HTML
