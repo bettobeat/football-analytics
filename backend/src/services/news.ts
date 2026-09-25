@@ -47,8 +47,8 @@ async function fetchFeed(f: { source: string; url: string }): Promise<NewsItem[]
     if (!title || !/^https:\/\//.test(link)) continue;
     const pub = tag(b, 'pubDate') || tag(b, 'dc:date');
     const d = pub ? new Date(pub) : null;
-    const summary = tag(b, 'description');
-    items.push({ title, link, source: f.source, published: d && !isNaN(d.getTime()) ? d.toISOString() : null, summary: summary.length > 180 ? summary.slice(0, 177) + '…' : summary });
+    const summary = tag(b, 'description').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(); // some feeds escape their HTML
+    items.push({ title, link, source: f.source, published: d && !isNaN(d.getTime()) && d.getTime() <= Date.now() + 5 * 60000 ? d.toISOString() : null, summary: summary.length > 180 ? summary.slice(0, 177) + '…' : summary });
     if (items.length >= 15) break;
   }
   // Some feeds (ESPN) stamp every item with the feed's build time, not the article's. That date is meaningless, so drop it.

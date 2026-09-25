@@ -197,7 +197,10 @@ async function build(afId: number) {
   if (!national && season && seasonStart) {
     try {
       const sf = await g('/fixtures', { team: afId, season }, 3 * 3600 * 1000);
-      validComps = new Set((sf.response || []).filter((f: any) => String(f.fixture?.date || '').slice(0, 10) >= seasonStart).map((f: any) => f.league?.id));
+      // only competitions the team has actually played in since the season started (not future ones: the provider
+      // files e.g. the Super Cup of Jan 2026 AND the one of Feb 2027 under the same season)
+      const nowIso = new Date().toISOString();
+      validComps = new Set((sf.response || []).filter((f: any) => { const d = String(f.fixture?.date || ''); return d.slice(0, 10) >= seasonStart && d <= nowIso; }).map((f: any) => f.league?.id));
       if (!validComps.size) validComps = null;
     } catch (e: any) {
       logger.warn(`team page season fixtures ${afId}: ${e.message}`);
