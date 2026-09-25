@@ -211,7 +211,8 @@ export function clubValueReport(q?: string) {
 
 /* ---------- ratings ---------- */
 
-const ratings = new Map<number, { elo: number; name: string; n: number; cup: number }>(); // key = API-Football team id
+type ClubState = { elo: number; name: string; n: number; cup: number; att: number; def: number; recent: number[]; last: string };
+const ratings = new Map<number, ClubState>(); // key = API-Football team id
 const byNorm = new Map<string, number>(); // normalised name → team id (for Football-Data.org Champions League matches)
 const fdCache = new Map<number, number | null>(); // Football-Data.org team id → API-Football team id
 let fit = { c: 60, s: 110, beta: 0 };
@@ -227,13 +228,75 @@ function probs(d: number, c = fit.c, s = fit.s) {
 }
 const gdMult = (gd: number) => { const g = Math.abs(gd); return g <= 1 ? 1 : g === 2 ? 1.5 : (11 + g) / 8; };
 
+/* ---------- v3 European-cup grid (same idea as the national-team engine) ---------- */
+/*
+ * Rows (home − away, all known before kick-off; ratings run over domestic + cup games in one timeline):
+ *   strength (Elo gap), squad value (ln ratio, Transfermarkt top 15), goals (online Poisson attack/defence),
+ *   form (last 6 vs Elo expectation), rest days (cup games come 3–4 days after league games), home advantage.
+ * Ordered logit; draw threshold per competition (CL / EL / ECL) + g × (Poisson draw − 0.27).
+ * Fitted on the older 60 % of cup matches starting from the Elo-only fit, judged on the newest 40 %;
+ * the live engine is whichever scores better there.
+ */
+interface CFeat { dElo: number; lv: number; gl: number; form: number; rest: number; pDraw: number; cup: number; lamH: number; lamA: number }
+const CW = ['w_elo', 'w_squad', 'w_goals', 'w_form', 'w_rest', 'w_home', 'c_cl', 'c_el', 'c_ecl', 'g_draw'] as const;
+type CupW = Record<(typeof CW)[number], number>;
+let cupW: CupW = { w_elo: 0.5, w_squad: 0, w_goals: 0, w_form: 0, w_rest: 0, w_home: 0.3, c_cl: 0.5, c_el: 0.5, c_ecl: 0.5, g_draw: 0 };
+let engine: 'grid' | 'elo' = 'elo';
+const MU = Math.log(1.35), HOME_G = 0.2;
+function poissonDraw(lh: number, la: number) {
+  let d = 0, ph = Math.exp(-lh), pa = Math.exp(-la);
+  for (let k = 0; k <= 10; k++) { d += ph * pa; ph *= lh / (k + 1); pa *= la / (k + 1); }
+  return d;
+}
+const lambdas = (H: ClubState, A: ClubState, home = true) => ({ lamH: Math.exp(MU + H.att - A.def + (home ? HOME_G : 0)), lamA: Math.exp(MU + A.att - H.def) });
+function cfeat(H: ClubState, A: ClubState, cup: number, date: string, vh: number | null, va: number | null): CFeat {
+  const { lamH, lamA } = lambdas(H, A);
+  const nh = lambdas(H, A, false);
+  const days = (x: string) => (x ? Math.min(10, (new Date(date).getTime() - new Date(x).getTime()) / 86400000) : 10);
+  const avg = (a: number[]) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0);
+  return { dElo: (H.elo - A.elo) / 100, lv: vh && va ? Math.log(vh / va) : 0, gl: Math.log(nh.lamH / nh.lamA), form: avg(H.recent) - avg(A.recent), rest: (days(H.last) - days(A.last)) / 10, pDraw: poissonDraw(lamH, lamA), cup, lamH, lamA };
+}
+function cupProbs(f: CFeat, w: CupW = cupW) {
+  const z = w.w_elo * f.dElo + w.w_squad * f.lv + w.w_goals * f.gl + w.w_form * f.form + w.w_rest * f.rest + w.w_home;
+  const c = Math.max(0.05, (f.cup === 2 ? w.c_cl : f.cup === 3 ? w.c_el : w.c_ecl) + w.g_draw * (f.pDraw - 0.27));
+  const h = sig(z - c), a = sig(-z - c);
+  const dr = Math.max(0.03, 1 - h - a);
+  const t = h + a + dr;
+  return { h: h / t, d: dr / t, a: a / t, z };
+}
+function cupNll(xs: { f: CFeat; o: 'H' | 'D' | 'A' }[], w: CupW) {
+  let ll = 0;
+  for (const x of xs) { const p = cupProbs(x.f, w); ll -= Math.log(Math.max(1e-6, x.o === 'H' ? p.h : x.o === 'D' ? p.d : p.a)); }
+  return ll / Math.max(1, xs.length);
+}
+function fitCup(xs: { f: CFeat; o: 'H' | 'D' | 'A' }[], start: CupW): CupW {
+  const w: any = { ...start };
+  let best = cupNll(xs, w), step = 0.2;
+  for (let pass = 0; pass < 80 && step > 0.002; pass++) {
+    let improved = false;
+    for (const k of CW) for (const dir of [1, -1]) {
+      const old = w[k];
+      w[k] = old + dir * step;
+      if (k.startsWith('c_')) w[k] = Math.max(0.05, w[k]);
+      const v = cupNll(xs, w);
+      if (v < best - 1e-7) { best = v; improved = true; break; }
+      w[k] = old;
+    }
+    if (!improved) step /= 2;
+  }
+  return w;
+}
+const cupFromElo = (e: { c: number; s: number; beta: number }): CupW => ({
+  w_elo: 100 / e.s, w_squad: e.beta / e.s, w_goals: 0, w_form: 0, w_rest: 0, w_home: HA / e.s, c_cl: e.c / e.s, c_el: e.c / e.s, c_ecl: e.c / e.s, g_draw: 0
+});
+
 export function buildClubElo() {
   loadClubValues();
   valueByName.clear();
   const domestic = db.prepare(`
     SELECT fixture_id, date, home_id, away_id, home_name, away_name, hg, ag, 0 AS cup FROM af_fixtures
     WHERE status IN ('FT','AET','PEN') AND hg IS NOT NULL`).all() as any[];
-  const cups = db.prepare(`SELECT fixture_id, date, home_id, away_id, home_name, away_name, hg, ag, 1 AS cup FROM eur_matches`).all() as any[];
+  const cups = db.prepare(`SELECT fixture_id, date, home_id, away_id, home_name, away_name, hg, ag, league_id AS cup FROM eur_matches`).all() as any[];
   const all = [...domestic, ...cups].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.fixture_id - b.fixture_id));
   ratings.clear();
   byNorm.clear();
@@ -243,26 +306,34 @@ export function buildClubElo() {
     let r = ratings.get(id);
     if (!r) {
       const v = clubValueFor(name);
-      r = { elo: v ? 1500 + 120 * Math.log(v / median) : 1400, name, n: 0, cup: 0 };
+      r = { elo: v ? 1500 + 120 * Math.log(v / median) : 1400, name, n: 0, cup: 0, att: 0, def: 0, recent: [], last: '' };
       ratings.set(id, r);
       byNorm.set(normalizeName(name), id);
     }
     return r;
   };
-  const pre: { d: number; lv: number; o: 'H' | 'D' | 'A'; date: string }[] = [];
+  const pre: { d: number; lv: number; o: 'H' | 'D' | 'A'; date: string; f: CFeat }[] = [];
   for (const m of all) {
     const H = get(m.home_id, m.home_name), A = get(m.away_id, m.away_name);
     const d = H.elo - A.elo + HA;
     const o = m.hg > m.ag ? 'H' : m.hg < m.ag ? 'A' : 'D';
     if (m.cup && H.n >= 8 && A.n >= 8) {
       const vh = clubValueFor(H.name), va = clubValueFor(A.name);
-      pre.push({ d, lv: vh && va ? Math.log(vh / va) : 0, o, date: m.date });
+      pre.push({ d, lv: vh && va ? Math.log(vh / va) : 0, o, date: m.date, f: cfeat(H, A, m.cup, m.date, vh, va) });
     }
     const we = 1 / (1 + Math.pow(10, -d / 400));
     const w = o === 'H' ? 1 : o === 'D' ? 0.5 : 0;
     const delta = (m.cup ? K_CUP : K_DOMESTIC) * gdMult(m.hg - m.ag) * (w - we);
     H.elo += delta; A.elo -= delta;
-    H.n++; A.n++;
+    H.recent.push(w - we); A.recent.push(we - w);
+    if (H.recent.length > 6) H.recent.shift();
+    if (A.recent.length > 6) A.recent.shift();
+    const { lamH, lamA } = lambdas(H, A);
+    const eta = 0.035;
+    const eh = Math.max(-3, Math.min(3, m.hg - lamH)), ea = Math.max(-3, Math.min(3, m.ag - lamA));
+    H.att += eta * eh; A.def -= eta * eh;
+    A.att += eta * ea; H.def -= eta * ea;
+    H.n++; A.n++; H.last = m.date; A.last = m.date;
     if (m.cup) { H.cup++; A.cup++; }
   }
   // fit on cup matches; evaluate on the most recent 40 % of them
@@ -273,39 +344,51 @@ export function buildClubElo() {
     for (const x of xs) { const p = probs(x.d + b * x.lv, c, s); ll -= Math.log(Math.max(1e-6, x.o === 'H' ? p.h : x.o === 'D' ? p.d : p.a)); }
     return ll;
   };
-  const grid = (betas: number[]) => {
+  const grid = (xs: typeof pre, betas: number[]) => {
     let best = { ll: Infinity, c: 60, s: 110, beta: 0 };
     for (const b of betas) for (let c = 0; c <= 300; c += 10) for (let s = 60; s <= 400; s += 10) {
-      const ll = llOf(train, c, s, b);
+      const ll = llOf(xs, c, s, b);
       if (ll < best.ll) best = { ll, c, s, beta: b };
     }
     return best;
   };
   const r3 = (v: number) => Math.round(v * 1000) / 1000;
-  const score = (c: number, s: number, b: number) => {
-    let brier = 0, ll = 0, hits = 0;
+  const score = (pf: (x: (typeof pre)[number]) => { h: number; d: number; a: number }) => {
+    let brier = 0, ll = 0, hits = 0, pd = 0, rd = 0;
     for (const x of test) {
-      const p = probs(x.d + b * x.lv, c, s);
+      const p = pf(x);
       brier += (p.h - (x.o === 'H' ? 1 : 0)) ** 2 + (p.d - (x.o === 'D' ? 1 : 0)) ** 2 + (p.a - (x.o === 'A' ? 1 : 0)) ** 2;
       ll -= Math.log(Math.max(1e-6, x.o === 'H' ? p.h : x.o === 'D' ? p.d : p.a));
       const pick = p.h >= p.d && p.h >= p.a ? 'H' : p.a >= p.d ? 'A' : 'D';
       if (pick === x.o) hits++;
+      pd += p.d;
+      if (x.o === 'D') rd++;
     }
-    return test.length ? { brier: r3(brier / test.length), logLoss: r3(ll / test.length), hitRate: Math.round((hits / test.length) * 1000) / 10 } : null;
+    const n = Math.max(1, test.length);
+    return test.length ? { brier: r3(brier / n), logLoss: r3(ll / n), hitRate: Math.round((hits / n) * 1000) / 10, predDraw: Math.round((pd / n) * 1000) / 10, realDraw: Math.round((rd / n) * 1000) / 10 } : null;
   };
+  const BETAS = [0, 25, 50, 75, 100, 125, 150, 200, 250];
   if (train.length >= 100) {
-    const base = grid([0]);
-    const withV = grid([0, 25, 50, 75, 100, 125, 150, 200, 250]);
-    fit = { c: withV.c, s: withV.s, beta: withV.beta };
+    const base = grid(train, [0]);
+    const withV = grid(train, BETAS);
+    const cupTrain = fitCup(train, cupFromElo(withV));
+    const eloTest = score(x => probs(x.d + withV.beta * x.lv, withV.c, withV.s));
+    const gridTest = score(x => cupProbs(x.f, cupTrain));
+    engine = test.length >= 300 && gridTest && eloTest && gridTest.logLoss < eloTest.logLoss ? 'grid' : 'elo';
+    // live parameters from every cup match
+    const allV = grid(pre, BETAS);
+    fit = { c: allV.c, s: allV.s, beta: allV.beta };
+    cupW = engine === 'grid' ? fitCup(pre, cupFromElo(allV)) : cupTrain;
+    const rw = (w: CupW) => Object.fromEntries(Object.entries(w).map(([k, v]) => [k, Math.round(v * 1000) / 1000]));
     evalStats = {
       cupMatchesFit: train.length, cupMatchesTest: test.length,
-      eloOnly: score(base.c, base.s, 0), eloPlusSquadValue: score(withV.c, withV.s, withV.beta),
+      eloOnly: score(x => probs(x.d, base.c, base.s)), eloPlusSquadValue: eloTest, grid: gridTest, engine, gridWeightsTest: rw(cupTrain),
       note: 'fitted on the older 60% of UEFA cup matches, scored on the newest 40% (out-of-sample)'
     };
   }
   lastBuilt = new Date().toISOString();
-  logger.info(`Club Elo: ${all.length} matches (${cups.length} UEFA cup), ${ratings.size} clubs, fit ${JSON.stringify(fit)}`);
-  return { matches: all.length, cupMatches: cups.length, clubs: ratings.size };
+  logger.info(`Club Elo: ${all.length} matches (${cups.length} UEFA cup), ${ratings.size} clubs, engine ${engine}`);
+  return { matches: all.length, cupMatches: cups.length, clubs: ratings.size, engine };
 }
 
 /* ---------- prediction ---------- */
@@ -331,14 +414,35 @@ function findTeam(match: any, side: 'homeTeam' | 'awayTeam') {
 
 function poisson(l: number, k: number) { let p = Math.exp(-l); for (let i = 1; i <= k; i++) p *= l / i; return p; }
 
+const CUP_OF_CODE: Record<string, number> = { CL: 2, AF2: 2, AF3: 3, AF848: 848 };
+let popStats: { at: number; s: Record<string, { mean: number; sd: number }> } | null = null;
+function population() {
+  if (popStats && Date.now() - popStats.at < 3600_000) return popStats.s;
+  const act = [...ratings.values()].filter(r => r.cup >= 6);
+  const ms = (xs: number[]) => {
+    const mean = xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);
+    return { mean, sd: Math.sqrt(xs.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(1, xs.length - 1)) || 1 };
+  };
+  const avg = (a: number[]) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0);
+  const vals = act.map(r => clubValueFor(r.name)).filter((v): v is number => !!v).map(v => Math.log(v));
+  const s = { elo: ms(act.map(r => r.elo)), squad: ms(vals), goals: ms(act.map(r => r.att + r.def)), form: ms(act.map(r => avg(r.recent))) };
+  popStats = { at: Date.now(), s };
+  return s;
+}
+const scale = (x: number, m: { mean: number; sd: number }) => Math.round(Math.max(1, Math.min(10, 5.5 + 2.25 * ((x - m.mean) / m.sd))) * 10) / 10;
+
 export function predictClubEuro(match: any): Prediction | null {
   const H = findTeam(match, 'homeTeam'), A = findTeam(match, 'awayTeam');
   if (!H || !A || H.n < 8 || A.n < 8) return null;
   const vh = clubValueFor(H.name), va = clubValueFor(A.name);
   const valueTerm = vh && va ? fit.beta * Math.log(vh / va) : 0;
   const d = H.elo - A.elo + HA + valueTerm;
-  const p = probs(d);
-  const lamH = Math.max(0.2, 1.45 * Math.exp(d / 700)), lamA = Math.max(0.2, 1.2 * Math.exp(-d / 700));
+  const cup = CUP_OF_CODE[match.competition?.code] || 3;
+  const f = cfeat(H, A, cup, String(match.utcDate || new Date().toISOString()).slice(0, 10), vh, va);
+  const g = engine === 'grid' ? cupProbs(f) : null;
+  const p = g || probs(d);
+  const lamH = g ? Math.min(4, Math.max(0.2, f.lamH)) : Math.max(0.2, 1.45 * Math.exp(d / 700));
+  const lamA = g ? Math.min(4, Math.max(0.2, f.lamA)) : Math.max(0.2, 1.2 * Math.exp(-d / 700));
   let over25 = 0, btts = 0;
   const scores: { home: number; away: number; prob: number }[] = [];
   for (let i = 0; i <= 8; i++) for (let j = 0; j <= 8; j++) {
@@ -349,7 +453,7 @@ export function predictClubEuro(match: any): Prediction | null {
   }
   scores.sort((x, y) => y.prob - x.prob);
   const pct = (x: number) => Math.round(x * 1000) / 10;
-  return {
+  const out: Prediction = {
     model: MODEL_EURO,
     home: pct(p.h), draw: pct(p.d), away: pct(p.a),
     expectedGoals: { home: Math.round(lamH * 100) / 100, away: Math.round(lamA * 100) / 100 },
@@ -361,13 +465,42 @@ export function predictClubEuro(match: any): Prediction | null {
       homeAdvantage: HA, homeForm: Math.round(valueTerm), awayForm: 1, gamesPlayed: { home: H.n, away: A.n }, leagueAvgGoals: 1.3
     }
   };
+  if (g) {
+    const ps = population();
+    const w = cupW;
+    const avg = (a: number[]) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0);
+    const edge = (x: number) => Math.round(x * 250) / 10;
+    const relOf = (x: number) => Math.max(1, Math.min(5, Math.round(Math.abs(x) * 5)));
+    const eur = (x: number | null) => (x ? `€${Math.round(x / 1e6)}m` : 'n/a');
+    const rows: NonNullable<Prediction['grid']>['rows'] = [
+      { id: '#1e', name: 'Strength (rating)', rel: relOf(w.w_elo), home: scale(H.elo, ps.elo), away: scale(A.elo, ps.elo), edge: edge(w.w_elo * f.dElo), note: `rating ${Math.round(H.elo)} vs ${Math.round(A.elo)}` },
+      { id: '#1', name: 'Squad value', rel: relOf(w.w_squad), home: vh ? scale(Math.log(vh), ps.squad) : 5.5, away: va ? scale(Math.log(va), ps.squad) : 5.5, edge: edge(w.w_squad * f.lv), note: `top-15 value ${eur(vh)} vs ${eur(va)}` },
+      { id: '#19', name: 'Goals: attack vs defence', rel: relOf(w.w_goals), home: scale(H.att + H.def, ps.goals), away: scale(A.att + A.def, ps.goals), edge: edge(w.w_goals * f.gl), note: `expected goals ${out.expectedGoals.home} vs ${out.expectedGoals.away}` },
+      { id: '#21', name: 'Form, last 6 (vs expectation)', rel: relOf(w.w_form), home: scale(avg(H.recent), ps.form), away: scale(avg(A.recent), ps.form), edge: edge(w.w_form * f.form) },
+      { id: '#10', name: 'Rest days', rel: relOf(w.w_rest), home: Math.round((5.5 + f.rest * 4.5) * 10) / 10, away: Math.round((5.5 - f.rest * 4.5) * 10) / 10, edge: edge(w.w_rest * f.rest) },
+      { id: '#23', name: 'Home advantage', rel: relOf(w.w_home), home: 7, away: 5.5, edge: edge(w.w_home) }
+    ];
+    const reasons = rows.filter(r => Math.abs(r.edge) >= 3).sort((a, b) => Math.abs(b.edge) - Math.abs(a.edge)).slice(0, 3)
+      .map(r => `${r.name}: ${r.edge > 0 ? H.name : A.name} +${Math.abs(r.edge)}`);
+    const ptsH = Math.round(p.h * 1000), ptsA = Math.round(p.a * 1000);
+    out.grid = {
+      matchType: Math.abs(g.z) > 1.4 ? 'mismatch' : Math.abs(g.z) < 0.35 ? 'even' : 'standard',
+      points: { home: ptsH, draw: 1000 - ptsH - ptsA, away: ptsA },
+      totals: { home: Math.round(rows.reduce((s, r) => s + Math.max(0, r.edge), 0) * 10) / 10, away: Math.round(rows.reduce((s, r) => s + Math.max(0, -r.edge), 0) * 10) / 10 },
+      rows,
+      drawPot: { base: Math.round(f.pDraw * 1000), factors: 0, volatility: 0, total: 1000 - ptsH - ptsA },
+      reasons,
+      scope: 'cups'
+    };
+  }
+  return out;
 }
 
 export function clubEloStatus() {
   const top = [...ratings.values()].filter(r => r.cup >= 6).sort((a, b) => b.elo - a.elo).slice(0, 25)
     .map((r, i) => ({ rank: i + 1, club: r.name, elo: Math.round(r.elo), cupMatches: r.cup, squadValueM: Math.round((clubValueFor(r.name) || 0) / 1e6), valueClub: clubValueMatch(r.name)?.club || null }));
   const n: any = db.prepare(`SELECT COUNT(*) AS n, MIN(date) AS first, MAX(date) AS last FROM eur_matches`).get();
-  return { model: MODEL_EURO, lastBuilt, cupMatches: n, clubs: ratings.size, clubValues: clubValues.length, fit, evaluation: evalStats, top };
+  return { model: MODEL_EURO, engine, gridWeights: cupW, lastBuilt, cupMatches: n, clubs: ratings.size, clubValues: clubValues.length, fit, evaluation: evalStats, top };
 }
 
 export function startClubEloScheduler() {

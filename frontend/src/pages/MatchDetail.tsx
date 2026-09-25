@@ -311,11 +311,11 @@ function GridBreakdown({ p, home, away }: { p: Prediction; home: Team; away: Tea
           </span>
         </div>
       )}
-      {g.scope === 'national' ? (
+      {g.scope === 'national' || g.scope === 'cups' ? (
       <p className="mt-3 text-[11px] text-faint">
-        v3's national-team engine. Each parameter is scored among all active national teams (5.5 = average) and weighted by how much it
-        predicted results since 2018. Edge = how many points (out of 1000) that parameter moves toward one side. Friendlies count for less,
-        because teams rotate their squads.
+        {g.scope === 'national'
+          ? "v3's national-team engine. Each parameter is scored among all active national teams (5.5 = average) and weighted by how much it predicted results since 2018. Edge = how many points (out of 1000) that parameter moves toward one side. Friendlies count for less, because teams rotate their squads."
+          : "v3's European-cup engine. Each parameter is scored among all clubs playing in UEFA competitions (5.5 = average), from their league and cup games together, and weighted by how much it predicted past cup results. Edge = how many points (out of 1000) that parameter moves toward one side."}
       </p>
       ) : (
       <p className="mt-3 text-[11px] text-faint">

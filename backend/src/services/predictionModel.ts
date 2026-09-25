@@ -65,7 +65,7 @@ export interface Prediction {
     drawPot: { base: number; factors: number; volatility: number; closeness?: number; total: number };
     reasons: string[];
     /** 'national' = the national-team engine of v3 (values ranked among national teams) */
-    scope?: 'league' | 'national';
+    scope?: 'league' | 'national' | 'cups';
   };
 }
 
