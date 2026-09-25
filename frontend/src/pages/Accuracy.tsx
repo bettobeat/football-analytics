@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
+import { errorText, useAuth } from '../lib/auth'
 
 type Outcome = 'H' | 'D' | 'A'
 
@@ -120,7 +121,7 @@ function Accuracy() {
         setStatus(st.data.data)
         setError(null)
       })
-      .catch(err => setError(err.response?.data?.message || err.message))
+      .catch(err => setError(errorText(err)))
   }, [tab, days, competition, model])
 
   const comps = summary?.byCompetition || []
@@ -553,6 +554,7 @@ const GROUP_NAME: Record<string, string> = {
 }
 
 function Backtest() {
+  const isAdmin = useAuth().access === 'admin'
   const [group, setGroup] = useState<string>('ALL')
   const [btModel, setBtModel] = useState<'dc-history-v2' | 'grid-v3'>('dc-history-v2')
   const [oddsKind, setOddsKind] = useState<'close' | 'early'>('close')
@@ -571,7 +573,7 @@ function Backtest() {
         setHist(h.data.data)
         setError(null)
       })
-      .catch(err => setError(err.response?.data?.message || err.message))
+      .catch(err => setError(errorText(err)))
   }
 
   useEffect(load, [group, oddsKind, edge, btModel])
@@ -588,7 +590,7 @@ function Backtest() {
     axios
       .post(`${API_URL}/backtest/run`, null, { params: { season: BACKTEST_SEASON, model: btModel } })
       .then(() => setTimeout(load, 1500))
-      .catch(err => setError(err.response?.data?.message || err.message))
+      .catch(err => setError(errorText(err)))
       .finally(() => setStarting(false))
   }
 
@@ -636,6 +638,7 @@ function Backtest() {
               </button>
             ))}
           </div>
+        {isAdmin && (
         <button
           onClick={start}
           disabled={starting || !!data?.progress}
@@ -643,6 +646,7 @@ function Backtest() {
         >
           {data?.progress ? `Running ${GROUP_NAME[data.progress.group] || data.progress.group} · ${data.progress.done}/${data.progress.total}` : `Run ${btModel === 'grid-v3' ? 'v3' : 'v2'} backtest 2025–26`}
         </button>
+        )}
         </div>
       </div>
 
@@ -668,7 +672,7 @@ function Backtest() {
       {data && data.settled === 0 && !data.progress && (
         <div className="card p-12 text-center text-muted">
           <p className="font-display text-lg font-bold text-ink mb-1">No backtest yet</p>
-          <p className="text-sm">Click "Run backtest" — it takes about a minute for all leagues.</p>
+          <p className="text-sm">{isAdmin ? 'Click "Run backtest" — it takes about a minute for all leagues.' : 'Results will appear here soon.'}</p>
         </div>
       )}
 

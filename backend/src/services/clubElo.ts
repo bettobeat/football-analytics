@@ -45,8 +45,8 @@ export async function syncEuropeanCups(force = false) {
         db.exec('BEGIN');
         for (const f of j.response || []) {
           if (!['FT', 'AET', 'PEN'].includes(f.fixture?.status?.short)) continue;
-          const hg = f.score?.extratime?.home ?? f.score?.fulltime?.home ?? f.goals?.home;
-          const ag = f.score?.extratime?.away ?? f.score?.fulltime?.away ?? f.goals?.away;
+          const hg = f.goals?.home ?? f.score?.fulltime?.home;
+          const ag = f.goals?.away ?? f.score?.fulltime?.away;
           if (hg === null || hg === undefined || ag === null || ag === undefined) continue;
           ins.run(f.fixture.id, id, s, String(f.fixture.date).slice(0, 10), f.teams.home.id, f.teams.away.id, f.teams.home.name, f.teams.away.name, hg, ag);
           n++;

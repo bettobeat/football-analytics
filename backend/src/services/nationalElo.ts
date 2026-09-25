@@ -61,8 +61,8 @@ async function syncLeagueSeason(leagueId: number, season: number) {
       const h = f.teams?.home, a = f.teams?.away;
       if (!h?.id || !a?.id || YOUTH.test(h.name || '') || YOUTH.test(a.name || '')) continue;
       // score after 90/120 minutes (penalty shoot-outs count as a draw)
-      const hg = f.score?.extratime?.home ?? f.score?.fulltime?.home ?? f.goals?.home;
-      const ag = f.score?.extratime?.away ?? f.score?.fulltime?.away ?? f.goals?.away;
+      const hg = f.goals?.home ?? f.score?.fulltime?.home;
+      const ag = f.goals?.away ?? f.score?.fulltime?.away;
       if (hg === null || hg === undefined || ag === null || ag === undefined) continue;
       ins.run(f.fixture.id, leagueId, String(f.fixture.date).slice(0, 10), h.id, a.id, h.name, a.name, hg, ag);
       n++;

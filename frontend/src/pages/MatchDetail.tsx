@@ -297,7 +297,10 @@ function MatchDetail() {
     : false
   useEffect(() => {
     if (!matchId) return
-    socket.emit('subscribe_match', matchId)
+    // rooms belong to one connection: subscribe again after every (re)connect
+    const subscribe = () => socket.emit('subscribe_match', matchId)
+    subscribe()
+    socket.on('connect', subscribe)
     const onLive = (m: Match) => {
       if (m.id !== matchId) return
       // Only take the live fields — the slim live payload has no lineups/stats/events
@@ -317,6 +320,7 @@ function MatchDetail() {
     }
     return () => {
       socket.emit('unsubscribe_match', matchId)
+      socket.off('connect', subscribe)
       socket.off('match:live', onLive)
       if (timer) clearInterval(timer)
     }
@@ -795,7 +799,7 @@ function LockedPrediction({ p, pick, home, away, market }: { p: Prediction; pick
                 See Premium
               </Link>
               {!user && (
-                <Link to="/login" className="px-3.5 py-1.5 rounded-xl border border-line text-sm font-medium text-ink hover:border-faint">
+                <Link to={`/login?next=${encodeURIComponent(window.location.pathname)}`} className="px-3.5 py-1.5 rounded-xl border border-line text-sm font-medium text-ink hover:border-faint">
                   Sign in
                 </Link>
               )}

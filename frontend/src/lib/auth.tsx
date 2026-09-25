@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import axios from 'axios'
 import { API_URL, socket } from './socket'
 
@@ -81,24 +81,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     refresh()
+    // pick up changes made elsewhere (Premium granted/expired, signed out in another tab)
+    const onFocus = () => {
+      if (document.visibilityState === 'visible') refresh()
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onFocus)
+    }
   }, [refresh])
+
+  // Live-score rooms (full / teaser) are chosen at connect time: reconnect when the access level changes
+  const firstAccess = useRef(true)
+  useEffect(() => {
+    if (firstAccess.current) {
+      firstAccess.current = false
+      return
+    }
+    reconnectSocket()
+  }, [access])
 
   const login = async (email: string, password: string) => {
     const r = await axios.post(`${API_URL}/auth/login`, { email, password })
     apply(r.data)
-    reconnectSocket()
   }
 
   const signup = async (email: string, password: string, name?: string, optIn?: boolean) => {
     const r = await axios.post(`${API_URL}/auth/signup`, { email, password, name, optIn: !!optIn })
     apply(r.data)
-    reconnectSocket()
   }
 
   const verify = async (code: string) => {
     const r = await axios.post(`${API_URL}/auth/verify`, { code })
     apply(r.data)
-    reconnectSocket()
   }
 
   const resendCode = async () => {
@@ -108,7 +125,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const resetPassword = async (email: string, code: string, password: string) => {
     const r = await axios.post(`${API_URL}/auth/reset`, { email, code, password })
     apply(r.data)
-    reconnectSocket()
   }
 
   const setOptIn = async (on: boolean) => {
@@ -119,10 +135,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     try {
       await axios.post(`${API_URL}/auth/logout`)
-    } finally {
-      apply({ user: null, access: 'anon' })
-      reconnectSocket()
+    } catch {
+      /* signed out locally anyway; the next /auth/me call shows the real state */
     }
+    apply({ user: null, access: 'anon' })
   }
 
   const full = access === 'premium' || access === 'admin'

@@ -16,11 +16,11 @@ import { useTheme } from './lib/theme'
 
 function Logo() {
   return (
-    <Link to="/" className="flex items-center gap-2.5 group">
+    <Link to="/" className="flex items-center gap-2.5 group min-w-0">
       <span className="relative grid place-items-center w-9 h-9 rounded-xl bg-accent text-bg font-display font-extrabold text-sm tracking-tight shadow-card">
         B2B
       </span>
-      <span className="font-display font-bold text-lg tracking-tight text-ink">
+      <span className="hidden min-[380px]:inline font-display font-bold text-lg tracking-tight text-ink">
         Bet<span className="text-accent">To</span>Beat
       </span>
     </Link>
@@ -51,10 +51,13 @@ function ThemeToggle({ theme, onToggle }: { theme: 'dark' | 'light'; onToggle: (
 
 function UserMenu() {
   const { user, access, loading } = useAuth()
+  const loc = useLocation()
   if (loading) return <div className="w-9 h-9" />
   if (!user)
     return (
-      <Link to="/login" className="px-3.5 py-2 rounded-xl bg-accent text-bg text-sm font-semibold whitespace-nowrap">
+      <Link
+        to={['/login', '/signup', '/verify', '/forgot'].includes(loc.pathname) ? '/login' : `/login?next=${encodeURIComponent(loc.pathname)}`}
+        className="px-3.5 py-2 rounded-xl bg-accent text-bg text-sm font-semibold whitespace-nowrap">
         Sign in
       </Link>
     )

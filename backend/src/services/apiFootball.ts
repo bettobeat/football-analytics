@@ -22,7 +22,9 @@ import { playerValue } from './squadValues';
 
 const BASE = 'https://v3.football.api-sports.io';
 const KEY = () => process.env.API_FOOTBALL_KEY || '';
-const RESERVE = parseInt(process.env.API_FOOTBALL_RESERVE || '800', 10); // never spend the last N daily requests
+// The lineup/injury backfill never spends the last N daily requests: they are kept for the live side
+// (match window, live scores, match pages, CLV, Elo syncs), which needs roughly 2-3k a day.
+const RESERVE = parseInt(process.env.API_FOOTBALL_RESERVE || '3000', 10);
 const MIN_GAP_MS = 350; // ≤ ~170 requests/minute
 const TICK_MS = 10 * 60 * 1000;
 const BACKFILL_PER_TICK = parseInt(process.env.API_FOOTBALL_BACKFILL_PER_TICK || '250', 10);
@@ -126,8 +128,15 @@ let lastError: string | null = null;
 let callsThisBoot = 0;
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
+let blockedUntil = 0; // daily quota used up → no calls until the next UTC midnight
+const nextUtcMidnight = () => {
+  const d = new Date();
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 0, 1);
+};
+
 async function af(path: string, params: Record<string, string | number> = {}, retry = true): Promise<any> {
   if (!KEY()) throw new Error('API_FOOTBALL_KEY is not set');
+  if (Date.now() < blockedUntil) throw new Error('API-Football daily request limit reached');
   const wait = lastCall + MIN_GAP_MS - Date.now();
   if (wait > 0) await sleep(wait);
   lastCall = Date.now();
@@ -138,6 +147,7 @@ async function af(path: string, params: Record<string, string | number> = {}, re
   const rem = res.headers.get('x-ratelimit-requests-remaining');
   const lim = res.headers.get('x-ratelimit-requests-limit');
   if (rem !== null && rem !== '') remainingDay = parseInt(rem, 10);
+  if (remainingDay !== null && remainingDay <= 0) blockedUntil = nextUtcMidnight();
   if (lim !== null && lim !== '') limitDay = parseInt(lim, 10);
   if (res.status === 429 && retry) {
     await sleep(61_000);
@@ -148,6 +158,11 @@ async function af(path: string, params: Record<string, string | number> = {}, re
   const errs = json.errors;
   if (errs && ((Array.isArray(errs) && errs.length) || (!Array.isArray(errs) && Object.keys(errs).length))) {
     const msg = JSON.stringify(errs);
+    if (/for the day|daily|plan/i.test(msg) && /limit|reached/i.test(msg)) {
+      blockedUntil = nextUtcMidnight();
+      lastError = `Daily limit reached: ${msg}`;
+      throw new Error(`${path}: ${msg}`);
+    }
     if (/rate|limit|too many/i.test(msg) && retry) {
       await sleep(61_000);
       return af(path, params, false);
@@ -161,6 +176,8 @@ const budgetLeft = () => (remainingDay === null ? Infinity : remainingDay - RESE
 /** Shared client for other services (CLV tracking). */
 export const afGet = (path: string, params: Record<string, string | number> = {}) => af(path, params);
 export const afBudgetLeft = () => budgetLeft();
+/** Raw requests left today (for the live side, which may use the backfill reserve). */
+export const afRemaining = () => (Date.now() < blockedUntil ? 0 : remainingDay === null ? Infinity : remainingDay);
 export const afConfigured = () => !!KEY();
 
 /* ------------------------------------------------------------------ */

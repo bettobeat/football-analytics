@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { errorText, useAuth } from '../lib/auth'
+import { safeNext } from '../lib/nav'
 
 const RESEND_WAIT = 45
 
@@ -9,7 +10,7 @@ export default function Verify() {
   const { user, loading, needsVerification, verify, resendCode, logout } = useAuth()
   const nav = useNavigate()
   const loc = useLocation()
-  const next = new URLSearchParams(loc.search).get('next') || '/'
+  const next = safeNext(new URLSearchParams(loc.search).get('next'))
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -19,7 +20,7 @@ export default function Verify() {
   useEffect(() => {
     if (loading) return
     if (!user) nav('/login', { replace: true })
-    else if (!needsVerification) nav(next.startsWith('/') ? next : '/', { replace: true })
+    else if (!needsVerification) nav(next, { replace: true })
   }, [loading, user, needsVerification, next, nav])
 
   useEffect(() => {

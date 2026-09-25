@@ -27,12 +27,12 @@ import { marketTest, drawTest, anchoredDrawTest } from './services/marketTest';
 import { clvTick, clvReport, startClvScheduler, clvProbe } from './services/clv';
 import {
   isAfMatchId, isAfCode, afUpcoming, afLive, afWithPredictions, getAfMatchDetails, getAfStandings, getAfScorers,
-  afCompetitions, pollAfLive, startAfMatchesScheduler, afWindowStatus, refreshAfWindow
+  afCompetitions, pollAfLive, startAfMatchesScheduler, afWindowStatus, refreshAfWindow, onAfWindow, isKnownAfFixture
 } from './services/afMatches';
 import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNationalEloScheduler } from './services/nationalElo';
 import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler, clubValueReport } from './services/clubElo';
 import { nationalValueSearch } from './services/squadValues';
-import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures } from './services/apiFootball';
+import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures, afGet, afRemaining } from './services/apiFootball';
 import {
   signup, login, changePassword, setPlan, adminResetPassword, listUsers, userStats, createSession, destroySession, userForToken,
   parseCookies, setSessionCookie, clearSessionCookie, SESSION_COOKIE, accessOf, canSeeFull, teaseDeep, AuthError, Access, User,
@@ -89,7 +89,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use((req, _res, next) => {
-  logger.info(`${req.method} ${req.originalUrl.replace(/([?&]token=)[^&]+/, '$1***')}`);
+  logger.info(`${req.method} ${req.originalUrl.replace(/([?&]token=)[^&]+/g, '$1***')}`);
   next();
 });
 
@@ -132,7 +132,11 @@ app.use((req, _res, next) => {
   }
   req.user = user;
   req.access = accessOf(user);
-  if (API_READ_TOKEN && req.method === 'GET' && req.query.token === API_READ_TOKEN) req.access = 'admin';
+  // Maintenance read token: admin reads, but never the user data (/api/admin/*)
+  if (API_READ_TOKEN && req.method === 'GET' && req.query.token === API_READ_TOKEN) {
+    if (req.path.startsWith('/api/admin')) return _res.status(403).json({ error: 'Not allowed with the read token' });
+    req.access = 'admin';
+  }
   next();
 });
 
@@ -176,6 +180,9 @@ function jsonOnly(req: express.Request, res: express.Response, next: express.Nex
 
 app.get('/api/auth/me', (req, res) => {
   res.set('Cache-Control', 'no-store');
+  // Keep the browser cookie in step with the sliding session (30 days from the last visit)
+  const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
+  if (req.user && token) setSessionCookie(res, token, new Date(Date.now() + 30 * 86400000), req.secure);
   res.json(sessionPayload(req.user || null));
 });
 
@@ -291,7 +298,9 @@ app.get('/api/admin/users', (_req, res) => {
 app.post('/api/admin/users/:id(\\d+)/plan', jsonOnly, (req, res) => {
   try {
     const plan = req.body?.plan === 'premium' ? 'premium' : 'free';
-    const until = req.body?.until ? new Date(String(req.body.until)).toISOString() : null;
+    const untilDate = req.body?.until ? new Date(String(req.body.until)) : null;
+    if (untilDate && isNaN(untilDate.getTime())) return res.status(400).json({ error: 'Invalid end date' });
+    const until = untilDate ? untilDate.toISOString() : null;
     res.json({ data: setPlan(parseInt(req.params.id, 10), plan, until) });
   } catch (e) {
     authFail(res, e);
@@ -351,6 +360,7 @@ app.get('/api/matches/live', async (_req, res) => {
 app.get('/api/matches/:id(\\d+)', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
+    if (isAfMatchId(id) && !isKnownAfFixture(id)) return res.status(404).json({ error: 'Match not found' });
     const match = isAfMatchId(id) ? (await getAfMatchDetails(id)).match : await footballDataAPI.getMatch(id);
     res.json({ data: match, timestamp: new Date().toISOString() });
   } catch (error: any) {
@@ -362,6 +372,7 @@ app.get('/api/matches/:id(\\d+)', async (req, res) => {
 app.get('/api/matches/:id(\\d+)/details', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
+    if (isAfMatchId(id) && !isKnownAfFixture(id)) return res.status(404).json({ error: 'Match not found' });
     const details = isAfMatchId(id) ? await getAfMatchDetails(id) : await footballDataAPI.getMatchDetails(id);
     res.json({ data: details, timestamp: new Date().toISOString() });
   } catch (error: any) {
@@ -372,6 +383,7 @@ app.get('/api/matches/:id(\\d+)/details', async (req, res) => {
 app.get('/api/matches/:id(\\d+)/head2head', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
+    if (isAfMatchId(id) && !isKnownAfFixture(id)) return res.status(404).json({ error: 'Match not found' });
     const h2h = isAfMatchId(id) ? (await getAfMatchDetails(id)).head2head : await footballDataAPI.getHeadToHead(id);
     res.json({ data: h2h, timestamp: new Date().toISOString() });
   } catch (error: any) {
@@ -649,7 +661,7 @@ const runBacktestHandler = (req: express.Request, res: express.Response) => {
   const season = String(req.query.season || '2526');
   const group = req.query.group ? String(req.query.group).toUpperCase() : undefined;
   const model = String(req.query.model || 'dc-history-v2');
-  if (backtestProgress() || backtestProgressV3()) {
+  if (backtestProgress() || backtestProgressV3() || sweeping) {
     res.status(409).json({ error: 'A backtest is already running', progress: backtestProgress() || backtestProgressV3() });
     return;
   }
@@ -700,7 +712,7 @@ const sweepHandler = (req: express.Request, res: express.Response) => {
   } catch (err: any) { res.status(400).json({ error: `Bad variants: ${err.message}` }); return; }
   const base: any = q.base && typeof q.base === 'object' ? q.base : {};
   for (const [k, v] of Object.entries(req.query)) {
-    if (['season', 'groups', 'auto', 'step', 'v', 'r'].includes(k)) continue;
+    if (['season', 'groups', 'auto', 'step', 'v', 'r', 'token'].includes(k)) continue;
     const num = parseFloat(String(v));
     if (!Number.isFinite(num)) continue;
     const [a, b] = k.split('.');
@@ -817,7 +829,11 @@ io.on('connection', socket => {
   socket.join(tier);
 
   socket.on('subscribe_match', (matchId: number) => {
-    socket.join(`match:${matchId}:${tier}`);
+    const id = Number(matchId);
+    if (!Number.isInteger(id) || id <= 0) return;
+    // one match page at a time is plenty: drop older match rooms
+    for (const room of socket.rooms) if (room.startsWith('match:') && room !== `match:${id}:${tier}`) socket.leave(room);
+    socket.join(`match:${id}:${tier}`);
   });
 
   socket.on('unsubscribe_match', (matchId: number) => {
@@ -833,7 +849,10 @@ app.set('io', io);
 
 // Push live scores to all clients every 60s (only when someone is connected)
 const LIVE_POLL_MS = parseInt(process.env.LIVE_POLL_MS || '60000', 10);
+let livePolling = false;
 setInterval(async () => {
+  if (livePolling) return; // a slow poll (API waits) must not overlap the next one
+  livePolling = true;
   try {
     const fdLive = footballDataAPI.withPredictions(await footballDataAPI.getLiveMatches());
     recordPredictions(fdLive); // locks anything that has kicked off (Football-Data.org matches only)
@@ -848,6 +867,8 @@ setInterval(async () => {
     }
   } catch (error: any) {
     logger.warn('Live poll failed', { message: error.message });
+  } finally {
+    livePolling = false;
   }
 }, LIVE_POLL_MS);
 
@@ -881,11 +902,16 @@ server.listen(PORT, () => {
   logger.info(`WebSocket server ready (CORS: ${isDev ? 'any origin [dev]' : allowedOrigins.join(', ')})`);
   // Save/refresh predictions every time the fixture window is refreshed
   footballDataAPI.onWindowRefreshed = matches => recordPredictions(matches);
+  // Same for API-Football competitions (national teams, UEFA cups, extra leagues)
+  onAfWindow(matches => recordPredictions(afWithPredictions(matches)));
   // Warm the fixture window now and keep it fresh in the background
   footballDataAPI.startBackgroundRefresh();
   // Settle finished matches every 10 minutes (first run after 1 minute)
   const settle = () =>
-    settlePending((from, to) => footballDataAPI.getMatchesInRange(from, to)).catch(err =>
+    settlePending(
+      (from, to) => footballDataAPI.getMatchesInRange(from, to),
+      async ids => (afRemaining() > 50 ? ((await afGet('/fixtures', { ids: ids.join('-') })).response || []) : [])
+    ).catch(err =>
       logger.warn('Settle job failed', { message: err.message })
     );
   setTimeout(settle, 60 * 1000);

@@ -8,6 +8,7 @@
  * these matches is in play, match details / tables / scorers / odds on demand with caching.
  */
 import logger from '../utils/logger';
+import { db } from '../db';
 import { afGet, afConfigured } from './apiFootball';
 import { predictFromStandings, Prediction } from './predictionModel';
 import { groupForCompetition, buildTeamMap } from './history';
@@ -63,6 +64,11 @@ async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Pr
   cache.set(key, { data, expires: Date.now() + ttlMs });
   return data;
 }
+// drop expired entries so the cache can't grow without limit
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of cache) if (v.expires < now) cache.delete(k);
+}, 10 * 60 * 1000).unref();
 
 /* ------------------------------------------------------------------ */
 /* Conversion to Football-Data.org shape                                */
@@ -239,6 +245,26 @@ async function currentSeason(leagueId: number): Promise<number | null> {
   });
 }
 
+let windowListener: ((matches: any[]) => void) | null = null;
+/** Called after every window refresh (used to record predictions for tracking). */
+export function onAfWindow(fn: (matches: any[]) => void) {
+  windowListener = fn;
+}
+
+/** Only fixtures we know about get a details page (stops random ids from spending API-Football requests). */
+export function isKnownAfFixture(matchId: number): boolean {
+  if (windowMatches.some(m => m.id === matchId) || liveById.has(matchId)) return true;
+  const fid = matchId - AF_OFFSET;
+  for (const t of ['af_fixtures', 'eur_matches', 'nat_matches']) {
+    try {
+      if (db.prepare(`SELECT 1 FROM ${t} WHERE fixture_id = ?`).get(fid)) return true;
+    } catch {
+      /* table not created yet */
+    }
+  }
+  return db.prepare(`SELECT 1 FROM predictions WHERE match_id = ? LIMIT 1`).get(matchId) ? true : false;
+}
+
 export async function refreshAfWindow() {
   if (!afConfigured()) return 0;
   const from = new Date(Date.now() - 24 * 3600 * 1000).toISOString().slice(0, 10);
@@ -259,6 +285,11 @@ export async function refreshAfWindow() {
   if (failed && windowMatches.length && all.length < windowMatches.length * 0.5) return windowMatches.length; // keep a healthy window
   windowMatches = all.sort((a, b) => a.utcDate.localeCompare(b.utcDate));
   windowAt = Date.now();
+  try {
+    windowListener?.(windowMatches);
+  } catch (e: any) {
+    logger.warn(`AF window listener: ${e.message}`);
+  }
   // Standings for leagues/cups with tables (not friendlies), for the v1 model and the league panel
   const codes = [...new Set(windowMatches.map(m => m.competition.code))].filter(c => c !== 'AF10');
   for (const code of codes) await getAfStandings(code).catch(() => null);

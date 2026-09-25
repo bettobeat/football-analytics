@@ -63,8 +63,15 @@ db.exec(`
 {
   const cols = new Set(db.prepare('PRAGMA table_info(users)').all().map((c: any) => c.name));
   if (!cols.has('email_verified')) {
-    db.exec('ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0');
-    db.exec('UPDATE users SET email_verified = 1');
+    db.exec('BEGIN');
+    try {
+      db.exec('ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0');
+      db.exec('UPDATE users SET email_verified = 1');
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
   }
   if (!cols.has('marketing_opt_in')) db.exec('ALTER TABLE users ADD COLUMN marketing_opt_in INTEGER NOT NULL DEFAULT 0');
   if (!cols.has('marketing_opt_in_at')) db.exec('ALTER TABLE users ADD COLUMN marketing_opt_in_at TEXT');
@@ -122,15 +129,20 @@ function checkCredentials(email: string, password: unknown): string | null {
 const attempts = new Map<string, { n: number; reset: number }>();
 const WINDOW_MS = 15 * 60 * 1000;
 
-function limited(key: string, max: number): boolean {
+function limited(key: string, max: number, windowMs = WINDOW_MS): boolean {
   const now = Date.now();
   const a = attempts.get(key);
   if (!a || a.reset < now) {
-    attempts.set(key, { n: 1, reset: now + WINDOW_MS });
+    attempts.set(key, { n: 1, reset: now + windowMs });
     return false;
   }
   a.n++;
   return a.n > max;
+}
+/** Read a counter without adding to it. */
+function over(key: string, max: number): boolean {
+  const a = attempts.get(key);
+  return !!a && a.reset >= Date.now() && a.n >= max;
 }
 setInterval(() => {
   const now = Date.now();
@@ -147,7 +159,8 @@ function rowToUser(r: any): User {
     name: r.name || null,
     plan: premiumActive ? 'premium' : 'free',
     premiumUntil: r.premium_until || null,
-    isAdmin: ADMIN_EMAILS.has(String(r.email).toLowerCase()),
+    // admin only with a confirmed inbox, so nobody can claim an admin address by just signing up with it
+    isAdmin: ADMIN_EMAILS.has(String(r.email).toLowerCase()) && !!r.email_verified,
     emailVerified: !!r.email_verified,
     marketingOptIn: !!r.marketing_opt_in,
     createdAt: r.created_at
@@ -191,11 +204,18 @@ export function signup(emailIn: unknown, password: unknown, nameIn: unknown, ip:
 
 export function login(emailIn: unknown, password: unknown, ip: string): User {
   const email = normEmail(emailIn);
-  if (limited(`login-ip:${ip}`, 30) || limited(`login-email:${email}`, 10))
+  // Only failed attempts count, so nobody can lock a user out by spamming their email from elsewhere
+  // unless they are also guessing wrong from many networks (per-email cap is higher than per-IP+email)
+  if (over(`login-ip:${ip}`, 30) || over(`login-ip-email:${ip}:${email}`, 8) || over(`login-email:${email}`, 50))
     throw new AuthError(429, 'Too many attempts. Wait 15 minutes and try again.');
   const row = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
   const ok = verifyPassword(String(password || ''), row ? row.pass_hash : DUMMY_HASH);
-  if (!row || !ok) throw new AuthError(401, 'Wrong email or password.');
+  if (!row || !ok) {
+    limited(`login-ip:${ip}`, 30);
+    limited(`login-ip-email:${ip}:${email}`, 8);
+    limited(`login-email:${email}`, 50);
+    throw new AuthError(401, 'Wrong email or password.');
+  }
   db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(new Date().toISOString(), row.id);
   return rowToUser(row);
 }
@@ -257,6 +277,7 @@ async function issueCode(userId: number, email: string, purpose: 'verify' | 'res
   if (prev && Date.now() - new Date(prev.sent_at).getTime() < CODE_COOLDOWN_MS)
     throw new AuthError(429, 'A code was just sent. Wait a minute before asking for another one.');
   if (limited(`code:${purpose}:${userId}`, 6)) throw new AuthError(429, 'Too many codes requested. Try again in 15 minutes.');
+  if (limited(`code-day:${purpose}:${userId}`, 20, 24 * 3600 * 1000)) throw new AuthError(429, 'Too many codes requested today. Try again tomorrow.');
   const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
   const now = new Date();
   db.prepare(
@@ -309,12 +330,10 @@ export async function requestPasswordReset(emailIn: unknown, ip: string): Promis
   if (limited(`reset-ip:${ip}`, 10)) throw new AuthError(429, 'Too many requests. Try again in 15 minutes.');
   const row = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
   if (!row) return;
-  try {
-    await issueCode(row.id, row.email, 'reset');
-  } catch (e) {
-    if (e instanceof AuthError && e.status === 429) return; // stay silent about cooldowns too
-    throw e;
-  }
+  // Not awaited: the answer takes the same time whether or not the account exists
+  issueCode(row.id, row.email, 'reset').catch(e => {
+    if (!(e instanceof AuthError && e.status === 429)) logger.warn('Reset code not sent', { message: e?.message });
+  });
 }
 
 export function resetPassword(emailIn: unknown, code: unknown, password: unknown, ip: string): User {
@@ -435,7 +454,8 @@ export function clearSessionCookie(res: express.Response, secure: boolean) {
 
 /** Model pick + confidence only. Keeps the shape recognisable: { model, locked, pick, confidence }. */
 export function teasePrediction(p: any) {
-  if (!p || typeof p !== 'object' || p.locked) return p;
+  if (!p || typeof p !== 'object') return p;
+  if (p.locked) return { model: p.model, locked: true, pick: p.pick, confidence: p.confidence };
   const h = Number(p.home), d = Number(p.draw), a = Number(p.away);
   const pick = h >= d && h >= a ? 'H' : a >= d ? 'A' : 'D';
   return { model: p.model, locked: true, pick, confidence: p.confidence };

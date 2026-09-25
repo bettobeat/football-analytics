@@ -157,10 +157,12 @@ export function modelV2Status() {
 
 /** Sync history (if needed), map teams, fit. Safe to call repeatedly. */
 export async function prepareModelV2(standingsByCode: Map<string, any>, forceSync = false) {
-  const total = (db.prepare(`SELECT COUNT(*) AS c FROM history_matches`).get() as any).c;
-  if (total === 0 || forceSync) {
-    console.log('📥 Downloading historical results from football-data.co.uk…');
+  // Always refresh: syncAll re-downloads only the current season (and any missing one), so new results
+  // reach v2/v3 every run. Past seasons are skipped unless forced.
+  try {
     await syncAll(seasonCodes(3), forceSync);
+  } catch (e: any) {
+    console.log(`⚠️  History sync failed, fitting on stored results: ${e.message}`);
   }
   const map = mapTeamsFromStandings(standingsByCode);
   lastMapReport = map;
@@ -213,20 +215,25 @@ export async function runBacktest(season: string, group: string) {
       const p = fitDixonColes(train, from, { ...FIT_OPTS, warm, sweeps: warm ? 15 : 40 });
       warm = p;
       db.exec('BEGIN');
-      for (const m of week) {
-        const dc = predictDC(p, m.home, m.away);
-        if (!dc) continue;
-        const outcome = m.hg > m.ag ? 'H' : m.hg < m.ag ? 'A' : 'D';
-        insertBt.run(
-          runId, m.division, m.date, m.home, m.away, m.hg, m.ag, outcome,
-          dc.home, dc.draw, dc.away, dc.lambdaHome, dc.lambdaAway,
-          m.close_h ?? m.odds_h, m.close_d ?? m.odds_d, m.close_a ?? m.odds_a,
-          m.odds_h, m.odds_d, m.odds_a,
-          Math.min(dc.evidence.home, dc.evidence.away)
-        );
-        predicted++;
+      try {
+        for (const m of week) {
+          const dc = predictDC(p, m.home, m.away);
+          if (!dc) continue;
+          const outcome = m.hg > m.ag ? 'H' : m.hg < m.ag ? 'A' : 'D';
+          insertBt.run(
+            runId, m.division, m.date, m.home, m.away, m.hg, m.ag, outcome,
+            dc.home, dc.draw, dc.away, dc.lambdaHome, dc.lambdaAway,
+            m.close_h ?? m.odds_h, m.close_d ?? m.odds_d, m.close_a ?? m.odds_a,
+            m.odds_h, m.odds_d, m.odds_a,
+            Math.min(dc.evidence.home, dc.evidence.away)
+          );
+          predicted++;
+        }
+        db.exec('COMMIT');
+      } catch (e) {
+        db.exec('ROLLBACK');
+        throw e;
       }
-      db.exec('COMMIT');
       running.done += week.length;
       // yield to the event loop so the server stays responsive
       await new Promise<void>(resolve => setImmediate(() => resolve()));

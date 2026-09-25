@@ -117,7 +117,7 @@ function tableAvg(table: StandingRow[] | undefined) {
   if (!table || !table.length) return null;
   const games = table.reduce((s, r) => s + r.playedGames, 0);
   const goals = table.reduce((s, r) => s + r.goalsFor, 0);
-  return games > 0 ? goals / games : null;
+  return games > 0 && goals > 0 ? goals / games : null; // 0 goals (e.g. one 0-0) would make every rate 0/0
 }
 
 function rates(row: StandingRow | null): TeamRates | null {

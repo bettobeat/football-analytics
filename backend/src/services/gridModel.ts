@@ -95,6 +95,25 @@ export const CONV = {
   halfLifeLong: 365 // days, home record / h2h
 };
 
+/*
+ * Live predictions always use the calibrated config above. Backtests and sweeps change CONV / REL_OVERRIDE
+ * while they run (and yield to the event loop), so live scoring swaps the live config in for its own
+ * synchronous call and puts the experiment's config back afterwards.
+ */
+const LIVE_CONV = JSON.parse(JSON.stringify(CONV)) as typeof CONV;
+function withLiveConfig<T>(fn: () => T): T {
+  const savedConv = JSON.parse(JSON.stringify(CONV));
+  const savedRel = REL_OVERRIDE;
+  Object.assign(CONV, JSON.parse(JSON.stringify(LIVE_CONV)));
+  REL_OVERRIDE = null;
+  try {
+    return fn();
+  } finally {
+    Object.assign(CONV, savedConv);
+    REL_OVERRIDE = savedRel;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Derbies (football-data.co.uk names)                                  */
 /* ------------------------------------------------------------------ */
@@ -532,7 +551,7 @@ export function prepareModelV3() {
   for (const group of Object.keys(GROUPS)) {
     const all = loadGroupMatches(group);
     if (all.length < 100) continue;
-    liveState.set(group, { state: buildState(group, all, asOf), all });
+    liveState.set(group, { state: withLiveConfig(() => buildState(group, all, asOf)), all });
     built++;
   }
   lastBuiltAt = new Date().toISOString();
@@ -550,14 +569,14 @@ export function predictV3(match: any): Prediction | null {
   const home = fdNameFor(group, match.homeTeam?.id);
   const away = fdNameFor(group, match.awayTeam?.id);
   if (!home || !away) return null;
-  return scoreMatch(live.state, live.all, home, away, live.state.asOf, String(match.utcDate || '').slice(0, 10) || undefined);
+  return withLiveConfig(() => scoreMatch(live.state, live.all, home, away, live.state.asOf, String(match.utcDate || '').slice(0, 10) || undefined));
 }
 
 /** v3 prediction by football-data.co.uk names (used by CLV tracking, which works from API-Football fixtures). */
 export function predictV3ByNames(group: string, home: string, away: string, date: string): Prediction | null {
   const live = liveState.get(group);
   if (!live) return null;
-  return scoreMatch(live.state, live.all, home, away, live.state.asOf, date.slice(0, 10));
+  return withLiveConfig(() => scoreMatch(live.state, live.all, home, away, live.state.asOf, date.slice(0, 10)));
 }
 
 export function modelV3Status() {
@@ -612,20 +631,25 @@ export async function runBacktestV3(season: string, group: string, conv: Partial
       if (week.length) {
         const state = buildState(group, all, from);
         db.exec('BEGIN');
-        for (const m of week) {
-          const p = scoreMatch(state, all, m.home, m.away, from, m.date);
-          if (!p) continue;
-          const outcome = m.hg > m.ag ? 'H' : m.hg < m.ag ? 'A' : 'D';
-          insertBt().run(
-            runId, m.division, m.date, m.home, m.away, m.hg, m.ag, outcome,
-            p.home, p.draw, p.away, p.expectedGoals.home, p.expectedGoals.away,
-            m.close_h ?? m.odds_h, m.close_d ?? m.odds_d, m.close_a ?? m.odds_a,
-            m.odds_h, m.odds_d, m.odds_a,
-            Math.min(p.factors.gamesPlayed.home, p.factors.gamesPlayed.away)
-          );
-          predicted++;
+        try {
+          for (const m of week) {
+            const p = scoreMatch(state, all, m.home, m.away, from, m.date);
+            if (!p) continue;
+            const outcome = m.hg > m.ag ? 'H' : m.hg < m.ag ? 'A' : 'D';
+            insertBt().run(
+              runId, m.division, m.date, m.home, m.away, m.hg, m.ag, outcome,
+              p.home, p.draw, p.away, p.expectedGoals.home, p.expectedGoals.away,
+              m.close_h ?? m.odds_h, m.close_d ?? m.odds_d, m.close_a ?? m.odds_a,
+              m.odds_h, m.odds_d, m.odds_a,
+              Math.min(p.factors.gamesPlayed.home, p.factors.gamesPlayed.away)
+            );
+            predicted++;
+          }
+          db.exec('COMMIT');
+        } catch (e) {
+          db.exec('ROLLBACK');
+          throw e;
         }
-        db.exec('COMMIT');
         running.done += week.length;
         await new Promise<void>(resolve => setImmediate(() => resolve()));
       }

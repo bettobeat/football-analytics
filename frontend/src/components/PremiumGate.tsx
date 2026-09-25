@@ -26,7 +26,7 @@ export default function PremiumGate({ title, children }: { title: string; childr
             See Premium
           </Link>
           {!user && (
-            <Link to="/login" className="px-4 py-2 rounded-xl border border-line text-sm font-medium text-ink hover:border-faint">
+            <Link to={`/login?next=${encodeURIComponent(window.location.pathname)}`} className="px-4 py-2 rounded-xl border border-line text-sm font-medium text-ink hover:border-faint">
               Sign in
             </Link>
           )}

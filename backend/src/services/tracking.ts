@@ -7,7 +7,6 @@ import logger from '../utils/logger';
 import { Prediction } from './predictionModel';
 
 const LIVE_OR_DONE = new Set(['IN_PLAY', 'PAUSED', 'FINISHED', 'AWARDED']);
-const VOID_STATUSES = new Set(['POSTPONED', 'CANCELLED']);
 const SETTLE_AFTER_MS = 105 * 60 * 1000; // kick-off + 105 min before we look for a result
 const EDGE_THRESHOLD = 0.05; // bet when model EV at market odds >= +5%
 
@@ -46,7 +45,9 @@ export function recordPredictions(matches: any[]) {
   for (const m of matches) {
     const preds: Prediction[] = (m.predictions && m.predictions.length ? m.predictions : [m.prediction]).filter(Boolean);
     if (!preds.length) continue;
-    const kickedOff = LIVE_OR_DONE.has(m.status) || new Date(m.utcDate).getTime() <= Date.now();
+    // Postponed / suspended / cancelled matches are not locked: a rescheduled date must still be recordable
+    const kickedOff =
+      LIVE_OR_DONE.has(m.status) || (new Date(m.utcDate).getTime() <= Date.now() && !['POSTPONED', 'SUSPENDED', 'CANCELLED'].includes(m.status));
 
     if (kickedOff) {
       // Kick-off: freeze whatever was predicted before the match. Never insert
@@ -97,55 +98,126 @@ const insertResult = db.prepare(
   `INSERT OR REPLACE INTO results (match_id, status, home_goals, away_goals, outcome, settled_at) VALUES (?, ?, ?, ?, ?, ?)`
 );
 const markSettled = db.prepare(`UPDATE predictions SET settled = 1, locked = 1, updated_at = ? WHERE match_id = ?`);
+// Postponed / suspended: unlock so the rescheduled date (and a fresh pre-match prediction) can be recorded
+const unlockStmt = db.prepare(`UPDATE predictions SET locked = 0, updated_at = ? WHERE match_id = ? AND settled = 0`);
+
+const AF_ID_OFFSET = 1_000_000_000;
+const MAX_PENDING_DAYS = 21; // give up on a result after 3 weeks (void)
+const RESCHEDULE_STATUSES = new Set(['POSTPONED', 'SUSPENDED']);
+
+/** Normalised result from either source. status: FINISHED | VOID | RESCHEDULE | OPEN */
+interface ResultRow { id: number; status: 'FINISHED' | 'VOID' | 'RESCHEDULE' | 'OPEN'; raw: string; h: number | null; a: number | null }
+
+/** Football-Data.org match → result. 1X2 is settled on the 90-minute score (regularTime after extra time / penalties). */
+function fdResult(m: any): ResultRow {
+  if (m.status === 'FINISHED' || m.status === 'AWARDED') {
+    const s = m.score?.duration && m.score.duration !== 'REGULAR' && m.score.regularTime ? m.score.regularTime : m.score?.fullTime;
+    const h = s?.home, a = s?.away;
+    if (h === null || h === undefined || a === null || a === undefined) return { id: m.id, status: 'OPEN', raw: m.status, h: null, a: null };
+    return { id: m.id, status: 'FINISHED', raw: m.status, h, a };
+  }
+  if (m.status === 'CANCELLED') return { id: m.id, status: 'VOID', raw: m.status, h: null, a: null };
+  if (RESCHEDULE_STATUSES.has(m.status)) return { id: m.id, status: 'RESCHEDULE', raw: m.status, h: null, a: null };
+  // moved to a later date without a POSTPONED flag
+  if (m.utcDate && new Date(m.utcDate).getTime() > Date.now()) return { id: m.id, status: 'RESCHEDULE', raw: m.status, h: null, a: null };
+  return { id: m.id, status: 'OPEN', raw: m.status, h: null, a: null };
+}
+
+/** API-Football fixture → result (id offset applied). 1X2 on the 90-minute score. */
+export function afResult(f: any): ResultRow {
+  const id = AF_ID_OFFSET + f.fixture.id;
+  const st = f.fixture?.status?.short;
+  if (['FT', 'AET', 'PEN'].includes(st)) {
+    const h = f.score?.fulltime?.home ?? f.goals?.home, a = f.score?.fulltime?.away ?? f.goals?.away;
+    if (h === null || h === undefined || a === null || a === undefined) return { id, status: 'OPEN', raw: st, h: null, a: null };
+    return { id, status: 'FINISHED', raw: 'FINISHED', h, a };
+  }
+  if (['AWD', 'WO', 'CANC', 'ABD'].includes(st)) return { id, status: 'VOID', raw: st, h: null, a: null };
+  if (['PST', 'SUSP', 'INT', 'TBD'].includes(st)) return { id, status: 'RESCHEDULE', raw: st, h: null, a: null };
+  if (f.fixture?.date && new Date(f.fixture.date).getTime() > Date.now()) return { id, status: 'RESCHEDULE', raw: st, h: null, a: null };
+  return { id, status: 'OPEN', raw: st, h: null, a: null };
+}
+
+let settling = false;
 
 /**
- * Settle pending predictions. `fetchRange(dateFrom, dateTo)` must return all
- * matches (any status) between the two ISO dates (YYYY-MM-DD).
+ * Settle pending predictions.
+ * `fetchRange(dateFrom, dateTo)` returns Football-Data.org matches (any status) between two ISO dates.
+ * `fetchAf(ids)` returns API-Football fixtures by fixture id (ids without the offset).
  */
-export async function settlePending(fetchRange: (dateFrom: string, dateTo: string) => Promise<any[]>) {
-  const cutoff = new Date(Date.now() - SETTLE_AFTER_MS).toISOString();
-  const pending: { match_id: number; utc_date: string }[] = pendingStmt.all(cutoff);
-  if (!pending.length) return { settled: 0, pending: 0 };
+export async function settlePending(
+  fetchRange: (dateFrom: string, dateTo: string) => Promise<any[]>,
+  fetchAf?: (fixtureIds: number[]) => Promise<any[]>
+) {
+  if (settling) return { settled: 0, pending: 0, skipped: true };
+  settling = true;
+  try {
+    const cutoff = new Date(Date.now() - SETTLE_AFTER_MS).toISOString();
+    const pending: { match_id: number; utc_date: string }[] = pendingStmt.all(cutoff);
+    if (!pending.length) return { settled: 0, pending: 0 };
+    const now = new Date().toISOString();
+    const giveUp = new Date(Date.now() - MAX_PENDING_DAYS * 86400000).toISOString();
+    let settled = 0;
 
-  const ids = new Set(pending.map(p => p.match_id));
-  const first = new Date(pending[0].utc_date);
-  const last = new Date(pending[pending.length - 1].utc_date);
-  const day = (d: Date) => d.toISOString().slice(0, 10);
-
-  // Fetch in <=10-day chunks (API limit for the /matches date range)
-  const fetched: any[] = [];
-  let from = new Date(first.getTime() - 24 * 3600 * 1000);
-  const end = new Date(last.getTime() + 24 * 3600 * 1000);
-  while (from <= end) {
-    const to = new Date(Math.min(from.getTime() + 9 * 24 * 3600 * 1000, end.getTime()));
-    try {
-      fetched.push(...(await fetchRange(day(from), day(to))));
-    } catch (error: any) {
-      logger.warn('Settle fetch failed', { from: day(from), to: day(to), message: error.message });
-    }
-    from = new Date(to.getTime() + 24 * 3600 * 1000);
-  }
-
-  const now = new Date().toISOString();
-  let settled = 0;
-  for (const m of fetched) {
-    if (!ids.has(m.id)) continue;
-    if (m.status === 'FINISHED' || m.status === 'AWARDED') {
-      const h = m.score?.fullTime?.home;
-      const a = m.score?.fullTime?.away;
-      if (h === null || h === undefined || a === null || a === undefined) continue;
-      const outcome: Outcome = h > a ? 'H' : h < a ? 'A' : 'D';
-      insertResult.run(m.id, m.status, h, a, outcome, now);
-      markSettled.run(now, m.id);
-      settled++;
-    } else if (VOID_STATUSES.has(m.status)) {
-      insertResult.run(m.id, m.status, null, null, 'VOID', now);
-      markSettled.run(now, m.id);
+    // Too old to still be waiting: void (keeps the fetch range short)
+    const stale = pending.filter(p => p.utc_date < giveUp);
+    for (const p of stale) {
+      insertResult.run(p.match_id, 'UNRESOLVED', null, null, 'VOID', now);
+      markSettled.run(now, p.match_id);
       settled++;
     }
+    const live = pending.filter(p => p.utc_date >= giveUp);
+    const fdPending = live.filter(p => p.match_id < AF_ID_OFFSET);
+    const afPending = live.filter(p => p.match_id >= AF_ID_OFFSET);
+    const results: ResultRow[] = [];
+
+    if (fdPending.length) {
+      const day = (d: Date) => d.toISOString().slice(0, 10);
+      let from = new Date(new Date(fdPending[0].utc_date).getTime() - 24 * 3600 * 1000);
+      const end = new Date(new Date(fdPending[fdPending.length - 1].utc_date).getTime() + 24 * 3600 * 1000);
+      while (from <= end) {
+        const to = new Date(Math.min(from.getTime() + 9 * 24 * 3600 * 1000, end.getTime()));
+        try {
+          for (const m of await fetchRange(day(from), day(to))) results.push(fdResult(m));
+        } catch (error: any) {
+          logger.warn('Settle fetch failed', { from: day(from), to: day(to), message: error.message });
+        }
+        from = new Date(to.getTime() + 24 * 3600 * 1000);
+      }
+    }
+    if (afPending.length && fetchAf) {
+      const ids = afPending.map(p => p.match_id - AF_ID_OFFSET);
+      for (let i = 0; i < ids.length; i += 20) {
+        try {
+          for (const f of await fetchAf(ids.slice(i, i + 20))) results.push(afResult(f));
+        } catch (error: any) {
+          logger.warn('Settle (API-Football) failed', { message: error.message });
+          break;
+        }
+      }
+    }
+
+    const ids = new Set(live.map(p => p.match_id));
+    for (const r of results) {
+      if (!ids.has(r.id)) continue;
+      if (r.status === 'FINISHED') {
+        const outcome: Outcome = r.h! > r.a! ? 'H' : r.h! < r.a! ? 'A' : 'D';
+        insertResult.run(r.id, r.raw, r.h, r.a, outcome, now);
+        markSettled.run(now, r.id);
+        settled++;
+      } else if (r.status === 'VOID') {
+        insertResult.run(r.id, r.raw, null, null, 'VOID', now);
+        markSettled.run(now, r.id);
+        settled++;
+      } else if (r.status === 'RESCHEDULE') {
+        unlockStmt.run(now, r.id);
+      }
+    }
+    if (settled) logger.info(`Settled ${settled} predictions (${pending.length - settled} still pending)`);
+    return { settled, pending: pending.length - settled };
+  } finally {
+    settling = false;
   }
-  if (settled) logger.info(`Settled ${settled} predictions (${pending.length - settled} still pending)`);
-  return { settled, pending: pending.length - settled };
 }
 
 /* ---------------- metrics ---------------- */

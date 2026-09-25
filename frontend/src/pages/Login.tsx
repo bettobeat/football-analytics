@@ -1,13 +1,14 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { errorText, useAuth } from '../lib/auth'
+import { safeNext } from '../lib/nav'
 
 /** Sign in and create account on one page: /login and /signup. */
 export default function Login({ mode: initial }: { mode: 'login' | 'signup' }) {
   const { login, signup, user, needsVerification } = useAuth()
   const nav = useNavigate()
   const loc = useLocation()
-  const next = new URLSearchParams(loc.search).get('next') || '/'
+  const next = safeNext(new URLSearchParams(loc.search).get('next'))
   const [mode, setMode] = useState(initial)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -19,7 +20,7 @@ export default function Login({ mode: initial }: { mode: 'login' | 'signup' }) {
   useEffect(() => setMode(initial), [initial])
   useEffect(() => {
     if (!user) return
-    const target = next.startsWith('/') ? next : '/'
+    const target = next
     if (needsVerification) nav(`/verify?next=${encodeURIComponent(target)}`, { replace: true })
     else nav(target, { replace: true })
   }, [user, needsVerification, next, nav])

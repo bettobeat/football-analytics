@@ -16,7 +16,7 @@
  */
 import { db } from '../db';
 import logger from '../utils/logger';
-import { afGet, afBudgetLeft, afConfigured, AF_LEAGUES } from './apiFootball';
+import { afGet, afRemaining, afConfigured, AF_LEAGUES } from './apiFootball';
 import { predictV3ByNames } from './gridModel';
 
 type O = 'H' | 'D' | 'A';
@@ -57,6 +57,7 @@ export async function fetchOdds(fixtureId: number): Promise<{ book: string; h: n
 let running = false;
 let last: { at: string; opened: number; closed: number; settled: number; note: string } | null = null;
 
+const lastTry = new Map<number, number>();
 export async function clvTick() {
   if (!afConfigured() || running) return last;
   running = true;
@@ -73,13 +74,18 @@ export async function clvTick() {
       WHERE f.league_id IN (${top}) AND th.fd_name IS NOT NULL AND ta.fd_name IS NOT NULL`;
 
     // OPEN: within 48 h, not yet tracked
-    const toOpen = db.prepare(`${base} AND f.kickoff > ? AND f.kickoff <= ? AND f.fixture_id NOT IN (SELECT fixture_id FROM clv_tracking) ORDER BY f.kickoff`)
+    const toOpen = db.prepare(`${base} AND f.kickoff > ? AND f.kickoff <= ? AND COALESCE(f.status, 'NS') NOT IN ('PST','CANC','ABD','SUSP','AWD','WO') AND f.fixture_id NOT IN (SELECT fixture_id FROM clv_tracking) ORDER BY f.kickoff`)
       .all(new Date(now + CLOSE_WINDOW_MS).toISOString(), new Date(now + OPEN_WINDOW_MS).toISOString()) as any[];
     const ins = db.prepare(`
       INSERT OR IGNORE INTO clv_tracking (fixture_id, grp, division, fd_home, fd_away, home_name, away_name, kickoff, open_at, open_book, open_h, open_d, open_a, v3_h, v3_d, v3_a)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    let tries = 0;
     for (const f of toOpen) {
-      if (afBudgetLeft() < 1) { notes.push('budget reserve'); break; }
+      if (afRemaining() < 300) { notes.push('daily budget low'); break; }
+      // no prices yet → retry this fixture every 6 h, at most 40 new tries per tick
+      if ((lastTry.get(f.fixture_id) || 0) > now - 6 * 3600 * 1000) continue;
+      if (++tries > 40) break;
+      lastTry.set(f.fixture_id, now);
       const p = predictV3ByNames(f.grp, f.fh, f.fa, f.date);
       if (!p) continue;
       let o: Awaited<ReturnType<typeof fetchOdds>> = null;
@@ -94,7 +100,7 @@ export async function clvTick() {
       .all(new Date(now).toISOString(), new Date(now + CLOSE_WINDOW_MS).toISOString()) as any[];
     const upd = db.prepare(`UPDATE clv_tracking SET close_at = ?, close_book = ?, close_h = ?, close_d = ?, close_a = ? WHERE fixture_id = ?`);
     for (const f of toClose) {
-      if (afBudgetLeft() < 1) break;
+      if (afRemaining() < 100) break;
       try {
         const o = await fetchOdds(f.fixture_id);
         if (o) { upd.run(new Date().toISOString(), o.book, o.h, o.d, o.a, f.fixture_id); closed++; }
