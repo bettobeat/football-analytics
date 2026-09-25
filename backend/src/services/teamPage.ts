@@ -189,6 +189,21 @@ async function build(afId: number) {
     }
   }
 
+  // Which competitions belong to THIS season: the provider files some one-off cups under the next season's
+  // number (the Spanish Super Cup of January 2026 shows up as "2026" = 2026-27). Only competitions the team
+  // actually played in since the domestic season started are counted.
+  const seasonStart: string | null = league?.seasons?.find((x: any) => x.current)?.start ?? null;
+  let validComps: Set<number> | null = null;
+  if (!national && season && seasonStart) {
+    try {
+      const sf = await g('/fixtures', { team: afId, season }, 3 * 3600 * 1000);
+      validComps = new Set((sf.response || []).filter((f: any) => String(f.fixture?.date || '').slice(0, 10) >= seasonStart).map((f: any) => f.league?.id));
+      if (!validComps.size) validComps = null;
+    } catch (e: any) {
+      logger.warn(`team page season fixtures ${afId}: ${e.message}`);
+    }
+  }
+
   // player season stats (clubs): up to 3 pages
   const stats = new Map<number, any>();
   if (!national && season) {
@@ -203,7 +218,7 @@ async function build(afId: number) {
           for (const st of it.statistics || []) {
             if (st.team?.id !== afId) continue;
             const lg = st.league || {};
-            if (/friendl/i.test(lg.name || '') || !lg.id || seen.has(lg.id)) continue;
+            if (/friendl/i.test(lg.name || '') || !lg.id || seen.has(lg.id) || (validComps && !validComps.has(lg.id))) continue;
             seen.add(lg.id);
             const apps = st.games?.appearences || 0;
             const goals = st.goals?.total || 0, assists = st.goals?.assists || 0;

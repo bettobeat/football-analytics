@@ -51,6 +51,8 @@ async function fetchFeed(f: { source: string; url: string }): Promise<NewsItem[]
     items.push({ title, link, source: f.source, published: d && !isNaN(d.getTime()) ? d.toISOString() : null, summary: summary.length > 180 ? summary.slice(0, 177) + '…' : summary });
     if (items.length >= 15) break;
   }
+  // Some feeds (ESPN) stamp every item with the feed's build time, not the article's. That date is meaningless, so drop it.
+  if (items.length >= 3 && items.every(it => it.published && it.published === items[0].published)) items.forEach(it => { it.published = null; });
   return items;
 }
 
@@ -61,15 +63,28 @@ async function load(): Promise<NewsItem[]> {
     if (r.status === 'fulfilled') all.push(...r.value);
     else logger.warn(`News feed ${FEEDS[i].source} failed`, { message: (r.reason as any)?.message });
   });
-  // newest first, then interleave so one outlet doesn't fill the page
-  all.sort((a, b) => (b.published || '').localeCompare(a.published || ''));
+  // Drop anything older than 3 days, sort each outlet newest first (undated items keep the feed's own order),
+  // then interleave the outlets so one of them doesn't fill the page.
+  const cutoff = Date.now() - 3 * 86400000;
+  const bySource = new Map<string, NewsItem[]>();
+  for (const it of all) {
+    if (it.published && new Date(it.published).getTime() < cutoff) continue;
+    if (!bySource.has(it.source)) bySource.set(it.source, []);
+    bySource.get(it.source)!.push(it);
+  }
+  for (const list of bySource.values()) list.sort((a, b) => (a.published && b.published ? b.published.localeCompare(a.published) : 0));
+  const lists = [...bySource.values()].sort((a, b) => (b[0]?.published || '').localeCompare(a[0]?.published || ''));
   const seen = new Set<string>();
   const out: NewsItem[] = [];
-  for (const it of all) {
-    const key = it.title.toLowerCase().slice(0, 60);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(it);
+  for (let i = 0; out.length < 30 && lists.some(l => i < l.length); i++) {
+    for (const l of lists) {
+      const it = l[i];
+      if (!it) continue;
+      const key = it.title.toLowerCase().slice(0, 60);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(it);
+    }
   }
   return out.slice(0, 30);
 }

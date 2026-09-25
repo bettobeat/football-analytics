@@ -380,7 +380,7 @@ export default function Home() {
                   <span className="text-[11px] font-extrabold uppercase tracking-wide text-accent">{n.source}</span>
                   <span className="font-bold leading-snug text-ink line-clamp-3">{n.title}</span>
                   {n.summary && <span className="text-xs text-muted line-clamp-2">{n.summary}</span>}
-                  <span className="mt-auto text-[11px] text-faint">{ago(n.published)} · opens {n.source}</span>
+                  <span className="mt-auto text-[11px] text-faint">{n.published ? `${ago(n.published)} · ` : ''}opens {n.source}</span>
                 </a>
               ))}
             </div>
