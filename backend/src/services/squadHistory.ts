@@ -169,3 +169,66 @@ export function clubValueHistoryStatus(sample?: string) {
   }
   return out;
 }
+
+/*
+ * Admin search: where does a club appear in the Transfermarkt dump? (to fix unmatched squad values)
+ * clubs.csv (id, name, league), players.csv (players whose current club matches, with their league),
+ * and the monthly history table. Files are cached for an hour.
+ */
+const textCache = new Map<string, { at: number; text: string }>();
+async function cachedText(name: string) {
+  const c = textCache.get(name);
+  if (c && Date.now() - c.at < 3600_000) return c.text;
+  const text = await fetchText(name);
+  textCache.set(name, { at: Date.now(), text });
+  return text;
+}
+const normQ = (s: string) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+export async function findClub(q: string) {
+  const needle = normQ(q);
+  if (needle.length < 3) throw new Error('q must be at least 3 characters');
+  const out: any = { q, clubsCsv: [], players: [], history: [] };
+
+  const cl = (await cachedText('clubs.csv.gz')).split('\n');
+  const ch = parseQuoted(cl[0]);
+  const idx = (n: string) => ch.indexOf(n);
+  const cols = ['club_id', 'name', 'domestic_competition_id', 'squad_size', 'total_market_value', 'last_season'].filter(n => idx(n) >= 0);
+  for (const line of cl.slice(1)) {
+    if (!normQ(line).includes(needle)) continue;
+    const r = parseQuoted(line);
+    if (!normQ(r[idx('name')]).includes(needle)) continue;
+    out.clubsCsv.push(Object.fromEntries(cols.map(n => [n, r[idx(n)]])));
+    if (out.clubsCsv.length >= 20) break;
+  }
+
+  const pl = (await cachedText('players.csv.gz')).split('\n');
+  const ph = parseQuoted(pl[0]);
+  const iClub = ph.indexOf('current_club_name'), iComp = ph.indexOf('current_club_domestic_competition_id'),
+    iVal = ph.indexOf('market_value_in_eur'), iLast = ph.indexOf('last_season');
+  const agg = new Map<string, { club: string; comp: string; players: number; top15M: number; vals: number[]; lastSeasons: Record<string, number> }>();
+  for (const line of pl.slice(1)) {
+    if (!line || !normQ(line).includes(needle)) continue;
+    const r = line.includes('"') ? parseQuoted(line) : line.split(',');
+    const club = r[iClub] || '';
+    if (!normQ(club).includes(needle)) continue;
+    const key = `${club}|${r[iComp]}`;
+    const a = agg.get(key) || agg.set(key, { club, comp: r[iComp], players: 0, top15M: 0, vals: [], lastSeasons: {} }).get(key)!;
+    a.players++;
+    const v = parseFloat(r[iVal]);
+    if (Number.isFinite(v) && v > 0) a.vals.push(v);
+    const ls = r[iLast] || '?';
+    a.lastSeasons[ls] = (a.lastSeasons[ls] || 0) + 1;
+  }
+  agg.forEach(a => {
+    a.top15M = Math.round(a.vals.sort((x, y) => y - x).slice(0, 15).reduce((s, v) => s + v, 0) / 1e6);
+    out.players.push({ club: a.club, comp: a.comp, players: a.players, withValue: a.vals.length, top15M: a.top15M, lastSeasons: a.lastSeasons });
+  });
+
+  byClub.forEach((m, club) => {
+    if (!normQ(club).includes(needle)) return;
+    const months = [...m.keys()].sort();
+    out.history.push({ club, months: months.length, first: months[0], last: months[months.length - 1], lastTopM: Math.round((m.get(months[months.length - 1]) || 0) / 1e6) });
+  });
+  return out;
+}

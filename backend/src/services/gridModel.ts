@@ -97,6 +97,9 @@ export const CONV = {
   // effective gap = gap + gapCube · gap³ (0 = off)
   gapCube: 0,
   pitSquad: 1, // point-in-time squad values (squadHistory.ts): honest backtests; live = latest month
+  // a team with no squad value (usually a promoted club missing from the Transfermarkt dump) gets the value at this
+  // percentile of its division instead of the neutral 5 (= league average, which overrates promoted sides). −1 = neutral.
+  squadMissingPct: -1,
   useDivHint: 1, // take each team's division from the fixture being predicted (see buildState)
   // availability rows (#13 injuries, #12 confirmed XI): value = 5.5 − k × (starter-equivalents missing)
   injK: 2.0, // backtest 2025-26: 1–4 all help a little, 2 best on hit rate
@@ -467,12 +470,17 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string, div
     const sq = (n: string) => (CONV.pitSquad ? squadValueAt(group, n, asOf) : squadValueFor(group, n)?.top) || 0;
     const withValue = list.map(t => ({ name: t.name, raw: sq(t.name) })).filter(x => x.raw > 0);
     const squad = rankValues(withValue.map(x => ({ name: x.name, raw: Math.log(x.raw) })));
+    let squadMissing = 5;
+    if (CONV.squadMissingPct >= 0 && withValue.length >= 6) {
+      const vs = [...squad.values()].sort((x, y) => x - y);
+      squadMissing = vs[Math.round(CONV.squadMissingPct * (vs.length - 1))];
+    }
     for (const t of list) {
       t.squadEur = sq(t.name) || null;
       t.v = {
         strength: strength.get(t.name)!, attack: att.get(t.name)!, defence: def.get(t.name)!, form: form.get(t.name)!,
         home: home.get(t.name)!, away: away.get(t.name)!, draws: draws.get(t.name)!,
-        squad: squad.get(t.name) ?? 5,
+        squad: squad.get(t.name) ?? squadMissing,
         fresh: t.gamesLast8 === 0 ? 8 : t.gamesLast8 === 1 ? 6 : t.gamesLast8 === 2 ? 4 : 2
       };
     }

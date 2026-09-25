@@ -22,7 +22,7 @@ import { historyStatus, teamMapStatus, GROUPS, syncAll } from './services/histor
 import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestRows, backtestRunsList } from './services/historyModel';
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
 import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler, squadCompetitions } from './services/squadValues';
-import { syncClubValueHistory, clubValueHistoryStatus } from './services/squadHistory';
+import { syncClubValueHistory, clubValueHistoryStatus, findClub } from './services/squadHistory';
 import { compareModels } from './services/compareModels';
 import { gapReport } from './services/gapReport';
 import { pastSeasons, pastPredictions, dataInventory, leaguePatterns } from './services/pastView';
@@ -628,6 +628,14 @@ app.get('/api/model/v3/squad/history', async (req, res) => {
   }
 });
 
+// Admin: find a club in the Transfermarkt dump (clubs.csv, players.csv, monthly history). ?q=coventry
+app.get('/api/model/v3/squad/find', async (req, res) => {
+  try {
+    res.json({ data: await findClub(String(req.query.q || '')), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Club search failed');
+  }
+});
 app.get('/api/model/v3/squad', (_req, res) => {
   res.json({ data: squadValuesStatus(), timestamp: new Date().toISOString() });
 });
