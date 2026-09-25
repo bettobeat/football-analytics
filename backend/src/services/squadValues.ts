@@ -67,7 +67,11 @@ const TM_ALIASES: Record<string, string> = {
   'sheffield united': 'sheffield united',
   'sheffield weds': 'sheffield wednesday',
   'qpr': 'queens park rangers',
-  'west brom': 'west bromwich albion'
+  'west brom': 'west bromwich albion',
+  // Transfermarkt uses legal names for some clubs
+  aek: 'athlitiki enosi konstantinoupoleos',
+  paok: 'panthessalonikios athlitikos omilos konstantinoupoliton',
+  aris: 'aris thessalonikis'
 };
 
 db.exec(`
@@ -392,8 +396,20 @@ export function squadValuesStatus() {
     g.teams++;
     if (g.top.length < 5) g.top.push({ team: r.fd_name, club: r.club_name, topEur: Math.round(r.top_eur) });
   }
+  // teams playing this season (each group's first division) without a squad value
+  const missing: Record<string, string[]> = {};
+  for (const [grp, cfg] of Object.entries(GROUPS)) {
+    const top = (cfg as any).divisions?.[0];
+    if (!top) continue;
+    const season: any = db.prepare(`SELECT MAX(season) AS s FROM history_matches WHERE division = ?`).get(top);
+    if (!season?.s) continue;
+    const teams = db.prepare(`SELECT DISTINCT home AS n FROM history_matches WHERE division = ? AND season = ?`).all(top, season.s).map((r: any) => r.n);
+    const have = new Set(db.prepare(`SELECT fd_name FROM squad_values WHERE grp = ?`).all(grp).map((r: any) => r.fd_name));
+    const miss = teams.filter((t: string) => !have.has(t));
+    if (miss.length) missing[grp] = miss;
+  }
   const nations = [...natValues.values()].sort((a, b) => b.top - a.top).slice(0, 12).map(v => ({ nation: v.name, top23Eur: Math.round(v.top) }));
-  return { source: SOURCE_URL, sync: s || null, lastError, playerKeys: players.size, nationalTeams: natValues.size, topNations: nations, byGroup };
+  return { source: SOURCE_URL, sync: s || null, lastError, playerKeys: players.size, nationalTeams: natValues.size, topNations: nations, missing, byGroup };
 }
 
 /** Weekly refresh; first attempt shortly after start so history names exist. */
