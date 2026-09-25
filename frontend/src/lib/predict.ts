@@ -24,6 +24,7 @@ export interface Prediction {
     leagueAvgGoals: number
   }
   /** Grid model (v3) breakdown — absent on v1/v2 */
+  drawStreak?: { home: number; away: number }
   grid?: {
     matchType: 'mismatch' | 'standard' | 'even' | 'big'
     points: { home: number; draw: number; away: number } // out of 1000
@@ -101,10 +102,12 @@ export function modelInfo(model: string) {
  * History: the draw price shortened toward v3 by kick-off 2 times in 3; ROI small positive in both seasons.
  */
 // maxEdge: a bigger edge usually means v3 over-rates the draw in a one-sided match (weaker line movement in both seasons)
-export const DRAW_ALERT = { k: 0.75, minEdge: 0.02, maxEdge: 0.2, minV3Draw: 30, excluded: ['PD'] }
+// maxStreak: skip games where both teams drew 32%+ of their last 20 (bookmakers already over-price those draws)
+export const DRAW_ALERT = { k: 0.75, minEdge: 0.02, maxEdge: 0.2, minV3Draw: 30, maxStreak: 0.32, excluded: ['PD'] }
 export function drawAlert(p: Prediction, m: Market | null | undefined, competitionCode?: string) {
   if (!m || p.locked || p.model !== 'grid-v3' || p.draw < DRAW_ALERT.minV3Draw) return null
   if (competitionCode && DRAW_ALERT.excluded.includes(competitionCode)) return null
+  if (p.drawStreak && Math.min(p.drawStreak.home, p.drawStreak.away) >= DRAW_ALERT.maxStreak) return null
   const price = m.best?.draw || m.msw.draw
   if (!price) return null
   const mkt = m.probs.draw / 100

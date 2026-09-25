@@ -56,6 +56,8 @@ export interface Prediction {
     gamesPlayed: { home: number; away: number };
     leagueAvgGoals: number; // per team per game
   };
+  /** v3 leagues: each team's draw share over its last 20 games (draw alerts skip games where both are 0.32+) */
+  drawStreak?: { home: number; away: number };
   /** Grid model (v3) extras — absent on v1/v2 */
   grid?: {
     matchType: 'mismatch' | 'standard' | 'even' | 'big';

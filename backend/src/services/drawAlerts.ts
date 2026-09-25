@@ -14,7 +14,9 @@ import { db } from '../db';
 import { DIVISION_NAMES } from './pastView';
 import { GROUPS, loadGroupMatches } from './history';
 
-const K = 0.75, MIN_EDGE = 0.02, MAX_EDGE = 0.2, MIN_V3 = 30;
+const K = 0.75, MIN_EDGE = 0.02, MAX_EDGE = 0.2, MIN_V3 = 30, MAX_STREAK = 0.32;
+// MAX_STREAK: no alert when BOTH teams drew 32%+ of their last 20 games — bookmakers already over-price those draws
+// (draw-factor test: −3.2 / −2.5 pts in 2024-25 / 2025-26; streak alerts +4.9 vs +7.8 and −2.2 vs +7.3 ROI).
 // MAX_EDGE: a 20%+ edge usually means v3 over-rates the draw in a one-sided match (the price moved our way only 55% of
 // the time in both 2024-25 and 2025-26, vs 62–67% below 20%; 2024-25 20%+ alerts: 13% draws). Too good to be true.
 const EXCLUDED = new Set(['PD']); // La Liga: the signal did not hold there
@@ -47,7 +49,7 @@ function backfilledCol() {
 function upcoming() {
   const now = new Date().toISOString();
   const rows = db.prepare(`
-    SELECT match_id, competition_code, competition_name, utc_date, home_team, away_team, p_home, p_draw, p_away, odds_home, odds_draw, odds_away
+    SELECT match_id, competition_code, competition_name, utc_date, home_team, away_team, p_home, p_draw, p_away, odds_home, odds_draw, odds_away, draw_streak
     FROM predictions
     WHERE model = 'grid-v3' AND settled = 0 AND locked = 0 AND utc_date > ? AND odds_draw IS NOT NULL
     ORDER BY utc_date
@@ -55,6 +57,7 @@ function upcoming() {
   const out: any[] = [];
   for (const r of rows) {
     if (EXCLUDED.has(r.competition_code)) continue;
+    if (r.draw_streak != null && r.draw_streak >= MAX_STREAK) continue;
     const a = alertOf(r.p_draw, [r.odds_home, r.odds_draw, r.odds_away], r.odds_draw);
     if (!a) continue;
     out.push({ matchId: r.match_id, league: r.competition_name || r.competition_code, date: r.utc_date, home: r.home_team, away: r.away_team, v3: { H: r.p_home, D: r.p_draw, A: r.p_away }, ...a });
@@ -66,7 +69,7 @@ function live() {
   const bf = backfilledCol() ? 'p.backfilled' : '0';
   const rows = db.prepare(`
     SELECT p.match_id, p.competition_code, p.competition_name, p.utc_date, p.home_team, p.away_team,
-           p.p_home, p.p_draw, p.p_away, p.odds_home, p.odds_draw, p.odds_away, ${bf} AS backfilled,
+           p.p_home, p.p_draw, p.p_away, p.odds_home, p.odds_draw, p.odds_away, p.draw_streak, ${bf} AS backfilled,
            r.home_goals, r.away_goals, r.outcome
     FROM predictions p JOIN results r ON r.match_id = p.match_id
     WHERE p.model = 'grid-v3' AND p.settled = 1 AND r.outcome IN ('H','D','A') AND p.odds_draw IS NOT NULL
@@ -79,6 +82,7 @@ function live() {
     if (EXCLUDED.has(r.competition_code)) continue;
     all++;
     if (r.outcome === 'D') allDraws++;
+    if (r.draw_streak != null && r.draw_streak >= MAX_STREAK) continue;
     const a = alertOf(r.p_draw, [r.odds_home, r.odds_draw, r.odds_away], r.odds_draw);
     if (!a) continue;
     const won = r.outcome === 'D';
@@ -155,6 +159,8 @@ function history() {
       if (r.outcome === 'D') draws++;
       const a = alertOf(r.p_draw, [r.eh, r.ed, r.ea], r.max_d);
       if (!a) continue;
+      const tdv = tdm.get(`${r.division}|${r.date}|${r.home}|${r.away}`);
+      if (tdv !== undefined && tdv >= MAX_STREAK) continue; // same rule as live
       const won = r.outcome === 'D';
       n++;
       if (won) wins++;
@@ -191,7 +197,7 @@ function history() {
 }
 
 export function drawAlertsReport() {
-  return { rule: { k: K, minEdge: MIN_EDGE * 100, maxEdge: MAX_EDGE * 100, minV3Draw: MIN_V3, excluded: [...EXCLUDED] }, upcoming: upcoming(), ...live(), history: history() };
+  return { rule: { k: K, minEdge: MIN_EDGE * 100, maxEdge: MAX_EDGE * 100, maxStreak: MAX_STREAK * 100, minV3Draw: MIN_V3, excluded: [...EXCLUDED] }, upcoming: upcoming(), ...live(), history: history() };
 }
 
 /* ------------------------------------------------------------------ */

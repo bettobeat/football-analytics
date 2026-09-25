@@ -12,20 +12,25 @@ const EDGE_THRESHOLD = 0.05; // bet when model EV at market odds >= +5%
 
 export type Outcome = 'H' | 'D' | 'A';
 
+// draw_streak: the lower of the two teams' draw share over their last 20 games (v3 league predictions), for the draw-alert rule
+if (!(db.prepare(`PRAGMA table_info(predictions)`).all() as any[]).some(c => c.name === 'draw_streak'))
+  db.exec(`ALTER TABLE predictions ADD COLUMN draw_streak REAL`);
+
 const upsertStmt = db.prepare(`
   INSERT INTO predictions (
     match_id, model, competition_code, competition_name, utc_date,
     home_team_id, home_team, away_team_id, away_team,
     p_home, p_draw, p_away, xg_home, xg_away, over25, btts, confidence,
     games_home, games_away, odds_home, odds_draw, odds_away,
-    locked, settled, created_at, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
+    locked, settled, created_at, updated_at, draw_streak
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)
   ON CONFLICT(match_id, model) DO UPDATE SET
     utc_date = excluded.utc_date,
     p_home = excluded.p_home, p_draw = excluded.p_draw, p_away = excluded.p_away,
     xg_home = excluded.xg_home, xg_away = excluded.xg_away,
     over25 = excluded.over25, btts = excluded.btts, confidence = excluded.confidence,
     games_home = excluded.games_home, games_away = excluded.games_away,
+    draw_streak = excluded.draw_streak,
     odds_home = COALESCE(excluded.odds_home, predictions.odds_home),
     odds_draw = COALESCE(excluded.odds_draw, predictions.odds_draw),
     odds_away = COALESCE(excluded.odds_away, predictions.odds_away),
@@ -83,7 +88,8 @@ export function recordPredictions(matches: any[]) {
       odds.draw ?? null,
       odds.awayWin ?? null,
       now,
-      now
+      now,
+      p.drawStreak ? Math.min(p.drawStreak.home, p.drawStreak.away) : null
     );
     if (Number(res.changes) > 0) saved++;
     }
@@ -237,6 +243,7 @@ interface SettledRow {
   odds_home: number | null;
   odds_draw: number | null;
   odds_away: number | null;
+  draw_streak?: number | null;
   home_goals: number;
   away_goals: number;
   outcome: Outcome;
@@ -290,7 +297,7 @@ function settledRowsRaw(days: number, competition?: string, model?: string): Set
   const sql = `
     SELECT p.match_id, p.model, p.competition_code, p.competition_name, p.utc_date,
            p.home_team, p.away_team, p.p_home, p.p_draw, p.p_away, p.confidence,
-           p.odds_home, p.odds_draw, p.odds_away,
+           p.odds_home, p.odds_draw, p.odds_away, p.draw_streak,
            r.home_goals, r.away_goals, r.outcome
     FROM predictions p JOIN results r ON r.match_id = p.match_id
     WHERE p.settled = 1 AND r.outcome IN ('H','D','A') AND p.utc_date >= ?${where}
@@ -324,6 +331,7 @@ export interface MetricRow {
   groupKey: string;
   groupName: string;
   drawAlertEligible?: boolean; // v3 prediction outside La Liga
+  drawStreak?: number | null; // lower of the two teams' draw share over their last 20 games
 }
 
 function oddsOf(r: MetricRow, o: Outcome) {
@@ -423,7 +431,7 @@ export function computeMetrics(rows: MetricRow[], opts: { edgeThreshold?: number
       const mPick = (['H', 'D', 'A'] as Outcome[]).reduce((best, o) => (mp[o] > mp[best] ? o : best), 'H' as Outcome);
       mHits += mPick === r.outcome ? 1 : 0;
       for (const t of tiers) if (mp[mPick] >= t.min) { t.mN++; if (mPick === r.outcome) t.mHits++; }
-      if (r.drawAlertEligible && r.odds_draw && p.D >= 0.3) {
+      if (r.drawAlertEligible && r.odds_draw && p.D >= 0.3 && !(r.drawStreak != null && r.drawStreak >= 0.32)) {
         const anchored = mp.D + 0.75 * (p.D - mp.D);
         const e = anchored * r.odds_draw - 1;
         if (e >= 0.02 && e <= 0.2) { da.n++; if (r.outcome === 'D') { da.wins++; da.profit += r.odds_draw - 1; } else da.profit -= 1; }
@@ -518,7 +526,8 @@ export function accuracy(days: number = 90, competition?: string, model?: string
       outcome: r.outcome,
       groupKey: r.competition_code || '?',
       groupName: r.competition_name || r.competition_code || '?',
-      drawAlertEligible: r.model === 'grid-v3' && r.competition_code !== 'PD'
+      drawAlertEligible: r.model === 'grid-v3' && r.competition_code !== 'PD',
+      drawStreak: r.draw_streak ?? null
     }))
   );
   return {

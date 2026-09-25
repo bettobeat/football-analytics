@@ -552,6 +552,8 @@ function splitPoints(gap0: number, drawRaw: number, type: MatchType, lc?: League
   return { ptsH, ptsA, drawPts: 1000 - ptsH - ptsA };
 }
 
+const streakMemo = new WeakMap<HistoryMatch[], Map<string, number>>();
+
 export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string, away: string, asOf: string, matchDate?: string): Prediction | null {
   const h = state.teams.get(home), a = state.teams.get(away);
   if (!h || !a) return null;
@@ -650,8 +652,22 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   if (lc) reasons.push(`league settings (${div}): ${describeLc(lc)}`);
 
   const evidence = Math.min(h.played, a.played);
+  // draw streaks: bookmakers over-price draws for teams that drew a lot lately (draw-factor test, both seasons)
+  const last20 = (t: string) => {
+    let memo = streakMemo.get(all);
+    if (!memo) streakMemo.set(all, (memo = new Map()));
+    const key = `${t}|${asOf}`;
+    const hit = memo.get(key);
+    if (hit !== undefined) return hit;
+    const g = all.filter(m => m.date < asOf && (m.home === t || m.away === t));
+    const l = g.slice(-20);
+    const v = l.length ? Math.round((l.filter(m => m.hg === m.ag).length / l.length) * 100) / 100 : 0;
+    memo.set(key, v);
+    return v;
+  };
   return {
     model: MODEL_V3,
+    drawStreak: { home: last20(home), away: last20(away) },
     home: ptsH / 10, draw: drawPts / 10, away: ptsA / 10,
     expectedGoals: { home: Math.round(lamH * 100) / 100, away: Math.round(lamA * 100) / 100 },
     over25: Math.round(over25 * 1000) / 10,

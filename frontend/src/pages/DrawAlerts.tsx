@@ -17,7 +17,7 @@ interface Season {
   byLeague: { division: string; league: string; n: number; hitRate: number; roi: number }[]
 }
 interface Report {
-  rule: { k: number; minEdge: number; maxEdge?: number; minV3Draw: number; excluded: string[] }
+  rule: { k: number; minEdge: number; maxEdge?: number; maxStreak?: number; minV3Draw: number; excluded: string[] }
   upcoming: Alert[]
   live: Rec; backfilled: Rec; total: Rec
   baseline: { matches: number; drawRate: number | null }
@@ -257,6 +257,10 @@ export default function DrawAlerts() {
           </p>
           <p>
             <span className="text-ink font-semibold">4.</span> La Liga is left out: the signal did not hold there.
+          </p>
+          <p>
+            <span className="text-ink font-semibold">5.</span> No alert when both teams drew {data.rule.maxStreak ?? 32}%+ of their last 20 games: the
+            bookmakers already overrate the draw after a run of draws.
           </p>
           <p className="pt-2">
             The best sign that the signal is real: after an alert, the draw price usually shortens before kick-off, meaning the market moves toward
