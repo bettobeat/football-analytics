@@ -159,10 +159,15 @@ function toFdMatchFull(f: any) {
     const afId = side === 'homeTeam' ? f.teams.home.id : f.teams.away.id;
     const lu = (f.lineups || []).find((l: any) => l.team?.id === afId);
     if (lu) {
-      const pl = (x: any) => ({ id: AF_OFFSET + x.player.id, name: x.player.name, position: POS[x.player.pos] || null, shirtNumber: x.player.number ?? null });
+      // Small nations often have players without an API-Football id: keep them (synthetic negative id), never drop them.
+      // grid = "row:col" from API-Football (row 1 = goalkeeper), used to draw the pitch exactly.
+      const pl = (x: any, i: number, bench = false) => ({
+        id: x.player.id ? AF_OFFSET + x.player.id : -((side === 'homeTeam' ? 1000 : 2000) + (bench ? 100 : 0) + i),
+        name: x.player.name || '?', position: POS[x.player.pos] || null, shirtNumber: x.player.number ?? null, grid: x.player.grid || null
+      });
       m[side].formation = lu.formation || null;
-      m[side].lineup = (lu.startXI || []).filter((x: any) => x.player?.id).map(pl);
-      m[side].bench = (lu.substitutes || []).filter((x: any) => x.player?.id).map(pl);
+      m[side].lineup = (lu.startXI || []).filter((x: any) => x.player?.name).map((x: any, i: number) => pl(x, i));
+      m[side].bench = (lu.substitutes || []).filter((x: any) => x.player?.name).map((x: any, i: number) => pl(x, i, true));
       m[side].coach = lu.coach?.name ? { id: lu.coach.id, name: lu.coach.name } : null;
     }
     const st = (f.statistics || []).find((s: any) => s.team?.id === afId);

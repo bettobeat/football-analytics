@@ -36,7 +36,7 @@ import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNational
 import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler, clubValueReport } from './services/clubElo';
 import { nationalValueSearch, historyMatchReport } from './services/squadValues';
 import { drawAlertsReport, drawFactorTest } from './services/drawAlerts';
-import { teamPage, searchTeams, resolveAfTeamId } from './services/teamPage';
+import { teamPage, searchTeams, resolveAfTeamId, setTeamOverride, teamOverrides } from './services/teamPage';
 import { footballNews } from './services/news';
 import { normalizeName } from './services/history';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures, afGet, afRemaining, xgCoverage } from './services/apiFootball';
@@ -489,6 +489,24 @@ app.get('/api/team-page/:id(\\d+)', async (req, res) => {
     sendError(res, error, 'Team page failed');
   }
 });
+
+// Admin: correct a team fact the provider has wrong (venue, city, capacity, founded, name). Site team id or AF id.
+//   GET /api/team-overrides                       → all corrections
+//   GET /api/team-overrides?id=1000000529&field=capacity&value=62000   (empty value = remove)
+const teamOverrideHandler = (req: express.Request, res: express.Response) => {
+  try {
+    const q: any = { ...(req.query || {}), ...(req.body || {}) };
+    if (!q.id) return res.json({ data: teamOverrides() });
+    const raw = parseInt(String(q.id), 10);
+    const afId = raw >= 1_000_000_000 ? raw - 1_000_000_000 : raw;
+    if (!q.field) return res.json({ data: teamOverrides(afId) });
+    res.json({ data: setTeamOverride(afId, String(q.field), q.value === undefined ? null : String(q.value)) });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+};
+app.get('/api/team-overrides', teamOverrideHandler);
+app.post('/api/team-overrides', teamOverrideHandler);
 
 // Search: teams (every club and national team we track) + upcoming / live matches of those teams
 app.get('/api/search', async (req, res) => {

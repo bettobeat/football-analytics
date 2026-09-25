@@ -1165,6 +1165,7 @@ function LeagueTable({ code, name, homeId, awayId }: { code: string; name: strin
 
 interface PitchPlayer extends Player {
   photo?: string | null
+  grid?: string | null
   starts?: number // probable lineups: starts in the analysed matches
 }
 
@@ -1172,13 +1173,26 @@ interface PitchPlayer extends Player {
 function formationRows(team: Team): PitchPlayer[][] {
   const lineup = (team.lineup || []) as PitchPlayer[]
   if (!lineup.length) return []
-  const gk = lineup.filter(p => /goal/i.test(p.position || ''))
-  const outfield = lineup.filter(p => !/goal/i.test(p.position || ''))
+  // exact positions from the provider ("row:col", row 1 = goalkeeper) when every starter has one
+  if (lineup.every(p => p.grid && /^\d+:\d+$/.test(p.grid))) {
+    const byRow = new Map<number, PitchPlayer[]>()
+    for (const p of lineup) {
+      const [r] = p.grid!.split(':').map(Number)
+      byRow.set(r, [...(byRow.get(r) || []), p])
+    }
+    return [...byRow.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([, ps]) => ps.sort((a, b) => Number(b.grid!.split(':')[1]) - Number(a.grid!.split(':')[1])))
+  }
+  const gkFound = lineup.filter(p => /goal/i.test(p.position || ''))
+  // no goalkeeper flagged: the provider lists him first
+  const gk = gkFound.length ? gkFound : lineup.slice(0, 1)
+  const outfield = lineup.filter(p => !gk.includes(p))
   const counts = (team.formation || '')
     .split('-')
     .map(n => parseInt(n, 10))
     .filter(n => Number.isFinite(n) && n > 0)
-  const rows: PitchPlayer[][] = [gk.length ? gk : lineup.slice(0, 1)]
+  const rows: PitchPlayer[][] = [gk]
   if (counts.length && counts.reduce((a, b) => a + b, 0) === outfield.length) {
     let i = 0
     for (const c of counts) {

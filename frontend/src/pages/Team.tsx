@@ -24,6 +24,7 @@ interface TeamData {
   assists: { name: string; value: number }[]
   premium: boolean
   locked?: string[]
+  builtAt?: string
 }
 
 const FORM_BG = { W: 'bg-win', D: 'bg-draw', L: 'bg-loss' }
@@ -147,6 +148,11 @@ export default function Team() {
             {data.venue && <span>{data.venue.name}{data.venue.capacity ? ` · ${data.venue.capacity.toLocaleString('en-GB')}` : ''}</span>}
             {team.founded && <span>Founded {team.founded}</span>}
           </div>
+          {data.builtAt && (
+            <div className="text-[11px] text-[#9AA3B2]">
+              Updated {Math.max(1, Math.round((Date.now() - new Date(data.builtAt).getTime()) / 60000))} min ago · results and table refresh every 15 minutes
+            </div>
+          )}
         </div>
         {data.form.length > 0 && (
           <div className="flex flex-col sm:items-end gap-2">

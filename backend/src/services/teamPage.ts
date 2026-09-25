@@ -17,9 +17,31 @@ import { groupForCompetition, fdNameFor, normalizeName } from './history';
 import { isKnownAfFixture } from './afMatches';
 
 const AF_OFFSET = 1_000_000_000;
-const TTL = 6 * 3600 * 1000;
+const TTL = 6 * 3600 * 1000; // search index
+const PAGE_TTL = 15 * 60 * 1000; // assembled page
+const SLOW = 12 * 3600 * 1000; // team profile, squad, player season stats
+const FAST = 15 * 60 * 1000; // fixtures, results, table: refreshed often so they are current after every game
 const cache = new Map<string, { at: number; data: any }>();
 const logo = (id: number) => `https://media.api-sports.io/football/teams/${id}.png`;
+
+/*
+ * Corrections for facts the provider gets wrong or keeps stale (stadium, capacity, coach…), set by an admin.
+ * They win over provider data and are shown as-is.
+ */
+db.exec(`CREATE TABLE IF NOT EXISTS team_overrides (af_id INTEGER NOT NULL, field TEXT NOT NULL, value TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (af_id, field))`);
+const OVERRIDE_FIELDS = new Set(['venue', 'city', 'capacity', 'founded', 'name']);
+export function setTeamOverride(afId: number, field: string, value: string | null) {
+  if (!OVERRIDE_FIELDS.has(field)) throw new Error(`field must be one of ${[...OVERRIDE_FIELDS].join(', ')}`);
+  if (value === null || value === '') db.prepare(`DELETE FROM team_overrides WHERE af_id = ? AND field = ?`).run(afId, field);
+  else db.prepare(`INSERT OR REPLACE INTO team_overrides (af_id, field, value, updated_at) VALUES (?, ?, ?, ?)`).run(afId, field, value, new Date().toISOString());
+  cache.delete(`team:${afId}`);
+  return teamOverrides(afId);
+}
+export function teamOverrides(afId?: number) {
+  return afId
+    ? (db.prepare(`SELECT field, value, updated_at FROM team_overrides WHERE af_id = ?`).all(afId) as any[])
+    : (db.prepare(`SELECT af_id, field, value, updated_at FROM team_overrides ORDER BY af_id`).all() as any[]);
+}
 
 async function cached<T>(key: string, ttl: number, load: () => Promise<T>): Promise<T> {
   const c = cache.get(key);
@@ -106,15 +128,39 @@ const simpleFixture = (f: any) => ({
   ag: f.goals?.away ?? null
 });
 
+/**
+ * Home ground as it is NOW: the stadium of the team's most recent home game (fixtures are current; the provider's
+ * team profile can be years old, e.g. during a rebuild). Capacity is not taken from the provider (often stale):
+ * shown only when an admin has set it. Admin corrections win over everything.
+ */
+function currentVenue(afId: number, t: any, lastFixtures: any[]) {
+  const ov = Object.fromEntries(teamOverrides(afId).map((o: any) => [o.field, o.value]));
+  const lastHome = [...lastFixtures]
+    .filter(f => f.teams?.home?.id === afId && f.fixture?.venue?.name)
+    .sort((a, b) => (a.fixture.date < b.fixture.date ? 1 : -1))[0];
+  const name = ov.venue || lastHome?.fixture?.venue?.name || t.venue?.name || null;
+  if (!name) return null;
+  return {
+    name,
+    city: ov.city || lastHome?.fixture?.venue?.city || t.venue?.city || null,
+    capacity: ov.capacity ? Number(ov.capacity) : null,
+    source: ov.venue ? 'checked' : lastHome ? 'last home game' : 'provider profile'
+  };
+}
+
+/** One API-Football call, cached with its own lifetime. */
+const g = (path: string, params: Record<string, string | number>, ttl: number) =>
+  cached<any>(`${path}?${JSON.stringify(params)}`, ttl, () => afGet(path, params));
+
 async function build(afId: number) {
   if (!afConfigured()) throw new Error('API-Football is not configured');
   if (afRemaining() < 200) throw new Error('Daily data budget reached, try again later');
   const [teamRes, leaguesRes, squadRes, lastRes, nextRes] = await Promise.all([
-    afGet('/teams', { id: afId }),
-    afGet('/leagues', { team: afId, current: 'true' }),
-    afGet('/players/squads', { team: afId }),
-    afGet('/fixtures', { team: afId, last: 10 }),
-    afGet('/fixtures', { team: afId, next: 5 })
+    g('/teams', { id: afId }, SLOW),
+    g('/leagues', { team: afId, current: 'true' }, SLOW),
+    g('/players/squads', { team: afId }, SLOW),
+    g('/fixtures', { team: afId, last: 10 }, FAST),
+    g('/fixtures', { team: afId, next: 5 }, FAST)
   ]);
   const t = teamRes.response?.[0];
   if (!t) throw Object.assign(new Error('Team not found'), { response: { status: 404 } });
@@ -127,7 +173,7 @@ async function build(afId: number) {
   let standing: any = null;
   if (league && season && league.league?.type === 'League') {
     try {
-      const st = await afGet('/standings', { league: league.league.id, season });
+      const st = await g('/standings', { league: league.league.id, season }, FAST);
       const groups: any[][] = st.response?.[0]?.league?.standings || [];
       const table = groups.find(g => g.some((r: any) => r.team?.id === afId)) || null;
       if (table) {
@@ -148,7 +194,7 @@ async function build(afId: number) {
   if (!national && season) {
     for (let page = 1; page <= 3; page++) {
       try {
-        const pr = await afGet('/players', { team: afId, season, page });
+        const pr = await g('/players', { team: afId, season, page }, SLOW);
         for (const it of pr.response || []) {
           const s = { apps: 0, minutes: 0, goals: 0, assists: 0, yellow: 0, red: 0, ratingSum: 0, ratingN: 0 };
           for (const st of it.statistics || []) {
@@ -198,8 +244,11 @@ async function build(afId: number) {
     });
 
   return {
-    team: { id: AF_OFFSET + afId, afId, name: t.team.name, logo: t.team.logo, country: t.team.country, founded: t.team.founded, national },
-    venue: t.venue?.name ? { name: t.venue.name, city: t.venue.city, capacity: t.venue.capacity } : null,
+    team: (() => {
+      const ov = Object.fromEntries(teamOverrides(afId).map((o: any) => [o.field, o.value]));
+      return { id: AF_OFFSET + afId, afId, name: ov.name || t.team.name, logo: t.team.logo, country: t.team.country, founded: ov.founded ? Number(ov.founded) : t.team.founded, national };
+    })(),
+    venue: currentVenue(afId, t, lastRes.response || []),
     league: league ? { id: league.league.id, name: league.league.name, logo: league.league.logo, country: league.country?.name, season } : null,
     standing, form, last, next, squad,
     scorers: leaders('goals'),
@@ -210,7 +259,7 @@ async function build(afId: number) {
 
 /** Full team page (premium) or the free cut. */
 export async function teamPage(afId: number, full: boolean) {
-  const data: any = await cached(`team:${afId}`, TTL, () => build(afId));
+  const data: any = await cached(`team:${afId}`, PAGE_TTL, () => build(afId));
   if (full) return { ...data, premium: true };
   return {
     ...data,
