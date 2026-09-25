@@ -352,6 +352,12 @@ function MatchDetail() {
     load(true)
   }, [matchId])
 
+  // browser tab: "Arsenal vs Chelsea · Bet To Beat"
+  const tabTitle = details ? `${details.match.homeTeam.shortName || details.match.homeTeam.name} vs ${details.match.awayTeam.shortName || details.match.awayTeam.name}` : ''
+  useEffect(() => {
+    if (tabTitle) document.title = `${tabTitle} · Bet To Beat`
+  }, [tabTitle])
+
   // Live scores arrive over the socket; full details (events, lineups) are re-fetched on a timer:
   //   live → every 60s · within 2h of kick-off → every 90s (official lineups land ~1h before) · otherwise every 5 min
   const isLive = details ? LIVE.has(details.match.status) : false

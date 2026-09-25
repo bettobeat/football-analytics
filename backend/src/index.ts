@@ -47,7 +47,7 @@ import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgr
 const isDev = (process.env.NODE_ENV || 'development') !== 'production';
 
 // In development accept any local origin (Vite may switch ports, 127.0.0.1 vs localhost, etc.)
-const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000')
+const allowedOrigins = (process.env.CORS_ORIGIN || (isDev ? 'http://localhost:3000' : 'https://bettobeat.com,https://www.bettobeat.com'))
   .split(',')
   .map(o => o.trim());
 const corsOrigin = isDev ? true : allowedOrigins;
@@ -97,13 +97,29 @@ app.use((req, _res, next) => {
   next();
 });
 
+// ---------- One address: https://bettobeat.com ----------
+// www.bettobeat.com and plain http go to the canonical https address (301), so links, cookies and search engines
+// all use one host. Only requests for our own domain are touched (Railway's internal health checks are not).
+const CANONICAL_HOST = process.env.CANONICAL_HOST || (isDev ? '' : 'bettobeat.com');
+if (CANONICAL_HOST) {
+  app.use((req, res, next) => {
+    const host = (req.hostname || '').toLowerCase();
+    if (req.path === '/api/health' || !host.endsWith(CANONICAL_HOST)) return next();
+    if (host !== CANONICAL_HOST || !req.secure) return res.redirect(301, `https://${CANONICAL_HOST}${req.originalUrl}`);
+    next();
+  });
+}
+
+// Public files that carry no data (icons, share image, robots, sitemap) stay reachable behind the beta gate
+const PUBLIC_FILES = new Set(['/favicon.svg', '/apple-touch-icon.png', '/og-image.png', '/robots.txt', '/sitemap.xml']);
+
 // ---------- Private beta gate ----------
 // Set SITE_USER + SITE_PASSWORD (e.g. on Railway) and the whole site — pages and API — asks for them.
 // Uses the browser's own login prompt, so it works on phones and is remembered per device.
 // Health check stays open so the host can monitor the service. Unset = open site (local dev).
 if (SITE_PASSWORD) {
   app.use((req, res, next) => {
-    if (req.path === '/api/health') return next();
+    if (req.path === '/api/health' || PUBLIC_FILES.has(req.path)) return next();
     if (req.headers.authorization === SITE_AUTH) return next();
     if (API_READ_TOKEN && req.method === 'GET' && req.path.startsWith('/api/') && req.query.token === API_READ_TOKEN) return next();
     res.set('WWW-Authenticate', 'Basic realm="Bet To Beat - private beta", charset="UTF-8"');

@@ -3,7 +3,7 @@ import { useAuth } from '../lib/auth'
 
 const FREE = ['Every match in 25+ competitions', 'Live scores and events', 'Market odds', 'The model’s pick for each match', 'League tables and top scorers']
 const PREMIUM = [
-  'Win / draw / loss % from every model (v2, v3, Elo)',
+  'Win / draw / loss % from our models (v3 for every match, v2 for leagues)',
   'Fair odds and model vs market on each outcome',
   'Strong picks and two-option picks',
   'Draw alerts (backtested on two seasons)',

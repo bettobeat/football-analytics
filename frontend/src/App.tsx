@@ -5,6 +5,7 @@ import MatchDetail from './pages/MatchDetail'
 import AccuracySimple from './pages/AccuracySimple'
 import Past from './pages/Past'
 import DrawAlerts from './pages/DrawAlerts'
+import { Terms, Privacy, NotFound } from './pages/Legal'
 import Login from './pages/Login'
 import Account from './pages/Account'
 import Premium from './pages/Premium'
@@ -125,6 +126,30 @@ function NavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
   )
 }
 
+const TITLES: [RegExp, string][] = [
+  [/^\/$/, 'Matches'],
+  [/^\/match\//, 'Match'],
+  [/^\/accuracy/, 'Accuracy'],
+  [/^\/draw-alerts/, 'Draw alerts'],
+  [/^\/past/, 'Past seasons'],
+  [/^\/premium/, 'Premium'],
+  [/^\/login/, 'Sign in'],
+  [/^\/signup/, 'Create account'],
+  [/^\/account/, 'Account'],
+  [/^\/terms/, 'Terms of use'],
+  [/^\/privacy/, 'Privacy policy'],
+  [/^\/admin/, 'Users']
+]
+/** Browser tab title per page (the match page sets its own once the teams are loaded). */
+function PageTitle() {
+  const loc = useLocation()
+  useEffect(() => {
+    const t = TITLES.find(([re]) => re.test(loc.pathname))?.[1]
+    document.title = t && t !== 'Matches' ? `${t} · Bet To Beat` : 'Bet To Beat · Football predictions tested against the bookmakers'
+  }, [loc.pathname])
+  return null
+}
+
 function App() {
   return (
     <AuthProvider>
@@ -187,6 +212,7 @@ function Shell() {
           </div>
         </header>
 
+        <PageTitle />
         <VerifyBanner />
         <main>
           <Routes>
@@ -223,11 +249,24 @@ function Shell() {
             <Route path="/forgot" element={<Forgot />} />
             <Route path="/premium" element={<Premium />} />
             <Route path="/admin" element={<Admin />} />
+            <Route path="/terms" element={<Terms />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </main>
 
-        <footer className="max-w-7xl mx-auto px-4 sm:px-6 py-10 text-xs text-faint">
-          Bet To Beat · predictions are probabilities, not promises. Data: Football-Data.org, football-data.co.uk.
+        <footer className="max-w-7xl mx-auto px-4 sm:px-6 py-10 text-xs text-faint space-y-2">
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <Link to="/terms" className="hover:text-ink">Terms</Link>
+            <Link to="/privacy" className="hover:text-ink">Privacy</Link>
+            <Link to="/premium" className="hover:text-ink">Premium</Link>
+          </div>
+          <p>
+            Bet To Beat · predictions are probabilities, not promises. Information only, not betting advice. 18+. If gambling stops being fun,
+            stop and{' '}
+            <a href="https://www.begambleaware.org" target="_blank" rel="noreferrer" className="underline hover:text-ink">get help</a>.
+          </p>
+          <p>Data: Football-Data.org, API-Football, football-data.co.uk, Transfermarkt (squad values), bookmaker odds via The Odds API.</p>
         </footer>
       </div>
     </Router>
