@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
 import { bookLabel, pickOfPrediction, type Market, type Prediction } from '../lib/predict'
@@ -122,7 +122,8 @@ function Dashboard() {
   const [matches, setMatches] = useState<APIMatch[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [days, setDays] = useState(7)
+  // opened on one league (search, shared link): show its whole month, so the list is never empty between rounds
+  const [days, setDays] = useState(() => (new URLSearchParams(window.location.search).get('league') ? 30 : 7))
   // League menu categories: Top leagues open by default; remembered in this browser
   const [openGroups, setOpenGroups] = useState<Set<number>>(() => {
     try {
@@ -145,7 +146,21 @@ function Dashboard() {
       }
       return next
     })
-  const [league, setLeague] = useState<string>('ALL')
+  const [params, setParams] = useSearchParams()
+  const [league, setLeagueState] = useState<string>(params.get('league') || 'ALL')
+  // the league is kept in the address (?league=PL), so search results and shared links open the right league
+  const setLeague = (code: string) => {
+    setLeagueState(code)
+    setParams(code === 'ALL' ? {} : { league: code }, { replace: true })
+  }
+  useEffect(() => {
+    const fromUrl = params.get('league') || 'ALL'
+    if (fromUrl !== league) {
+      setLeagueState(fromUrl)
+      if (fromUrl !== 'ALL') setDays(30)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params])
 
   useEffect(() => {
     let cancelled = false

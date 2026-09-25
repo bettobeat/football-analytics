@@ -95,6 +95,12 @@ app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// API responses are data, not pages: keep them out of search results (robots.txt stays open so tools can read them)
+app.use('/api', (_req, res, next) => {
+  res.set('X-Robots-Tag', 'noindex, nofollow');
+  next();
+});
+
 app.use((req, _res, next) => {
   logger.info(`${req.method} ${req.originalUrl.replace(/([?&]token=)[^&]+/g, '$1***')}`);
   next();
@@ -512,16 +518,28 @@ app.post('/api/team-overrides', teamOverrideHandler);
 app.get('/api/search', async (req, res) => {
   try {
     const q = String(req.query.q || '').trim().slice(0, 60);
-    if (q.length < 2) return res.json({ data: { teams: [], matches: [] } });
+    if (q.length < 2) return res.json({ data: { teams: [], matches: [], competitions: [] } });
     const teams = searchTeams(q, 8);
     const norm = normalizeName(q);
+    // competitions: every league / cup / national-team competition on the site (name, code or country)
+    const leagues: any[] = [...(await footballDataAPI.getLeagues().catch(() => [] as any[])), ...afCompetitions()];
+    const competitions = leagues
+      .map((l: any) => {
+        const hay = [l.name, l.code, l.area?.name, l.country].filter(Boolean).map((x: string) => normalizeName(x));
+        const score = hay.some(h => h === norm) ? 3 : hay.some(h => h.startsWith(norm)) ? 2 : hay.some(h => h.includes(norm)) ? 1 : 0;
+        return { l, score };
+      })
+      .filter(x => x.score > 0)
+      .sort((a, b) => b.score - a.score || (a.l.rank ?? 9) - (b.l.rank ?? 9))
+      .slice(0, 6)
+      .map(({ l }) => ({ code: l.code, name: l.name, emblem: l.emblem || null, country: l.area?.name || l.country || null }));
     const upcoming = [...(await footballDataAPI.getUpcomingMatches(14)), ...afUpcoming(14)];
     const matches = upcoming
       .filter((m: any) => [m.homeTeam?.name, m.homeTeam?.shortName, m.awayTeam?.name, m.awayTeam?.shortName].some(n => n && normalizeName(n).includes(norm)))
       .sort((a: any, b: any) => a.utcDate.localeCompare(b.utcDate))
       .slice(0, 6)
       .map((m: any) => ({ id: m.id, utcDate: m.utcDate, status: m.status, competition: m.competition?.name, home: m.homeTeam?.shortName || m.homeTeam?.name, away: m.awayTeam?.shortName || m.awayTeam?.name, homeCrest: m.homeTeam?.crest, awayCrest: m.awayTeam?.crest }));
-    res.json({ data: { teams, matches }, timestamp: new Date().toISOString() });
+    res.json({ data: { teams, matches, competitions }, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Search failed');
   }
