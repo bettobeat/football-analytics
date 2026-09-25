@@ -88,11 +88,14 @@ export const CONV = {
   // Elo across divisions (the gap report: promoted sides arrived rated on their second-division results,
   // e.g. Hamburg 68% at Gladbach). 1 = a team changing division (or appearing for the first time after
   // the first season) is placed at a percentile of its new division: promoted/newcomer low, relegated high.
-  eloDivTransfer: 0,
+  eloDivTransfer: 1, // backtest 2025-26: gap to market 33.7 → 31.6 Brier points
   eloPromoPct: 0.2,
   eloRelegPct: 0.75,
   eloK: 20,
   formCurDiv: 0, // 1 = form (last 6) only from games in the team's current division
+  // big favourites were too cautious (Porto 60% vs market 67% vs actual 82%): stretch large gaps.
+  // effective gap = gap + gapCube · gap³ (0 = off)
+  gapCube: 0,
   useDivHint: 1, // take each team's division from the fixture being predicted (see buildState)
   // availability rows (#13 injuries, #12 confirmed XI): value = 5.5 − k × (starter-equivalents missing)
   injK: 2.0, // backtest 2025-26: 1–4 all help a little, 2 best on hit rate
@@ -554,7 +557,8 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   drawPts = clamp(drawPts, CONV.floorDraw, CONV.drawCap[type]);
 
   // --- split the rest by the gap
-  const pH = 1 / (1 + Math.exp(-gap / CONV.gapScale));
+  const gEff = gap + CONV.gapCube * gap * gap * gap;
+  const pH = 1 / (1 + Math.exp(-gEff / CONV.gapScale));
   let rest = 1000 - drawPts;
   let ptsH = rest * pH, ptsA = rest - ptsH;
   if (ptsA < CONV.floorOutsider) { ptsH -= CONV.floorOutsider - ptsA; ptsA = CONV.floorOutsider; }
@@ -769,6 +773,10 @@ function mergeConv(base: typeof CONV, over: Partial<typeof CONV> | undefined): t
 /** Automatic variant lists for a coordinate-descent style search. */
 export function autoVariants(kind: string, step = 1): SweepVariant[] {
   const out: SweepVariant[] = [];
+  if (kind === 'gapcube') {
+    for (const c of [1, 2, 4, 8, 16]) out.push({ name: `gapCube ${c}`, conv: { gapCube: c } as any });
+    for (const c of [2, 4, 8]) for (const gs of [0.18, 0.22]) out.push({ name: `gapCube ${c} gapScale ${gs}`, conv: { gapCube: c, gapScale: gs } as any });
+  }
   if (kind === 'drawspread') {
     for (const st of [1, 1.25, 1.5, 1.75, 2, 2.5])
       for (const gk of [0, 0.1, 0.2, 0.35])
