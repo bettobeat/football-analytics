@@ -87,8 +87,18 @@ export function afTeam(t: any) {
   return { id: AF_OFFSET + t.id, name: t.name, shortName: t.name, tla: String(t.name || '').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase(), crest: t.logo };
 }
 
+/*
+ * Every national-team competition, not only the fixed list: API-Football files them under country "World".
+ * Club, youth, women's, futsal and similar "World" competitions are left out by name.
+ */
+const NOT_NATIONAL = /club|champions (league|cup)|libertadores|sudamericana|recopa|leagues cup|confederation cup|afc cup|super cup|intercontinental|youth|\bu-?\d{2}\b|under[- ]?\d{2}|women|olympic|futsal|beach|e-?soccer|premier league international|challenge cup|charity|reserve|amateur|universit|military|toulon|revello|emirates cup|audi cup|trophy/i;
+export function isNationalLeague(league: any): boolean {
+  if (EXTRA_COMPETITIONS.some(c => c.id === league?.id && c.kind === 'national')) return true;
+  return league?.country === 'World' && !NOT_NATIONAL.test(String(league?.name || ''));
+}
+
 function competitionOf(league: any) {
-  const kind = EXTRA_COMPETITIONS.find(c => c.id === league.id)?.kind || 'league';
+  const kind: Kind = EXTRA_COMPETITIONS.find(c => c.id === league.id)?.kind || (isNationalLeague(league) ? 'national' : 'league');
   const country = league.country && !['World', 'Europe'].includes(league.country) ? league.country : null;
   return {
     id: AF_OFFSET + league.id,
@@ -267,6 +277,36 @@ export function isKnownAfFixture(matchId: number): boolean {
   return db.prepare(`SELECT 1 FROM predictions WHERE match_id = ? LIMIT 1`).get(matchId) ? true : false;
 }
 
+const natDays = new Map<string, { at: number; matches: any[] }>();
+async function nationalByDate(from: string, to: string): Promise<any[]> {
+  const out: any[] = [];
+  const start = new Date(from + 'T00:00:00Z').getTime(), end = new Date(to + 'T00:00:00Z').getTime();
+  const now = Date.now();
+  for (let t = start; t <= end; t += 86400000) {
+    const day = new Date(t).toISOString().slice(0, 10);
+    const near = t <= now + 2 * 86400000;
+    const have = natDays.get(day);
+    if (!have || now - have.at > (near ? 25 * 60 * 1000 : 6 * 3600 * 1000)) {
+      try {
+        const j = await afGet('/fixtures', { date: day });
+        const ms: any[] = [];
+        for (const f of j.response || []) {
+          if (!isNationalLeague(f.league) || !senior(f)) continue;
+          if (!leagueMeta.has(f.league.id))
+            leagueMeta.set(f.league.id, { name: f.league.name, logo: f.league.logo, country: f.league.country, flag: f.league.flag || null, season: f.league.season, kind: 'national' });
+          ms.push(toFdMatch(f));
+        }
+        natDays.set(day, { at: now, matches: ms });
+      } catch (e: any) {
+        logger.warn(`AF national ${day}: ${e.message}`);
+      }
+    }
+    out.push(...(natDays.get(day)?.matches || []));
+  }
+  for (const k of natDays.keys()) if (k < from) natDays.delete(k);
+  return out;
+}
+
 export async function refreshAfWindow() {
   if (!afConfigured()) return 0;
   const from = new Date(Date.now() - 24 * 3600 * 1000).toISOString().slice(0, 10);
@@ -284,6 +324,11 @@ export async function refreshAfWindow() {
       logger.warn(`AF window ${c.id}: ${e.message}`);
     }
   }
+  // All other national-team competitions (CONCACAF Nations League, Asian/African qualifiers, regional cups…),
+  // found day by day: one request per date, near dates every run, the rest every 6 hours
+  const national = await nationalByDate(from, to);
+  const seen = new Set(all.map(m => m.id));
+  for (const m of national) if (!seen.has(m.id)) all.push(m);
   if (failed && windowMatches.length && all.length < windowMatches.length * 0.5) return windowMatches.length; // keep a healthy window
   windowMatches = all.sort((a, b) => a.utcDate.localeCompare(b.utcDate));
   windowAt = Date.now();
@@ -293,7 +338,8 @@ export async function refreshAfWindow() {
     logger.warn(`AF window listener: ${e.message}`);
   }
   // Standings for leagues/cups with tables (not friendlies), for the v1 model and the league panel
-  const codes = [...new Set(windowMatches.map(m => m.competition.code))].filter(c => c !== 'AF10');
+  const fixedCodes = new Set(EXTRA_COMPETITIONS.filter(c => c.id !== 10).map(c => `AF${c.id}`));
+  const codes = [...new Set(windowMatches.map(m => m.competition.code))].filter(c => fixedCodes.has(c));
   for (const code of codes) await getAfStandings(code).catch(() => null);
   return windowMatches.length;
 }
@@ -308,9 +354,13 @@ export async function pollAfLive() {
   });
   if (!maybeLive) { liveById = new Map(); return []; }
   try {
-    const ids = EXTRA_COMPETITIONS.map(c => c.id).join('-');
-    const j = await afGet('/fixtures', { live: ids });
-    const live = (j.response || []).filter(senior).map(toFdMatch);
+    // all live fixtures in one request, kept when they belong to our window (fixed list + every national competition)
+    const inWindow = new Set(windowMatches.map(m => m.id));
+    const fixed = new Set(EXTRA_COMPETITIONS.map(c => c.id));
+    const j = await afGet('/fixtures', { live: 'all' });
+    const live = (j.response || [])
+      .filter((f: any) => senior(f) && (inWindow.has(AF_OFFSET + f.fixture.id) || fixed.has(f.league?.id) || isNationalLeague(f.league)))
+      .map(toFdMatch);
     liveById = new Map(live.map((m: any) => [m.id, m]));
     // fold live status/score into the window; matches that just finished get their final state
     const liveIds = new Set(liveById.keys());
