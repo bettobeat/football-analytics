@@ -34,7 +34,7 @@ import {
 import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNationalEloScheduler } from './services/nationalElo';
 import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler, clubValueReport } from './services/clubElo';
 import { nationalValueSearch } from './services/squadValues';
-import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures, afGet, afRemaining } from './services/apiFootball';
+import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures, afGet, afRemaining, xgCoverage } from './services/apiFootball';
 import {
   signup, login, changePassword, setPlan, adminResetPassword, listUsers, userStats, createSession, destroySession, userForToken,
   parseCookies, setSessionCookie, clearSessionCookie, SESSION_COOKIE, accessOf, canSeeFull, teaseDeep, AuthError, Access, User,
@@ -653,6 +653,10 @@ app.get('/api/af/raw', async (req, res) => {
   } catch (e: any) {
     res.status(502).json({ error: e.message });
   }
+});
+
+app.get('/api/af/xg', (_req, res) => {
+  res.json({ data: xgCoverage(), timestamp: new Date().toISOString() });
 });
 
 app.get('/api/af/status', async (_req, res) => {

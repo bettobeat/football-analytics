@@ -96,7 +96,7 @@ export const CONV = {
   // big favourites were too cautious (Porto 60% vs market 67% vs actual 82%): stretch large gaps.
   // effective gap = gap + gapCube · gap³ (0 = off)
   gapCube: 0,
-  pitSquad: 0, // 1 = point-in-time squad values (see squadHistory.ts)
+  pitSquad: 1, // point-in-time squad values (squadHistory.ts): honest backtests; live = latest month
   useDivHint: 1, // take each team's division from the fixture being predicted (see buildState)
   // availability rows (#13 injuries, #12 confirmed XI): value = 5.5 − k × (starter-equivalents missing)
   injK: 2.0, // backtest 2025-26: 1–4 all help a little, 2 best on hit rate

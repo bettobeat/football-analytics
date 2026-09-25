@@ -12,6 +12,8 @@
  * Features are built only from matches before the match date (no look-ahead).
  */
 import { db } from '../db';
+import { GROUPS } from './history';
+import { xgByMatch } from './apiFootball';
 
 type O = 'H' | 'D' | 'A';
 const IDX: Record<O, number> = { H: 0, D: 1, A: 2 };
@@ -24,7 +26,7 @@ interface Hist {
   division: string; season: string; date: string; home: string; away: string; hg: number; ag: number;
   sh_h: number | null; sh_a: number | null; sot_h: number | null; sot_a: number | null; cor_h: number | null; cor_a: number | null;
 }
-interface TeamGame { date: string; gf: number; ga: number; shF: number | null; shA: number | null; sotF: number | null; sotA: number | null; corF: number | null; corA: number | null; division: string; season: string }
+interface TeamGame { xgF?: number | null; xgA?: number | null; date: string; gf: number; ga: number; shF: number | null; shA: number | null; sotF: number | null; sotA: number | null; corF: number | null; corA: number | null; division: string; season: string }
 
 interface Row {
   division: string; date: string; home: string; away: string; outcome: O;
@@ -34,6 +36,9 @@ interface Row {
 }
 
 const FEATURES: { key: string; label: string }[] = [
+  { key: 'xgDiff', label: 'Expected goals difference (last 8, xG for − against, home − away)' },
+  { key: 'xgLuck', label: 'Finishing vs xG: goals − xG (last 8; + = home over-performing)' },
+  { key: 'xgDefLuck', label: 'Conceding vs xG: goals against − xGA (last 8)' },
   { key: 'sotDiff', label: 'Shots on target difference (last 8, for − against, home − away)' },
   { key: 'shotDiff', label: 'Shots difference (last 8)' },
   { key: 'cornerDiff', label: 'Corners difference (last 8)' },
@@ -49,9 +54,17 @@ const FEATURES: { key: string; label: string }[] = [
 function teamLogs(hist: Hist[]) {
   const logs = new Map<string, TeamGame[]>();
   const push = (t: string, g: TeamGame) => (logs.get(t) || logs.set(t, []).get(t)!).push(g);
+  // expected goals from API-Football, matched by date + names
+  const xg = new Map<string, { xh: number; xa: number }>();
+  const groupOfDiv = new Map<string, string>();
+  for (const [g, cfg] of Object.entries(GROUPS)) for (const d of (cfg as any).divisions || []) groupOfDiv.set(d, g);
+  for (const g of new Set(groupOfDiv.values())) {
+    try { xgByMatch(g).forEach((v, k) => xg.set(`${g}|${k}`, v)); } catch { /* no API-Football data */ }
+  }
   for (const m of hist) {
-    push(m.home, { date: m.date, gf: m.hg, ga: m.ag, shF: m.sh_h, shA: m.sh_a, sotF: m.sot_h, sotA: m.sot_a, corF: m.cor_h, corA: m.cor_a, division: m.division, season: m.season });
-    push(m.away, { date: m.date, gf: m.ag, ga: m.hg, shF: m.sh_a, shA: m.sh_h, sotF: m.sot_a, sotA: m.sot_h, corF: m.cor_a, corA: m.cor_h, division: m.division, season: m.season });
+    const x = xg.get(`${groupOfDiv.get(m.division)}|${m.date}|${m.home}|${m.away}`);
+    push(m.home, { xgF: x?.xh ?? null, xgA: x?.xa ?? null, date: m.date, gf: m.hg, ga: m.ag, shF: m.sh_h, shA: m.sh_a, sotF: m.sot_h, sotA: m.sot_a, corF: m.cor_h, corA: m.cor_a, division: m.division, season: m.season });
+    push(m.away, { xgF: x?.xa ?? null, xgA: x?.xh ?? null, date: m.date, gf: m.ag, ga: m.hg, shF: m.sh_a, shA: m.sh_h, sotF: m.sot_a, sotA: m.sot_h, corF: m.cor_a, corA: m.cor_h, division: m.division, season: m.season });
   }
   return logs;
 }
@@ -177,6 +190,10 @@ export function gapReport(season: string, model = 'grid-v3') {
     const finishLuck = diff(avg(H8, g => (g.sotF === null ? null : g.gf - 0.3 * g.sotF)), avg(A8, g => (g.sotF === null ? null : g.gf - 0.3 * g.sotF)));
     const defLuck = diff(avg(H8, g => (g.sotA === null ? null : g.ga - 0.3 * g.sotA)), avg(A8, g => (g.sotA === null ? null : g.ga - 0.3 * g.sotA)));
     const gdDiff = diff(avg(H8, g => g.gf - g.ga), avg(A8, g => g.gf - g.ga));
+    const xgD = (g: TeamGame) => (g.xgF == null || g.xgA == null ? null : g.xgF - g.xgA);
+    const xgDiff = diff(avg(H8, xgD), avg(A8, xgD));
+    const xgLuck = diff(avg(H8, g => (g.xgF == null ? null : g.gf - g.xgF)), avg(A8, g => (g.xgF == null ? null : g.gf - g.xgF)));
+    const xgDefLuck = diff(avg(H8, g => (g.xgA == null ? null : g.ga - g.xgA)), avg(A8, g => (g.xgA == null ? null : g.ga - g.xgA)));
     const gd3 = (xs: TeamGame[]) => (xs.length === 3 ? xs.reduce((t, g) => t + g.gf - g.ga, 0) / 3 : null);
     const gdDiff3 = diff(gd3(H3), gd3(A3));
     const days = (xs: TeamGame[]) => (xs.length ? Math.min(10, (new Date(r.date).getTime() - new Date(xs[xs.length - 1].date).getTime()) / 86400000) : null);
@@ -188,7 +205,7 @@ export function gapReport(season: string, model = 'grid-v3') {
     const marketGap = (lg(m[0]) - lg(m[2]) - (lg(p[0]) - lg(p[2]))) / 2;
     rows.push({
       division: r.division, date: r.date, home: r.home, away: r.away, outcome: r.outcome as O, p, m,
-      f: { sotDiff, shotDiff, cornerDiff, finishLuck, defLuck, gdDiff, gdDiff3, restDiff, promotedDiff: promH - promA, marketGap },
+      f: { xgDiff, xgLuck, xgDefLuck, sotDiff, shotDiff, cornerDiff, finishLuck, defLuck, gdDiff, gdDiff3, restDiff, promotedDiff: promH - promA, marketGap },
       promoted: !!(promH || promA), restMin: dh === null || da === null ? null : Math.min(dh, da), month: Number(r.date.slice(5, 7))
     });
   }

@@ -28,6 +28,7 @@ const RESERVE = parseInt(process.env.API_FOOTBALL_RESERVE || '3000', 10);
 const MIN_GAP_MS = 350; // ≤ ~170 requests/minute
 const TICK_MS = 10 * 60 * 1000;
 const BACKFILL_PER_TICK = parseInt(process.env.API_FOOTBALL_BACKFILL_PER_TICK || '250', 10);
+const XG_PER_TICK = parseInt(process.env.API_FOOTBALL_XG_PER_TICK || '150', 10);
 const REGULAR_WINDOW = 10; // last N lineups define a team's regulars
 
 /** API-Football league ids for our model groups (football-data.co.uk division codes). */
@@ -425,6 +426,53 @@ function buildFeatures(group: string) {
   return n;
 }
 
+// Match statistics per finished fixture (expected goals, shots on target) — for xG-based team ratings
+{
+  const cols = (db.prepare(`PRAGMA table_info(af_fixtures)`).all() as any[]).map(c => c.name);
+  for (const c of ['xg_h', 'xg_a']) if (!cols.includes(c)) db.exec(`ALTER TABLE af_fixtures ADD COLUMN ${c} REAL`);
+  for (const c of ['sot_h', 'sot_a']) if (!cols.includes(c)) db.exec(`ALTER TABLE af_fixtures ADD COLUMN ${c} INTEGER`);
+  if (!cols.includes('stats')) db.exec(`ALTER TABLE af_fixtures ADD COLUMN stats INTEGER NOT NULL DEFAULT 0`); // 0 not fetched, 1 stored, 2 none
+}
+
+async function syncStats(fixtureId: number, homeId: number) {
+  const j = await af('/fixtures/statistics', { fixture: fixtureId });
+  const resp: any[] = j.response || [];
+  const val = (team: any, type: string) => {
+    const s = (team?.statistics || []).find((x: any) => x.type === type);
+    const v = s ? (typeof s.value === 'string' ? parseFloat(s.value) : s.value) : null;
+    return Number.isFinite(v) ? v : null;
+  };
+  const h = resp.find(t => t.team?.id === homeId), a = resp.find(t => t.team?.id !== homeId);
+  const xh = val(h, 'expected_goals'), xa = val(a, 'expected_goals');
+  db.prepare(`UPDATE af_fixtures SET xg_h = ?, xg_a = ?, sot_h = ?, sot_a = ?, stats = ? WHERE fixture_id = ?`)
+    .run(xh, xa, val(h, 'Shots on Goal'), val(a, 'Shots on Goal'), resp.length ? 1 : 2, fixtureId);
+}
+
+/** Expected goals of finished matches keyed by "date|home|away" in football-data.co.uk names (for model v3). */
+export function xgByMatch(group: string): Map<string, { xh: number; xa: number }> {
+  const rows = db.prepare(`
+    SELECT f.date, th.fd_name AS h, ta.fd_name AS a, f.xg_h, f.xg_a FROM af_fixtures f
+    JOIN af_teams th ON th.grp = f.grp AND th.team_id = f.home_id
+    JOIN af_teams ta ON ta.grp = f.grp AND ta.team_id = f.away_id
+    WHERE f.grp = ? AND f.xg_h IS NOT NULL AND f.xg_a IS NOT NULL AND th.fd_name IS NOT NULL AND ta.fd_name IS NOT NULL`).all(group) as any[];
+  const m = new Map<string, { xh: number; xa: number }>();
+  for (const r of rows) {
+    const v = { xh: r.xg_h, xa: r.xg_a };
+    m.set(`${r.date}|${r.h}|${r.a}`, v);
+    // football-data.co.uk dates are local; allow the day before / after
+    const d = new Date(r.date + 'T00:00:00Z').getTime();
+    for (const off of [-1, 1]) {
+      const k = `${new Date(d + off * 86400000).toISOString().slice(0, 10)}|${r.h}|${r.a}`;
+      if (!m.has(k)) m.set(k, v);
+    }
+  }
+  return m;
+}
+
+export function xgCoverage() {
+  return db.prepare(`SELECT grp, COUNT(*) AS finished, SUM(stats = 1) AS fetched, SUM(xg_h IS NOT NULL) AS withXg FROM af_fixtures WHERE status IN ('FT','AET','PEN') GROUP BY grp`).all();
+}
+
 export function rebuildAfFeatures() {
   let n = 0;
   for (const g of Object.keys(GROUPS)) n += buildFeatures(g);
@@ -498,6 +546,17 @@ export async function afTick(force = false) {
       try { await syncLineup(f.fixture_id); got++; } catch (e: any) { notes.push(`lineup ${f.fixture_id}: ${e.message}`); break; }
     }
     if (got) notes.push(`${got} past lineups`);
+
+    // 4) match statistics (xG) of finished matches, most recent first — every league we model
+    const xgBacklog = db.prepare(`
+      SELECT fixture_id, home_id FROM af_fixtures WHERE stats = 0 AND status IN ('FT','AET','PEN') ORDER BY kickoff DESC LIMIT ?
+    `).all(XG_PER_TICK) as any[];
+    let gotXg = 0;
+    for (const f of xgBacklog) {
+      if (budgetLeft() < 1) { notes.push('daily budget reserve reached'); break; }
+      try { await syncStats(f.fixture_id, f.home_id); gotXg++; } catch (e: any) { notes.push(`stats ${f.fixture_id}: ${e.message}`); break; }
+    }
+    if (gotXg) notes.push(`${gotXg} match stats`);
 
     rebuildAfFeatures();
     lastError = null;
