@@ -200,28 +200,36 @@ function nll(xs: { f: Feat; o: 'H' | 'D' | 'A' }[], w: GridW) {
   for (const x of xs) { const p = gridProbs(x.f, w); ll -= Math.log(Math.max(1e-6, x.o === 'H' ? p.h : x.o === 'D' ? p.d : p.a)); }
   return ll / Math.max(1, xs.length);
 }
-/** Adam on numeric gradients (12 parameters, a few thousand matches: well under a second). */
-function fitGrid(xs: { f: Feat; o: 'H' | 'D' | 'A' }[]): GridW {
-  const w: any = { ...GRID0 };
-  const m: any = {}, v: any = {};
-  for (const k of GW) { m[k] = 0; v[k] = 0; }
-  const lr = 0.02, eps = 1e-4;
-  for (let it = 1; it <= 400; it++) {
-    const base = nll(xs, w);
+/**
+ * Pattern search (coordinate steps that only ever lower the log loss, step halves when nothing improves).
+ * Starts from the Elo-only fit, so the grid can only end up at least as good as Elo on the training data.
+ */
+function fitGrid(xs: { f: Feat; o: 'H' | 'D' | 'A' }[], start: GridW): GridW {
+  const w: any = { ...start };
+  let best = nll(xs, w);
+  let step = 0.2;
+  for (let pass = 0; pass < 80 && step > 0.002; pass++) {
+    let improved = false;
     for (const k of GW) {
-      const old = w[k];
-      w[k] = old + eps;
-      const g = (nll(xs, w) - base) / eps;
-      w[k] = old;
-      m[k] = 0.9 * m[k] + 0.1 * g;
-      v[k] = 0.999 * v[k] + 0.001 * g * g;
-      const mh = m[k] / (1 - Math.pow(0.9, it)), vh = v[k] / (1 - Math.pow(0.999, it));
-      w[k] = old - (lr * mh) / (Math.sqrt(vh) + 1e-8);
+      for (const dir of [1, -1]) {
+        const old = w[k];
+        w[k] = old + dir * step;
+        if (k === 'm_friendly') w[k] = Math.min(1.5, Math.max(0.3, w[k]));
+        if (k.startsWith('c_')) w[k] = Math.max(0.05, w[k]);
+        const v = nll(xs, w);
+        if (v < best - 1e-7) { best = v; improved = true; break; }
+        w[k] = old;
+      }
     }
-    w.m_friendly = Math.min(1.5, Math.max(0.3, w.m_friendly));
+    if (!improved) step /= 2;
   }
   return w;
 }
+/** Grid starting point equivalent to the Elo-only engine (c, s in Elo points; beta per ln value ratio). */
+const gridFromElo = (e: { c: number; s: number; beta: number }): GridW => ({
+  ...GRID0, w_elo: 100 / e.s, w_squad: e.beta / e.s, w_goals: 0, w_form: 0, w_rest: 0,
+  w_homeComp: 90 / e.s, w_homeFriendly: 50 / e.s, m_friendly: 1, c_finals: e.c / e.s, c_comp: e.c / e.s, c_friendly: e.c / e.s, g_draw: 0
+});
 
 export function buildNationalElo() {
   const rows = db.prepare(`SELECT * FROM nat_matches ORDER BY date, fixture_id`).all() as any[];
@@ -296,14 +304,14 @@ export function buildNationalElo() {
   };
   // honest comparison: both engines fitted on 2018 → two years ago, scored on the last two years
   const eloOld = fitElo(trainOld, BETAS);
-  const gridOld = fitGrid(trainOld);
+  const gridOld = fitGrid(trainOld, gridFromElo(eloOld));
   const eloTest = score(x => probs(x.d + eloOld.beta * x.lv, eloOld.c, eloOld.s));
   const gridTest = score(x => gridProbs(x.f, gridOld));
   engine = test.length >= 300 && gridTest.logLoss < eloTest.logLoss ? 'grid' : 'elo';
   // live parameters: refit on everything since 2018
   const eloAll = fitElo(trainAll, BETAS);
   fit = { c: eloAll.c, s: eloAll.s, beta: eloAll.beta };
-  gridW = engine === 'grid' ? fitGrid(trainAll) : gridOld;
+  gridW = engine === 'grid' ? fitGrid(trainAll, gridFromElo(eloAll)) : gridOld;
   const rw = (w: GridW) => Object.fromEntries(Object.entries(w).map(([k, v]) => [k, Math.round(v * 1000) / 1000]));
   evalStats = test.length
     ? {
