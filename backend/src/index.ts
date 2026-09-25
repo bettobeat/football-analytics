@@ -41,7 +41,7 @@ import {
   parseCookies, setSessionCookie, clearSessionCookie, SESSION_COOKIE, accessOf, canSeeFull, teaseDeep, AuthError, Access, User,
   sendVerification, verifyEmail, requestPasswordReset, resetPassword, setMarketingOptIn, usersCsv, verificationRequired
 } from './services/auth';
-import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, backfillV3, setRelOverride, SweepVariant } from './services/gridModel';
+import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, backfillV3, setRelOverride, SweepVariant, tuneLeaguesV3, leagueTuneProgress, leagueConvStatus, clearLeagueConv } from './services/gridModel';
 
 const isDev = (process.env.NODE_ENV || 'development') !== 'production';
 
@@ -715,7 +715,7 @@ const runBacktestHandler = (req: express.Request, res: express.Response) => {
   const season = String(req.query.season || '2526');
   const group = req.query.group ? String(req.query.group).toUpperCase() : undefined;
   const model = String(req.query.model || 'dc-history-v2');
-  if (backtestProgress() || backtestProgressV3() || sweeping) {
+  if (backtestProgress() || backtestProgressV3() || sweeping || leagueTuning) {
     res.status(409).json({ error: 'A backtest is already running', progress: backtestProgress() || backtestProgressV3() });
     return;
   }
@@ -753,7 +753,7 @@ app.get('/api/backtest/run', runBacktestHandler); // GET alias so a run can be s
 let sweeping = false;
 let lastSweep: any = null;
 const sweepHandler = (req: express.Request, res: express.Response) => {
-  if (sweeping || backtestProgressV3()) { res.status(409).json({ error: 'A sweep or backtest is already running', progress: sweepProgress }); return; }
+  if (sweeping || leagueTuning || backtestProgressV3()) { res.status(409).json({ error: 'A sweep or backtest is already running', progress: sweepProgress }); return; }
   const q: any = { ...(req.query || {}), ...(req.body || {}) };
   const season = String(q.season || '2526');
   const groups = q.groups ? (Array.isArray(q.groups) ? q.groups : String(q.groups).split(',')).map((g: string) => g.toUpperCase()) : undefined;
@@ -785,6 +785,33 @@ app.get('/api/backtest/sweep', sweepHandler);
 app.post('/api/backtest/sweep', sweepHandler);
 app.get('/api/backtest/sweep/result', (_req, res) => {
   res.json({ data: sweeping ? { running: true, progress: sweepProgress } : lastSweep, timestamp: new Date().toISOString() });
+});
+
+// Per-league v3 settings (draw / home advantage / favourite strength per division), fitted on one season and
+// kept only if they also win on the next one.
+//   GET /api/model/v3/league-tune?train=2425&test=2526&extra=2627[&apply=1]   → start in the background
+//   GET /api/model/v3/league-tune/result                                     → progress, then the report
+//   GET /api/model/v3/league-conv[?clear=1]                                  → settings in use (clear = back to shared model)
+let leagueTuning = false;
+let lastLeagueTune: any = null;
+app.get('/api/model/v3/league-tune', (req, res) => {
+  if (leagueTuning || sweeping || backtestProgressV3()) { res.status(409).json({ error: 'A tune, sweep or backtest is already running', progress: leagueTuneProgress }); return; }
+  const train = String(req.query.train || '2425'), test = String(req.query.test || '2526'), extra = String(req.query.extra || '2627');
+  const apply = req.query.apply === '1';
+  leagueTuning = true;
+  lastLeagueTune = { running: true, startedAt: new Date().toISOString() };
+  tuneLeaguesV3(train, test, extra, apply)
+    .then(out => { lastLeagueTune = { running: false, ...out }; })
+    .catch(err => { lastLeagueTune = { running: false, error: err.message }; logger.error('League tune failed', { message: err.message }); })
+    .finally(() => { leagueTuning = false; });
+  res.json({ data: { started: true, train, test, extra, apply }, timestamp: new Date().toISOString() });
+});
+app.get('/api/model/v3/league-tune/result', (_req, res) => {
+  res.json({ data: leagueTuning ? { running: true, progress: leagueTuneProgress } : lastLeagueTune, timestamp: new Date().toISOString() });
+});
+app.get('/api/model/v3/league-conv', (req, res) => {
+  if (req.query.clear === '1') clearLeagueConv();
+  res.json({ data: leagueConvStatus(), timestamp: new Date().toISOString() });
 });
 
 // Market-anchored draw model: market early draw + k × (v3 − market), picks at the best early price

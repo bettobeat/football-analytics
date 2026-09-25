@@ -110,8 +110,53 @@ export const CONV = {
   floorOutsider: 35,
   floorDraw: 60,
   halfLifeProd: 120, // days, production/form rows
-  halfLifeLong: 365 // days, home record / h2h
+  halfLifeLong: 365, // days, home record / h2h
+  useLeagueConv: 1 // 1 = apply the per-league settings (v3_league_conv, fitted by tuneLeaguesV3)
 };
+
+/* ------------------------------------------------------------------ */
+/* Per-league settings                                                  */
+/* ------------------------------------------------------------------ */
+/*
+ * Leagues differ (League patterns doc): draw rates from 24% (Ligue 1) to 32% (Serie B), La Liga / Portugal
+ * short favourites winning 4–8 more games per 100 than the odds said, close favourites in Greece / Scotland
+ * drawing a lot. Each division can carry five small adjustments on top of the shared model, applied in the
+ * final split only:
+ *   draw    – draw points added (10 points = +1% draw chance)
+ *   home    – added to the relative gap for the home side (league-specific home advantage)
+ *   stretch – multiplies the effective gap: > 1 = favourites stronger, < 1 = flatter
+ *   cube    – extra gap³ term: strengthens only big favourites
+ *   close   – extra draw points when the sides are level, fading to 0 at |gap| = drawCloseSpan
+ * They are fitted by tuneLeaguesV3 (train one season, keep only if it also wins on the next).
+ */
+export interface LeagueConv { draw: number; home: number; stretch: number; cube: number; close: number }
+const LC0: LeagueConv = { draw: 0, home: 0, stretch: 1, cube: 0, close: 0 };
+db.exec(`CREATE TABLE IF NOT EXISTS v3_league_conv (division TEXT PRIMARY KEY, conf TEXT NOT NULL, report TEXT, updated_at TEXT NOT NULL)`);
+const LEAGUE_CONV = new Map<string, LeagueConv>();
+function loadLeagueConv() {
+  LEAGUE_CONV.clear();
+  for (const r of db.prepare(`SELECT division, conf FROM v3_league_conv`).all() as any[]) {
+    try { LEAGUE_CONV.set(r.division, { ...LC0, ...JSON.parse(r.conf) }); } catch { /* ignore a bad row */ }
+  }
+}
+loadLeagueConv();
+export function leagueConvStatus() {
+  return (db.prepare(`SELECT division, conf, report, updated_at FROM v3_league_conv ORDER BY division`).all() as any[])
+    .map(r => ({ division: r.division, conf: JSON.parse(r.conf), meaning: describeLc(JSON.parse(r.conf)), report: r.report ? JSON.parse(r.report) : null, updatedAt: r.updated_at }));
+}
+export function clearLeagueConv() {
+  db.exec(`DELETE FROM v3_league_conv`);
+  loadLeagueConv();
+}
+function describeLc(lc: LeagueConv) {
+  const parts: string[] = [];
+  if (lc.draw) parts.push(`draw ${lc.draw > 0 ? '+' : ''}${lc.draw / 10}%`);
+  if (lc.close) parts.push(`+${lc.close / 10}% draw in level games`);
+  if (lc.home) parts.push(`home advantage ${lc.home > 0 ? 'stronger' : 'weaker'} (${lc.home > 0 ? '+' : ''}${lc.home})`);
+  if (lc.stretch !== 1) parts.push(`favourites ${lc.stretch > 1 ? 'stronger' : 'weaker'} (x${lc.stretch})`);
+  if (lc.cube) parts.push(`big favourites stronger (cube ${lc.cube})`);
+  return parts.join(', ') || 'no change';
+}
 
 /*
  * Live predictions always use the calibrated config above. Backtests and sweeps change CONV / REL_OVERRIDE
@@ -481,6 +526,24 @@ function poissonDraw(lh: number, la: number) {
   return draw / mass;
 }
 
+/** Pre-split numbers of the last scoreMatch call (used by the per-league tuner). */
+let LAST_RAW: { gap: number; drawRaw: number; type: MatchType } | null = null;
+
+/** Final step: draw pot + gap → home / draw / away points (unrounded), with optional league settings. */
+function splitPoints(gap0: number, drawRaw: number, type: MatchType, lc?: LeagueConv) {
+  const L = lc || LC0;
+  const gap = gap0 + L.home;
+  const close = L.close ? L.close * Math.max(0, 1 - Math.abs(gap) / CONV.drawCloseSpan) : 0;
+  const drawPts = clamp(drawRaw + L.draw + close, CONV.floorDraw, CONV.drawCap[type] + Math.max(0, L.draw) + L.close);
+  const gEff = (gap + (CONV.gapCube + L.cube) * gap * gap * gap) * L.stretch;
+  const pH = 1 / (1 + Math.exp(-gEff / CONV.gapScale));
+  const rest = 1000 - drawPts;
+  let ptsH = rest * pH, ptsA = rest - ptsH;
+  if (ptsA < CONV.floorOutsider) { ptsH -= CONV.floorOutsider - ptsA; ptsA = CONV.floorOutsider; }
+  if (ptsH < CONV.floorOutsider) { ptsA -= CONV.floorOutsider - ptsH; ptsH = CONV.floorOutsider; }
+  return { ptsH, ptsA, drawPts: 1000 - ptsH - ptsA };
+}
+
 export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string, away: string, asOf: string, matchDate?: string): Prediction | null {
   const h = state.teams.get(home), a = state.teams.get(away);
   if (!h || !a) return null;
@@ -555,18 +618,15 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   const volatility = 0; // no card/referee feed yet
   // closeness: draws are likelier when the sides are level
   const closeness = CONV.drawClose * Math.max(0, 1 - Math.abs(gap) / CONV.drawCloseSpan);
-  let drawPts = base + drawFactors + volatility + closeness;
-  drawPts = CONV.drawCenter + CONV.drawStretch * (drawPts - CONV.drawCenter) - CONV.drawGapK * 1000 * Math.abs(gap - CONV.homeGap);
-  drawPts = clamp(drawPts, CONV.floorDraw, CONV.drawCap[type]);
+  let drawRaw = base + drawFactors + volatility + closeness;
+  drawRaw = CONV.drawCenter + CONV.drawStretch * (drawRaw - CONV.drawCenter) - CONV.drawGapK * 1000 * Math.abs(gap - CONV.homeGap);
+  LAST_RAW = { gap, drawRaw, type };
 
-  // --- split the rest by the gap
-  const gEff = gap + CONV.gapCube * gap * gap * gap;
-  const pH = 1 / (1 + Math.exp(-gEff / CONV.gapScale));
-  let rest = 1000 - drawPts;
-  let ptsH = rest * pH, ptsA = rest - ptsH;
-  if (ptsA < CONV.floorOutsider) { ptsH -= CONV.floorOutsider - ptsA; ptsA = CONV.floorOutsider; }
-  if (ptsH < CONV.floorOutsider) { ptsA -= CONV.floorOutsider - ptsH; ptsH = CONV.floorOutsider; }
-  ptsH = Math.round(ptsH); ptsA = Math.round(ptsA); drawPts = 1000 - ptsH - ptsA;
+  // --- split the 1000 points (with this league's own settings, if any)
+  const lc = CONV.useLeagueConv ? LEAGUE_CONV.get(div) : undefined;
+  const sp = splitPoints(gap, drawRaw, type, lc);
+  const ptsH = Math.round(sp.ptsH), ptsA = Math.round(sp.ptsA);
+  const drawPts = 1000 - ptsH - ptsA;
 
   const grid: number[][] = [];
   let over25 = 0, btts = 0;
@@ -579,6 +639,7 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   const byEdge = rows.filter(r => r.edge !== 0).sort((x, y) => Math.abs(y.edge) - Math.abs(x.edge)).slice(0, 3);
   for (const r of byEdge) reasons.push(`${r.name}: ${r.edge > 0 ? home : away} +${Math.abs(r.edge)}`);
   if (drawFactors > 8) reasons.push(`draw factors +${Math.round(drawFactors)} (${derby ? 'derby, ' : ''}draw-prone / league)`);
+  if (lc) reasons.push(`league settings (${div}): ${describeLc(lc)}`);
 
   const evidence = Math.min(h.played, a.played);
   return {
@@ -653,7 +714,7 @@ export function modelV3Status() {
   liveState.forEach((v, g) => {
     groups[g] = { teams: v.state.teams.size, asOf: v.state.asOf, leagueDrawRate: v.state.leagueDrawRate };
   });
-  return { model: MODEL_V3, lastBuiltAt, conv: CONV, rows: ROWS.map(r => ({ id: r.id, name: r.name, rel: r.rel })), groups };
+  return { model: MODEL_V3, lastBuiltAt, conv: CONV, leagueConv: Object.fromEntries([...LEAGUE_CONV].map(([d, lc]) => [d, describeLc(lc)])), rows: ROWS.map(r => ({ id: r.id, name: r.name, rel: r.rel })), groups };
 }
 
 /* ------------------------------------------------------------------ */
@@ -1027,4 +1088,181 @@ export function backfillV3(model = 'dc-history-v2', redo = false) {
   }
   logger.info(`v3 backfill: ${done} predictions added, ${skipped} skipped`, skippedWhy);
   return { candidates: rows.length, added: done, skipped, skippedWhy };
+}
+
+/* ------------------------------------------------------------------ */
+/* Per-league tuner                                                     */
+/* ------------------------------------------------------------------ */
+/*
+ * 1. Walk-forward over three seasons (train, test, extra), every division of every group, with the live
+ *    config; each match keeps only the numbers the final split needs (gap, draw pot, match type).
+ * 2. Per division: try every combination of the five league settings on the TRAIN season, keep the best.
+ * 3. Check it on the TEST season (never seen). It passes only if it beats the shared model there.
+ * 4. A passing division is refitted on train + test together (more data) — that is the live setting.
+ * 5. EXTRA (the current season) was not used by any fit: an honest last look.
+ */
+type TuneItem = { div: string; season: string; gap: number; drawRaw: number; type: MatchType; o: 'H' | 'D' | 'A'; mkt: { H: number; D: number; A: number } | null };
+export let leagueTuneProgress: { stage: string; done: number; total: number } | null = null;
+
+const TUNE_GRID = {
+  draw: [-40, -30, -20, -10, 0, 10, 20, 30, 40, 50],
+  home: [-0.04, -0.02, 0, 0.02, 0.04],
+  stretch: [0.85, 0.92, 1, 1.08, 1.16, 1.25],
+  cube: [0, 3, 6],
+  close: [0, 40, 80]
+};
+
+async function collectTuneItems(seasons: string[]): Promise<TuneItem[]> {
+  const out: TuneItem[] = [];
+  const groups = Object.keys(GROUPS);
+  let gi = 0;
+  for (const group of groups) {
+    leagueTuneProgress = { stage: `collecting ${group}`, done: gi++, total: groups.length };
+    const divs = GROUPS[group].divisions;
+    const all = loadGroupMatches(group);
+    for (const season of seasons) {
+      const target = all.filter(m => m.season === season && divs.includes(m.division));
+      if (!target.length) continue;
+      let cursor = new Date(target[0].date);
+      const last = new Date(target[target.length - 1].date);
+      while (cursor <= last) {
+        const from = cursor.toISOString().slice(0, 10);
+        const to = new Date(cursor.getTime() + 7 * DAY).toISOString().slice(0, 10);
+        const week = target.filter(m => m.date >= from && m.date < to);
+        if (week.length) {
+          withLiveConfig(() => {
+            const state = buildState(group, all, from, weekDivs(week));
+            for (const m of week) {
+              LAST_RAW = null;
+              const p = scoreMatch(state, all, m.home, m.away, from, m.date);
+              if (!p || !LAST_RAW) continue;
+              const raw = LAST_RAW as { gap: number; drawRaw: number; type: MatchType };
+              const oh = m.close_h ?? m.odds_h, od = m.close_d ?? m.odds_d, oa = m.close_a ?? m.odds_a;
+              let mkt: TuneItem['mkt'] = null;
+              if (oh && od && oa) { const s = 1 / oh + 1 / od + 1 / oa; mkt = { H: 1 / oh / s, D: 1 / od / s, A: 1 / oa / s }; }
+              out.push({ div: m.division, season, gap: raw.gap, drawRaw: raw.drawRaw, type: raw.type, o: m.hg > m.ag ? 'H' : m.hg < m.ag ? 'A' : 'D', mkt });
+            }
+          });
+          await new Promise<void>(resolve => setImmediate(() => resolve()));
+        }
+        cursor = new Date(cursor.getTime() + 7 * DAY);
+      }
+    }
+  }
+  return out;
+}
+
+const sq = (x: number) => x * x;
+function probsOf(it: TuneItem, lc: LeagueConv) {
+  const s = splitPoints(it.gap, it.drawRaw, it.type, lc);
+  return { H: s.ptsH / 1000, D: s.drawPts / 1000, A: s.ptsA / 1000 };
+}
+const brierP = (p: { H: number; D: number; A: number }, o: 'H' | 'D' | 'A') =>
+  sq(p.H - (o === 'H' ? 1 : 0)) + sq(p.D - (o === 'D' ? 1 : 0)) + sq(p.A - (o === 'A' ? 1 : 0));
+
+/** n, mean Brier, total Brier, hit rate, average predicted draw %, real draw % — model (lc) or market (lc = 'market'). */
+function tuneSummary(items: TuneItem[], lc: LeagueConv | 'market') {
+  let n = 0, br = 0, hit = 0, dr = 0, realD = 0;
+  for (const it of items) {
+    if (!it.mkt) continue; // same matches for model and market
+    const p = lc === 'market' ? it.mkt : probsOf(it, lc);
+    n++;
+    br += brierP(p, it.o);
+    dr += p.D;
+    if (it.o === 'D') realD++;
+    const pick = p.H >= p.D && p.H >= p.A ? 'H' : p.A >= p.D ? 'A' : 'D';
+    if (pick === it.o) hit++;
+  }
+  const r1 = (x: number) => Math.round(x * 10) / 10;
+  return { n, brier: Math.round((br / Math.max(1, n)) * 10000) / 10000, brierTotal: Math.round(br * 10) / 10, hitRate: r1((hit / Math.max(1, n)) * 100), predDraw: r1((dr / Math.max(1, n)) * 100), realDraw: r1((realD / Math.max(1, n)) * 100) };
+}
+
+function fitLeague(items: TuneItem[]): LeagueConv {
+  const usable = items.filter(i => i.mkt);
+  let best = LC0, bestB = Infinity;
+  for (const draw of TUNE_GRID.draw) for (const home of TUNE_GRID.home) for (const stretch of TUNE_GRID.stretch)
+    for (const cube of TUNE_GRID.cube) for (const close of TUNE_GRID.close) {
+      const lc = { draw, home, stretch, cube, close };
+      let b = 0;
+      for (const it of usable) b += brierP(probsOf(it, lc), it.o);
+      if (b < bestB - 1e-9) { bestB = b; best = lc; }
+    }
+  return best;
+}
+
+export async function tuneLeaguesV3(train = '2425', test = '2526', extra = '2627', apply = false) {
+  const t0 = Date.now();
+  try {
+    const items = await collectTuneItems([train, test, extra]);
+    const divs = [...new Set(items.map(i => i.div))].sort();
+    const leagues: any[] = [];
+    const keep = new Map<string, { lc: LeagueConv; report: any }>();
+    let di = 0;
+    for (const div of divs) {
+      leagueTuneProgress = { stage: `fitting ${div}`, done: di++, total: divs.length };
+      const tr = items.filter(i => i.div === div && i.season === train);
+      const te = items.filter(i => i.div === div && i.season === test);
+      const ex = items.filter(i => i.div === div && i.season === extra);
+      if (tr.filter(i => i.mkt).length < 150 || te.filter(i => i.mkt).length < 150) {
+        leagues.push({ division: div, skipped: `too few matches (train ${tr.length}, test ${te.length})` });
+        continue;
+      }
+      const row = withLiveConfig(() => {
+        const trainFit = fitLeague(tr);
+        const testBase = tuneSummary(te, LC0), testTuned = tuneSummary(te, trainFit), testMarket = tuneSummary(te, 'market');
+        const pass = testTuned.brierTotal < testBase.brierTotal;
+        const live = pass ? fitLeague([...tr, ...te]) : null;
+        const lcNow = live || LC0;
+        return {
+          division: div,
+          trainFit, trainFitMeaning: describeLc(trainFit),
+          train: { base: tuneSummary(tr, LC0), tuned: tuneSummary(tr, trainFit), market: tuneSummary(tr, 'market') },
+          test: { base: testBase, tuned: testTuned, market: testMarket, gainPoints: Math.round((testBase.brierTotal - testTuned.brierTotal) * 10) / 10 },
+          pass,
+          live, liveMeaning: live ? describeLc(live) : 'shared model (no league setting)',
+          extra: ex.length ? { base: tuneSummary(ex, LC0), tuned: tuneSummary(ex, lcNow), market: tuneSummary(ex, 'market') } : null
+        };
+      });
+      leagues.push(row);
+      if (row.pass && row.live) keep.set(div, { lc: row.live, report: { test: row.test, extra: row.extra } });
+      await new Promise<void>(resolve => setImmediate(() => resolve()));
+    }
+
+    // totals: shared model vs "league settings where they passed" vs market
+    const tot = (season: 'test' | 'extra', which: 'base' | 'tuned' | 'market') => {
+      let n = 0, b = 0;
+      for (const l of leagues) { const s = l[season]?.[which]; if (s) { n += s.n; b += s.brierTotal; } }
+      return { n, brierTotal: Math.round(b * 10) / 10 };
+    };
+    // "tuned" for a failed league is its train fit (test) — for the combined total use the setting we would actually run
+    const testReal = (() => {
+      let n = 0, b = 0;
+      for (const l of leagues) if (l.test) { const s = l.pass ? l.test.tuned : l.test.base; n += s.n; b += s.brierTotal; }
+      return { n, brierTotal: Math.round(b * 10) / 10 };
+    })();
+    const summary = {
+      test: { season: test, shared: tot('test', 'base'), perLeague: testReal, market: tot('test', 'market') },
+      extra: { season: extra, shared: tot('extra', 'base'), perLeague: tot('extra', 'tuned'), market: tot('extra', 'market') },
+      passed: leagues.filter(l => l.pass).map(l => l.division),
+      failed: leagues.filter(l => l.test && !l.pass).map(l => l.division)
+    };
+
+    if (apply) {
+      const now = new Date().toISOString();
+      db.exec('BEGIN');
+      try {
+        db.exec(`DELETE FROM v3_league_conv`);
+        const ins = db.prepare(`INSERT INTO v3_league_conv (division, conf, report, updated_at) VALUES (?, ?, ?, ?)`);
+        keep.forEach((v, d) => ins.run(d, JSON.stringify(v.lc), JSON.stringify(v.report), now));
+        db.exec('COMMIT');
+      } catch (e) {
+        db.exec('ROLLBACK');
+        throw e;
+      }
+      loadLeagueConv();
+    }
+    return { train, test, extra, applied: apply, grid: TUNE_GRID, summary, leagues, ms: Date.now() - t0 };
+  } finally {
+    leagueTuneProgress = null;
+  }
 }
