@@ -80,6 +80,13 @@ db.exec(`
   const cols = (db.prepare(`PRAGMA table_info(history_matches)`).all() as any[]).map(c => c.name);
   for (const c of ['max_h', 'max_d', 'max_a', 'avg_h', 'avg_d', 'avg_a', 'maxc_h', 'maxc_d', 'maxc_a'])
     if (!cols.includes(c)) db.exec(`ALTER TABLE history_matches ADD COLUMN ${c} REAL`);
+  // Match stats (shots, shots on target, corners, cards, referee) — added later: re-download every season once
+  const statCols = ['sh_h', 'sh_a', 'sot_h', 'sot_a', 'cor_h', 'cor_a', 'yc_h', 'yc_a', 'rc_h', 'rc_a'];
+  if (!cols.includes('sot_h')) {
+    for (const c of statCols) if (!cols.includes(c)) db.exec(`ALTER TABLE history_matches ADD COLUMN ${c} INTEGER`);
+    if (!cols.includes('referee')) db.exec(`ALTER TABLE history_matches ADD COLUMN referee TEXT`);
+    db.exec(`DELETE FROM history_sync`);
+  }
 }
 
 /* ---------------- CSV ---------------- */
@@ -127,8 +134,9 @@ const num = (s?: string) => {
 const insertMatch = db.prepare(`
   INSERT OR REPLACE INTO history_matches
     (division, season, date, home, away, hg, ag, odds_h, odds_d, odds_a, close_h, close_d, close_a,
-     max_h, max_d, max_a, avg_h, avg_d, avg_a, maxc_h, maxc_d, maxc_a)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     max_h, max_d, max_a, avg_h, avg_d, avg_a, maxc_h, maxc_d, maxc_a,
+     sh_h, sh_a, sot_h, sot_a, cor_h, cor_a, yc_h, yc_a, rc_h, rc_a, referee)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 const upsertSync = db.prepare(
   `INSERT OR REPLACE INTO history_sync (division, season, rows, synced_at) VALUES (?, ?, ?, ?)`
@@ -142,6 +150,11 @@ async function fetchCSV(division: string, season: string): Promise<string> {
 }
 
 /** Download and store one division/season. Returns rows stored. */
+const int = (v: string | undefined) => {
+  const n = parseInt(String(v ?? ''), 10);
+  return Number.isFinite(n) ? n : null;
+};
+
 export async function syncDivision(division: string, season: string) {
   const text = await fetchCSV(division, season);
   const rows = parseCSV(text);
@@ -166,7 +179,9 @@ export async function syncDivision(division: string, season: string) {
         division, season, date, r.HomeTeam, r.AwayTeam, hg, ag, oh, od, oa, ch, cd, ca,
         num(r.MaxH) ?? num(r.BbMxH), num(r.MaxD) ?? num(r.BbMxD), num(r.MaxA) ?? num(r.BbMxA),
         num(r.AvgH) ?? num(r.BbAvH), num(r.AvgD) ?? num(r.BbAvD), num(r.AvgA) ?? num(r.BbAvA),
-        num(r.MaxCH), num(r.MaxCD), num(r.MaxCA)
+        num(r.MaxCH), num(r.MaxCD), num(r.MaxCA),
+        int(r.HS), int(r.AS), int(r.HST), int(r.AST), int(r.HC), int(r.AC), int(r.HY), int(r.AY), int(r.HR), int(r.AR),
+        (r.Referee || '').trim() || null
       );
       stored++;
     }
@@ -222,6 +237,8 @@ export interface HistoryMatch {
   close_h: number | null;
   close_d: number | null;
   close_a: number | null;
+  sh_h?: number | null; sh_a?: number | null; sot_h?: number | null; sot_a?: number | null;
+  cor_h?: number | null; cor_a?: number | null; referee?: string | null;
 }
 
 export function loadGroupMatches(group: string, before?: string): HistoryMatch[] {

@@ -23,6 +23,7 @@ import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestR
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
 import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler } from './services/squadValues';
 import { compareModels } from './services/compareModels';
+import { gapReport } from './services/gapReport';
 import { marketTest, drawTest, anchoredDrawTest } from './services/marketTest';
 import { clvTick, clvReport, startClvScheduler, clvProbe } from './services/clv';
 import {
@@ -798,6 +799,15 @@ app.get('/api/backtest/market', (req, res) => {
 });
 
 // Head-to-head diagnostics on the same backtested matches: ?season=2526&a=dc-history-v2&b=grid-v3
+// Where the model loses to the market + which missing information would help (admin)
+app.get('/api/backtest/gap', (req, res) => {
+  try {
+    res.json({ data: gapReport(String(req.query.season || '2526'), String(req.query.model || 'grid-v3')), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Gap report failed');
+  }
+});
+
 app.get('/api/backtest/compare', (req, res) => {
   try {
     const season = String(req.query.season || '2526');
