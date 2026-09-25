@@ -22,7 +22,7 @@ import { db } from '../db';
 import logger from '../utils/logger';
 import { GROUPS, groupForCompetition, loadGroupMatches, fdNameFor, HistoryMatch } from './history';
 import { Prediction } from './predictionModel';
-import { squadValueFor } from './squadValues';
+import { squadValueFor, squadValueAt } from './squadValues';
 import { availabilityFor } from './apiFootball';
 
 export const MODEL_V3 = 'grid-v3';
@@ -96,6 +96,7 @@ export const CONV = {
   // big favourites were too cautious (Porto 60% vs market 67% vs actual 82%): stretch large gaps.
   // effective gap = gap + gapCube · gap³ (0 = off)
   gapCube: 0,
+  pitSquad: 0, // 1 = point-in-time squad values (see squadHistory.ts)
   useDivHint: 1, // take each team's division from the fixture being predicted (see buildState)
   // availability rows (#13 injuries, #12 confirmed XI): value = 5.5 − k × (starter-equivalents missing)
   injK: 2.0, // backtest 2025-26: 1–4 all help a little, 2 best on hit rate
@@ -417,10 +418,12 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string, div
     const away = rankValues(list.map(t => ({ name: t.name, raw: t.awayPpg })));
     const draws = rankValues(list.map(t => ({ name: t.name, raw: t.drawRate })));
     // squad value: log scale (a €900m squad vs €300m is the same step as €300m vs €100m); neutral when unknown
-    const withValue = list.map(t => ({ name: t.name, raw: squadValueFor(group, t.name)?.top || 0 })).filter(x => x.raw > 0);
+    // pitSquad: squad value as known at the time (monthly history) instead of today's snapshot — no look-ahead in backtests
+    const sq = (n: string) => (CONV.pitSquad ? squadValueAt(group, n, asOf) : squadValueFor(group, n)?.top) || 0;
+    const withValue = list.map(t => ({ name: t.name, raw: sq(t.name) })).filter(x => x.raw > 0);
     const squad = rankValues(withValue.map(x => ({ name: x.name, raw: Math.log(x.raw) })));
     for (const t of list) {
-      t.squadEur = squadValueFor(group, t.name)?.top || null;
+      t.squadEur = sq(t.name) || null;
       t.v = {
         strength: strength.get(t.name)!, attack: att.get(t.name)!, defence: def.get(t.name)!, form: form.get(t.name)!,
         home: home.get(t.name)!, away: away.get(t.name)!, draws: draws.get(t.name)!,

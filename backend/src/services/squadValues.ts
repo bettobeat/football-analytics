@@ -15,6 +15,7 @@ import { gunzipSync } from 'zlib';
 import { db } from '../db';
 import logger from '../utils/logger';
 import { GROUPS, ALIASES, similarity } from './history';
+import { clubValueAt, syncClubValueHistory } from './squadHistory';
 
 const SOURCE_URL =
   process.env.SQUAD_VALUES_URL || 'https://pub-e682421888d945d684bcae8890b0ec20.r2.dev/data/players.csv.gz';
@@ -264,6 +265,14 @@ export function squadValueFor(group: string, fdName: string): { total: number; t
   return cache.get(`${group}|${fdName}`) || null;
 }
 
+/** Squad value (top-15, EUR) as known at the start of date's month — no look-ahead. Null when unknown. */
+export function squadValueAt(group: string, fdName: string, date: string): number | null {
+  const c = cache.get(`${group}|${fdName}`);
+  return c ? clubValueAt(c.club, date) : null;
+}
+
+export const squadCompetitions = () => Object.keys(COMPETITION_GROUP);
+
 /** Map aggregated clubs of one group onto the fd names seen in that group's history. */
 function mapGroup(group: string, clubs: ClubAgg[], fetchedAt: string) {
   const divs = GROUPS[group]?.divisions || [];
@@ -414,7 +423,13 @@ export function squadValuesStatus() {
 
 /** Weekly refresh; first attempt shortly after start so history names exist. */
 export function startSquadValuesScheduler(onSynced?: () => void) {
-  const tick = () => syncSquadValues().then(r => { if (r && onSynced) onSynced(); }).catch(() => undefined);
+  const tick = () =>
+    syncSquadValues()
+      .then(async r => {
+        const h = await syncClubValueHistory(Object.keys(COMPETITION_GROUP)).catch(e => { logger.warn(`Club value history: ${e.message}`); return null; });
+        if ((r || h) && onSynced) onSynced();
+      })
+      .catch(() => undefined);
   setTimeout(tick, 90_000);
   setInterval(tick, 6 * 3600 * 1000);
 }

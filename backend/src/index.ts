@@ -21,7 +21,8 @@ import { recordPredictions, settlePending, accuracy, recentSettled, trackingStat
 import { historyStatus, teamMapStatus, GROUPS, syncAll } from './services/history';
 import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestRows, backtestRunsList } from './services/historyModel';
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
-import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler } from './services/squadValues';
+import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler, squadCompetitions } from './services/squadValues';
+import { syncClubValueHistory, clubValueHistoryStatus } from './services/squadHistory';
 import { compareModels } from './services/compareModels';
 import { gapReport } from './services/gapReport';
 import { marketTest, drawTest, anchoredDrawTest } from './services/marketTest';
@@ -616,6 +617,16 @@ app.get('/api/model/v3/status', (_req, res) => {
 });
 
 // Squad values (v3 row #1): status, or force a re-download and rebuild v3 state
+// Point-in-time squad values (monthly history). ?sync=1 rebuilds, ?club=FC Porto shows a sample
+app.get('/api/model/v3/squad/history', async (req, res) => {
+  try {
+    if (req.query.sync === '1') await syncClubValueHistory(squadCompetitions(), true);
+    res.json({ data: clubValueHistoryStatus(req.query.club ? String(req.query.club) : undefined), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Club value history failed');
+  }
+});
+
 app.get('/api/model/v3/squad', (_req, res) => {
   res.json({ data: squadValuesStatus(), timestamp: new Date().toISOString() });
 });
