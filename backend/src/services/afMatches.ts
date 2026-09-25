@@ -91,7 +91,7 @@ export function afTeam(t: any) {
  * Every national-team competition, not only the fixed list: API-Football files them under country "World".
  * Club, youth, women's, futsal and similar "World" competitions are left out by name.
  */
-const NOT_NATIONAL = /club|champions (league|cup)|libertadores|sudamericana|recopa|leagues cup|confederation cup|afc cup|super cup|intercontinental|youth|\bu-?\d{2}\b|under[- ]?\d{2}|women|olympic|futsal|beach|e-?soccer|premier league international|challenge cup|charity|reserve|amateur|universit|military|toulon|revello|emirates cup|audi cup|trophy/i;
+const NOT_NATIONAL = /club|champions (league|cup)|challenge league|central american cup|caribbean cup|shield|libertadores|sudamericana|recopa|leagues cup|confederation cup|afc cup|super cup|intercontinental|youth|\bu-?\d{2}\b|under[- ]?\d{2}|women|olympic|futsal|beach|e-?soccer|premier league international|challenge cup|charity|reserve|amateur|universit|military|toulon|revello|emirates cup|audi cup|trophy/i;
 export function isNationalLeague(league: any): boolean {
   if (EXTRA_COMPETITIONS.some(c => c.id === league?.id && c.kind === 'national')) return true;
   return league?.country === 'World' && !NOT_NATIONAL.test(String(league?.name || ''));
