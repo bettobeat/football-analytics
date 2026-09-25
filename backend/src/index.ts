@@ -630,6 +630,19 @@ const squadSyncHandler = async (_req: express.Request, res: express.Response) =>
 app.post('/api/model/v3/squad/sync', squadSyncHandler);
 
 // API-Football feed (injuries, suspensions, confirmed lineups): status and a manual sync
+// Admin: raw API-Football answer for a fixture (to check what the provider has). ?path=/fixtures/statistics&fixture=123
+app.get('/api/af/raw', async (req, res) => {
+  const pathQ = String(req.query.path || '/fixtures');
+  if (!['/fixtures', '/fixtures/statistics', '/fixtures/lineups', '/fixtures/events', '/leagues'].includes(pathQ)) return res.status(400).json({ error: 'path not allowed' });
+  const params: Record<string, string> = {};
+  for (const [k, v] of Object.entries(req.query)) if (!['path', 'token', 'c'].includes(k)) params[k] = String(v);
+  try {
+    res.json({ data: await afGet(pathQ, params), timestamp: new Date().toISOString() });
+  } catch (e: any) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 app.get('/api/af/status', async (_req, res) => {
   try {
     res.json({ data: await afStatus(), timestamp: new Date().toISOString() });

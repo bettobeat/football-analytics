@@ -490,13 +490,45 @@ function standingRow(st: any, teamId: number) {
 }
 
 /** Same payload as footballDataAPI.getMatchDetails, for an API-Football match. */
+/**
+ * /fixtures?id= sometimes comes back without statistics or lineups while the dedicated endpoints have them
+ * (they are filled at different times). Ask those endpoints directly when the fixture lacks them.
+ */
+async function withStatsAndLineups(raw: any) {
+  if (!raw) return raw;
+  const fid = raw.fixture?.id;
+  const st = raw.fixture?.status?.short;
+  const ko = new Date(raw.fixture?.date).getTime();
+  const started = !['TBD', 'NS', 'PST', 'CANC'].includes(st);
+  const live = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE'].includes(st);
+  const out = { ...raw };
+  if (started && !(raw.statistics && raw.statistics.length)) {
+    try {
+      const j = await cached(`stats:${fid}`, live ? 45 * 1000 : 30 * 60 * 1000, () => afGet('/fixtures/statistics', { fixture: fid }));
+      if (j?.response?.length) out.statistics = j.response;
+    } catch (e: any) {
+      logger.warn(`AF statistics ${fid}: ${e.message}`);
+    }
+  }
+  if (!(raw.lineups && raw.lineups.length) && Date.now() > ko - 75 * 60 * 1000) {
+    try {
+      const j = await cached(`lineups:${fid}`, 5 * 60 * 1000, () => afGet('/fixtures/lineups', { fixture: fid }));
+      if (j?.response?.length) out.lineups = j.response;
+    } catch (e: any) {
+      logger.warn(`AF lineups ${fid}: ${e.message}`);
+    }
+  }
+  return out;
+}
+
 export async function getAfMatchDetails(matchId: number) {
   const fixtureId = matchId - AF_OFFSET;
-  const raw = await cached(`fixture:${fixtureId}`, 60 * 1000, async () => {
+  const raw0 = await cached(`fixture:${fixtureId}`, 60 * 1000, async () => {
     const j = await afGet('/fixtures', { id: fixtureId });
     return j.response?.[0] || null;
   });
-  if (!raw) throw Object.assign(new Error('Match not found'), { response: { status: 404 } });
+  if (!raw0) throw Object.assign(new Error('Match not found'), { response: { status: 404 } });
+  const raw = await withStatsAndLineups(raw0);
   const match = toFdMatchFull(raw);
   const code = match.competition.code;
   const [standings, homeForm, awayForm, h2h, market] = await Promise.all([
@@ -598,7 +630,7 @@ export async function afExtrasForFd(match: any): Promise<{ home: any; away: any;
     return j.response?.[0] || null;
   });
   if (!raw) return null;
-  const m = toFdMatchFull(raw);
+  const m = toFdMatchFull(await withStatsAndLineups(raw));
   const pick = (t: any) => ({ statistics: t.statistics || null, formation: t.formation || null, lineup: t.lineup || [], bench: t.bench || [], coach: t.coach || null });
   return { home: pick(m.homeTeam), away: pick(m.awayTeam), minute: m.minute ?? null };
 }
