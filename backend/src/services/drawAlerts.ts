@@ -12,6 +12,7 @@
  */
 import { db } from '../db';
 import { DIVISION_NAMES } from './pastView';
+import { GROUPS, loadGroupMatches } from './history';
 
 const K = 0.75, MIN_EDGE = 0.02, MAX_EDGE = 0.2, MIN_V3 = 30;
 // MAX_EDGE: a 20%+ edge usually means v3 over-rates the draw in a one-sided match (the price moved our way only 55% of
@@ -106,12 +107,32 @@ const bucketOut = (b: { range: string; n: number; wins: number; profit: number; 
 
 const SEASON_LABEL: Record<string, string> = { '2324': '2023-24', '2425': '2024-25', '2526': '2025-26', '2627': '2026-27' };
 
+/** Both teams' draw share over their last 20 matches before each match (key division|date|home|away). */
+let teamDrawCache: { at: number; map: Map<string, number> } | null = null;
+function teamDrawMap() {
+  if (teamDrawCache && Date.now() - teamDrawCache.at < 6 * 3600_000) return teamDrawCache.map;
+  const map = new Map<string, number>();
+  for (const group of Object.keys(GROUPS)) {
+    const recent = new Map<string, number[]>();
+    for (const m of loadGroupMatches(group)) {
+      const rh = (recent.get(m.home) || []).slice(-20), ra = (recent.get(m.away) || []).slice(-20);
+      if (rh.length >= 10 && ra.length >= 10)
+        map.set(`${m.division}|${m.date}|${m.home}|${m.away}`, Math.min(rh.reduce((s, x) => s + x, 0) / rh.length, ra.reduce((s, x) => s + x, 0) / ra.length));
+      const d = m.hg === m.ag ? 1 : 0;
+      for (const t of [m.home, m.away]) { const l = recent.get(t) || recent.set(t, []).get(t)!; l.push(d); if (l.length > 20) l.shift(); }
+    }
+  }
+  teamDrawCache = { at: Date.now(), map };
+  return map;
+}
+
 function history() {
+  const tdm = teamDrawMap();
   const seasons = (db.prepare(`SELECT DISTINCT season FROM backtest_runs WHERE model = 'grid-v3' ORDER BY season`).all() as any[]).map(r => r.season);
   const out: any[] = [];
   for (const season of seasons) {
     const rows = db.prepare(`
-      SELECT b.division, b.outcome, b.p_draw, b.odds_home AS ch, b.odds_draw AS cd, b.odds_away AS ca,
+      SELECT b.division, b.date, b.home, b.away, b.outcome, b.p_draw, b.odds_home AS ch, b.odds_draw AS cd, b.odds_away AS ca,
              b.early_h AS eh, b.early_d AS ed, b.early_a AS ea, h.max_d
       FROM backtest_predictions b
       JOIN backtest_runs r ON r.id = b.run_id AND r.season = ? AND r.model = 'grid-v3'
@@ -122,6 +143,11 @@ function history() {
     // buckets: how big the edge was, and how likely the bookmakers thought a draw was (low = one-sided match)
     const EDGE_B = [[2, 10], [10, 20], [20, 1000]], MKT_B = [[0, 22], [22, 26], [26, 100]];
     const byEdge = EDGE_B.map(([lo, hi]) => ({ range: hi > 100 ? `${lo}%+` : `${lo}–${hi}%`, lo, hi, n: 0, wins: 0, profit: 0, moved: 0, movedN: 0 }));
+    // "draw streak" teams: the draw-factor test showed bookmakers OVER-price draws when both teams drew a lot lately
+    const byStreak = [
+      { range: 'both teams drew 32%+ of last 20', lo: 0.32, hi: 2, n: 0, wins: 0, profit: 0, moved: 0, movedN: 0 },
+      { range: 'other alerts', lo: -1, hi: 0.32, n: 0, wins: 0, profit: 0, moved: 0, movedN: 0 }
+    ];
     const byMkt = MKT_B.map(([lo, hi]) => ({ range: hi > 99 ? `${lo}%+` : `under ${hi}%`.replace('under 26%', '22–26%'), lo, hi, n: 0, wins: 0, profit: 0, moved: 0, movedN: 0 }));
     for (const r of rows) {
       if (r.division.startsWith('SP')) continue;
@@ -140,7 +166,9 @@ function history() {
       const ef = fair([r.eh, r.ed, r.ea]), cf = fair([r.ch, r.cd, r.ca]);
       const mv = ef && cf ? (cf[1] > ef[1] ? 1 : 0) : -1;
       if (mv >= 0) { movedN++; moved += mv; }
-      for (const b of [byEdge.find(x => a.edge >= x.lo && a.edge < x.hi), byMkt.find(x => a.marketDraw >= x.lo && a.marketDraw < x.hi)]) {
+      const td = tdm.get(`${r.division}|${r.date}|${r.home}|${r.away}`);
+      const streak = td === undefined ? byStreak[1] : byStreak.find(x => td >= x.lo && td < x.hi);
+      for (const b of [byEdge.find(x => a.edge >= x.lo && a.edge < x.hi), byMkt.find(x => a.marketDraw >= x.lo && a.marketDraw < x.hi), streak]) {
         if (!b) continue;
         b.n++;
         if (won) b.wins++;
@@ -155,6 +183,7 @@ function history() {
       lineMovedOurWay: movedN ? r1((moved / movedN) * 100) : null,
       byEdge: byEdge.map(bucketOut),
       byMarketDraw: byMkt.map(bucketOut),
+      byDrawStreak: byStreak.map(bucketOut),
       byLeague: [...byDiv.entries()].map(([division, d]) => ({ division, league: DIVISION_NAMES[division] || division, n: d.n, hitRate: r1((d.wins / d.n) * 100), roi: r1((d.profit / d.n) * 100) })).sort((a, b) => b.n - a.n)
     });
   }
@@ -177,7 +206,6 @@ export function drawAlertsReport() {
  *   h2h          – draw share of the last 10 meetings (≥ 3 needed)
  * If a group draws more (or less) than the bookmakers said, in both seasons, the factor carries information.
  */
-import { GROUPS, loadGroupMatches } from './history';
 
 type Acc = { n: number; draws: number; mkt: number };
 const newAcc = (): Acc => ({ n: 0, draws: 0, mkt: 0 });
