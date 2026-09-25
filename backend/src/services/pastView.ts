@@ -119,3 +119,73 @@ export function dataInventory() {
     trackingSince: (() => { try { return (db.prepare(`SELECT MIN(created_at) AS d FROM predictions`).get() as any)?.d?.slice(0, 10) || null; } catch { return null; } })()
   };
 }
+
+/* ---------- League patterns (for the "League patterns" document) ---------- */
+
+const BANDS: [number, number, string][] = [[1, 1.3, '1.01–1.29'], [1.3, 1.5, '1.30–1.49'], [1.5, 1.8, '1.50–1.79'], [1.8, 2.2, '1.80–2.19'], [2.2, 99, '2.20+']];
+const r1 = (x: number) => Math.round(x * 10) / 10;
+
+function favStats(rows: any[]) {
+  // favourite = the side (home or away) with the lowest price; draw never counted as favourite
+  const bands = BANDS.map(([lo, hi, label]) => ({ label, lo, hi, n: 0, won: 0, draw: 0, lost: 0, implied: 0, ret: 0 }));
+  const side = { home: { n: 0, won: 0 }, away: { n: 0, won: 0 } };
+  for (const m of rows) {
+    const oh = m.ch ?? m.oh, od = m.cd ?? m.od, oa = m.ca ?? m.oa;
+    if (!oh || !od || !oa) continue;
+    const homeFav = oh <= oa;
+    const price = homeFav ? oh : oa;
+    const s = 1 / oh + 1 / od + 1 / oa;
+    const res = m.hg > m.ag ? 'H' : m.hg < m.ag ? 'A' : 'D';
+    const won = (homeFav && res === 'H') || (!homeFav && res === 'A');
+    const b = bands.find(x => price >= x.lo && price < x.hi);
+    if (!b) continue;
+    b.n++; b.implied += 1 / price / s;
+    if (won) { b.won++; b.ret += price - 1; } else { b.ret -= 1; if (res === 'D') b.draw++; else b.lost++; }
+    const sd = homeFav ? side.home : side.away;
+    sd.n++; if (won) sd.won++;
+  }
+  return {
+    bands: bands.filter(b => b.n).map(b => ({
+      odds: b.label, matches: b.n, bookmakersSaid: r1((b.implied / b.n) * 100), won: r1((b.won / b.n) * 100),
+      draw: r1((b.draw / b.n) * 100), lost: r1((b.lost / b.n) * 100), roiIfBacked: r1((b.ret / b.n) * 100)
+    })),
+    homeFavourite: side.home.n ? { matches: side.home.n, won: r1((side.home.won / side.home.n) * 100) } : null,
+    awayFavourite: side.away.n ? { matches: side.away.n, won: r1((side.away.won / side.away.n) * 100) } : null
+  };
+}
+
+function resultStats(rows: any[]) {
+  const n = rows.length;
+  if (!n) return null;
+  let h = 0, d = 0, a = 0, goals = 0, o25 = 0, btts = 0, nil = 0, drawPriced = 0, drawN = 0;
+  for (const m of rows) {
+    if (m.hg > m.ag) h++; else if (m.hg < m.ag) a++; else d++;
+    goals += m.hg + m.ag;
+    if (m.hg + m.ag > 2.5) o25++;
+    if (m.hg > 0 && m.ag > 0) btts++;
+    if (m.hg === 0 && m.ag === 0) nil++;
+    const oh = m.ch ?? m.oh, od = m.cd ?? m.od, oa = m.ca ?? m.oa;
+    if (oh && od && oa) { drawN++; drawPriced += (1 / od) / (1 / oh + 1 / od + 1 / oa); }
+  }
+  return {
+    matches: n, homeWin: r1((h / n) * 100), draw: r1((d / n) * 100), awayWin: r1((a / n) * 100),
+    drawBookmakersSaid: drawN ? r1((drawPriced / drawN) * 100) : null,
+    avgGoals: Math.round((goals / n) * 100) / 100, over25: r1((o25 / n) * 100), btts: r1((btts / n) * 100), nilNil: r1((nil / n) * 100)
+  };
+}
+
+export function leaguePatterns() {
+  const rows = db.prepare(`SELECT division, season, hg, ag, odds_h AS oh, odds_d AS od, odds_a AS oa, close_h AS ch, close_d AS cd, close_a AS ca FROM history_matches`).all() as any[];
+  const byDiv = new Map<string, any[]>();
+  for (const r of rows) (byDiv.get(r.division) || byDiv.set(r.division, []).get(r.division)!).push(r);
+  const leagues = [...byDiv.entries()].map(([div, list]) => {
+    const seasons = [...new Set(list.map(r => r.season))].sort();
+    return {
+      division: div, league: DIVISION_NAMES[div] || div,
+      allSeasons: resultStats(list),
+      perSeason: seasons.map(s => ({ season: SEASON_LABEL(s), ...resultStats(list.filter(r => r.season === s)) })),
+      favourites: favStats(list)
+    };
+  }).sort((x, y) => (x.allSeasons?.draw ?? 0) - (y.allSeasons?.draw ?? 0));
+  return { overall: { ...resultStats(rows), favourites: favStats(rows) }, leagues };
+}

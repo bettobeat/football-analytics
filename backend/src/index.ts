@@ -25,7 +25,7 @@ import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler, squadCom
 import { syncClubValueHistory, clubValueHistoryStatus } from './services/squadHistory';
 import { compareModels } from './services/compareModels';
 import { gapReport } from './services/gapReport';
-import { pastSeasons, pastPredictions, dataInventory } from './services/pastView';
+import { pastSeasons, pastPredictions, dataInventory, leaguePatterns } from './services/pastView';
 import { marketTest, drawTest, anchoredDrawTest } from './services/marketTest';
 import { clvTick, clvReport, startClvScheduler, clvProbe } from './services/clv';
 import {
@@ -144,7 +144,7 @@ app.use((req, _res, next) => {
 });
 
 const OPEN_API = /^\/api\/(health$|auth\/|matches(\/|$)|leagues(\/|$)|teams\/)/;
-const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|backtest|history\/status|clv|past\/(seasons|predictions|data))$/;
+const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|backtest|history\/status|clv|past\/(seasons|predictions|data|patterns))$/;
 
 app.use('/api', (req, res, next) => {
   const p = req.originalUrl.split('?')[0];
@@ -831,6 +831,9 @@ app.get('/api/past/predictions', (req, res) => {
       timestamp: new Date().toISOString()
     });
   } catch (e: any) { sendError(res, e, 'Past predictions failed'); }
+});
+app.get('/api/past/patterns', (_req, res) => {
+  try { res.json({ data: leaguePatterns(), timestamp: new Date().toISOString() }); } catch (e: any) { sendError(res, e, 'League patterns failed'); }
 });
 app.get('/api/past/data', (_req, res) => {
   try { res.json({ data: dataInventory(), timestamp: new Date().toISOString() }); } catch (e: any) { sendError(res, e, 'Data inventory failed'); }
