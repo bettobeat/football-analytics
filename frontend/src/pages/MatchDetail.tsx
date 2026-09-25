@@ -588,6 +588,8 @@ function MatchDetail() {
                     <span className="num text-ink">{p.factors.awayAttack}</span>
                     <span>Home advantage (Elo points)</span>
                     <span className="num text-ink">{p.factors.homeAdvantage}</span>
+                    <span>Squad value adjustment (Elo points, + favours {home.shortName || home.name})</span>
+                    <span className="num text-ink">{p.factors.homeForm > 0 ? '+' : ''}{p.factors.homeForm}</span>
                     <span>International matches rated</span>
                     <span className="num text-ink">{p.factors.gamesPlayed.home} / {p.factors.gamesPlayed.away}</span>
                   </div>

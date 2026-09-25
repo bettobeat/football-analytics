@@ -83,6 +83,12 @@ db.exec(`
     fetched_at  TEXT NOT NULL,
     PRIMARY KEY (grp, fd_name)
   );
+  CREATE TABLE IF NOT EXISTS nat_values (
+    country TEXT PRIMARY KEY,   -- normalised country of citizenship
+    name TEXT NOT NULL,
+    top_eur REAL NOT NULL,      -- 23 most valuable players with that citizenship
+    players INTEGER NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS squad_players (
     pkey TEXT NOT NULL,        -- "<last name>|<first initial>" (normalised), for matching lineup names
     name TEXT NOT NULL,
@@ -168,8 +174,35 @@ export function playerValue(name: string, clubHint?: string | null): number | nu
 }
 export const playerValuesLoaded = () => players.size;
 
+/* ---------- national-team squad values (by citizenship) ---------- */
+
+const normCountry = (s: string) =>
+  String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/&/g, 'and').replace(/[^a-z ]+/g, ' ').replace(/\s+/g, ' ').trim();
+/** API-Football country name (normalised) → Transfermarkt citizenship (normalised). */
+const COUNTRY_ALIASES: Record<string, string> = {
+  usa: 'united states', turkiye: 'turkey', 'south korea': 'korea south', 'korea republic': 'korea south',
+  'north korea': 'korea north', 'ivory coast': 'cote d ivoire', 'bosnia and herzegovina': 'bosnia herzegovina',
+  'republic of ireland': 'ireland', 'congo dr': 'dr congo', 'cape verde islands': 'cape verde', 'czech republic': 'czech republic',
+  czechia: 'czech republic', 'china pr': 'china', 'chinese taipei': 'chinese taipei', 'faroe islands': 'faroe islands',
+  'trinidad and tobago': 'trinidad and tobago', 'st kitts and nevis': 'st kitts nevis', eswatini: 'eswatini', 'north macedonia': 'north macedonia'
+};
+let natValues = new Map<string, { name: string; top: number; players: number }>();
+function loadNatValues() {
+  natValues = new Map();
+  for (const r of db.prepare(`SELECT country, name, top_eur, players FROM nat_values`).all() as any[])
+    natValues.set(r.country, { name: r.name, top: r.top_eur, players: r.players });
+}
+/** Value (EUR) of a national team's 23 most valuable players, by the team's name as API-Football writes it. */
+export function nationalValueFor(teamName: string): number | null {
+  const n = normCountry(teamName);
+  const hit = natValues.get(COUNTRY_ALIASES[n] || n) || natValues.get(n);
+  return hit && hit.players >= 11 ? hit.top : null;
+}
+export const nationalValuesLoaded = () => natValues.size;
+
 function loadCache() {
   loadPlayers();
+  loadNatValues();
   cache = new Map();
   for (const r of db.prepare(`SELECT grp, fd_name, club_name, total_eur, top_eur FROM squad_values`).all() as any[])
     cache.set(`${r.grp}|${r.fd_name}`, { total: r.total_eur, top: r.top_eur, club: r.club_name });
@@ -237,7 +270,9 @@ export async function syncSquadValues(force = false): Promise<{ clubs: number; m
     const header = rows[0].map(h => h.trim());
     const col = (n: string) => header.indexOf(n);
     const iName = col('current_club_name'), iComp = col('current_club_domestic_competition_id'),
-      iVal = col('market_value_in_eur'), iSeason = col('last_season'), iPlayer = col('name');
+      iVal = col('market_value_in_eur'), iSeason = col('last_season'), iPlayer = col('name'),
+      iCitizen = col('country_of_citizenship');
+    const byCountry = new Map<string, { name: string; values: number[] }>();
     if (iName < 0 || iComp < 0 || iVal < 0) throw new Error(`Unexpected columns: ${header.slice(0, 12).join(',')}`);
     const seasonMin = new Date().getUTCFullYear() - 1; // only players active this or last season
     const clubs = new Map<string, ClubAgg>();
@@ -249,6 +284,11 @@ export async function syncSquadValues(force = false): Promise<{ clubs: number; m
         const ls = iSeason >= 0 ? parseInt(r[iSeason], 10) : NaN;
         if (Number.isFinite(pv) && pv > 0 && (!Number.isFinite(ls) || ls >= new Date().getUTCFullYear() - 3))
           playerRows.push([playerKey(r[iPlayer]), r[iPlayer], r[iName] || null, pv]);
+        if (iCitizen >= 0 && r[iCitizen] && Number.isFinite(pv) && pv > 0 && (!Number.isFinite(ls) || ls >= new Date().getUTCFullYear() - 2)) {
+          const key = normCountry(r[iCitizen]);
+          const c = byCountry.get(key) || byCountry.set(key, { name: r[iCitizen], values: [] }).get(key)!;
+          c.values.push(pv);
+        }
       }
       const comp = r[iComp];
       const group = COMPETITION_GROUP[comp];
@@ -269,6 +309,12 @@ export async function syncSquadValues(force = false): Promise<{ clubs: number; m
     try {
       db.prepare(`DELETE FROM squad_values`).run();
       db.prepare(`DELETE FROM squad_players`).run();
+      db.prepare(`DELETE FROM nat_values`).run();
+      const insN = db.prepare(`INSERT INTO nat_values (country, name, top_eur, players) VALUES (?, ?, ?, ?)`);
+      byCountry.forEach((c, key) => {
+        const top = c.values.sort((a, b) => b - a).slice(0, 23).reduce((a, b) => a + b, 0);
+        insN.run(key, c.name, top, c.values.length);
+      });
       const insP = db.prepare(`INSERT INTO squad_players (pkey, name, club, value_eur) VALUES (?, ?, ?, ?)`);
       for (const pr of playerRows) if (pr[0]) insP.run(...pr);
       for (const group of Object.keys(GROUPS)) {
@@ -302,7 +348,8 @@ export function squadValuesStatus() {
     g.teams++;
     if (g.top.length < 5) g.top.push({ team: r.fd_name, club: r.club_name, topEur: Math.round(r.top_eur) });
   }
-  return { source: SOURCE_URL, sync: s || null, lastError, playerKeys: players.size, byGroup };
+  const nations = [...natValues.values()].sort((a, b) => b.top - a.top).slice(0, 12).map(v => ({ nation: v.name, top23Eur: Math.round(v.top) }));
+  return { source: SOURCE_URL, sync: s || null, lastError, playerKeys: players.size, nationalTeams: natValues.size, topNations: nations, byGroup };
 }
 
 /** Weekly refresh; first attempt shortly after start so history names exist. */

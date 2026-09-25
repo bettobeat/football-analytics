@@ -12,6 +12,7 @@ import { db } from '../db';
 import logger from '../utils/logger';
 import { afGet, afConfigured } from './apiFootball';
 import { Prediction } from './predictionModel';
+import { nationalValueFor } from './squadValues';
 
 export const MODEL_ELO = 'elo-intl';
 const AF_OFFSET = 1_000_000_000;
@@ -102,7 +103,7 @@ export async function syncNationalHistory(force = false) {
 /* ------------------------------------------------------------------ */
 
 const ratings = new Map<number, { elo: number; name: string; n: number; last: string }>();
-let fit = { c: 60, s: 110 }; // ordered-logit parameters (Elo points)
+let fit = { c: 60, s: 110, beta: 0 }; // ordered-logit parameters (Elo points); beta = Elo points per unit of ln(squad value ratio)
 let lastBuilt: string | null = null;
 let evalStats: any = null;
 
@@ -121,43 +122,69 @@ function gdMult(gd: number) {
 export function buildNationalElo() {
   const rows = db.prepare(`SELECT * FROM nat_matches ORDER BY date, fixture_id`).all() as any[];
   ratings.clear();
-  const pre: { d: number; o: 'H' | 'D' | 'A'; date: string }[] = [];
+  const pre: { d: number; lv: number; o: 'H' | 'D' | 'A'; date: string }[] = [];
+  const valueCache = new Map<number, number | null>();
+  const valueOf = (id: number, name: string) => {
+    if (!valueCache.has(id)) valueCache.set(id, nationalValueFor(name));
+    return valueCache.get(id)!;
+  };
   const get = (id: number, name: string) => ratings.get(id) || ratings.set(id, { elo: 1500, name, n: 0, last: '' }).get(id)!;
   for (const r of rows) {
     const cfg = COMPS[r.league_id] || COMPS[10];
     const H = get(r.home_id, r.home_name), A = get(r.away_id, r.away_name);
     const d = H.elo - A.elo + cfg.ha;
     const o = r.hg > r.ag ? 'H' : r.hg < r.ag ? 'A' : 'D';
-    if (H.n >= 10 && A.n >= 10) pre.push({ d, o, date: r.date });
+    if (H.n >= 10 && A.n >= 10) {
+      const vh = valueOf(r.home_id, r.home_name), va = valueOf(r.away_id, r.away_name);
+      pre.push({ d, lv: vh && va ? Math.log(vh / va) : 0, o, date: r.date });
+    }
     const we = 1 / (1 + Math.pow(10, -d / 400));
     const w = o === 'H' ? 1 : o === 'D' ? 0.5 : 0;
     const delta = cfg.k * gdMult(r.hg - r.ag) * (w - we);
     H.elo += delta; A.elo -= delta;
     H.n++; A.n++; H.last = r.date; A.last = r.date;
   }
-  // fit c, s on matches from 2018 (ratings burnt in), evaluate on the last 2 years
+  // fit c, s (and beta for the squad-value term) on matches from 2018; evaluate on the last 2 years
   const train = pre.filter(x => x.date >= '2018-01-01');
-  let best = { ll: Infinity, c: 60, s: 110 };
-  for (let c = 0; c <= 300; c += 10)
-    for (let s = 60; s <= 400; s += 10) {
-      let ll = 0;
-      for (const x of train) { const p = probs(x.d, c, s); ll -= Math.log(Math.max(1e-6, x.o === 'H' ? p.h : x.o === 'D' ? p.d : p.a)); }
-      if (ll < best.ll) best = { ll, c, s };
-    }
-  fit = { c: best.c, s: best.s };
+  const llOf = (xs: typeof pre, c: number, s: number, beta: number) => {
+    let ll = 0;
+    for (const x of xs) { const p = probs(x.d + beta * x.lv, c, s); ll -= Math.log(Math.max(1e-6, x.o === 'H' ? p.h : x.o === 'D' ? p.d : p.a)); }
+    return ll;
+  };
+  const fitGrid = (betas: number[]) => {
+    let best = { ll: Infinity, c: 60, s: 110, beta: 0 };
+    for (const beta of betas)
+      for (let c = 0; c <= 300; c += 10)
+        for (let s = 60; s <= 400; s += 10) {
+          const ll = llOf(train, c, s, beta);
+          if (ll < best.ll) best = { ll, c, s, beta };
+        }
+    return best;
+  };
+  const base = fitGrid([0]);
+  const withValue = fitGrid([0, 25, 50, 75, 100, 125, 150, 175, 200, 250, 300, 350]);
+  fit = { c: withValue.c, s: withValue.s, beta: withValue.beta };
   const test = pre.filter(x => x.date >= new Date(Date.now() - 2 * 365 * 86400000).toISOString().slice(0, 10));
-  let brier = 0, ll = 0, hits = 0, draws = 0;
-  for (const x of test) {
-    const p = probs(x.d);
-    brier += (p.h - (x.o === 'H' ? 1 : 0)) ** 2 + (p.d - (x.o === 'D' ? 1 : 0)) ** 2 + (p.a - (x.o === 'A' ? 1 : 0)) ** 2;
-    ll -= Math.log(Math.max(1e-6, x.o === 'H' ? p.h : x.o === 'D' ? p.d : p.a));
-    const pick = p.h >= p.d && p.h >= p.a ? 'H' : p.a >= p.d ? 'A' : 'D';
-    if (pick === x.o) hits++;
-    if (x.o === 'D') draws++;
-  }
   const r3 = (v: number) => Math.round(v * 1000) / 1000;
+  const score = (c: number, s: number, beta: number) => {
+    let brier = 0, ll = 0, hits = 0;
+    for (const x of test) {
+      const p = probs(x.d + beta * x.lv, c, s);
+      brier += (p.h - (x.o === 'H' ? 1 : 0)) ** 2 + (p.d - (x.o === 'D' ? 1 : 0)) ** 2 + (p.a - (x.o === 'A' ? 1 : 0)) ** 2;
+      ll -= Math.log(Math.max(1e-6, x.o === 'H' ? p.h : x.o === 'D' ? p.d : p.a));
+      const pick = p.h >= p.d && p.h >= p.a ? 'H' : p.a >= p.d ? 'A' : 'D';
+      if (pick === x.o) hits++;
+    }
+    return { brier: r3(brier / test.length), logLoss: r3(ll / test.length), hitRate: Math.round((hits / test.length) * 1000) / 10 };
+  };
   evalStats = test.length
-    ? { matches: test.length, brier: r3(brier / test.length), logLoss: r3(ll / test.length), hitRate: Math.round((hits / test.length) * 1000) / 10, drawRate: Math.round((draws / test.length) * 1000) / 10, note: 'fitted on 2018+, scored on the last 2 years (in-sample for c/s, out-of-sample for ratings)' }
+    ? {
+        matches: test.length,
+        eloOnly: score(base.c, base.s, 0),
+        eloPlusSquadValue: score(withValue.c, withValue.s, withValue.beta),
+        withValues: test.filter(x => x.lv !== 0).length,
+        note: 'parameters fitted on 2018+, scored on the last 2 years; squad values are a July 2026 snapshot (mild look-ahead on older matches)'
+      }
     : null;
   lastBuilt = new Date().toISOString();
   logger.info(`National Elo: ${rows.length} matches, ${ratings.size} teams, fit c=${fit.c} s=${fit.s}`);
@@ -176,7 +203,9 @@ export function predictNational(match: any, leagueId: number): Prediction | null
   const H = ratings.get(hid), A = ratings.get(aid);
   if (!H || !A || H.n < 5 || A.n < 5) return null;
   const cfg = COMPS[leagueId] || COMPS[10];
-  const d = H.elo - A.elo + cfg.ha;
+  const vh = nationalValueFor(H.name), va = nationalValueFor(A.name);
+  const valueTerm = vh && va ? fit.beta * Math.log(vh / va) : 0;
+  const d = H.elo - A.elo + cfg.ha + valueTerm;
   const p = probs(d);
   // goals: league-average international game, tilted by the rating gap
   const lamH = Math.max(0.2, 1.3 * Math.exp(d / 650)), lamA = Math.max(0.2, 1.3 * Math.exp(-d / 650));
@@ -200,7 +229,7 @@ export function predictNational(match: any, leagueId: number): Prediction | null
     confidence: n >= 30 ? 'high' : n >= 15 ? 'medium' : 'low',
     factors: {
       homeAttack: Math.round(H.elo), homeDefence: 0, awayAttack: Math.round(A.elo), awayDefence: 0,
-      homeAdvantage: cfg.ha, homeForm: 1, awayForm: 1, gamesPlayed: { home: H.n, away: A.n }, leagueAvgGoals: 1.3
+      homeAdvantage: cfg.ha, homeForm: Math.round(valueTerm), awayForm: 1, gamesPlayed: { home: H.n, away: A.n }, leagueAvgGoals: 1.3
     }
   };
 }
@@ -210,7 +239,7 @@ export function nationalEloStatus() {
     .filter(([, r]) => r.n >= 15 && r.last >= new Date(Date.now() - 3 * 365 * 86400000).toISOString().slice(0, 10))
     .sort((a, b) => b[1].elo - a[1].elo)
     .slice(0, 30)
-    .map(([, r], i) => ({ rank: i + 1, team: r.name, elo: Math.round(r.elo), matches: r.n }));
+    .map(([, r], i) => ({ rank: i + 1, team: r.name, elo: Math.round(r.elo), matches: r.n, squadValueM: Math.round((nationalValueFor(r.name) || 0) / 1e6) }));
   const n: any = db.prepare(`SELECT COUNT(*) AS n, MIN(date) AS first, MAX(date) AS last FROM nat_matches`).get();
   return { model: MODEL_ELO, lastBuilt, matches: n, teams: ratings.size, fit, evaluation: evalStats, top };
 }
