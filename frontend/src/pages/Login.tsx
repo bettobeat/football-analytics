@@ -4,7 +4,7 @@ import { errorText, useAuth } from '../lib/auth'
 
 /** Sign in and create account on one page: /login and /signup. */
 export default function Login({ mode: initial }: { mode: 'login' | 'signup' }) {
-  const { login, signup, user } = useAuth()
+  const { login, signup, user, needsVerification } = useAuth()
   const nav = useNavigate()
   const loc = useLocation()
   const next = new URLSearchParams(loc.search).get('next') || '/'
@@ -12,13 +12,17 @@ export default function Login({ mode: initial }: { mode: 'login' | 'signup' }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
+  const [optIn, setOptIn] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => setMode(initial), [initial])
   useEffect(() => {
-    if (user) nav(next.startsWith('/') ? next : '/', { replace: true })
-  }, [user, next, nav])
+    if (!user) return
+    const target = next.startsWith('/') ? next : '/'
+    if (needsVerification) nav(`/verify?next=${encodeURIComponent(target)}`, { replace: true })
+    else nav(target, { replace: true })
+  }, [user, needsVerification, next, nav])
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -27,7 +31,7 @@ export default function Login({ mode: initial }: { mode: 'login' | 'signup' }) {
     setBusy(true)
     try {
       if (mode === 'login') await login(email, password)
-      else await signup(email, password, name)
+      else await signup(email, password, name, optIn)
     } catch (err) {
       setError(errorText(err))
     } finally {
@@ -79,6 +83,13 @@ export default function Login({ mode: initial }: { mode: 'login' | 'signup' }) {
             {mode === 'signup' && <span className="text-[11px] text-faint">At least 8 characters.</span>}
           </label>
 
+          {mode === 'signup' && (
+            <label className="flex items-start gap-2.5 text-sm text-muted cursor-pointer select-none">
+              <input type="checkbox" checked={optIn} onChange={e => setOptIn(e.target.checked)} className="mt-0.5 w-4 h-4 accent-[rgb(var(--accent))]" />
+              <span>Email me about new features, Premium and weekly picks. You can turn this off anytime.</span>
+            </label>
+          )}
+
           {error && <div className="rounded-xl border border-loss/40 bg-loss/10 px-3 py-2 text-sm text-loss">{error}</div>}
 
           <button
@@ -108,7 +119,11 @@ export default function Login({ mode: initial }: { mode: 'login' | 'signup' }) {
           )}
         </div>
         {mode === 'login' && (
-          <p className="mt-3 text-[11px] text-faint text-center">Forgot your password? Contact support and we’ll reset it.</p>
+          <p className="mt-3 text-xs text-center">
+            <Link to="/forgot" className="text-muted hover:text-ink">
+              Forgot your password?
+            </Link>
+          </p>
         )}
       </div>
     </div>

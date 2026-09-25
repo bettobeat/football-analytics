@@ -34,7 +34,8 @@ import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler } 
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures } from './services/apiFootball';
 import {
   signup, login, changePassword, setPlan, adminResetPassword, listUsers, userStats, createSession, destroySession, userForToken,
-  parseCookies, setSessionCookie, clearSessionCookie, SESSION_COOKIE, accessOf, canSeeFull, teaseDeep, AuthError, Access, User
+  parseCookies, setSessionCookie, clearSessionCookie, SESSION_COOKIE, accessOf, canSeeFull, teaseDeep, AuthError, Access, User,
+  sendVerification, verifyEmail, requestPasswordReset, resetPassword, setMarketingOptIn, usersCsv, verificationRequired
 } from './services/auth';
 import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, backfillV3, setRelOverride, SweepVariant } from './services/gridModel';
 
@@ -163,7 +164,7 @@ function authFail(res: express.Response, e: any) {
 }
 
 function sessionPayload(user: User | null) {
-  return { user, access: accessOf(user) };
+  return { user, access: accessOf(user), verificationRequired };
 }
 
 // Only JSON bodies on auth POSTs (with SameSite=Lax cookies this blocks cross-site form posts)
@@ -177,12 +178,68 @@ app.get('/api/auth/me', (req, res) => {
   res.json(sessionPayload(req.user || null));
 });
 
-app.post('/api/auth/signup', jsonOnly, (req, res) => {
+app.post('/api/auth/signup', jsonOnly, async (req, res) => {
   try {
-    const user = signup(req.body?.email, req.body?.password, req.body?.name, req.ip || '');
+    const user = signup(req.body?.email, req.body?.password, req.body?.name, req.ip || '', req.body?.optIn === true);
     const s = createSession(user.id, req.headers['user-agent']);
     setSessionCookie(res, s.token, s.expires, req.secure);
-    res.status(201).json(sessionPayload(user));
+    // Send the confirmation code; if the email fails the account still exists and the code can be re-sent
+    let codeSent = false;
+    try {
+      await sendVerification(user);
+      codeSent = verificationRequired;
+    } catch (e: any) {
+      logger.warn('Verification email not sent at sign-up', { message: e?.message });
+    }
+    res.status(201).json({ ...sessionPayload(user), codeSent });
+  } catch (e) {
+    authFail(res, e);
+  }
+});
+
+app.post('/api/auth/verify', jsonOnly, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  try {
+    res.json(sessionPayload(verifyEmail(req.user, req.body?.code)));
+  } catch (e) {
+    authFail(res, e);
+  }
+});
+
+app.post('/api/auth/verify/resend', async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  try {
+    await sendVerification(req.user);
+    res.json({ ok: true });
+  } catch (e) {
+    authFail(res, e);
+  }
+});
+
+app.post('/api/auth/forgot', jsonOnly, async (req, res) => {
+  try {
+    await requestPasswordReset(req.body?.email, req.ip || '');
+    res.json({ ok: true });
+  } catch (e) {
+    authFail(res, e);
+  }
+});
+
+app.post('/api/auth/reset', jsonOnly, (req, res) => {
+  try {
+    const user = resetPassword(req.body?.email, req.body?.code, req.body?.password, req.ip || '');
+    const s = createSession(user.id, req.headers['user-agent']);
+    setSessionCookie(res, s.token, s.expires, req.secure);
+    res.json(sessionPayload(user));
+  } catch (e) {
+    authFail(res, e);
+  }
+});
+
+app.post('/api/auth/preferences', jsonOnly, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  try {
+    res.json(sessionPayload(setMarketingOptIn(req.user.id, req.body?.optIn === true)));
   } catch (e) {
     authFail(res, e);
   }
@@ -218,6 +275,13 @@ app.post('/api/auth/password', jsonOnly, (req, res) => {
 });
 
 // ---------- Admin: users and plans (payments will call setPlan later) ----------
+
+app.get('/api/admin/users.csv', (_req, res) => {
+  res.set('Content-Type', 'text/csv; charset=utf-8');
+  res.set('Content-Disposition', `attachment; filename="bettobeat-users-${new Date().toISOString().slice(0, 10)}.csv"`);
+  res.set('Cache-Control', 'no-store');
+  res.send(usersCsv());
+});
 
 app.get('/api/admin/users', (_req, res) => {
   res.json({ data: listUsers(), stats: userStats() });

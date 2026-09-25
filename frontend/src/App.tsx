@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter as Router, Routes, Route, Link, NavLink } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Link, NavLink, useLocation } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
 import MatchDetail from './pages/MatchDetail'
 import Accuracy from './pages/Accuracy'
@@ -7,6 +7,8 @@ import Login from './pages/Login'
 import Account from './pages/Account'
 import Premium from './pages/Premium'
 import Admin from './pages/Admin'
+import Verify from './pages/Verify'
+import Forgot from './pages/Forgot'
 import PremiumGate from './components/PremiumGate'
 import { AuthProvider, useAuth } from './lib/auth'
 import { socket } from './lib/socket'
@@ -68,6 +70,23 @@ function UserMenu() {
       </span>
       <span className={`text-[11px] font-semibold ${access === 'free' ? 'text-muted' : 'text-accent'}`}>{badge}</span>
     </Link>
+  )
+}
+
+/** Reminder for signed-in users who haven't confirmed their email yet. */
+function VerifyBanner() {
+  const { needsVerification } = useAuth()
+  const loc = useLocation()
+  if (!needsVerification || loc.pathname === '/verify') return null
+  return (
+    <div className="bg-draw/15 border-b border-draw/30">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2 text-sm text-ink flex flex-wrap items-center justify-between gap-2">
+        <span>Confirm your email to finish creating your account.</span>
+        <Link to={`/verify?next=${encodeURIComponent(loc.pathname)}`} className="font-semibold text-draw">
+          Enter code →
+        </Link>
+      </div>
+    </div>
   )
 }
 
@@ -157,6 +176,7 @@ function Shell() {
           </div>
         </header>
 
+        <VerifyBanner />
         <main>
           <Routes>
             <Route path="/" element={<Dashboard />} />
@@ -172,6 +192,8 @@ function Shell() {
             <Route path="/login" element={<Login mode="login" />} />
             <Route path="/signup" element={<Login mode="signup" />} />
             <Route path="/account" element={<Account />} />
+            <Route path="/verify" element={<Verify />} />
+            <Route path="/forgot" element={<Forgot />} />
             <Route path="/premium" element={<Premium />} />
             <Route path="/admin" element={<Admin />} />
           </Routes>

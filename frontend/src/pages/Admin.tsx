@@ -13,7 +13,7 @@ function fmt(iso: string | null) {
 export default function Admin() {
   const { access, loading } = useAuth()
   const [rows, setRows] = useState<Row[]>([])
-  const [stats, setStats] = useState<{ total: number; premium: number } | null>(null)
+  const [stats, setStats] = useState<{ total: number; premium: number; verified: number; optIn: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [q, setQ] = useState('')
 
@@ -71,16 +71,22 @@ export default function Admin() {
           <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink">Users</h1>
           {stats && (
             <p className="text-sm text-muted">
-              <span className="num">{stats.total}</span> accounts · <span className="num">{stats.premium}</span> premium
+              <span className="num">{stats.total}</span> accounts · <span className="num">{stats.verified}</span> confirmed ·{' '}
+              <span className="num">{stats.premium}</span> premium · <span className="num">{stats.optIn}</span> want updates
             </p>
           )}
         </div>
+        <div className="flex items-center gap-2">
+        <a href={`${API_URL}/admin/users.csv`} className="rounded-xl border border-line bg-surface px-3 py-2 text-sm font-medium text-ink hover:border-faint whitespace-nowrap">
+          Export CSV
+        </a>
         <input
           value={q}
           onChange={e => setQ(e.target.value)}
           placeholder="Search email or name"
           className="rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent w-64 max-w-full"
         />
+        </div>
       </div>
       {error && <div className="mb-4 rounded-xl border border-loss/40 bg-loss/10 px-3 py-2 text-sm text-loss">{error}</div>}
       <div className="card overflow-x-auto">
@@ -89,6 +95,8 @@ export default function Admin() {
             <tr className="text-left text-faint text-xs border-b border-line">
               <th className="px-4 py-3 font-medium">Email</th>
               <th className="px-4 py-3 font-medium">Plan</th>
+              <th className="px-4 py-3 font-medium">Status</th>
+              <th className="px-4 py-3 font-medium">Updates</th>
               <th className="px-4 py-3 font-medium">Joined</th>
               <th className="px-4 py-3 font-medium">Last sign-in</th>
               <th className="px-4 py-3 font-medium text-right">Actions</th>
@@ -112,6 +120,8 @@ export default function Admin() {
                     <span className="text-xs text-muted">Free</span>
                   )}
                 </td>
+                <td className="px-4 py-3 text-xs">{u.emailVerified ? <span className="text-win">Confirmed</span> : <span className="text-draw">Pending</span>}</td>
+                <td className="px-4 py-3 text-xs">{u.marketingOptIn ? <span className="text-win">Yes</span> : <span className="text-faint">No</span>}</td>
                 <td className="px-4 py-3 num text-muted">{fmt(u.createdAt)}</td>
                 <td className="px-4 py-3 num text-muted">{fmt(u.lastLoginAt)}</td>
                 <td className="px-4 py-3 text-right whitespace-nowrap">
@@ -133,7 +143,7 @@ export default function Admin() {
             ))}
             {!shown.length && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-faint">
+                <td colSpan={7} className="px-4 py-8 text-center text-faint">
                   No accounts yet.
                 </td>
               </tr>

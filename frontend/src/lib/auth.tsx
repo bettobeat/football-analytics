@@ -14,7 +14,15 @@ export interface User {
   plan: 'free' | 'premium'
   premiumUntil: string | null
   isAdmin: boolean
+  emailVerified: boolean
+  marketingOptIn: boolean
   createdAt: string
+}
+
+interface SessionPayload {
+  user: User | null
+  access: Access
+  verificationRequired?: boolean
 }
 
 interface AuthState {
@@ -23,8 +31,14 @@ interface AuthState {
   loading: boolean
   /** premium or admin: full predictions */
   full: boolean
+  /** signed in but the email is not confirmed yet */
+  needsVerification: boolean
   login: (email: string, password: string) => Promise<void>
-  signup: (email: string, password: string, name?: string) => Promise<void>
+  signup: (email: string, password: string, name?: string, optIn?: boolean) => Promise<void>
+  verify: (code: string) => Promise<void>
+  resendCode: () => Promise<void>
+  resetPassword: (email: string, code: string, password: string) => Promise<void>
+  setOptIn: (on: boolean) => Promise<void>
   logout: () => Promise<void>
   refresh: () => Promise<void>
 }
@@ -46,16 +60,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [access, setAccess] = useState<Access>('anon')
   const [loading, setLoading] = useState(true)
+  const [verificationRequired, setVerificationRequired] = useState(false)
 
-  const apply = (d: { user: User | null; access: Access }) => {
+  const apply = (d: SessionPayload) => {
     setUser(d.user)
     setAccess(d.access)
+    if (typeof d.verificationRequired === 'boolean') setVerificationRequired(d.verificationRequired)
   }
 
   const refresh = useCallback(async () => {
     try {
       const r = await axios.get(`${API_URL}/auth/me`)
-      apply(r.data)
+      apply(r.data as SessionPayload)
     } catch {
       apply({ user: null, access: 'anon' })
     } finally {
@@ -73,10 +89,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     reconnectSocket()
   }
 
-  const signup = async (email: string, password: string, name?: string) => {
-    const r = await axios.post(`${API_URL}/auth/signup`, { email, password, name })
+  const signup = async (email: string, password: string, name?: string, optIn?: boolean) => {
+    const r = await axios.post(`${API_URL}/auth/signup`, { email, password, name, optIn: !!optIn })
     apply(r.data)
     reconnectSocket()
+  }
+
+  const verify = async (code: string) => {
+    const r = await axios.post(`${API_URL}/auth/verify`, { code })
+    apply(r.data)
+    reconnectSocket()
+  }
+
+  const resendCode = async () => {
+    await axios.post(`${API_URL}/auth/verify/resend`)
+  }
+
+  const resetPassword = async (email: string, code: string, password: string) => {
+    const r = await axios.post(`${API_URL}/auth/reset`, { email, code, password })
+    apply(r.data)
+    reconnectSocket()
+  }
+
+  const setOptIn = async (on: boolean) => {
+    const r = await axios.post(`${API_URL}/auth/preferences`, { optIn: on })
+    apply(r.data)
   }
 
   const logout = async () => {
@@ -89,8 +126,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const full = access === 'premium' || access === 'admin'
+  const needsVerification = !!user && verificationRequired && !user.emailVerified
 
-  return <AuthContext.Provider value={{ user, access, loading, full, login, signup, logout, refresh }}>{children}</AuthContext.Provider>
+  return (
+    <AuthContext.Provider
+      value={{ user, access, loading, full, needsVerification, login, signup, verify, resendCode, resetPassword, setOptIn, logout, refresh }}
+    >
+      {children}
+    </AuthContext.Provider>
+  )
 }
 
 export function useAuth(): AuthState {

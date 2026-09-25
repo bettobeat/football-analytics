@@ -9,7 +9,7 @@ function fmtDay(iso: string | null) {
 }
 
 export default function Account() {
-  const { user, access, loading, logout } = useAuth()
+  const { user, access, loading, logout, needsVerification, setOptIn } = useAuth()
   const nav = useNavigate()
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
@@ -55,6 +55,11 @@ export default function Account() {
             <div className="font-display text-xl font-bold text-ink mt-0.5">{planLabel}</div>
             {user.plan === 'premium' && user.premiumUntil && <div className="text-xs text-muted mt-0.5">Until {fmtDay(user.premiumUntil)}</div>}
             <div className="text-xs text-faint mt-0.5">Member since {fmtDay(user.createdAt)}</div>
+            {needsVerification && (
+              <Link to="/verify?next=/account" className="text-xs font-semibold text-draw mt-1 inline-block">
+                Email not confirmed — enter code →
+              </Link>
+            )}
           </div>
           {access === 'free' && (
             <Link to="/premium" className="px-4 py-2 rounded-xl bg-accent text-bg text-sm font-semibold">
@@ -62,6 +67,21 @@ export default function Account() {
             </Link>
           )}
         </div>
+      </div>
+
+      <div className="card p-6">
+        <label className="flex items-start justify-between gap-4 cursor-pointer select-none">
+          <span>
+            <span className="font-display font-bold text-ink block">Email updates</span>
+            <span className="text-sm text-muted">New features, Premium news and weekly picks. No spam.</span>
+          </span>
+          <input
+            type="checkbox"
+            checked={user.marketingOptIn}
+            onChange={e => setOptIn(e.target.checked).catch(() => undefined)}
+            className="mt-1 w-5 h-5 accent-[rgb(var(--accent))]"
+          />
+        </label>
       </div>
 
       <form onSubmit={changePw} className="card p-6 space-y-3">
