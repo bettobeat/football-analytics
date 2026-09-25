@@ -97,6 +97,11 @@ function live() {
   };
 }
 
+const bucketOut = (b: { range: string; n: number; wins: number; profit: number; moved: number; movedN: number }) => ({
+  range: b.range, n: b.n, hitRate: b.n ? r1((b.wins / b.n) * 100) : null, roi: b.n ? r1((b.profit / b.n) * 100) : null,
+  lineMovedOurWay: b.movedN ? r1((b.moved / b.movedN) * 100) : null
+});
+
 const SEASON_LABEL: Record<string, string> = { '2324': '2023-24', '2425': '2024-25', '2526': '2025-26', '2627': '2026-27' };
 
 function history() {
@@ -112,6 +117,10 @@ function history() {
     `).all(season) as any[];
     let matches = 0, draws = 0, n = 0, wins = 0, profit = 0, moved = 0, movedN = 0;
     const byDiv = new Map<string, { n: number; wins: number; profit: number }>();
+    // buckets: how big the edge was, and how likely the bookmakers thought a draw was (low = one-sided match)
+    const EDGE_B = [[2, 10], [10, 20], [20, 1000]], MKT_B = [[0, 22], [22, 26], [26, 100]];
+    const byEdge = EDGE_B.map(([lo, hi]) => ({ range: hi > 100 ? `${lo}%+` : `${lo}–${hi}%`, lo, hi, n: 0, wins: 0, profit: 0, moved: 0, movedN: 0 }));
+    const byMkt = MKT_B.map(([lo, hi]) => ({ range: hi > 99 ? `${lo}%+` : `under ${hi}%`.replace('under 26%', '22–26%'), lo, hi, n: 0, wins: 0, profit: 0, moved: 0, movedN: 0 }));
     for (const r of rows) {
       if (r.division.startsWith('SP')) continue;
       matches++;
@@ -127,13 +136,23 @@ function history() {
       if (won) d.wins++;
       d.profit += won ? r.max_d - 1 : -1;
       const ef = fair([r.eh, r.ed, r.ea]), cf = fair([r.ch, r.cd, r.ca]);
-      if (ef && cf) { movedN++; if (cf[1] > ef[1]) moved++; }
+      const mv = ef && cf ? (cf[1] > ef[1] ? 1 : 0) : -1;
+      if (mv >= 0) { movedN++; moved += mv; }
+      for (const b of [byEdge.find(x => a.edge >= x.lo && a.edge < x.hi), byMkt.find(x => a.marketDraw >= x.lo && a.marketDraw < x.hi)]) {
+        if (!b) continue;
+        b.n++;
+        if (won) b.wins++;
+        b.profit += won ? r.max_d - 1 : -1;
+        if (mv >= 0) { b.movedN++; b.moved += mv; }
+      }
     }
     if (!n) continue;
     out.push({
       season, label: SEASON_LABEL[season] || season, matches, drawRate: matches ? r1((draws / matches) * 100) : null,
       alerts: n, wins, hitRate: r1((wins / n) * 100), roi: r1((profit / n) * 100),
       lineMovedOurWay: movedN ? r1((moved / movedN) * 100) : null,
+      byEdge: byEdge.map(bucketOut),
+      byMarketDraw: byMkt.map(bucketOut),
       byLeague: [...byDiv.entries()].map(([division, d]) => ({ division, league: DIVISION_NAMES[division] || division, n: d.n, hitRate: r1((d.wins / d.n) * 100), roi: r1((d.profit / d.n) * 100) })).sort((a, b) => b.n - a.n)
     });
   }
