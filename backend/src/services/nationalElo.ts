@@ -32,6 +32,9 @@ const COMPS: Record<number, { k: number; ha: number; name: string }> = {
   30: { k: 40, ha: 90, name: 'WC qualification Asia' },
   31: { k: 40, ha: 90, name: 'WC qualification CONCACAF' },
   960: { k: 40, ha: 90, name: 'Euro qualification' },
+  36: { k: 40, ha: 90, name: 'AFCON qualification' },
+  536: { k: 35, ha: 90, name: 'CONCACAF Nations League' },
+  35: { k: 40, ha: 90, name: 'Asian Cup qualification' },
   10: { k: 20, ha: 50, name: 'Friendlies' }
 };
 const FIRST_SEASON = 2014;
@@ -102,8 +105,13 @@ export async function syncNationalHistory(force = false) {
 /* Ratings + fit                                                        */
 /* ------------------------------------------------------------------ */
 
-const ratings = new Map<number, { elo: number; name: string; n: number; last: string }>();
-let fit = { c: 60, s: 110, beta: 0 }; // ordered-logit parameters (Elo points); beta = Elo points per unit of ln(squad value ratio)
+type TeamState = {
+  elo: number; name: string; n: number; last: string;
+  att: number; def: number; // goal ratings (log scale): attack adds to own goals, defence subtracts from the opponent's
+  recent: number[]; // last 6: actual − expected result (Elo), +ve = better than rated
+};
+const ratings = new Map<number, TeamState>();
+let fit = { c: 60, s: 110, beta: 0 }; // Elo-only engine: ordered-logit parameters (Elo points); beta = Elo points per ln(value ratio)
 let lastBuilt: string | null = null;
 let evalStats: any = null;
 
@@ -119,76 +127,199 @@ function gdMult(gd: number) {
   return g <= 1 ? 1 : g === 2 ? 1.5 : (11 + g) / 8;
 }
 
+/* ------------------------------------------------------------------ */
+/* v3 national grid: several pre-match factors, weights fitted on history */
+/* ------------------------------------------------------------------ */
+/*
+ * Rows (each a difference home − away, all known before kick-off):
+ *   strength  – Elo gap (+ competition home advantage)
+ *   squad     – ln(squad value ratio), players by nationality (Transfermarkt snapshot)
+ *   goals     – ln(expected goals ratio) from attack / defence goal ratings (opponent-adjusted)
+ *   form      – last 6 games: results above / below what the ratings expected
+ *   rest      – days since each side's last international (capped), short turnarounds hurt
+ *   home      – playing at home in a competitive game / in a friendly
+ * Ordered logit: z = Σ w·row;  friendlies scale z by m (rotated squads = less predictable);
+ * draw threshold c by match type (finals / competitive / friendly) + g × (Poisson draw chance − 0.27).
+ * Weights are fitted by maximum likelihood on 2018 → two years ago and judged on the last two years
+ * against the Elo-only engine; the live engine is whichever scores better there.
+ */
+type Kind = 'finals' | 'competitive' | 'friendly';
+const kindOf = (leagueId: number): Kind => {
+  const cfg = COMPS[leagueId] || COMPS[10];
+  return cfg.k <= 20 ? 'friendly' : cfg.ha === 0 ? 'finals' : 'competitive';
+};
+interface Feat { dElo: number; lv: number; gl: number; form: number; rest: number; homeComp: number; homeFriendly: number; pDraw: number; kind: Kind; lamH: number; lamA: number }
+const GW = ['w_elo', 'w_squad', 'w_goals', 'w_form', 'w_rest', 'w_homeComp', 'w_homeFriendly', 'm_friendly', 'c_finals', 'c_comp', 'c_friendly', 'g_draw'] as const;
+type GridW = Record<(typeof GW)[number], number>;
+const GRID0: GridW = { w_elo: 0.6, w_squad: 0.3, w_goals: 0.3, w_form: 0, w_rest: 0, w_homeComp: 0.3, w_homeFriendly: 0.15, m_friendly: 0.9, c_finals: 0.6, c_comp: 0.6, c_friendly: 0.6, g_draw: 0 };
+let gridW: GridW = { ...GRID0 };
+let engine: 'grid' | 'elo' = 'elo';
+
+const MU = Math.log(1.3); // average international goals per team per game (log)
+const HOME_G = 0.18; // goal-rating home effect (non-neutral games)
+function poissonDraw(lh: number, la: number) {
+  let d = 0, ph = Math.exp(-lh), pa = Math.exp(-la);
+  for (let k = 0; k <= 10; k++) { d += ph * pa; ph *= lh / (k + 1); pa *= la / (k + 1); }
+  return d;
+}
+function lambdas(H: TeamState, A: TeamState, neutral: boolean) {
+  const h = neutral ? 0 : HOME_G;
+  return { lamH: Math.exp(MU + H.att - A.def + h), lamA: Math.exp(MU + A.att - H.def) };
+}
+function featOf(H: TeamState, A: TeamState, leagueId: number, date: string, vh: number | null, va: number | null): Feat {
+  const cfg = COMPS[leagueId] || COMPS[10];
+  const kind = kindOf(leagueId);
+  const neutral = cfg.ha === 0;
+  const { lamH, lamA } = lambdas(H, A, neutral);
+  const noHome = lambdas(H, A, true);
+  const days = (x: string) => (x ? Math.min(30, (new Date(date).getTime() - new Date(x).getTime()) / 86400000) : 30);
+  const avg = (a: number[]) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0);
+  return {
+    dElo: (H.elo - A.elo) / 100,
+    lv: vh && va ? Math.log(vh / va) : 0,
+    gl: Math.log(noHome.lamH / noHome.lamA),
+    form: avg(H.recent) - avg(A.recent),
+    rest: (Math.min(days(H.last), 10) - Math.min(days(A.last), 10)) / 10,
+    homeComp: !neutral && kind !== 'friendly' ? 1 : 0,
+    homeFriendly: !neutral && kind === 'friendly' ? 1 : 0,
+    pDraw: poissonDraw(lamH, lamA),
+    kind, lamH, lamA
+  };
+}
+function gridProbs(f: Feat, w: GridW = gridW) {
+  let z = w.w_elo * f.dElo + w.w_squad * f.lv + w.w_goals * f.gl + w.w_form * f.form + w.w_rest * f.rest + w.w_homeComp * f.homeComp + w.w_homeFriendly * f.homeFriendly;
+  if (f.kind === 'friendly') z *= w.m_friendly;
+  const c = Math.max(0.05, (f.kind === 'finals' ? w.c_finals : f.kind === 'friendly' ? w.c_friendly : w.c_comp) + w.g_draw * (f.pDraw - 0.27));
+  const h = sig(z - c), a = sig(-z - c);
+  const dr = Math.max(0.03, 1 - h - a);
+  const t = h + a + dr;
+  return { h: h / t, d: dr / t, a: a / t, z };
+}
+function nll(xs: { f: Feat; o: 'H' | 'D' | 'A' }[], w: GridW) {
+  let ll = 0;
+  for (const x of xs) { const p = gridProbs(x.f, w); ll -= Math.log(Math.max(1e-6, x.o === 'H' ? p.h : x.o === 'D' ? p.d : p.a)); }
+  return ll / Math.max(1, xs.length);
+}
+/** Adam on numeric gradients (12 parameters, a few thousand matches: well under a second). */
+function fitGrid(xs: { f: Feat; o: 'H' | 'D' | 'A' }[]): GridW {
+  const w: any = { ...GRID0 };
+  const m: any = {}, v: any = {};
+  for (const k of GW) { m[k] = 0; v[k] = 0; }
+  const lr = 0.02, eps = 1e-4;
+  for (let it = 1; it <= 400; it++) {
+    const base = nll(xs, w);
+    for (const k of GW) {
+      const old = w[k];
+      w[k] = old + eps;
+      const g = (nll(xs, w) - base) / eps;
+      w[k] = old;
+      m[k] = 0.9 * m[k] + 0.1 * g;
+      v[k] = 0.999 * v[k] + 0.001 * g * g;
+      const mh = m[k] / (1 - Math.pow(0.9, it)), vh = v[k] / (1 - Math.pow(0.999, it));
+      w[k] = old - (lr * mh) / (Math.sqrt(vh) + 1e-8);
+    }
+    w.m_friendly = Math.min(1.5, Math.max(0.3, w.m_friendly));
+  }
+  return w;
+}
+
 export function buildNationalElo() {
   const rows = db.prepare(`SELECT * FROM nat_matches ORDER BY date, fixture_id`).all() as any[];
   ratings.clear();
-  const pre: { d: number; lv: number; o: 'H' | 'D' | 'A'; date: string }[] = [];
+  const pre: { d: number; lv: number; o: 'H' | 'D' | 'A'; date: string; f: Feat }[] = [];
   const valueCache = new Map<number, number | null>();
   const valueOf = (id: number, name: string) => {
     if (!valueCache.has(id)) valueCache.set(id, nationalValueFor(name));
     return valueCache.get(id)!;
   };
-  const get = (id: number, name: string) => ratings.get(id) || ratings.set(id, { elo: 1500, name, n: 0, last: '' }).get(id)!;
+  const get = (id: number, name: string) =>
+    ratings.get(id) || ratings.set(id, { elo: 1500, name, n: 0, last: '', att: 0, def: 0, recent: [] }).get(id)!;
   for (const r of rows) {
     const cfg = COMPS[r.league_id] || COMPS[10];
     const H = get(r.home_id, r.home_name), A = get(r.away_id, r.away_name);
     const d = H.elo - A.elo + cfg.ha;
     const o = r.hg > r.ag ? 'H' : r.hg < r.ag ? 'A' : 'D';
-    if (H.n >= 10 && A.n >= 10) {
-      const vh = valueOf(r.home_id, r.home_name), va = valueOf(r.away_id, r.away_name);
-      pre.push({ d, lv: vh && va ? Math.log(vh / va) : 0, o, date: r.date });
-    }
+    const vh = valueOf(r.home_id, r.home_name), va = valueOf(r.away_id, r.away_name);
+    if (H.n >= 10 && A.n >= 10) pre.push({ d, lv: vh && va ? Math.log(vh / va) : 0, o, date: r.date, f: featOf(H, A, r.league_id, r.date, vh, va) });
+    // Elo
     const we = 1 / (1 + Math.pow(10, -d / 400));
     const w = o === 'H' ? 1 : o === 'D' ? 0.5 : 0;
     const delta = cfg.k * gdMult(r.hg - r.ag) * (w - we);
     H.elo += delta; A.elo -= delta;
+    // form: result above / below the rating's expectation
+    H.recent.push(w - we); A.recent.push(we - w);
+    if (H.recent.length > 6) H.recent.shift();
+    if (A.recent.length > 6) A.recent.shift();
+    // goal ratings (online Poisson), smaller steps for friendlies
+    const { lamH, lamA } = lambdas(H, A, cfg.ha === 0);
+    const eta = kindOf(r.league_id) === 'friendly' ? 0.025 : 0.045;
+    const eh = Math.max(-3, Math.min(3, r.hg - lamH)), ea = Math.max(-3, Math.min(3, r.ag - lamA));
+    H.att += eta * eh; A.def -= eta * eh;
+    A.att += eta * ea; H.def -= eta * ea;
     H.n++; A.n++; H.last = r.date; A.last = r.date;
   }
-  // fit c, s (and beta for the squad-value term) on matches from 2018; evaluate on the last 2 years
-  const train = pre.filter(x => x.date >= '2018-01-01');
+  // Elo-only engine: fit c, s (and beta for the squad-value term) on matches from 2018
+  const twoYears = new Date(Date.now() - 2 * 365 * 86400000).toISOString().slice(0, 10);
+  const trainAll = pre.filter(x => x.date >= '2018-01-01');
+  const trainOld = trainAll.filter(x => x.date < twoYears);
+  const test = pre.filter(x => x.date >= twoYears);
   const llOf = (xs: typeof pre, c: number, s: number, beta: number) => {
     let ll = 0;
     for (const x of xs) { const p = probs(x.d + beta * x.lv, c, s); ll -= Math.log(Math.max(1e-6, x.o === 'H' ? p.h : x.o === 'D' ? p.d : p.a)); }
     return ll;
   };
-  const fitGrid = (betas: number[]) => {
+  const fitElo = (xs: typeof pre, betas: number[]) => {
     let best = { ll: Infinity, c: 60, s: 110, beta: 0 };
     for (const beta of betas)
       for (let c = 0; c <= 300; c += 10)
         for (let s = 60; s <= 400; s += 10) {
-          const ll = llOf(train, c, s, beta);
+          const ll = llOf(xs, c, s, beta);
           if (ll < best.ll) best = { ll, c, s, beta };
         }
     return best;
   };
-  const base = fitGrid([0]);
-  const withValue = fitGrid([0, 25, 50, 75, 100, 125, 150, 175, 200, 250, 300, 350]);
-  fit = { c: withValue.c, s: withValue.s, beta: withValue.beta };
-  const test = pre.filter(x => x.date >= new Date(Date.now() - 2 * 365 * 86400000).toISOString().slice(0, 10));
+  const BETAS = [0, 25, 50, 75, 100, 125, 150, 175, 200, 250, 300, 350];
   const r3 = (v: number) => Math.round(v * 1000) / 1000;
-  const score = (c: number, s: number, beta: number) => {
-    let brier = 0, ll = 0, hits = 0;
+  const score = (pf: (x: (typeof pre)[number]) => { h: number; d: number; a: number }) => {
+    let brier = 0, ll = 0, hits = 0, pd = 0, rd = 0;
     for (const x of test) {
-      const p = probs(x.d + beta * x.lv, c, s);
+      const p = pf(x);
       brier += (p.h - (x.o === 'H' ? 1 : 0)) ** 2 + (p.d - (x.o === 'D' ? 1 : 0)) ** 2 + (p.a - (x.o === 'A' ? 1 : 0)) ** 2;
       ll -= Math.log(Math.max(1e-6, x.o === 'H' ? p.h : x.o === 'D' ? p.d : p.a));
       const pick = p.h >= p.d && p.h >= p.a ? 'H' : p.a >= p.d ? 'A' : 'D';
       if (pick === x.o) hits++;
+      pd += p.d;
+      if (x.o === 'D') rd++;
     }
-    return { brier: r3(brier / test.length), logLoss: r3(ll / test.length), hitRate: Math.round((hits / test.length) * 1000) / 10 };
+    const n = Math.max(1, test.length);
+    return { brier: r3(brier / n), logLoss: r3(ll / n), hitRate: Math.round((hits / n) * 1000) / 10, predDraw: Math.round((pd / n) * 1000) / 10, realDraw: Math.round((rd / n) * 1000) / 10 };
   };
+  // honest comparison: both engines fitted on 2018 → two years ago, scored on the last two years
+  const eloOld = fitElo(trainOld, BETAS);
+  const gridOld = fitGrid(trainOld);
+  const eloTest = score(x => probs(x.d + eloOld.beta * x.lv, eloOld.c, eloOld.s));
+  const gridTest = score(x => gridProbs(x.f, gridOld));
+  engine = test.length >= 300 && gridTest.logLoss < eloTest.logLoss ? 'grid' : 'elo';
+  // live parameters: refit on everything since 2018
+  const eloAll = fitElo(trainAll, BETAS);
+  fit = { c: eloAll.c, s: eloAll.s, beta: eloAll.beta };
+  gridW = engine === 'grid' ? fitGrid(trainAll) : gridOld;
+  const rw = (w: GridW) => Object.fromEntries(Object.entries(w).map(([k, v]) => [k, Math.round(v * 1000) / 1000]));
   evalStats = test.length
     ? {
         matches: test.length,
-        eloOnly: score(base.c, base.s, 0),
-        eloPlusSquadValue: score(withValue.c, withValue.s, withValue.beta),
+        trainedOn: `2018-01-01 → ${twoYears}`,
+        eloPlusSquadValue: eloTest,
+        grid: gridTest,
+        engine,
+        gridWeightsTest: rw(gridOld),
         withValues: test.filter(x => x.lv !== 0).length,
-        note: 'parameters fitted on 2018+, scored on the last 2 years; squad values are a July 2026 snapshot (mild look-ahead on older matches)'
+        note: 'both engines fitted before the test period and scored on the last 2 years; squad values are a July 2026 snapshot (mild look-ahead on older matches, same for both)'
       }
     : null;
   lastBuilt = new Date().toISOString();
-  logger.info(`National Elo: ${rows.length} matches, ${ratings.size} teams, fit c=${fit.c} s=${fit.s}`);
-  return { matches: rows.length, teams: ratings.size };
+  logger.info(`National model: ${rows.length} matches, ${ratings.size} teams, engine ${engine} (test log loss grid ${gridTest.logLoss} vs elo ${eloTest.logLoss})`);
+  return { matches: rows.length, teams: ratings.size, engine };
 }
 
 /* ------------------------------------------------------------------ */
@@ -197,6 +328,31 @@ export function buildNationalElo() {
 
 function poisson(l: number, k: number) { let p = Math.exp(-l); for (let i = 1; i <= k; i++) p *= l / i; return p; }
 
+/** 1–10 value for a team on a row, from its standing among active teams (5.5 = average). */
+function scale(x: number, mean: number, sd: number) {
+  return Math.round(Math.max(1, Math.min(10, 5.5 + 2.25 * ((x - mean) / (sd || 1)))) * 10) / 10;
+}
+let popStats: { at: number; s: Record<string, { mean: number; sd: number }> } | null = null;
+function population() {
+  if (popStats && Date.now() - popStats.at < 3600_000) return popStats.s;
+  const since = new Date(Date.now() - 3 * 365 * 86400000).toISOString().slice(0, 10);
+  const act = [...ratings.values()].filter(r => r.n >= 15 && r.last >= since);
+  const ms = (xs: number[]) => {
+    const mean = xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);
+    return { mean, sd: Math.sqrt(xs.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(1, xs.length - 1)) };
+  };
+  const vals = act.map(r => nationalValueFor(r.name)).filter((v): v is number => !!v).map(v => Math.log(v));
+  const avg = (a: number[]) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0);
+  const s = {
+    elo: ms(act.map(r => r.elo)),
+    squad: ms(vals),
+    goals: ms(act.map(r => r.att + r.def)),
+    form: ms(act.map(r => avg(r.recent)))
+  };
+  popStats = { at: Date.now(), s };
+  return s;
+}
+
 /** Prediction for an API-Football-backed match object (team ids are offset). */
 export function predictNational(match: any, leagueId: number): Prediction | null {
   const hid = (match.homeTeam?.id || 0) - AF_OFFSET, aid = (match.awayTeam?.id || 0) - AF_OFFSET;
@@ -204,11 +360,14 @@ export function predictNational(match: any, leagueId: number): Prediction | null
   if (!H || !A || H.n < 5 || A.n < 5) return null;
   const cfg = COMPS[leagueId] || COMPS[10];
   const vh = nationalValueFor(H.name), va = nationalValueFor(A.name);
+  const date = String(match.utcDate || new Date().toISOString()).slice(0, 10);
+  const f = featOf(H, A, leagueId, date, vh, va);
   const valueTerm = vh && va ? fit.beta * Math.log(vh / va) : 0;
   const d = H.elo - A.elo + cfg.ha + valueTerm;
-  const p = probs(d);
-  // goals: league-average international game, tilted by the rating gap
-  const lamH = Math.max(0.2, 1.3 * Math.exp(d / 650)), lamA = Math.max(0.2, 1.3 * Math.exp(-d / 650));
+  const p = engine === 'grid' ? gridProbs(f) : probs(d);
+  // goals: from the goal ratings (grid) or the rating gap (elo)
+  const lamH = engine === 'grid' ? Math.min(4, Math.max(0.2, f.lamH)) : Math.max(0.2, 1.3 * Math.exp(d / 650));
+  const lamA = engine === 'grid' ? Math.min(4, Math.max(0.2, f.lamA)) : Math.max(0.2, 1.3 * Math.exp(-d / 650));
   let over25 = 0, btts = 0;
   const scores: { home: number; away: number; prob: number }[] = [];
   for (let i = 0; i <= 8; i++) for (let j = 0; j <= 8; j++) {
@@ -220,7 +379,7 @@ export function predictNational(match: any, leagueId: number): Prediction | null
   scores.sort((x, y) => y.prob - x.prob);
   const pct = (x: number) => Math.round(x * 1000) / 10;
   const n = Math.min(H.n, A.n);
-  return {
+  const out: Prediction = {
     model: MODEL_ELO,
     home: pct(p.h), draw: pct(p.d), away: pct(p.a),
     expectedGoals: { home: Math.round(lamH * 100) / 100, away: Math.round(lamA * 100) / 100 },
@@ -232,6 +391,38 @@ export function predictNational(match: any, leagueId: number): Prediction | null
       homeAdvantage: cfg.ha, homeForm: Math.round(valueTerm), awayForm: 1, gamesPlayed: { home: H.n, away: A.n }, leagueAvgGoals: 1.3
     }
   };
+  if (engine === 'grid') {
+    // the v3 breakdown: each row's value (1–10 among active national teams), weight and edge (points out of 1000)
+    const ps = population();
+    const avg = (a: number[]) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0);
+    const w = gridW;
+    const mult = f.kind === 'friendly' ? w.m_friendly : 1;
+    const edge = (x: number) => Math.round(x * mult * 250) / 10; // z units → points-ish (display)
+    const relOf = (x: number) => Math.max(1, Math.min(5, Math.round(Math.abs(x) * 5)));
+    const eur = (x: number | null) => (x ? `€${Math.round(x / 1e6)}m` : 'n/a');
+    const rows: NonNullable<Prediction['grid']>['rows'] = [
+      { id: '#1e', name: 'Strength (rating)', rel: relOf(w.w_elo), home: scale(H.elo, ps.elo.mean, ps.elo.sd), away: scale(A.elo, ps.elo.mean, ps.elo.sd), edge: edge(w.w_elo * f.dElo), note: `rating ${Math.round(H.elo)} vs ${Math.round(A.elo)}` },
+      { id: '#1', name: 'Squad value (by nationality)', rel: relOf(w.w_squad), home: vh ? scale(Math.log(vh), ps.squad.mean, ps.squad.sd) : 5.5, away: va ? scale(Math.log(va), ps.squad.mean, ps.squad.sd) : 5.5, edge: edge(w.w_squad * f.lv), note: `top-23 value ${eur(vh)} vs ${eur(va)}` },
+      { id: '#19', name: 'Goals: attack vs defence', rel: relOf(w.w_goals), home: scale(H.att + H.def, ps.goals.mean, ps.goals.sd), away: scale(A.att + A.def, ps.goals.mean, ps.goals.sd), edge: edge(w.w_goals * f.gl), note: `expected goals ${out.expectedGoals.home} vs ${out.expectedGoals.away}` },
+      { id: '#21', name: 'Form, last 6 (vs expectation)', rel: relOf(w.w_form), home: scale(avg(H.recent), ps.form.mean, ps.form.sd), away: scale(avg(A.recent), ps.form.mean, ps.form.sd), edge: edge(w.w_form * f.form) },
+      { id: '#10', name: 'Rest days', rel: relOf(w.w_rest), home: 5.5 + Math.round(f.rest * 45) / 10, away: 5.5 - Math.round(f.rest * 45) / 10, edge: edge(w.w_rest * f.rest) },
+      { id: '#23', name: f.kind === 'friendly' ? 'Home advantage (friendly)' : 'Home advantage', rel: relOf(f.kind === 'friendly' ? w.w_homeFriendly : w.w_homeComp), home: f.homeComp || f.homeFriendly ? 7 : 5.5, away: 5.5, edge: edge(w.w_homeComp * f.homeComp + w.w_homeFriendly * f.homeFriendly), note: f.kind === 'finals' ? 'tournament finals: neutral venue' : undefined }
+    ];
+    const reasons = rows.filter(r => Math.abs(r.edge) >= 3).sort((a, b) => Math.abs(b.edge) - Math.abs(a.edge)).slice(0, 3)
+      .map(r => `${r.name}: ${r.edge > 0 ? H.name : A.name} +${Math.abs(r.edge)}`);
+    if (f.kind === 'friendly') reasons.push('friendly: rotated squads make it less predictable');
+    const ptsH = Math.round(p.h * 1000), ptsA = Math.round(p.a * 1000);
+    out.grid = {
+      matchType: Math.abs(gridProbs(f).z) > 1.4 ? 'mismatch' : Math.abs(gridProbs(f).z) < 0.35 ? 'even' : 'standard',
+      points: { home: ptsH, draw: 1000 - ptsH - ptsA, away: ptsA },
+      totals: { home: Math.round(rows.reduce((s, r) => s + Math.max(0, r.edge), 0) * 10) / 10, away: Math.round(rows.reduce((s, r) => s + Math.max(0, -r.edge), 0) * 10) / 10 },
+      rows,
+      drawPot: { base: Math.round(f.pDraw * 1000), factors: 0, volatility: 0, total: 1000 - ptsH - ptsA },
+      reasons,
+      scope: 'national'
+    };
+  }
+  return out;
 }
 
 export function nationalEloStatus() {
@@ -245,7 +436,7 @@ export function nationalEloStatus() {
   const since = new Date(Date.now() - 3 * 365 * 86400000).toISOString().slice(0, 10);
   const active = [...ratings.values()].filter(r => r.n >= 15 && r.last >= since);
   const noValue = active.filter(r => !nationalValueFor(r.name)).sort((a, b) => b.elo - a.elo).map(r => `${r.name} (${Math.round(r.elo)})`);
-  return { model: MODEL_ELO, lastBuilt, matches: n, teams: ratings.size, activeTeams: active.length, withValue: active.length - noValue.length, noValue, fit, evaluation: evalStats, top };
+  return { model: MODEL_ELO, engine, gridWeights: gridW, lastBuilt, matches: n, teams: ratings.size, activeTeams: active.length, withValue: active.length - noValue.length, noValue, fit, evaluation: evalStats, top };
 }
 
 export function startNationalEloScheduler() {

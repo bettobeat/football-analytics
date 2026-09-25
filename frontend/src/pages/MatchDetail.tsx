@@ -311,11 +311,19 @@ function GridBreakdown({ p, home, away }: { p: Prediction; home: Team; away: Tea
           </span>
         </div>
       )}
+      {g.scope === 'national' ? (
+      <p className="mt-3 text-[11px] text-faint">
+        v3's national-team engine. Each parameter is scored among all active national teams (5.5 = average) and weighted by how much it
+        predicted results since 2018. Edge = how many points (out of 1000) that parameter moves toward one side. Friendlies count for less,
+        because teams rotate their squads.
+      </p>
+      ) : (
       <p className="mt-3 text-[11px] text-faint">
         Each parameter is scored within the league (5.5 = average; most teams land between 1 and 10, standouts like the league's superteams can
         go above 10) and multiplied by its relevance for this match type. The difference between the two totals sets the home/away split of the
         points left after the draw pot, which starts from the goals-based chance of a draw. Calibrated on the 2025-26 and 2026-27 results.
       </p>
+      )}
     </div>
   )
 }

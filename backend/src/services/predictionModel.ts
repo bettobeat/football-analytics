@@ -64,6 +64,8 @@ export interface Prediction {
     rows: { id: string; name: string; rel: number; home: number; away: number; edge: number; note?: string }[];
     drawPot: { base: number; factors: number; volatility: number; closeness?: number; total: number };
     reasons: string[];
+    /** 'national' = the national-team engine of v3 (values ranked among national teams) */
+    scope?: 'league' | 'national';
   };
 }
 
