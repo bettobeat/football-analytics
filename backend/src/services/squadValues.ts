@@ -178,14 +178,48 @@ export const playerValuesLoaded = () => players.size;
 
 const normCountry = (s: string) =>
   String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/&/g, 'and').replace(/[^a-z ]+/g, ' ').replace(/\s+/g, ' ').trim();
-/** API-Football country name (normalised) → Transfermarkt citizenship (normalised). */
-const COUNTRY_ALIASES: Record<string, string> = {
-  usa: 'united states', turkiye: 'turkey', 'south korea': 'korea south', 'korea republic': 'korea south',
-  'north korea': 'korea north', 'ivory coast': 'cote d ivoire', 'bosnia and herzegovina': 'bosnia herzegovina',
-  'republic of ireland': 'ireland', 'congo dr': 'dr congo', 'cape verde islands': 'cape verde', 'czech republic': 'czech republic',
-  czechia: 'czech republic', 'china pr': 'china', 'chinese taipei': 'chinese taipei', 'faroe islands': 'faroe islands',
-  'trinidad and tobago': 'trinidad and tobago', 'st kitts and nevis': 'st kitts nevis', eswatini: 'eswatini', 'north macedonia': 'north macedonia'
-};
+/** Names that mean the same country (normalised). API-Football and Transfermarkt each use one of them. */
+const COUNTRY_GROUPS: string[][] = [
+  ['usa', 'united states', 'united states of america'],
+  ['turkey', 'turkiye'],
+  ['south korea', 'korea republic', 'korea south', 'republic of korea'],
+  ['north korea', 'korea dpr', 'korea north'],
+  ['ivory coast', 'cote d ivoire', 'cote divoire'],
+  ['bosnia and herzegovina', 'bosnia herzegovina', 'bosnia'],
+  ['republic of ireland', 'ireland'],
+  ['congo dr', 'dr congo', 'democratic republic of the congo', 'congo kinshasa'],
+  ['cape verde islands', 'cape verde', 'cabo verde'],
+  ['czech republic', 'czechia'],
+  ['china pr', 'china'],
+  ['chinese taipei', 'taiwan'],
+  ['st kitts and nevis', 'st kitts nevis', 'saint kitts and nevis'],
+  ['st lucia', 'saint lucia'],
+  ['st vincent and the grenadines', 'st vincent grenadines', 'saint vincent and the grenadines'],
+  ['north macedonia', 'macedonia'],
+  ['eswatini', 'swaziland'],
+  ['kyrgyzstan', 'kyrgyz republic'],
+  ['iran', 'ir iran'],
+  ['gambia', 'the gambia'],
+  ['timor leste', 'east timor'],
+  ['united arab emirates', 'uae'],
+  ['sao tome e principe', 'sao tome and principe'],
+  ['antigua and barbuda', 'antigua barbuda'],
+  ['trinidad and tobago', 'trinidad tobago'],
+  ['brunei', 'brunei darussalam'],
+  ['vietnam', 'viet nam'],
+  ['moldova', 'republic of moldova'],
+  ['syria', 'syrian arab republic'],
+  ['laos', 'lao pdr'],
+  ['palestine', 'palestinian territories', 'state of palestine'],
+  ['curacao', 'curaco'],
+  ['hong kong', 'hong kong china'],
+  ['macau', 'macao'],
+  ['us virgin islands', 'virgin islands us'],
+  ['british virgin islands', 'virgin islands british'],
+  ['russia', 'russian federation']
+];
+const COUNTRY_ALT = new Map<string, string[]>();
+for (const g of COUNTRY_GROUPS) for (const n of g) COUNTRY_ALT.set(n, g);
 let natValues = new Map<string, { name: string; top: number; players: number }>();
 function loadNatValues() {
   natValues = new Map();
@@ -195,8 +229,18 @@ function loadNatValues() {
 /** Value (EUR) of a national team's 23 most valuable players, by the team's name as API-Football writes it. */
 export function nationalValueFor(teamName: string): number | null {
   const n = normCountry(teamName);
-  const hit = natValues.get(COUNTRY_ALIASES[n] || n) || natValues.get(n);
+  let hit = natValues.get(n);
+  if (!hit) for (const alt of COUNTRY_ALT.get(n) || []) if ((hit = natValues.get(alt))) break;
   return hit && hit.players >= 11 ? hit.top : null;
+}
+
+/** Admin check: Transfermarkt citizenship names containing q (to fix unmatched national teams). */
+export function nationalValueSearch(q: string) {
+  const needle = normCountry(q);
+  return [...natValues.entries()]
+    .filter(([k]) => !needle || k.includes(needle))
+    .slice(0, 40)
+    .map(([k, v]) => ({ key: k, name: v.name, players: v.players, valueM: Math.round(v.top / 1e6) }));
 }
 export const nationalValuesLoaded = () => natValues.size;
 

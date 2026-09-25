@@ -30,7 +30,8 @@ import {
   afCompetitions, pollAfLive, startAfMatchesScheduler, afWindowStatus, refreshAfWindow
 } from './services/afMatches';
 import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNationalEloScheduler } from './services/nationalElo';
-import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler } from './services/clubElo';
+import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler, clubValueReport } from './services/clubElo';
+import { nationalValueSearch } from './services/squadValues';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures } from './services/apiFootball';
 import {
   signup, login, changePassword, setPlan, adminResetPassword, listUsers, userStats, createSession, destroySession, userForToken,
@@ -526,6 +527,14 @@ app.get('/api/model/elo', async (req, res) => {
 });
 
 // European club Elo: status, or ?sync=1 to load UEFA cup results first
+// Admin checks for squad-value name matching: ?q= searches Transfermarkt names
+app.get('/api/model/euro/values', (req, res) => {
+  res.json({ data: clubValueReport(req.query.q ? String(req.query.q) : undefined), timestamp: new Date().toISOString() });
+});
+app.get('/api/model/elo/values', (req, res) => {
+  res.json({ data: nationalValueSearch(String(req.query.q || '')), timestamp: new Date().toISOString() });
+});
+
 app.get('/api/model/euro', async (req, res) => {
   try {
     if (req.query.sync === '1') { await syncEuropeanCups(req.query.force === '1'); buildClubElo(); }

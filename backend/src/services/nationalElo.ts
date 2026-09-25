@@ -241,7 +241,11 @@ export function nationalEloStatus() {
     .slice(0, 30)
     .map(([, r], i) => ({ rank: i + 1, team: r.name, elo: Math.round(r.elo), matches: r.n, squadValueM: Math.round((nationalValueFor(r.name) || 0) / 1e6) }));
   const n: any = db.prepare(`SELECT COUNT(*) AS n, MIN(date) AS first, MAX(date) AS last FROM nat_matches`).get();
-  return { model: MODEL_ELO, lastBuilt, matches: n, teams: ratings.size, fit, evaluation: evalStats, top };
+  // Active teams without a squad value (name mismatch, or fewer than 11 valued players)
+  const since = new Date(Date.now() - 3 * 365 * 86400000).toISOString().slice(0, 10);
+  const active = [...ratings.values()].filter(r => r.n >= 15 && r.last >= since);
+  const noValue = active.filter(r => !nationalValueFor(r.name)).sort((a, b) => b.elo - a.elo).map(r => `${r.name} (${Math.round(r.elo)})`);
+  return { model: MODEL_ELO, lastBuilt, matches: n, teams: ratings.size, activeTeams: active.length, withValue: active.length - noValue.length, noValue, fit, evaluation: evalStats, top };
 }
 
 export function startNationalEloScheduler() {

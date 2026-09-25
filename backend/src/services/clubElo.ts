@@ -64,26 +64,133 @@ export async function syncEuropeanCups(force = false) {
 
 /* ---------- club squad values (top 15 by current club, from the Transfermarkt player dump) ---------- */
 
-let clubValues: { name: string; norm: string; value: number }[] = [];
+let clubValues: { name: string; tokens: string[]; value: number }[] = [];
 function loadClubValues() {
   const rows = db.prepare(`SELECT club, value_eur FROM squad_players WHERE club IS NOT NULL`).all() as any[];
   const byClub = new Map<string, number[]>();
   for (const r of rows) (byClub.get(r.club) || byClub.set(r.club, []).get(r.club)!).push(r.value_eur);
   clubValues = [...byClub.entries()]
     .filter(([, v]) => v.length >= 11)
-    .map(([name, v]) => ({ name, norm: normalizeName(name), value: v.sort((a, b) => b - a).slice(0, 15).reduce((a, b) => a + b, 0) }));
+    .map(([name, v]) => ({ name, tokens: clubTokens(name), value: v.sort((a, b) => b - a).slice(0, 15).reduce((a, b) => a + b, 0) }))
+    .filter(c => c.tokens.length > 0);
 }
-const valueByName = new Map<string, number | null>();
-function clubValueFor(name: string): number | null {
+
+/*
+ * Club-name matching, API-Football name → Transfermarkt club. Transfermarkt often uses full legal names
+ * ("Associazione Sportiva Roma", "Football Club Internazionale Milano S.p.A.", "FK Bodø/Glimt"), so both
+ * sides are reduced to their meaningful words, words may match by prefix (inter ~ internazionale), and ties
+ * go to the more valuable club (European-cup clubs are usually the big ones).
+ */
+const CLUB_STOP = new Set([
+  'fc', 'cf', 'afc', 'sc', 'ac', 'as', 'ss', 'ssc', 'us', 'ud', 'cd', 'sd', 'rcd', 'rc', 'ca', 'bc', 'sv', 'tsg', 'vfb', 'vfl', 'fsv', 'bsc',
+  'sad', 'ev', 'fk', 'sk', 'nk', 'hnk', 'gnk', 'bk', 'if', 'ik', 'kv', 'krc', 'rsc', 'kf', 'pfc', 'ofk', 'sa', 'spa', 'ag', 'gmbh', 'plc',
+  'club', 'clube', 'calcio', 'futebol', 'football', 'futbol', 'fussball', 'fotbal', 'fotball', 'fodbold', 'voetbal', 'associazione',
+  'sportiva', 'sportivo', 'sportif', 'sport', 'sporting', 'de', 'del', 'di', 'da', 'do', 'of', 'the', 'and', 'y', 'e', 'la', 'le', 'il',
+  'societa', 'company', 'limited', 'ltd', 'spor', 'kulubu', 'kulubü'
+]);
+// Written differently on the two sides (after normalising)
+const CLUB_ALIASES: Record<string, string> = {
+  inter: 'internazionale',
+  'inter milan': 'internazionale',
+  'bayern munich': 'bayern munchen',
+  'crvena zvezda': 'crvena zvezda',
+  'red star belgrade': 'crvena zvezda',
+  'fc copenhagen': 'kobenhavn',
+  copenhagen: 'kobenhavn',
+  'slavia praha': 'slavia prag',
+  'sparta praha': 'sparta prag',
+  'sporting cp': 'sporting clube portugal',
+  'sporting lisbon': 'sporting clube portugal',
+  'psv eindhoven': 'eindhoven',
+  psv: 'eindhoven',
+  'rb leipzig': 'leipzig',
+  'olympiakos piraeus': 'olympiakos',
+  olympiacos: 'olympiakos',
+  'paok': 'paok thessaloniki',
+  'dinamo zagreb': 'dinamo zagreb',
+  'ferencvarosi tc': 'ferencvaros',
+  'salzburg': 'red bull salzburg',
+  'red bull salzburg': 'red bull salzburg',
+  'young boys': 'young boys',
+  'bsc young boys': 'young boys',
+  'qarabag': 'qarabag',
+  'atletico madrid': 'atletico madrid',
+  'athletic club': 'athletic bilbao',
+  'ac milan': 'milan',
+  'as roma': 'roma',
+  'ss lazio': 'lazio',
+  'ssc napoli': 'napoli'
+};
+
+function clubNorm(s: string): string {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/ø/g, 'o').replace(/æ/g, 'ae').replace(/œ/g, 'oe').replace(/ß/g, 'ss').replace(/ł/g, 'l').replace(/đ/g, 'd').replace(/ı/g, 'i').replace(/þ/g, 'th')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function clubTokens(s: string): string[] {
+  const n = clubNorm(s);
+  const aliased = CLUB_ALIASES[n] || n;
+  const t = aliased.split(' ').filter(w => w && !CLUB_STOP.has(w) && !/^\d+$/.test(w) && w.length > 1);
+  // keep something for names made only of stop words ("Sporting", "Club")
+  return t.length ? t : aliased.split(' ').filter(w => w && !/^\d+$/.test(w));
+}
+const tokEq = (a: string, b: string) =>
+  a === b ||
+  (Math.min(a.length, b.length) >= 4 && (a.startsWith(b) || b.startsWith(a))) ||
+  (Math.min(a.length, b.length) >= 7 && a.slice(0, 6) === b.slice(0, 6)); // olympiakos ~ olympiacos
+
+function matchScore(a: string[], b: string[]): number {
+  const ca = a.filter(x => b.some(y => tokEq(x, y))).length;
+  const cb = b.filter(y => a.some(x => tokEq(x, y))).length;
+  if (ca < a.length && cb < b.length) return 0; // one side must be fully covered
+  const exact = a.filter(x => b.includes(x)).length / Math.max(a.length, b.length);
+  return (ca / a.length + cb / b.length) / 2 + 0.1 * exact;
+}
+
+const valueByName = new Map<string, { value: number; club: string; score: number } | null>();
+export function clubValueMatch(name: string): { value: number; club: string; score: number } | null {
   if (valueByName.has(name)) return valueByName.get(name)!;
-  let best: { v: number; s: number } | null = null;
-  for (const c of clubValues) {
-    const s = similarity(name, c.name);
-    if (s >= 0.6 && (!best || s > best.s)) best = { v: c.value, s };
+  const a = clubTokens(name);
+  let best: { value: number; club: string; score: number } | null = null;
+  if (a.length) {
+    for (const c of clubValues) {
+      const s = matchScore(a, c.tokens);
+      if (s < 0.6) continue;
+      if (!best || s > best.score + 0.02 || (Math.abs(s - best.score) <= 0.02 && c.value > best.value)) best = { value: c.value, club: c.name, score: Math.round(s * 100) / 100 };
+    }
   }
-  const v = best ? best.v : null;
-  valueByName.set(name, v);
-  return v;
+  valueByName.set(name, best);
+  return best;
+}
+function clubValueFor(name: string): number | null {
+  return clubValueMatch(name)?.value ?? null;
+}
+
+/** Admin check: which Transfermarkt club each European-cup club was matched to. */
+export function clubValueReport(q?: string) {
+  const rows = [...ratings.values()]
+    .filter(r => r.cup >= 1)
+    .sort((a, b) => b.elo - a.elo)
+    .map(r => {
+      const m = clubValueMatch(r.name);
+      return { club: r.name, elo: Math.round(r.elo), cup: r.cup, matched: m?.club || null, valueM: m ? Math.round(m.value / 1e6) : null, score: m?.score ?? null };
+    });
+  const needle = q ? clubNorm(q) : '';
+  const search = needle
+    ? clubValues.filter(c => clubNorm(c.name).includes(needle)).slice(0, 30).map(c => ({ name: c.name, valueM: Math.round(c.value / 1e6), tokens: c.tokens }))
+    : undefined;
+  return {
+    clubs: rows.length,
+    matched: rows.filter(r => r.matched).length,
+    unmatched: rows.filter(r => !r.matched).map(r => `${r.club} (${r.cup})`),
+    rows,
+    search
+  };
 }
 
 /* ---------- ratings ---------- */
@@ -242,7 +349,7 @@ export function predictClubEuro(match: any): Prediction | null {
 
 export function clubEloStatus() {
   const top = [...ratings.values()].filter(r => r.cup >= 6).sort((a, b) => b.elo - a.elo).slice(0, 25)
-    .map((r, i) => ({ rank: i + 1, club: r.name, elo: Math.round(r.elo), cupMatches: r.cup, squadValueM: Math.round((clubValueFor(r.name) || 0) / 1e6) }));
+    .map((r, i) => ({ rank: i + 1, club: r.name, elo: Math.round(r.elo), cupMatches: r.cup, squadValueM: Math.round((clubValueFor(r.name) || 0) / 1e6), valueClub: clubValueMatch(r.name)?.club || null }));
   const n: any = db.prepare(`SELECT COUNT(*) AS n, MIN(date) AS first, MAX(date) AS last FROM eur_matches`).get();
   return { model: MODEL_EURO, lastBuilt, cupMatches: n, clubs: ratings.size, clubValues: clubValues.length, fit, evaluation: evalStats, top };
 }
