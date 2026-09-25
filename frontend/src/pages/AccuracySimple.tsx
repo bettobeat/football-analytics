@@ -38,6 +38,15 @@ const PERIODS = [
   { days: 365, label: 'Last year' }
 ]
 
+/** Whose eyes the page looks through. "main" = every game, each seen by our best model for it. */
+const VIEWS = [
+  { key: 'main', label: 'All games', who: 'Our models, every game', note: 'Every tracked match counts once: v3 for leagues, our national-team model for internationals, our European-cup model for UEFA cups.' },
+  { key: 'grid-v3', label: 'v3', who: 'Our model (v3)', note: 'Only the league matches v3 predicts.' },
+  { key: 'dc-history-v2', label: 'v2', who: 'Older model (v2)', note: 'Our first model, league matches only.' },
+  { key: 'market', label: 'Bookmakers', who: 'The bookmakers', note: 'The same matches seen through the betting odds (only matches where we recorded odds). Their pick = the favourite.' }
+] as const
+type ViewKey = (typeof VIEWS)[number]['key']
+
 const pct = (x: number | null | undefined) => (x === null || x === undefined ? '–' : `${Math.round(x)}%`)
 
 function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
@@ -107,6 +116,8 @@ export default function AccuracySimple() {
   const [days, setDays] = useState(30)
   const [v3, setV3] = useState<Metrics | null>(null)
   const [v2, setV2] = useState<Metrics | null>(null)
+  const [view, setView] = useState<ViewKey>('main')
+  const [sel, setSel] = useState<Metrics | null>(null)
   const [recent, setRecent] = useState<Settled[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -119,12 +130,14 @@ export default function AccuracySimple() {
     Promise.all([
       axios.get(`${API_URL}/accuracy`, { params: { days, model: 'grid-v3' } }),
       axios.get(`${API_URL}/accuracy`, { params: { days, model: 'dc-history-v2' } }),
-      axios.get(`${API_URL}/accuracy/recent`, { params: { days, model: 'grid-v3', limit: 12 } })
+      axios.get(`${API_URL}/accuracy`, { params: { days, model: view } }),
+      axios.get(`${API_URL}/accuracy/recent`, { params: { days, model: view, limit: 15 } })
     ])
-      .then(([a, b, r]) => {
+      .then(([a, b, c, r]) => {
         if (cancelled) return
         setV3(a.data.data)
         setV2(b.data.data)
+        setSel(c.data.data)
         setRecent(r.data.data || [])
         setError(null)
       })
@@ -133,7 +146,7 @@ export default function AccuracySimple() {
     return () => {
       cancelled = true
     }
-  }, [days, detailed])
+  }, [days, detailed, view])
 
   if (detailed)
     return (
@@ -151,9 +164,11 @@ export default function AccuracySimple() {
   const hitV2 = v2?.model?.hitRate ?? null
   const hitMkt = v3?.market?.hitRate ?? null
   const best = Math.max(hitV3 ?? -1, hitV2 ?? -1, hitMkt ?? -1)
-  const tiers = (v3?.strongPicks || []).filter(t => t.n > 0)
-  const bet = v3?.betting?.favourite
-  const empty = !loading && (!v3 || !v3.settled)
+  const tiers = (sel?.strongPicks || []).filter(t => t.n > 0)
+  const bet = sel?.betting?.favourite
+  const empty = !loading && (!sel || !sel.settled)
+  const vw = VIEWS.find(v => v.key === view)!
+  const isMarket = view === 'market'
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6">
@@ -162,6 +177,23 @@ export default function AccuracySimple() {
         <p className="text-sm text-muted mt-1">
           Every prediction is saved before kick-off and checked after the final whistle. Nothing is edited afterwards.
         </p>
+        <div className="mt-5">
+          <div className="text-xs font-semibold uppercase tracking-wider text-faint mb-2">Look through the eyes of</div>
+          <div className="inline-flex flex-wrap rounded-xl border border-line p-1 gap-1 bg-surface2/40">
+            {VIEWS.map(v => (
+              <button
+                key={v.key}
+                onClick={() => setView(v.key)}
+                className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+                  view === v.key ? 'bg-accent text-bg' : 'text-muted hover:text-ink'
+                }`}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-faint mt-2">{vw.note}</p>
+        </div>
         <div className="flex flex-wrap gap-2 mt-4">
           {PERIODS.map(p => (
             <button
@@ -187,6 +219,22 @@ export default function AccuracySimple() {
         </Card>
       )}
 
+      {!loading && sel && sel.settled > 0 && (
+        <>
+          {/* 0. The selected view */}
+          <Card className="border-accent/40">
+            <div className="text-sm text-muted">{vw.who}</div>
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-1 mt-1">
+              <div className="num text-5xl font-extrabold text-accent">{pct(sel.model?.hitRate)}</div>
+              <div className="text-sm text-muted pb-1.5">
+                {sel.model ? `${Math.round((sel.model.hitRate / 100) * sel.settled)} of ${sel.settled} picks were right` : ''}
+                {typeof sel.pending === 'number' && sel.pending > 0 && <span className="text-faint"> · {sel.pending} predictions waiting for a result</span>}
+              </div>
+            </div>
+          </Card>
+        </>
+      )}
+
       {!loading && v3 && v3.settled > 0 && (
         <>
           {/* 1. Who picks the winner most often */}
@@ -198,14 +246,20 @@ export default function AccuracySimple() {
               <Score name="Older model (v2)" hit={hitV2} n={v2?.settled || 0} best={hitV2 === best} note="Our first model, for comparison" />
             </div>
             <Verdict v3={hitV3} market={hitMkt} />
+            <p className="text-xs text-faint mt-3">This comparison uses the league matches all three look at, so it is fair. National-team and cup games are in "All games".</p>
           </Card>
+        </>
+      )}
+
+      {!loading && sel && sel.settled > 0 && (
+        <>
 
           {/* 2. Confidence */}
           {tiers.length > 0 && (
             <Card>
               <Heading
-                title="When we're confident, are we right?"
-                sub="The higher the chance we give, the more often it should happen. This is where the model earns trust."
+                title={isMarket ? 'When the bookmakers are confident, are they right?' : "When we're confident, are we right?"}
+                sub={`${vw.who}. The higher the chance, the more often it should happen.`}
               />
               <div className="space-y-2.5">
                 {tiers.map(t => (
@@ -220,23 +274,23 @@ export default function AccuracySimple() {
           )}
 
           {/* 3. Two options + draws */}
-          {((v3.twoOptions && v3.twoOptions.n > 0) || (v3.drawAlerts && v3.drawAlerts.n > 0)) && (
+          {((sel.twoOptions && sel.twoOptions.n > 0) || (sel.drawAlerts && sel.drawAlerts.n > 0)) && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {v3.twoOptions && v3.twoOptions.n > 0 && (
+              {sel.twoOptions && sel.twoOptions.n > 0 && (
                 <Card>
                   <div className="text-sm font-semibold text-ink">Two options</div>
-                  <div className="num text-4xl font-extrabold text-ink mt-2">{pct(v3.twoOptions.hitRate)}</div>
+                  <div className="num text-4xl font-extrabold text-ink mt-2">{pct(sel.twoOptions.hitRate)}</div>
                   <p className="text-sm text-muted mt-1">
-                    If you take our two most likely results (for example "home or draw"), one of them happened this often, over{' '}
-                    {v3.twoOptions.n} matches.
+                    If you take {isMarket ? "the bookmakers'" : 'our'} two most likely results (for example "home or draw"), one of them happened this often, over{' '}
+                    {sel.twoOptions.n} matches.
                   </p>
                 </Card>
               )}
-              {v3.drawAlerts && v3.drawAlerts.n > 0 && (
+              {!isMarket && view !== 'dc-history-v2' && sel.drawAlerts && sel.drawAlerts.n > 0 && (
                 <Card className="border-draw/40">
                   <div className="text-sm font-semibold text-ink">Draw alerts</div>
                   <div className="num text-4xl font-extrabold text-draw mt-2">
-                    {v3.drawAlerts.wins} <span className="text-lg text-muted font-semibold">of {v3.drawAlerts.n}</span>
+                    {sel.drawAlerts.wins} <span className="text-lg text-muted font-semibold">of {sel.drawAlerts.n}</span>
                   </div>
                   <p className="text-sm text-muted mt-1">
                     Matches where we flagged a likely draw that the bookmakers underrated. A draw alert only needs to hit about 1 time in 3–4
@@ -250,7 +304,7 @@ export default function AccuracySimple() {
           {/* 4. Money */}
           {bet && bet.bets > 0 && (
             <Card>
-              <Heading title="Would it have made money?" sub="If you had put the same small bet on every one of our picks, at the bookmakers' odds:" />
+              <Heading title="Would it have made money?" sub={`If you had put the same small bet on every one of ${isMarket ? "the bookmakers' favourites" : 'our picks'}, at the bookmakers' odds:`} />
               <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
                 <div>
                   <div className={`num text-4xl font-extrabold ${bet.profit >= 0 ? 'text-win' : 'text-loss'}`}>
@@ -276,7 +330,7 @@ export default function AccuracySimple() {
           {/* 5. Latest */}
           {recent.length > 0 && (
             <Card>
-              <Heading title="Latest results" sub="Our pick before the match, and what happened" />
+              <Heading title="Latest results" sub={`${vw.who}: the pick before the match, and what happened`} />
               <ul className="divide-y divide-line/60">
                 {recent.map(r => {
                   const pickName = r.pick === 'H' ? r.home : r.pick === 'A' ? r.away : 'Draw'
@@ -300,7 +354,7 @@ export default function AccuracySimple() {
                         </div>
                       </div>
                       <div className="text-right shrink-0">
-                        <div className="text-xs text-muted">We picked</div>
+                        <div className="text-xs text-muted">{isMarket ? 'Favourite' : 'We picked'}</div>
                         <div className="text-sm font-semibold text-ink">
                           {pickName} <span className="num text-faint font-normal">{Math.round(r.p[r.pick])}%</span>
                         </div>

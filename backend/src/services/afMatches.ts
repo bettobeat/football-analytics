@@ -9,7 +9,7 @@
  */
 import logger from '../utils/logger';
 import { db } from '../db';
-import { afGet, afConfigured } from './apiFootball';
+import { afGet, afConfigured, afRemaining } from './apiFootball';
 import { predictFromStandings, Prediction } from './predictionModel';
 import { groupForCompetition, buildTeamMap, fdNameFor } from './history';
 import { predictV2 } from './historyModel';
@@ -478,6 +478,27 @@ export function afWithPredictions(matches: any[]) {
     const predictions = afPredictions(m);
     return { ...m, prediction: predictions.find(p => p.model.startsWith('dc-history')) || predictions[0] || null, predictions };
   });
+}
+
+/**
+ * Bookmaker odds for window matches kicking off within the next 3 hours (so tracked predictions of national-team /
+ * cup / extra-league matches carry the market too and can be compared with the bookmakers). Cached 30 min per fixture.
+ */
+export async function withAfOdds(matches: any[]): Promise<any[]> {
+  const now = Date.now();
+  const soon = matches.filter(m => {
+    const t = new Date(m.utcDate).getTime();
+    return t > now && t - now <= 3 * 3600_000 && !['POSTPONED', 'CANCELLED', 'SUSPENDED'].includes(m.status);
+  }).slice(0, 60);
+  const out: any[] = [];
+  for (const m of soon) {
+    if (afRemaining() < 800) break;
+    try {
+      const odds = await afMarket(m.id - AF_OFFSET);
+      if (odds) out.push({ ...m, odds });
+    } catch { /* no odds for this fixture */ }
+  }
+  return out;
 }
 
 async function afMarket(fixtureId: number) {

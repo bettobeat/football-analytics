@@ -30,7 +30,7 @@ import { marketTest, drawTest, anchoredDrawTest } from './services/marketTest';
 import { clvTick, clvReport, startClvScheduler, clvProbe } from './services/clv';
 import {
   isAfMatchId, isAfCode, afUpcoming, afLive, afWithPredictions, getAfMatchDetails, getAfStandings, getAfScorers,
-  afCompetitions, pollAfLive, startAfMatchesScheduler, afWindowStatus, refreshAfWindow, onAfWindow, isKnownAfFixture, afExtrasForFd
+  afCompetitions, pollAfLive, startAfMatchesScheduler, afWindowStatus, refreshAfWindow, onAfWindow, isKnownAfFixture, afExtrasForFd, withAfOdds
 } from './services/afMatches';
 import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNationalEloScheduler } from './services/nationalElo';
 import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler, clubValueReport } from './services/clubElo';
@@ -1045,7 +1045,13 @@ server.listen(PORT, () => {
   // Save/refresh predictions every time the fixture window is refreshed
   footballDataAPI.onWindowRefreshed = matches => recordPredictions(matches);
   // Same for API-Football competitions (national teams, UEFA cups, extra leagues)
-  onAfWindow(matches => recordPredictions(afWithPredictions(matches)));
+  onAfWindow(matches => {
+    recordPredictions(afWithPredictions(matches));
+    // then the bookmaker odds for matches starting soon, so every tracked game can be compared with the market
+    withAfOdds(matches)
+      .then(ms => { if (ms.length) recordPredictions(afWithPredictions(ms)); })
+      .catch(err => logger.warn('AF odds for tracking failed', { message: err.message }));
+  });
   // Warm the fixture window now and keep it fresh in the background
   footballDataAPI.startBackgroundRefresh();
   // Settle finished matches every 10 minutes (first run after 1 minute)

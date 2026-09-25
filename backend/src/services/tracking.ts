@@ -242,7 +242,40 @@ interface SettledRow {
   outcome: Outcome;
 }
 
+/**
+ * Pseudo-models for the Accuracy page:
+ *   main   – every settled match once, seen by our best model for it (v3 for leagues, national-team Elo,
+ *            European-cup Elo, then v2 / v1) → every game counts, national teams and cups included
+ *   market – the same matches seen by the bookmakers (only matches with recorded odds; margin removed)
+ */
+const MAIN_PRIORITY = ['grid-v3', 'elo-intl', 'elo-euro', 'dc-history-v2', 'poisson-dc-v1'];
+const mainRank = (m: string) => { const i = MAIN_PRIORITY.indexOf(m); return i < 0 ? 99 : i; };
 function settledRows(days: number, competition?: string, model?: string): SettledRow[] {
+  if (model !== 'main' && model !== 'market') return settledRowsRaw(days, competition, model);
+  const all = settledRowsRaw(days, competition);
+  const best = new Map<number, SettledRow>();
+  const odds = new Map<number, [number, number, number]>();
+  for (const r of all) {
+    const cur = best.get(r.match_id);
+    if (!cur || mainRank(r.model) < mainRank(cur.model)) best.set(r.match_id, r);
+    if (r.odds_home && r.odds_draw && r.odds_away && !odds.has(r.match_id)) odds.set(r.match_id, [r.odds_home, r.odds_draw, r.odds_away]);
+  }
+  let rows = [...best.values()].map(r => {
+    const o = odds.get(r.match_id);
+    return o && !r.odds_home ? { ...r, odds_home: o[0], odds_draw: o[1], odds_away: o[2] } : r;
+  });
+  if (model === 'market') {
+    rows = rows.filter(r => r.odds_home && r.odds_draw && r.odds_away).map(r => {
+      const inv = [1 / r.odds_home!, 1 / r.odds_draw!, 1 / r.odds_away!];
+      const s = inv[0] + inv[1] + inv[2];
+      const q = (x: number) => Math.round((x / s) * 1000) / 10;
+      return { ...r, model: 'market', p_home: q(inv[0]), p_draw: q(inv[1]), p_away: q(inv[2]), confidence: null };
+    });
+  }
+  return rows.sort((a, b) => (a.utc_date < b.utc_date ? 1 : -1));
+}
+
+function settledRowsRaw(days: number, competition?: string, model?: string): SettledRow[] {
   const since = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
   const args: any[] = [since];
   let where = '';
