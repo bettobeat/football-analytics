@@ -99,7 +99,8 @@ export function modelInfo(model: string) {
  * flag when v3's draw ≥ 30%, anchored chance × best draw price − 1 ≥ 2%, and the league is not La Liga.
  * History: the draw price shortened toward v3 by kick-off 2 times in 3; ROI small positive in both seasons.
  */
-export const DRAW_ALERT = { k: 0.75, minEdge: 0.02, minV3Draw: 30, excluded: ['PD'] }
+// maxEdge: a bigger edge usually means v3 over-rates the draw in a one-sided match (weaker line movement in both seasons)
+export const DRAW_ALERT = { k: 0.75, minEdge: 0.02, maxEdge: 0.2, minV3Draw: 30, excluded: ['PD'] }
 export function drawAlert(p: Prediction, m: Market | null | undefined, competitionCode?: string) {
   if (!m || p.locked || p.model !== 'grid-v3' || p.draw < DRAW_ALERT.minV3Draw) return null
   if (competitionCode && DRAW_ALERT.excluded.includes(competitionCode)) return null
@@ -108,6 +109,6 @@ export function drawAlert(p: Prediction, m: Market | null | undefined, competiti
   const mkt = m.probs.draw / 100
   const anchored = mkt + DRAW_ALERT.k * (p.draw / 100 - mkt)
   const edge = anchored * price - 1
-  if (edge < DRAW_ALERT.minEdge) return null
+  if (edge < DRAW_ALERT.minEdge || edge > DRAW_ALERT.maxEdge) return null
   return { anchored: Math.round(anchored * 1000) / 10, price, edge: Math.round(edge * 1000) / 10, market: m.probs.draw }
 }

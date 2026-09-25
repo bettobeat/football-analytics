@@ -35,7 +35,7 @@ import {
 import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNationalEloScheduler } from './services/nationalElo';
 import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler, clubValueReport } from './services/clubElo';
 import { nationalValueSearch, historyMatchReport } from './services/squadValues';
-import { drawAlertsReport } from './services/drawAlerts';
+import { drawAlertsReport, drawFactorTest } from './services/drawAlerts';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures, afGet, afRemaining, xgCoverage } from './services/apiFootball';
 import {
   signup, login, changePassword, setPlan, adminResetPassword, listUsers, userStats, createSession, destroySession, userForToken,
@@ -822,6 +822,15 @@ app.get('/api/model/v3/league-tune/result', (_req, res) => {
 app.get('/api/model/v3/league-conv', (req, res) => {
   if (req.query.clear === '1') clearLeagueConv();
   res.json({ data: leagueConvStatus(), timestamp: new Date().toISOString() });
+});
+
+// Admin: do team draw habits / head-to-head draws beat the bookmakers' draw price? ?season=2526
+app.get('/api/backtest/draw-factors', (req, res) => {
+  try {
+    res.json({ data: drawFactorTest(String(req.query.season || '2526')), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Draw factor test failed');
+  }
 });
 
 // Draw alerts page (premium): upcoming alerts, live record, backtest seasons

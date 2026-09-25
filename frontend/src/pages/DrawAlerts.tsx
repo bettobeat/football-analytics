@@ -17,7 +17,7 @@ interface Season {
   byLeague: { division: string; league: string; n: number; hitRate: number; roi: number }[]
 }
 interface Report {
-  rule: { k: number; minEdge: number; minV3Draw: number; excluded: string[] }
+  rule: { k: number; minEdge: number; maxEdge?: number; minV3Draw: number; excluded: string[] }
   upcoming: Alert[]
   live: Rec; backfilled: Rec; total: Rec
   baseline: { matches: number; drawRate: number | null }
@@ -252,7 +252,8 @@ export default function DrawAlerts() {
             moves {Math.round(data.rule.k * 100)}% of the way toward the model.
           </p>
           <p>
-            <span className="text-ink font-semibold">3.</span> The alert shows only if that estimate beats the draw odds by at least {data.rule.minEdge}%.
+            <span className="text-ink font-semibold">3.</span> The alert shows only if that estimate beats the draw odds by at least {data.rule.minEdge}%
+            {data.rule.maxEdge ? ` and at most ${data.rule.maxEdge}%. A bigger gap usually means the model is wrong about a one-sided match, not that the bookmakers are` : ''}.
           </p>
           <p>
             <span className="text-ink font-semibold">4.</span> La Liga is left out: the signal did not hold there.

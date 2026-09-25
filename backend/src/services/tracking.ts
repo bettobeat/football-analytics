@@ -392,7 +392,8 @@ export function computeMetrics(rows: MetricRow[], opts: { edgeThreshold?: number
       for (const t of tiers) if (mp[mPick] >= t.min) { t.mN++; if (mPick === r.outcome) t.mHits++; }
       if (r.drawAlertEligible && r.odds_draw && p.D >= 0.3) {
         const anchored = mp.D + 0.75 * (p.D - mp.D);
-        if (anchored * r.odds_draw - 1 >= 0.02) { da.n++; if (r.outcome === 'D') { da.wins++; da.profit += r.odds_draw - 1; } else da.profit -= 1; }
+        const e = anchored * r.odds_draw - 1;
+        if (e >= 0.02 && e <= 0.2) { da.n++; if (r.outcome === 'D') { da.wins++; da.profit += r.odds_draw - 1; } else da.profit -= 1; }
       }
       const mb = brier(mp, r.outcome);
       mBrier += mb;

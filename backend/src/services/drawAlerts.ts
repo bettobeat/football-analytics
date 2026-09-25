@@ -13,7 +13,9 @@
 import { db } from '../db';
 import { DIVISION_NAMES } from './pastView';
 
-const K = 0.75, MIN_EDGE = 0.02, MIN_V3 = 30;
+const K = 0.75, MIN_EDGE = 0.02, MAX_EDGE = 0.2, MIN_V3 = 30;
+// MAX_EDGE: a 20%+ edge usually means v3 over-rates the draw in a one-sided match (the price moved our way only 55% of
+// the time in both 2024-25 and 2025-26, vs 62–67% below 20%; 2024-25 20%+ alerts: 13% draws). Too good to be true.
 const EXCLUDED = new Set(['PD']); // La Liga: the signal did not hold there
 const r1 = (x: number) => Math.round(x * 10) / 10;
 
@@ -31,7 +33,7 @@ function alertOf(pDraw: number, odds: (number | null)[], price: number | null) {
   const mkt = f[1];
   const ours = mkt + K * (pDraw / 100 - mkt);
   const edge = ours * price - 1;
-  if (edge < MIN_EDGE) return null;
+  if (edge < MIN_EDGE || edge > MAX_EDGE) return null;
   return { marketDraw: r1(mkt * 100), ourDraw: r1(ours * 100), price, edge: r1(edge * 100) };
 }
 
@@ -160,5 +162,101 @@ function history() {
 }
 
 export function drawAlertsReport() {
-  return { rule: { k: K, minEdge: MIN_EDGE * 100, minV3Draw: MIN_V3, excluded: [...EXCLUDED] }, upcoming: upcoming(), ...live(), history: history() };
+  return { rule: { k: K, minEdge: MIN_EDGE * 100, maxEdge: MAX_EDGE * 100, minV3Draw: MIN_V3, excluded: [...EXCLUDED] }, upcoming: upcoming(), ...live(), history: history() };
+}
+
+/* ------------------------------------------------------------------ */
+/* Do team draw habits or head-to-head draws predict draws the bookmakers miss?                              */
+/* ------------------------------------------------------------------ */
+/*
+ * For every league match of a season with closing odds: the bookmakers' draw chance (margin removed) vs what
+ * happened, split by facts known before kick-off:
+ *   teamDraw20   – average of both teams' draw share over their last 20 matches (each needs ≥ 10)
+ *   excessPrev   – average of both teams' "draws above the bookmakers" (actual − expected) over the PREVIOUS season
+ *   excessRecent – same over each team's last 30 matches (any season)
+ *   h2h          – draw share of the last 10 meetings (≥ 3 needed)
+ * If a group draws more (or less) than the bookmakers said, in both seasons, the factor carries information.
+ */
+import { GROUPS, loadGroupMatches } from './history';
+
+type Acc = { n: number; draws: number; mkt: number };
+const newAcc = (): Acc => ({ n: 0, draws: 0, mkt: 0 });
+const accOut = (label: string, a: Acc) => {
+  const act = a.n ? a.draws / a.n : 0, exp = a.n ? a.mkt / a.n : 0;
+  const se = a.n ? Math.sqrt((exp * (1 - exp)) / a.n) : 0;
+  return { group: label, n: a.n, actualDraw: r1(act * 100), bookmakersDraw: r1(exp * 100), diff: r1((act - exp) * 100), noise: r1(se * 100) };
+};
+const prevSeason = (s: string) => `${String(Number(s.slice(0, 2)) - 1).padStart(2, '0')}${s.slice(0, 2)}`;
+
+export function drawFactorTest(season: string) {
+  const buckets = {
+    teamDraw20: { labels: ['under 20%', '20–27%', '27–34%', '34%+'], cut: (x: number) => (x < 0.2 ? 0 : x < 0.27 ? 1 : x < 0.34 ? 2 : 3) },
+    excessPrev: { labels: ['drew 4+ pts less than expected', 'about as expected', 'drew 4+ pts more than expected'], cut: (x: number) => (x < -0.04 ? 0 : x <= 0.04 ? 1 : 2) },
+    excessRecent: { labels: ['drew 4+ pts less than expected', 'about as expected', 'drew 4+ pts more than expected'], cut: (x: number) => (x < -0.04 ? 0 : x <= 0.04 ? 1 : 2) },
+    h2h: { labels: ['no draws in last meetings', 'under 30% draws', '30–50% draws', '50%+ draws'], cut: (x: number) => (x === 0 ? 0 : x < 0.3 ? 1 : x < 0.5 ? 2 : 3) }
+  };
+  const acc: Record<string, Acc[]> = Object.fromEntries(Object.entries(buckets).map(([k, b]) => [k, b.labels.map(newAcc)]));
+  const unknown: Record<string, Acc> = Object.fromEntries(Object.keys(buckets).map(k => [k, newAcc()]));
+  const all = newAcc();
+  // both-teams-extreme views: both low draw teams / both high
+  const both = { bothLow: newAcc(), bothHigh: newAcc() };
+  const prev = prevSeason(season);
+
+  for (const group of Object.keys(GROUPS)) {
+    const matches = loadGroupMatches(group);
+    const recent = new Map<string, { d: number; ex: number }[]>(); // per team, newest last
+    const seasonEx = new Map<string, { n: number; ex: number }>(); // `${team}|${season}`
+    const h2h = new Map<string, number[]>();
+    for (const m of matches) {
+      const f = fair([m.close_h ?? m.odds_h, m.close_d ?? m.odds_d, m.close_a ?? m.odds_a]);
+      const isD = m.hg === m.ag ? 1 : 0;
+      const key = [m.home, m.away].sort().join('|');
+      if (m.season === season && f && m.division === GROUPS[group].divisions[0]) {
+        const mk = f[1];
+        const add = (a: Acc) => { a.n++; a.draws += isD; a.mkt += mk; };
+        add(all);
+        const rh = recent.get(m.home) || [], ra = recent.get(m.away) || [];
+        // teamDraw20
+        const l20h = rh.slice(-20), l20a = ra.slice(-20);
+        if (l20h.length >= 10 && l20a.length >= 10) {
+          const v = (l20h.reduce((s, x) => s + x.d, 0) / l20h.length + l20a.reduce((s, x) => s + x.d, 0) / l20a.length) / 2;
+          add(acc.teamDraw20[buckets.teamDraw20.cut(v)]);
+          const th = l20h.reduce((s, x) => s + x.d, 0) / l20h.length, ta = l20a.reduce((s, x) => s + x.d, 0) / l20a.length;
+          if (th < 0.2 && ta < 0.2) add(both.bothLow);
+          if (th >= 0.32 && ta >= 0.32) add(both.bothHigh);
+        } else add(unknown.teamDraw20);
+        // excessPrev
+        const ph = seasonEx.get(`${m.home}|${prev}`), pa = seasonEx.get(`${m.away}|${prev}`);
+        if (ph && pa && ph.n >= 10 && pa.n >= 10) add(acc.excessPrev[buckets.excessPrev.cut((ph.ex / ph.n + pa.ex / pa.n) / 2)]);
+        else add(unknown.excessPrev);
+        // excessRecent
+        const e30h = rh.slice(-30).filter(x => !Number.isNaN(x.ex)), e30a = ra.slice(-30).filter(x => !Number.isNaN(x.ex));
+        if (e30h.length >= 15 && e30a.length >= 15)
+          add(acc.excessRecent[buckets.excessRecent.cut((e30h.reduce((s, x) => s + x.ex, 0) / e30h.length + e30a.reduce((s, x) => s + x.ex, 0) / e30a.length) / 2)]);
+        else add(unknown.excessRecent);
+        // h2h
+        const hh = (h2h.get(key) || []).slice(-10);
+        if (hh.length >= 3) add(acc.h2h[buckets.h2h.cut(hh.reduce((s, x) => s + x, 0) / hh.length)]);
+        else add(unknown.h2h);
+      }
+      // update state (after using it)
+      const ex = f ? isD - f[1] : NaN;
+      for (const t of [m.home, m.away]) {
+        const l = recent.get(t) || recent.set(t, []).get(t)!;
+        l.push({ d: isD, ex });
+        if (l.length > 40) l.shift();
+        if (f) {
+          const k = `${t}|${m.season}`;
+          const s = seasonEx.get(k) || seasonEx.set(k, { n: 0, ex: 0 }).get(k)!;
+          s.n++;
+          s.ex += ex;
+        }
+      }
+      (h2h.get(key) || h2h.set(key, []).get(key)!).push(isD);
+    }
+  }
+  const out: any = { season, note: 'top divisions, closing prices; diff = real draw % − bookmakers\' draw %; noise ≈ one standard error', all: accOut('all matches', all) };
+  for (const [k, b] of Object.entries(buckets)) out[k] = [...b.labels.map((l, i) => accOut(l, acc[k][i])), accOut('not enough history', unknown[k])];
+  out.bothTeams = [accOut('both teams draw under 20% lately', both.bothLow), accOut('both teams draw 32%+ lately', both.bothHigh)];
+  return out;
 }
