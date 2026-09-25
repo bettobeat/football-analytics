@@ -107,6 +107,7 @@ const CLUB_ALIASES: Record<string, string> = {
   'cska 1948': '-',
   velez: '-',
   partizani: '-',
+  'radnicki 1923': '-', // Kragujevac, not Radnički Niš
   bohemians: '-',
   'olympiakos piraeus': 'olympiakos',
   paok: 'panthessalonikios',

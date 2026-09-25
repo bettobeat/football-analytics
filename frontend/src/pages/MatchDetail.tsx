@@ -512,7 +512,9 @@ function MatchDetail() {
             ) : (
               <div className="num text-4xl sm:text-5xl font-extrabold text-ink tracking-tight">{fmtTime(m.utcDate)}</div>
             )}
-            {showScore && ht && ht.home !== null && <div className="num text-xs text-faint mt-1">HT {ht.home}–{ht.away}</div>}
+            {showScore && ht && ht.home !== null && (done || m.status === 'PAUSED' || (m.minute ?? 0) > 45) && (
+              <div className="num text-xs text-faint mt-1">HT {ht.home}–{ht.away}</div>
+            )}
             <div
               className={`mt-3 inline-flex items-center gap-1.5 text-[11px] font-bold tracking-wider px-3 py-1 rounded-full border ${
                 live ? 'bg-live/10 text-live border-live/30' : done ? 'bg-surface2 text-muted border-line' : 'bg-accent/10 text-accent border-accent/30'
@@ -542,9 +544,16 @@ function MatchDetail() {
         {/* ---------- Main column ---------- */}
         <div className="space-y-6 min-w-0">
           {/* Live stats first while the match is on */}
-          {live && statKeys.length > 0 && homeStats && awayStats && (
+          {live && (
             <Section title="Live stats" note={m.minute ? `${m.minute}'${m.injuryTime ? `+${m.injuryTime}` : ''} · updates every minute` : 'updates every minute'}>
-              <StatsPanel home={home} away={away} hs={homeStats} as={awayStats} keys={statKeys} />
+              {statKeys.length > 0 && homeStats && awayStats ? (
+                <StatsPanel home={home} away={away} hs={homeStats} as={awayStats} keys={statKeys} />
+              ) : (
+                <p className="text-sm text-muted">
+                  Our data provider doesn’t publish live statistics for this match (common for friendlies and some smaller
+                  competitions). Score, cards, goals and substitutions still update live.
+                </p>
+              )}
             </Section>
           )}
 
