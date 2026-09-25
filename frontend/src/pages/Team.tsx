@@ -20,8 +20,8 @@ interface TeamData {
   last: Fixture[]
   next: Fixture[]
   squad: Player[]
-  scorers: { name: string; value: number }[]
-  assists: { name: string; value: number }[]
+  scorers: { name: string; value: number; detail?: string }[]
+  assists: { name: string; value: number; detail?: string }[]
   premium: boolean
   locked?: string[]
   builtAt?: string
@@ -74,7 +74,7 @@ function FixtureRow({ f, teamId }: { f: Fixture; teamId: number }) {
   return f.matchId ? <Link to={`/match/${f.matchId}`} className="block hover:bg-surface2/40 rounded-lg">{body}</Link> : body
 }
 
-function Leaders({ items, label }: { items: { name: string; value: number }[]; label: string }) {
+function Leaders({ items, label }: { items: { name: string; value: number; detail?: string }[]; label: string }) {
   const max = Math.max(1, ...items.map(i => i.value))
   if (!items.length) return <p className="text-sm text-faint">No {label} yet this season.</p>
   return (
@@ -82,7 +82,10 @@ function Leaders({ items, label }: { items: { name: string; value: number }[]; l
       {items.map((s, i) => (
         <div key={s.name} className="flex items-center gap-3">
           <span className="w-5 font-display text-sm font-bold text-faint">{i + 1}</span>
-          <span className="flex-1 min-w-0 truncate text-sm font-semibold">{s.name}</span>
+          <span className="flex-1 min-w-0">
+            <span className="block truncate text-sm font-semibold">{s.name}</span>
+            {s.detail && <span className="block truncate text-[11px] text-faint">{s.detail}</span>}
+          </span>
           <span className="w-24 sm:w-32 h-2 rounded-full bg-surface2"><span className="block h-full rounded-full bg-accent" style={{ width: `${(s.value / max) * 100}%` }} /></span>
           <span className="w-6 text-right font-display font-extrabold text-sm">{s.value}</span>
         </div>
@@ -197,7 +200,7 @@ export default function Team() {
           )}
 
           {/* squad */}
-          <Card title="Squad" action={<span className="text-xs text-faint">{data.league ? `Season ${data.league.season}` : ''}</span>}>
+          <Card title="Squad" action={<span className="text-xs text-faint">{data.league ? `${data.league.season}-${String(data.league.season + 1).slice(2)} · official games, friendlies excluded` : ''}</span>}>
             {groups.length === 0 && <p className="text-sm text-faint">No squad list available.</p>}
             <div className="space-y-5">
               {groups.map(([pos, players]) => (

@@ -761,7 +761,7 @@ app.post('/api/model/v3/squad/sync', squadSyncHandler);
 // Admin: raw API-Football answer for a fixture (to check what the provider has). ?path=/fixtures/statistics&fixture=123
 app.get('/api/af/raw', async (req, res) => {
   const pathQ = String(req.query.path || '/fixtures');
-  if (!['/fixtures', '/fixtures/statistics', '/fixtures/lineups', '/fixtures/events', '/leagues'].includes(pathQ)) return res.status(400).json({ error: 'path not allowed' });
+  if (!['/fixtures', '/fixtures/statistics', '/fixtures/lineups', '/fixtures/events', '/leagues', '/players', '/players/topscorers'].includes(pathQ)) return res.status(400).json({ error: 'path not allowed' });
   const params: Record<string, string> = {};
   for (const [k, v] of Object.entries(req.query)) if (!['path', 'token', 'c'].includes(k)) params[k] = String(v);
   try {

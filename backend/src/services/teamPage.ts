@@ -196,20 +196,35 @@ async function build(afId: number) {
       try {
         const pr = await g('/players', { team: afId, season, page }, SLOW);
         for (const it of pr.response || []) {
-          const s = { apps: 0, minutes: 0, goals: 0, assists: 0, yellow: 0, red: 0, ratingSum: 0, ratingN: 0 };
+          // official competitions only: pre-season / club friendlies are left out, each competition counted once
+          const s = { apps: 0, minutes: 0, goals: 0, assists: 0, yellow: 0, red: 0, leagueGoals: 0, leagueAssists: 0, ratingSum: 0, ratingN: 0, lRatingSum: 0, lRatingN: 0 };
+          const byComp: { comp: string; apps: number; goals: number; assists: number }[] = [];
+          const seen = new Set<number>();
           for (const st of it.statistics || []) {
             if (st.team?.id !== afId) continue;
+            const lg = st.league || {};
+            if (/friendl/i.test(lg.name || '') || !lg.id || seen.has(lg.id)) continue;
+            seen.add(lg.id);
             const apps = st.games?.appearences || 0;
+            const goals = st.goals?.total || 0, assists = st.goals?.assists || 0;
             s.apps += apps;
             s.minutes += st.games?.minutes || 0;
-            s.goals += st.goals?.total || 0;
-            s.assists += st.goals?.assists || 0;
+            s.goals += goals;
+            s.assists += assists;
             s.yellow += st.cards?.yellow || 0;
             s.red += st.cards?.red || 0;
+            const isLeague = league && lg.id === league.league?.id;
+            if (isLeague) { s.leagueGoals += goals; s.leagueAssists += assists; }
+            if (apps || goals || assists) byComp.push({ comp: lg.name, apps, goals, assists });
             const r = parseFloat(st.games?.rating);
-            if (Number.isFinite(r) && apps) { s.ratingSum += r * apps; s.ratingN += apps; }
+            if (Number.isFinite(r) && apps) {
+              s.ratingSum += r * apps; s.ratingN += apps;
+              if (isLeague) { s.lRatingSum += r * apps; s.lRatingN += apps; }
+            }
           }
-          stats.set(it.player.id, { name: it.player.name, ...s, rating: s.ratingN ? Math.round((s.ratingSum / s.ratingN) * 10) / 10 : null });
+          // rating: league games when there are enough of them, else all official games
+          const rating = s.lRatingN >= 3 ? s.lRatingSum / s.lRatingN : s.ratingN ? s.ratingSum / s.ratingN : null;
+          stats.set(it.player.id, { name: it.player.name, ...s, byComp, rating: rating === null ? null : Math.round(rating * 10) / 10 });
         }
         if ((pr.paging?.current || page) >= (pr.paging?.total || 1)) break;
       } catch (e: any) {
@@ -231,7 +246,15 @@ async function build(afId: number) {
     })
     .sort((a: any, b: any) => (POS[a.pos] ?? 9) - (POS[b.pos] ?? 9) || (a.number ?? 99) - (b.number ?? 99));
   const leaders = (key: 'goals' | 'assists') =>
-    [...stats.values()].filter(s => s[key] > 0).sort((a, b) => b[key] - a[key]).slice(0, 8).map(s => ({ name: s.name, value: s[key] }));
+    [...stats.values()]
+      .filter(s => s[key] > 0)
+      .sort((a, b) => b[key] - a[key])
+      .slice(0, 8)
+      .map(s => ({
+        name: s.name,
+        value: s[key],
+        detail: s.byComp.filter((c: any) => c[key] > 0).map((c: any) => `${c[key]} ${c.comp}`).join(' · ')
+      }));
 
   const last = (lastRes.response || []).map(simpleFixture).sort((a: any, b: any) => (a.date < b.date ? 1 : -1));
   const next = (nextRes.response || []).map(simpleFixture).sort((a: any, b: any) => (a.date < b.date ? -1 : 1));
