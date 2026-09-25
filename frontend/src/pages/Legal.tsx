@@ -161,7 +161,7 @@ export function NotFound() {
       <p className="text-ink font-semibold mt-3">This page doesn't exist.</p>
       <p className="text-sm text-muted mt-1">The link may be old, or the match may have been removed.</p>
       <Link to="/" className="inline-block mt-6 px-4 py-2 rounded-xl bg-accent text-bg font-semibold text-sm">
-        Back to matches
+        Back to home
       </Link>
     </div>
   )

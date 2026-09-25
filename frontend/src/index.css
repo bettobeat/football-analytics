@@ -6,36 +6,36 @@
 :root {
   --bg: 244 245 247;
   --surface: 255 255 255;
-  --surface-2: 240 242 245;
-  --line: 226 229 234;
-  --ink: 17 20 25;
-  --muted: 100 108 120;
-  --faint: 150 157 168;
-  --accent: 16 163 90; /* deep pitch green */
-  --home: 37 99 235; /* blue */
-  --draw: 217 119 6; /* amber */
-  --away: 225 29 72; /* rose */
-  --live: 220 38 38;
+  --surface-2: 238 241 245;
+  --line: 222 226 233;
+  --ink: 12 15 20;
+  --muted: 92 100 114;
+  --faint: 128 136 150;
+  --accent: 77 124 15; /* deep lime (readable on white) */
+  --home: 37 99 235;
+  --draw: 202 138 4;
+  --away: 219 39 119;
+  --live: 225 29 72;
   --win: 22 163 74;
   --loss: 220 38 38;
   color-scheme: light;
 }
 
 .dark {
-  --bg: 9 12 17;
-  --surface: 18 23 31;
-  --surface-2: 26 32 42;
-  --line: 38 46 58;
-  --ink: 236 240 245;
-  --muted: 148 158 172;
-  --faint: 98 108 124;
-  --accent: 163 230 53; /* electric lime */
-  --home: 56 189 248; /* sky */
-  --draw: 251 191 36; /* amber */
-  --away: 251 113 133; /* rose */
-  --live: 248 81 73;
-  --win: 74 222 128;
-  --loss: 248 113 113;
+  --bg: 7 9 13; /* night */
+  --surface: 17 21 29; /* glass */
+  --surface-2: 25 30 40;
+  --line: 40 46 58;
+  --ink: 238 241 246; /* snow */
+  --muted: 154 163 178;
+  --faint: 110 119 134;
+  --accent: 200 255 61; /* lime */
+  --home: 76 141 255;
+  --draw: 242 184 75;
+  --away: 255 107 139;
+  --live: 255 59 78;
+  --win: 61 220 132;
+  --loss: 255 92 92;
   color-scheme: dark;
 }
 
@@ -58,8 +58,8 @@ body {
 /* Subtle stadium-light gradient behind the page (dark only) */
 .dark body {
   background-image:
-    radial-gradient(1200px 500px at 15% -10%, rgb(163 230 53 / 0.07), transparent 60%),
-    radial-gradient(900px 400px at 95% 0%, rgb(56 189 248 / 0.06), transparent 55%);
+    radial-gradient(1200px 520px at 75% -160px, rgb(76 141 255 / 0.14), transparent 70%),
+    radial-gradient(900px 400px at 10% -10%, rgb(200 255 61 / 0.05), transparent 60%);
   background-repeat: no-repeat;
 }
 
@@ -70,7 +70,7 @@ body {
 /* ---------- reusable pieces ---------- */
 @layer components {
   .card {
-    @apply bg-surface border border-line/70 rounded-2xl shadow-card;
+    @apply bg-surface/80 backdrop-blur-sm border border-line/70 rounded-3xl shadow-card;
   }
   .card-hover {
     @apply transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lift hover:border-line;

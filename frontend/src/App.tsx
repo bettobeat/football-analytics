@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link, NavLink, useLocation } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
+import Home from './pages/Home'
+import Team from './pages/Team'
+import SearchBox from './components/SearchBox'
 import MatchDetail from './pages/MatchDetail'
 import AccuracySimple from './pages/AccuracySimple'
 import Past from './pages/Past'
@@ -17,14 +20,22 @@ import { AuthProvider, useAuth } from './lib/auth'
 import { socket } from './lib/socket'
 import { useTheme } from './lib/theme'
 
+export function LogoMark({ size = 36 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 36 36" aria-hidden className="flex-shrink-0">
+      <rect width="36" height="36" rx="10" fill="#C8FF3D" />
+      <path d="M11 25V11h7.5a4 4 0 0 1 0 8H11m7.5 0H20a3 3 0 0 1 0 6h-9" fill="none" stroke="#07090D" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M24 14l3-3m0 0h-3m3 0v3" fill="none" stroke="#07090D" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 function Logo() {
   return (
-    <Link to="/" className="flex items-center gap-2.5 group min-w-0">
-      <span className="relative grid place-items-center w-9 h-9 rounded-xl bg-accent text-bg font-display font-extrabold text-sm tracking-tight shadow-card">
-        B2B
-      </span>
+    <Link to="/" className="flex items-center gap-2.5 group min-w-0" aria-label="Bet To Beat home">
+      <LogoMark />
       <span className="hidden min-[380px]:inline font-display font-bold text-lg tracking-tight text-ink">
-        Bet<span className="text-accent">To</span>Beat
+        bet<span className="text-accent">to</span>beat
       </span>
     </Link>
   )
@@ -101,13 +112,16 @@ function NavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
   return (
     <>
       <NavLink to="/" end className={cls}>
-        Matches
+        Home
       </NavLink>
-      <NavLink to="/accuracy" className={cls}>
-        Accuracy
+      <NavLink to="/matches" className={cls}>
+        Matches
       </NavLink>
       <NavLink to="/draw-alerts" className={cls}>
         Draw alerts
+      </NavLink>
+      <NavLink to="/accuracy" className={cls}>
+        Accuracy
       </NavLink>
       <NavLink to="/past" className={cls}>
         Past seasons
@@ -126,8 +140,63 @@ function NavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
   )
 }
 
+const TAB_ICONS: Record<string, string> = {
+  Home: 'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z',
+  Matches: 'M4 5h16v14H4zM4 10h16M9 5v14',
+  Alerts: 'M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8M10 20a2 2 0 0 0 4 0',
+  Accuracy: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+  Search: 'M11 18a7 7 0 1 0 0-14a7 7 0 0 0 0 14M20 20l-3.5-3.5'
+}
+
+/** Phone: app-style tab bar at the bottom, with a search sheet. */
+function BottomTabs() {
+  const [searching, setSearching] = useState(false)
+  const loc = useLocation()
+  useEffect(() => setSearching(false), [loc.pathname])
+  const tab = (to: string, label: string, end = false) => (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) =>
+        `h-14 flex flex-col items-center justify-center gap-1 rounded-2xl transition-colors ${isActive ? 'bg-accent text-bg' : 'text-muted'}`
+      }
+    >
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d={TAB_ICONS[label]} />
+      </svg>
+      <span className="text-[10px] font-bold">{label}</span>
+    </NavLink>
+  )
+  return (
+    <>
+      {searching && (
+        <div className="sm:hidden fixed inset-0 z-50 bg-bg/95 backdrop-blur-md p-4 pt-6">
+          <div className="flex items-center gap-2">
+            <div className="flex-1"><SearchBox compact onDone={() => setSearching(false)} /></div>
+            <button onClick={() => setSearching(false)} className="h-11 px-3 text-sm font-semibold text-muted">Close</button>
+          </div>
+        </div>
+      )}
+      <nav aria-label="Tabs" className="sm:hidden fixed left-3 right-3 bottom-3 z-40 grid grid-cols-5 gap-1 p-1.5 rounded-3xl bg-surface/95 backdrop-blur-md border border-line/80 shadow-lift">
+        {tab('/', 'Home', true)}
+        {tab('/matches', 'Matches')}
+        {tab('/draw-alerts', 'Alerts')}
+        {tab('/accuracy', 'Accuracy')}
+        <button onClick={() => setSearching(true)} className="h-14 flex flex-col items-center justify-center gap-1 rounded-2xl text-muted" aria-label="Search">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d={TAB_ICONS.Search} />
+          </svg>
+          <span className="text-[10px] font-bold">Search</span>
+        </button>
+      </nav>
+    </>
+  )
+}
+
 const TITLES: [RegExp, string][] = [
-  [/^\/$/, 'Matches'],
+  [/^\/$/, 'Home'],
+  [/^\/matches/, 'Matches'],
+  [/^\/team\//, 'Team'],
   [/^\/match\//, 'Match'],
   [/^\/accuracy/, 'Accuracy'],
   [/^\/draw-alerts/, 'Draw alerts'],
@@ -145,7 +214,7 @@ function PageTitle() {
   const loc = useLocation()
   useEffect(() => {
     const t = TITLES.find(([re]) => re.test(loc.pathname))?.[1]
-    document.title = t && t !== 'Matches' ? `${t} · Bet To Beat` : 'Bet To Beat · Football predictions tested against the bookmakers'
+    document.title = t && t !== 'Home' ? `${t} · Bet To Beat` : 'Bet To Beat · Football predictions tested against the bookmakers'
   }, [loc.pathname])
   return null
 }
@@ -175,48 +244,45 @@ function Shell() {
   }, [])
 
   const navCls = ({ isActive }: { isActive: boolean }) =>
-    `px-3.5 py-2 rounded-xl text-sm font-medium transition-colors ${
-      isActive ? 'bg-surface2 text-ink' : 'text-muted hover:text-ink'
+    `px-3.5 py-1.5 rounded-full text-sm transition-colors whitespace-nowrap ${
+      isActive ? 'bg-ink text-bg font-bold' : 'text-muted font-medium hover:text-ink'
     }`
 
   return (
     <Router>
       <div className="min-h-screen">
         <header className="sticky top-0 z-40 backdrop-blur-md bg-bg/80 border-b border-line/60">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-[72px] flex items-center gap-3 lg:gap-5">
             <Logo />
-            <nav className="hidden sm:flex items-center gap-1">
+            <nav className="hidden sm:flex items-center gap-0.5 p-1 rounded-full bg-surface2/60 border border-line/60 overflow-x-auto">
               <NavLinks cls={navCls} />
             </nav>
-            <div className="flex items-center gap-3">
+            <div className="hidden lg:block flex-1 min-w-[180px] max-w-md ml-auto">
+              <SearchBox />
+            </div>
+            <div className="flex items-center gap-2.5 ml-auto lg:ml-0">
               <div
-                className={`hidden sm:inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border ${
-                  connected
-                    ? 'border-win/30 text-win bg-win/10'
-                    : 'border-loss/30 text-loss bg-loss/10'
+                className={`hidden md:inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold ${
+                  connected ? 'text-live bg-live/10' : 'text-faint bg-surface2'
                 }`}
                 title={connected ? 'Live updates connected' : 'Reconnecting…'}
               >
-                <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-win animate-pulseDot' : 'bg-loss'}`} />
+                <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-live animate-pulseDot' : 'bg-faint'}`} />
                 {connected ? 'Live' : 'Offline'}
               </div>
               <ThemeToggle theme={theme} onToggle={toggle} />
               <UserMenu />
             </div>
           </div>
-          {/* mobile nav */}
-          <div className="sm:hidden border-t border-line/60">
-            <div className="max-w-7xl mx-auto px-4 flex gap-1 py-1.5 overflow-x-auto">
-              <NavLinks cls={navCls} />
-            </div>
-          </div>
         </header>
 
         <PageTitle />
         <VerifyBanner />
-        <main>
+        <main className="pb-24 sm:pb-0">
           <Routes>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/" element={<Home />} />
+            <Route path="/matches" element={<Dashboard />} />
+            <Route path="/team/:id" element={<Team />} />
             <Route path="/match/:id" element={<MatchDetail />} />
             <Route
               path="/accuracy"
@@ -268,6 +334,7 @@ function Shell() {
           </p>
           <p>Data: Football-Data.org, API-Football, football-data.co.uk, Transfermarkt (squad values), bookmaker odds via The Odds API.</p>
         </footer>
+        <BottomTabs />
       </div>
     </Router>
   )

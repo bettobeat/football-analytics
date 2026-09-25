@@ -451,7 +451,7 @@ function MatchDetail() {
   if (error || !details)
     return (
       <div className="max-w-5xl mx-auto px-4 py-10">
-        <Link to="/" className="text-sm text-muted hover:text-ink">← Back</Link>
+        <Link to="/matches" className="text-sm text-muted hover:text-ink">← Back</Link>
         <div className="mt-4 card border-loss/40 text-loss rounded-lg p-4">
           Could not load match: {error || 'unknown error'}
         </div>
@@ -491,7 +491,7 @@ function MatchDetail() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-      <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink transition-colors">
+      <Link to="/matches" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink transition-colors">
         <span aria-hidden>←</span> All matches
       </Link>
 
@@ -515,7 +515,7 @@ function MatchDetail() {
         </div>
 
         <div className="relative grid grid-cols-[1fr_auto_1fr] items-center gap-4 sm:gap-8">
-          <TeamHero team={home} align="right" />
+          <TeamHero team={home} align="right" code={m.competition?.code} />
           <div className="text-center min-w-[120px] sm:min-w-[170px]">
             {showScore ? (
               <div className="num text-5xl sm:text-6xl font-extrabold text-ink tracking-tight">
@@ -538,7 +538,7 @@ function MatchDetail() {
               {live ? statusLabel(m).toUpperCase() : done ? 'FULL-TIME' : 'KICK-OFF'}
             </div>
           </div>
-          <TeamHero team={away} align="left" />
+          <TeamHero team={away} align="left" code={m.competition?.code} />
         </div>
 
         {(m.venue || referee || m.attendance) && (
@@ -814,9 +814,13 @@ function Section({ title, note, children }: { title: string; note?: string; chil
   )
 }
 
-function TeamHero({ team, align }: { team: Team; align: 'left' | 'right' }) {
+function TeamHero({ team, align, code }: { team: Team; align: 'left' | 'right'; code?: string }) {
   return (
-    <div className={`flex items-center gap-3 sm:gap-4 min-w-0 ${align === 'right' ? 'flex-row-reverse text-right' : ''}`}>
+    <Link
+      to={`/team/${team.id}?${new URLSearchParams({ ...(code ? { c: code } : {}), n: team.name }).toString()}`}
+      title={`${team.name}: team page`}
+      className={`flex items-center gap-3 sm:gap-4 min-w-0 hover:opacity-90 ${align === 'right' ? 'flex-row-reverse text-right' : ''}`}
+    >
       {team.crest ? (
         <img src={team.crest} alt="" className="w-14 h-14 sm:w-[72px] sm:h-[72px] object-contain flex-shrink-0 drop-shadow" />
       ) : (
@@ -825,8 +829,9 @@ function TeamHero({ team, align }: { team: Team; align: 'left' | 'right' }) {
       <div className="min-w-0">
         <div className="font-display font-extrabold text-lg sm:text-2xl text-ink leading-tight truncate">{team.shortName || team.name}</div>
         {team.coach?.name && <div className="text-xs text-faint mt-0.5 truncate">{team.coach.name}</div>}
+        <div className="text-[11px] text-accent font-semibold mt-0.5">Team page →</div>
       </div>
-    </div>
+    </Link>
   )
 }
 

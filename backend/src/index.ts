@@ -36,6 +36,9 @@ import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNational
 import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler, clubValueReport } from './services/clubElo';
 import { nationalValueSearch, historyMatchReport } from './services/squadValues';
 import { drawAlertsReport, drawFactorTest } from './services/drawAlerts';
+import { teamPage, searchTeams, resolveAfTeamId } from './services/teamPage';
+import { footballNews } from './services/news';
+import { normalizeName } from './services/history';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures, afGet, afRemaining, xgCoverage } from './services/apiFootball';
 import {
   signup, login, changePassword, setPlan, adminResetPassword, listUsers, userStats, createSession, destroySession, userForToken,
@@ -160,7 +163,7 @@ app.use((req, _res, next) => {
   next();
 });
 
-const OPEN_API = /^\/api\/(health$|auth\/|matches(\/|$)|leagues(\/|$)|teams\/)/;
+const OPEN_API = /^\/api\/(health$|auth\/|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|search$|news$|public\/summary$)/;
 const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|backtest|history\/status|clv|past\/(seasons|predictions|data|patterns)|draw-alerts)$/;
 
 app.use('/api', (req, res, next) => {
@@ -471,6 +474,74 @@ app.get('/api/teams/:id(\\d+)', async (req, res) => {
     res.json({ data: team, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Failed to fetch team');
+  }
+});
+
+// ---------- Team pages, search, news, public summary ----------
+
+// Team page: /api/team-page/<site team id>?c=<competition code>&n=<team name> (FD teams are resolved to API-Football)
+app.get('/api/team-page/:id(\\d+)', async (req, res) => {
+  try {
+    const afId = resolveAfTeamId(parseInt(req.params.id, 10), req.query.c ? String(req.query.c) : undefined, req.query.n ? String(req.query.n) : undefined);
+    if (!afId) return res.status(404).json({ error: 'Team not found' });
+    res.json({ data: await teamPage(afId, canSeeFull(req.access || 'anon')), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Team page failed');
+  }
+});
+
+// Search: teams (every club and national team we track) + upcoming / live matches of those teams
+app.get('/api/search', async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim().slice(0, 60);
+    if (q.length < 2) return res.json({ data: { teams: [], matches: [] } });
+    const teams = searchTeams(q, 8);
+    const norm = normalizeName(q);
+    const upcoming = [...(await footballDataAPI.getUpcomingMatches(14)), ...afUpcoming(14)];
+    const matches = upcoming
+      .filter((m: any) => [m.homeTeam?.name, m.homeTeam?.shortName, m.awayTeam?.name, m.awayTeam?.shortName].some(n => n && normalizeName(n).includes(norm)))
+      .sort((a: any, b: any) => a.utcDate.localeCompare(b.utcDate))
+      .slice(0, 6)
+      .map((m: any) => ({ id: m.id, utcDate: m.utcDate, status: m.status, competition: m.competition?.name, home: m.homeTeam?.shortName || m.homeTeam?.name, away: m.awayTeam?.shortName || m.awayTeam?.name, homeCrest: m.homeTeam?.crest, awayCrest: m.awayTeam?.crest }));
+    res.json({ data: { teams, matches }, timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Search failed');
+  }
+});
+
+app.get('/api/news', async (req, res) => {
+  try {
+    res.json({ data: await footballNews(Math.min(30, parseInt(String(req.query.limit || '12'), 10) || 12)), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'News failed');
+  }
+});
+
+// Home page proof block: v3 (all games) vs bookmakers over 30 days, strong-pick and draw-alert records (cached 10 min)
+let summaryCache: { at: number; data: any } | null = null;
+app.get('/api/public/summary', (_req, res) => {
+  try {
+    if (!summaryCache || Date.now() - summaryCache.at > 10 * 60 * 1000) {
+      const main: any = accuracy(30, undefined, 'main');
+      const mkt: any = accuracy(30, undefined, 'market');
+      let draws: any = null;
+      try {
+        const d: any = drawAlertsReport();
+        draws = { seasons: (d.history || []).map((h: any) => ({ label: h.label, alerts: h.alerts, hitRate: h.hitRate, roi: h.roi, drawRate: h.drawRate })), upcoming: (d.upcoming || []).length };
+      } catch { /* backtests not loaded */ }
+      summaryCache = {
+        at: Date.now(),
+        data: {
+          days: 30,
+          v3: { games: main.settled, hitRate: main.model?.hitRate ?? null, strong60: (main.strongPicks || []).find((t: any) => t.min === 60) || null },
+          bookmakers: { games: mkt.settled, hitRate: mkt.model?.hitRate ?? null },
+          drawAlerts: draws
+        }
+      };
+    }
+    res.json({ data: summaryCache.data, timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Summary failed');
   }
 });
 
