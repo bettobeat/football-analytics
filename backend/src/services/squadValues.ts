@@ -15,7 +15,7 @@ import { gunzipSync } from 'zlib';
 import { db } from '../db';
 import logger from '../utils/logger';
 import { GROUPS, ALIASES, similarity } from './history';
-import { clubValueAt, syncClubValueHistory } from './squadHistory';
+import { clubValueAt, syncClubValueHistory, historyClubs } from './squadHistory';
 
 const SOURCE_URL =
   process.env.SQUAD_VALUES_URL || 'https://pub-e682421888d945d684bcae8890b0ec20.r2.dev/data/players.csv.gz';
@@ -72,7 +72,18 @@ const TM_ALIASES: Record<string, string> = {
   // Transfermarkt uses legal names for some clubs
   aek: 'athlitiki enosi konstantinoupoleos',
   paok: 'panthessalonikios athlitikos omilos konstantinoupoliton',
-  aris: 'aris thessalonikis'
+  aris: 'aris thessalonikis',
+  buyuksehyr: 'basaksehir fk',
+  'ofi crete': 'omilos filathlon irakliou fc',
+  levadeiakos: 'apo levadiakos football club',
+  iraklis: 'iraklis thessaloniki',
+  kortrijk: 'kv kortrijk',
+  'st johnstone': 'st. johnstone fc',
+  cambuur: 'sc cambuur leeuwarden',
+  maritimo: 'cs maritimo',
+  malaga: 'malaga cf',
+  'den haag': 'ado den haag',
+  paderborn: 'sc paderborn 07'
 };
 
 db.exec(`
@@ -268,7 +279,36 @@ export function squadValueFor(group: string, fdName: string): { total: number; t
 /** Squad value (top-15, EUR) as known at the start of date's month — no look-ahead. Null when unknown. */
 export function squadValueAt(group: string, fdName: string, date: string): number | null {
   const c = cache.get(`${group}|${fdName}`);
-  return c ? clubValueAt(c.club, date) : null;
+  if (c) return clubValueAt(c.club, date);
+  // not in today's snapshot (relegated / promoted clubs): match the fd name against the monthly history's clubs,
+  // so seasons when the club was in a covered league still get an honest value
+  const h = historyNameFor(group, fdName);
+  return h ? clubValueAt(h, date) : null;
+}
+
+const histNameMemo = new Map<string, string | null>();
+let histNamesSize = -1;
+function historyNameFor(group: string, fdName: string): string | null {
+  const all = historyClubs();
+  if (all.length !== histNamesSize) { histNameMemo.clear(); histNamesSize = all.length; }
+  const mk = `${group}|${fdName}`;
+  if (histNameMemo.has(mk)) return histNameMemo.get(mk)!;
+  // only clubs of this group's leagues (a club without a known league is allowed only on an exact alias)
+  const names = all.filter(c => COMPETITION_GROUP[c.comp] === group).map(c => c.name);
+  const key = fdName.toLowerCase();
+  const hints = [fdName, ALIASES[key] || '', TM_ALIASES[key] || ''].filter(Boolean);
+  let best: string | null = null, bestS = 0;
+  for (const n of names) {
+    let sc = 0;
+    for (const h of hints) sc = Math.max(sc, similarity(h, n));
+    if (sc > bestS) { bestS = sc; best = n; }
+  }
+  const out = bestS >= 0.75 ? best : null;
+  histNameMemo.set(mk, out);
+  return out;
+}
+export function historyMatchReport(group: string, names: string[]) {
+  return names.map(n => ({ fd: n, snapshot: cache.get(`${group}|${n}`)?.club || null, history: historyNameFor(group, n), valueNowM: Math.round((squadValueAt(group, n, new Date().toISOString().slice(0, 10)) || 0) / 1e6) }));
 }
 
 export const squadCompetitions = () => Object.keys(COMPETITION_GROUP);

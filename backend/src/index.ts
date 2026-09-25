@@ -34,7 +34,7 @@ import {
 } from './services/afMatches';
 import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNationalEloScheduler } from './services/nationalElo';
 import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler, clubValueReport } from './services/clubElo';
-import { nationalValueSearch } from './services/squadValues';
+import { nationalValueSearch, historyMatchReport } from './services/squadValues';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures, afGet, afRemaining, xgCoverage } from './services/apiFootball';
 import {
   signup, login, changePassword, setPlan, adminResetPassword, listUsers, userStats, createSession, destroySession, userForToken,
@@ -631,6 +631,7 @@ app.get('/api/model/v3/squad/history', async (req, res) => {
 // Admin: find a club in the Transfermarkt dump (clubs.csv, players.csv, monthly history). ?q=coventry
 app.get('/api/model/v3/squad/find', async (req, res) => {
   try {
+    if (req.query.fd) { res.json({ data: historyMatchReport(String(req.query.group || '').toUpperCase(), String(req.query.fd).split(',')), timestamp: new Date().toISOString() }); return; }
     res.json({ data: await findClub(String(req.query.q || '')), timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Club search failed');

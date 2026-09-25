@@ -26,12 +26,15 @@ db.exec(`
     players INTEGER NOT NULL,
     PRIMARY KEY (club, month)
   );
+  CREATE TABLE IF NOT EXISTS club_value_comp (club TEXT PRIMARY KEY, comp TEXT);
   CREATE TABLE IF NOT EXISTS club_value_sync (id INTEGER PRIMARY KEY CHECK (id = 1), synced_at TEXT NOT NULL, clubs INTEGER, months INTEGER, rows INTEGER);
 `);
 
 let byClub = new Map<string, Map<string, number>>();
+let compOf = new Map<string, string>();
 function load() {
   byClub = new Map();
+  compOf = new Map((db.prepare(`SELECT club, comp FROM club_value_comp`).all() as any[]).map(r => [r.club, r.comp]));
   for (const r of db.prepare(`SELECT club, month, top_eur FROM club_value_month`).all() as any[]) {
     (byClub.get(r.club) || byClub.set(r.club, new Map()).get(r.club)!).set(r.month, r.top_eur);
   }
@@ -54,6 +57,8 @@ export function clubValueAt(club: string, date: string): number | null {
   return null;
 }
 export const clubValueHistoryLoaded = () => byClub.size;
+/** History clubs with their (latest) Transfermarkt league code. */
+export const historyClubs = () => [...byClub.keys()].map(name => ({ name, comp: compOf.get(name) || '' }));
 
 function parseQuoted(line: string): string[] {
   const out: string[] = [];
@@ -90,11 +95,13 @@ export async function syncClubValueHistory(competitions: string[], force = false
   const ciId = ch.indexOf('club_id'), ciName = ch.indexOf('name'), ciComp = ch.indexOf('domestic_competition_id');
   if (ciId < 0 || ciName < 0) throw new Error(`clubs.csv: unexpected columns ${ch.join(',')}`);
   const clubName = new Map<string, string>();
+  const clubComp = new Map<string, string>();
   for (const line of cl.slice(1)) {
     if (!line.trim()) continue;
     const r = parseQuoted(line);
     if (ciComp >= 0 && r[ciComp] && !comps.has(r[ciComp])) continue;
     clubName.set(r[ciId], r[ciName]);
+    if (ciComp >= 0) clubComp.set(r[ciName], r[ciComp]);
   }
 
   // valuations: player → [date, value, club] sorted by date
@@ -128,6 +135,9 @@ export async function syncClubValueHistory(competitions: string[], force = false
   db.exec('BEGIN');
   try {
     db.exec(`DELETE FROM club_value_month`);
+    db.exec(`DELETE FROM club_value_comp`);
+    const insC = db.prepare(`INSERT OR REPLACE INTO club_value_comp (club, comp) VALUES (?, ?)`);
+    clubComp.forEach((c, n) => insC.run(n, c));
     for (const month of months) {
       const minDate = new Date(new Date(month).getTime() - MAX_AGE_DAYS * 86400000).toISOString().slice(0, 10);
       const clubVals = new Map<string, number[]>();
