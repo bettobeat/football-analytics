@@ -85,6 +85,14 @@ export const CONV = {
   drawStretch: 1.0,
   drawCenter: 260,
   drawGapK: 0,
+  // Elo across divisions (the gap report: promoted sides arrived rated on their second-division results,
+  // e.g. Hamburg 68% at Gladbach). 1 = a team changing division (or appearing for the first time after
+  // the first season) is placed at a percentile of its new division: promoted/newcomer low, relegated high.
+  eloDivTransfer: 0,
+  eloPromoPct: 0.2,
+  eloRelegPct: 0.75,
+  eloK: 20,
+  formCurDiv: 0, // 1 = form (last 6) only from games in the team's current division
   // availability rows (#13 injuries, #12 confirmed XI): value = 5.5 − k × (starter-equivalents missing)
   injK: 2.0, // backtest 2025-26: 1–4 all help a little, 2 best on hit rate
   xiK: 1.0,
@@ -253,9 +261,29 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string): Gr
   //     seasons count at their own level, so a promoted side arrives with an honest rating.
   const elo = new Map<string, number>();
   {
-    const K = 20, HA = 60;
+    const K = CONV.eloK, HA = 60;
     const sorted = [...past].sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : 0));
+    const firstSeason = sorted.length ? sorted[0].season : '';
+    const lastDiv = new Map<string, { div: string; season: string }>();
+    const divRank = (d: string) => { const i = divisions.indexOf(d); return i < 0 ? 99 : i; };
+    const place = (team: string, m: HistoryMatch) => {
+      const prev = lastDiv.get(team);
+      const moved = prev ? prev.div !== m.division && prev.season !== m.season : m.season !== firstSeason;
+      if (CONV.eloDivTransfer && moved) {
+        const peers: number[] = [];
+        lastDiv.forEach((v, t) => { if (t !== team && v.div === m.division && elo.has(t)) peers.push(elo.get(t)!); });
+        if (peers.length >= 8) {
+          peers.sort((x, y) => x - y);
+          const up = !prev || divRank(m.division) < divRank(prev.div);
+          const q = up ? CONV.eloPromoPct : CONV.eloRelegPct;
+          elo.set(team, peers[Math.min(peers.length - 1, Math.max(0, Math.round(q * (peers.length - 1))))]);
+        }
+      }
+      lastDiv.set(team, { div: m.division, season: m.season });
+    };
     for (const m of sorted) {
+      place(m.home, m);
+      place(m.away, m);
       const rh = elo.get(m.home) ?? 1500, ra = elo.get(m.away) ?? 1500;
       const exp = 1 / (1 + Math.pow(10, (ra - rh - HA) / 400));
       const res = m.hg > m.ag ? 1 : m.hg === m.ag ? 0.5 : 0;
@@ -338,7 +366,7 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string): Gr
     t.drawRate = (x.d + pr.draw * PRIOR_W) / (x.w + PRIOR_W);
     t.homePpg = (x.hpts + 1.5 * PRIOR_W) / (x.hw + PRIOR_W);
     t.awayPpg = (x.apts + 1.1 * PRIOR_W) / (x.aw + PRIOR_W);
-    const recent = [...x.games].sort((p, q) => (p.date < q.date ? 1 : -1)).slice(0, 6);
+    const recent = [...x.games].filter(g => !CONV.formCurDiv || g.division === t.division).sort((p, q) => (p.date < q.date ? 1 : -1)).slice(0, 6);
     t.formPts = recent.reduce((s, g) => s + g.pts, 0) + (6 - recent.length) * 1; // pad missing games with a draw
     t.gamesLast8 = x.games.filter(g => days(g.date, asOf) <= 8).length;
     t.lastMatch = x.games.length ? x.games.reduce((m, g) => (g.date > m ? g.date : m), x.games[0].date) : null;
