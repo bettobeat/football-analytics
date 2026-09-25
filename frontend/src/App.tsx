@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link, NavLink, useLocation } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
 import MatchDetail from './pages/MatchDetail'
-import Accuracy from './pages/Accuracy'
+import AccuracySimple from './pages/AccuracySimple'
 import Login from './pages/Login'
 import Account from './pages/Account'
 import Premium from './pages/Premium'
@@ -188,7 +188,7 @@ function Shell() {
               path="/accuracy"
               element={
                 <PremiumGate title="Accuracy">
-                  <Accuracy />
+                  <AccuracySimple />
                 </PremiumGate>
               }
             />
