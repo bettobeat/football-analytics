@@ -501,6 +501,36 @@ export async function withAfOdds(matches: any[]): Promise<any[]> {
   return out;
 }
 
+/**
+ * Fill in bookmaker odds for tracked API-Football matches that were saved without them (national teams, cups, extra
+ * leagues) — kicked off in the last 7 days, or starting within 3 hours. API-Football keeps pre-match odds for a
+ * few days after the game, so the Bookmakers view of the Accuracy page can cover every tracked game.
+ * Odds are market data, not our prediction, so a locked row may still receive them.
+ */
+export async function backfillAfOdds(max = 40): Promise<{ checked: number; filled: number }> {
+  const since = new Date(Date.now() - 7 * 86400_000).toISOString();
+  const until = new Date(Date.now() + 3 * 3600_000).toISOString();
+  const rows = db.prepare(`
+    SELECT DISTINCT match_id, utc_date FROM predictions
+    WHERE match_id >= ? AND odds_home IS NULL AND utc_date BETWEEN ? AND ?
+    ORDER BY utc_date DESC LIMIT ?
+  `).all(AF_OFFSET, since, until, max) as any[];
+  const upd = db.prepare(`UPDATE predictions SET odds_home = ?, odds_draw = ?, odds_away = ?, updated_at = ? WHERE match_id = ? AND odds_home IS NULL`);
+  let checked = 0, filled = 0;
+  for (const r of rows) {
+    if (afRemaining() < 800) break;
+    checked++;
+    try {
+      const odds = await afMarket(r.match_id - AF_OFFSET);
+      if (!odds) continue;
+      upd.run(odds.msw.homeWin, odds.msw.draw, odds.msw.awayWin, new Date().toISOString(), r.match_id);
+      filled++;
+    } catch { /* no odds for this fixture */ }
+  }
+  if (filled) logger.info(`AF odds backfill: ${filled} of ${checked} tracked matches got bookmaker odds`);
+  return { checked, filled };
+}
+
 async function afMarket(fixtureId: number) {
   return cached(`odds:${fixtureId}`, 30 * 60 * 1000, async () => {
     const j = await afGet('/odds', { fixture: fixtureId, bet: 1 });

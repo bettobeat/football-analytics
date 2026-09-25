@@ -30,7 +30,7 @@ import { marketTest, drawTest, anchoredDrawTest } from './services/marketTest';
 import { clvTick, clvReport, startClvScheduler, clvProbe } from './services/clv';
 import {
   isAfMatchId, isAfCode, afUpcoming, afLive, afWithPredictions, getAfMatchDetails, getAfStandings, getAfScorers,
-  afCompetitions, pollAfLive, startAfMatchesScheduler, afWindowStatus, refreshAfWindow, onAfWindow, isKnownAfFixture, afExtrasForFd, withAfOdds
+  afCompetitions, pollAfLive, startAfMatchesScheduler, afWindowStatus, refreshAfWindow, onAfWindow, isKnownAfFixture, afExtrasForFd, withAfOdds, backfillAfOdds
 } from './services/afMatches';
 import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNationalEloScheduler } from './services/nationalElo';
 import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler, clubValueReport } from './services/clubElo';
@@ -666,6 +666,15 @@ app.get('/api/af/raw', async (req, res) => {
   }
 });
 
+// Admin: fill bookmaker odds for tracked national-team / cup matches saved without them (last 7 days)
+app.get('/api/af/odds-backfill', async (_req, res) => {
+  try {
+    res.json({ data: await backfillAfOdds(80), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Odds backfill failed');
+  }
+});
+
 app.get('/api/af/xg', (_req, res) => {
   res.json({ data: xgCoverage(), timestamp: new Date().toISOString() });
 });
@@ -1059,9 +1068,9 @@ server.listen(PORT, () => {
     settlePending(
       (from, to) => footballDataAPI.getMatchesInRange(from, to),
       async ids => (afRemaining() > 50 ? ((await afGet('/fixtures', { ids: ids.join('-') })).response || []) : [])
-    ).catch(err =>
-      logger.warn('Settle job failed', { message: err.message })
-    );
+    )
+      .then(() => backfillAfOdds())
+      .catch(err => logger.warn('Settle job failed', { message: err.message }));
   setTimeout(settle, 60 * 1000);
   setInterval(settle, parseInt(process.env.SETTLE_INTERVAL_MS || '600000', 10));
   // Market odds: decide every 10 minutes which competitions deserve a fetch (budget-aware)

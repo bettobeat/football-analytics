@@ -86,8 +86,8 @@ export const MODEL_INFO: Record<string, { tag: string; name: string; desc: strin
   'poisson-dc-v1': { tag: 'v1', name: 'Standings model', desc: 'Poisson from the current league table' },
   'dc-history-v2': { tag: 'v2', name: 'History model', desc: 'Dixon-Coles fitted on 3 seasons of results' },
   'grid-v3': { tag: 'v3', name: 'Grid model', desc: 'Scoring grid: value × relevance per parameter, 1000-point split' },
-  'elo-intl': { tag: 'Elo', name: 'National-team Elo', desc: 'Elo rating from every senior international result since 2014, plus squad value' },
-  'elo-euro': { tag: 'Euro', name: 'European club Elo', desc: 'Cross-league club Elo from domestic and UEFA cup results, plus squad value' }
+  'elo-intl': { tag: 'v3', name: 'v3 · national teams', desc: 'Our national-team engine: rating from every senior international result since 2014, plus squad value' },
+  'elo-euro': { tag: 'v3', name: 'v3 · European cups', desc: 'Our European-cup engine: cross-league club rating from domestic and UEFA cup results, plus squad value' }
 }
 
 export function modelInfo(model: string) {
