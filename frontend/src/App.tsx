@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard'
 import MatchDetail from './pages/MatchDetail'
 import AccuracySimple from './pages/AccuracySimple'
 import Past from './pages/Past'
+import DrawAlerts from './pages/DrawAlerts'
 import Login from './pages/Login'
 import Account from './pages/Account'
 import Premium from './pages/Premium'
@@ -104,6 +105,9 @@ function NavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
       <NavLink to="/accuracy" className={cls}>
         Accuracy
       </NavLink>
+      <NavLink to="/draw-alerts" className={cls}>
+        Draw alerts
+      </NavLink>
       <NavLink to="/past" className={cls}>
         Past seasons
       </NavLink>
@@ -193,6 +197,14 @@ function Shell() {
               element={
                 <PremiumGate title="Accuracy">
                   <AccuracySimple />
+                </PremiumGate>
+              }
+            />
+            <Route
+              path="/draw-alerts"
+              element={
+                <PremiumGate title="Draw alerts">
+                  <DrawAlerts />
                 </PremiumGate>
               }
             />

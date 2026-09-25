@@ -35,6 +35,7 @@ import {
 import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNationalEloScheduler } from './services/nationalElo';
 import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler, clubValueReport } from './services/clubElo';
 import { nationalValueSearch, historyMatchReport } from './services/squadValues';
+import { drawAlertsReport } from './services/drawAlerts';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures, afGet, afRemaining, xgCoverage } from './services/apiFootball';
 import {
   signup, login, changePassword, setPlan, adminResetPassword, listUsers, userStats, createSession, destroySession, userForToken,
@@ -144,7 +145,7 @@ app.use((req, _res, next) => {
 });
 
 const OPEN_API = /^\/api\/(health$|auth\/|matches(\/|$)|leagues(\/|$)|teams\/)/;
-const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|backtest|history\/status|clv|past\/(seasons|predictions|data|patterns))$/;
+const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|backtest|history\/status|clv|past\/(seasons|predictions|data|patterns)|draw-alerts)$/;
 
 app.use('/api', (req, res, next) => {
   const p = req.originalUrl.split('?')[0];
@@ -821,6 +822,15 @@ app.get('/api/model/v3/league-tune/result', (_req, res) => {
 app.get('/api/model/v3/league-conv', (req, res) => {
   if (req.query.clear === '1') clearLeagueConv();
   res.json({ data: leagueConvStatus(), timestamp: new Date().toISOString() });
+});
+
+// Draw alerts page (premium): upcoming alerts, live record, backtest seasons
+app.get('/api/draw-alerts', (_req, res) => {
+  try {
+    res.json({ data: drawAlertsReport(), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Draw alerts failed');
+  }
 });
 
 // Market-anchored draw model: market early draw + k × (v3 − market), picks at the best early price
