@@ -580,7 +580,7 @@ function MatchDetail() {
 
                 <details className="mt-4 group">
                   <summary className="cursor-pointer text-xs text-muted hover:text-ink select-none">{p.grid ? 'Goal model behind the extras' : 'How this was calculated'}</summary>
-                  {p.model === 'elo-intl' ? (
+                  {p.model.startsWith('elo-') ? (
                   <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-muted">
                     <span>{home.shortName || home.name} Elo</span>
                     <span className="num text-ink">{p.factors.homeAttack}</span>
@@ -590,7 +590,7 @@ function MatchDetail() {
                     <span className="num text-ink">{p.factors.homeAdvantage}</span>
                     <span>Squad value adjustment (Elo points, + favours {home.shortName || home.name})</span>
                     <span className="num text-ink">{p.factors.homeForm > 0 ? '+' : ''}{p.factors.homeForm}</span>
-                    <span>International matches rated</span>
+                    <span>Matches rated</span>
                     <span className="num text-ink">{p.factors.gamesPlayed.home} / {p.factors.gamesPlayed.away}</span>
                   </div>
                   ) : (

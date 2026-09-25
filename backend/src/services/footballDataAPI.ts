@@ -3,6 +3,7 @@ import logger from '../utils/logger';
 import { predictFromStandings, Prediction, StandingsResponse } from './predictionModel';
 import { predictV2, prepareModelV2 } from './historyModel';
 import { predictV3, prepareModelV3 } from './gridModel';
+import { predictClubEuro } from './clubElo';
 import { withMarket, oddsFor } from './odds';
 
 // Competitions to load. Override with COMPETITIONS=PL,PD,... in .env
@@ -293,20 +294,29 @@ class FootballDataAPI {
     } catch (error: any) {
       logger.warn('Prediction v3 failed', { matchId: match.id, message: error.message });
     }
+    // Champions League: European club Elo (cross-league ratings)
+    if (match?.competition?.code === 'CL') {
+      try {
+        const e = predictClubEuro(match);
+        if (e) out.push(e);
+      } catch (error: any) {
+        logger.warn('Prediction elo-euro failed', { matchId: match.id, message: error.message });
+      }
+    }
     return out;
   }
 
   /** The prediction shown on the site: v2 (history model) when available, else v1. */
   predictionFor(match: any): Prediction | null {
     const all = this.allPredictionsFor(match);
-    return all.find(p => p.model.startsWith('dc-history')) || all[0] || null;
+    return all.find(p => p.model.startsWith('dc-history')) || all.find(p => p.model === 'elo-euro') || all[0] || null;
   }
 
   /** Attach model predictions and (when stored) market odds to match objects. */
   withPredictions<T extends { id: number }>(matches: T[]): (T & { prediction: Prediction | null; predictions: Prediction[] })[] {
     return withMarket(matches).map(m => {
       const predictions = this.allPredictionsFor(m);
-      return { ...m, prediction: predictions.find(p => p.model.startsWith('dc-history')) || predictions[0] || null, predictions };
+      return { ...m, prediction: predictions.find(p => p.model.startsWith('dc-history')) || predictions.find(p => p.model === 'elo-euro') || predictions[0] || null, predictions };
     });
   }
 

@@ -30,6 +30,7 @@ import {
   afCompetitions, pollAfLive, startAfMatchesScheduler, afWindowStatus, refreshAfWindow
 } from './services/afMatches';
 import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNationalEloScheduler } from './services/nationalElo';
+import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler } from './services/clubElo';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures } from './services/apiFootball';
 import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, backfillV3, setRelOverride, SweepVariant } from './services/gridModel';
 
@@ -303,6 +304,17 @@ app.get('/api/model/elo', async (req, res) => {
     res.json({ data: nationalEloStatus(), timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'National Elo failed');
+  }
+});
+
+// European club Elo: status, or ?sync=1 to load UEFA cup results first
+app.get('/api/model/euro', async (req, res) => {
+  try {
+    if (req.query.sync === '1') { await syncEuropeanCups(req.query.force === '1'); buildClubElo(); }
+    else if (req.query.rebuild === '1') buildClubElo();
+    res.json({ data: clubEloStatus(), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Club Elo failed');
   }
 });
 
@@ -663,6 +675,8 @@ server.listen(PORT, () => {
   startAfMatchesScheduler();
   // National-team Elo from international results since 2014 (API-Football)
   startNationalEloScheduler();
+  // European club Elo (UEFA cups + domestic results + squad values)
+  startClubEloScheduler();
 });
 
 export { app, io };

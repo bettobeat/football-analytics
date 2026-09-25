@@ -14,6 +14,7 @@ import { groupForCompetition, buildTeamMap } from './history';
 import { predictV2 } from './historyModel';
 import { predictV3 } from './gridModel';
 import { predictNational } from './nationalElo';
+import { predictClubEuro } from './clubElo';
 
 export const AF_OFFSET = 1_000_000_000;
 export const isAfMatchId = (id: number) => id >= AF_OFFSET;
@@ -376,6 +377,10 @@ export function afPredictions(m: any): Prediction[] {
   // national teams: international Elo first (the main prediction), table model as a second opinion
   if (m.competition?.type === 'NATIONAL') {
     try { const e = predictNational(m, (m.competition.id || 0) - AF_OFFSET); if (e) out.push(e); } catch { /* not rated */ }
+  }
+  // European cups: European club Elo first
+  if (m.competition?.type === 'CUP') {
+    try { const e = predictClubEuro(m); if (e) out.push(e); } catch { /* not rated */ }
   }
   const v1 = afPrediction(m);
   if (v1) out.push(v1);
