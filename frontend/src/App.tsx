@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Link, NavLink, useLocation } fr
 import Dashboard from './pages/Dashboard'
 import MatchDetail from './pages/MatchDetail'
 import AccuracySimple from './pages/AccuracySimple'
+import Past from './pages/Past'
 import Login from './pages/Login'
 import Account from './pages/Account'
 import Premium from './pages/Premium'
@@ -103,6 +104,9 @@ function NavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
       <NavLink to="/accuracy" className={cls}>
         Accuracy
       </NavLink>
+      <NavLink to="/past" className={cls}>
+        Past seasons
+      </NavLink>
       {access !== 'premium' && access !== 'admin' && (
         <NavLink to="/premium" className={cls}>
           Premium
@@ -189,6 +193,14 @@ function Shell() {
               element={
                 <PremiumGate title="Accuracy">
                   <AccuracySimple />
+                </PremiumGate>
+              }
+            />
+            <Route
+              path="/past"
+              element={
+                <PremiumGate title="Past seasons">
+                  <Past />
                 </PremiumGate>
               }
             />

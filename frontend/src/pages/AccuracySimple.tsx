@@ -74,17 +74,17 @@ function Score({ name, hit, n, best, note }: { name: string; hit: number | null;
 function ConfidenceRow({ t }: { t: Tier }) {
   const hit = t.hitRate ?? 0
   return (
-    <div className="grid grid-cols-[92px_1fr_64px] sm:grid-cols-[120px_1fr_80px] items-center gap-3">
+    <div className="grid grid-cols-[88px_1fr_76px] sm:grid-cols-[120px_1fr_96px] items-center gap-3">
       <div className="text-sm text-muted">
         We said <span className="font-semibold text-ink">{t.min}%+</span>
       </div>
-      <div className="h-7 rounded-lg bg-surface2 overflow-hidden relative">
-        <div className="h-full rounded-lg bg-accent/80 transition-all" style={{ width: `${Math.min(100, hit)}%` }} />
-        <span className="absolute inset-y-0 left-2 flex items-center text-xs font-bold num text-bg mix-blend-normal">
-          {t.hitRate !== null ? `right ${Math.round(hit)}%` : ''}
-        </span>
+      <div className="h-3 rounded-full bg-surface2 overflow-hidden">
+        <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${Math.min(100, hit)}%` }} />
       </div>
-      <div className="text-xs text-faint text-right num">{t.n} matches</div>
+      <div className="text-right">
+        <div className="num text-sm font-bold text-ink">{t.hitRate !== null ? `${Math.round(hit)}% right` : '–'}</div>
+        <div className="text-[11px] text-faint num">{t.n} matches</div>
+      </div>
     </div>
   )
 }

@@ -25,6 +25,7 @@ import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler, squadCom
 import { syncClubValueHistory, clubValueHistoryStatus } from './services/squadHistory';
 import { compareModels } from './services/compareModels';
 import { gapReport } from './services/gapReport';
+import { pastSeasons, pastPredictions, dataInventory } from './services/pastView';
 import { marketTest, drawTest, anchoredDrawTest } from './services/marketTest';
 import { clvTick, clvReport, startClvScheduler, clvProbe } from './services/clv';
 import {
@@ -143,7 +144,7 @@ app.use((req, _res, next) => {
 });
 
 const OPEN_API = /^\/api\/(health$|auth\/|matches(\/|$)|leagues(\/|$)|teams\/)/;
-const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|backtest|history\/status|clv)$/;
+const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|backtest|history\/status|clv|past\/(seasons|predictions|data))$/;
 
 app.use('/api', (req, res, next) => {
   const p = req.originalUrl.split('?')[0];
@@ -814,6 +815,27 @@ app.get('/api/backtest/market', (req, res) => {
 });
 
 // Head-to-head diagnostics on the same backtested matches: ?season=2526&a=dc-history-v2&b=grid-v3
+// ---------- Past predictions page (walk-forward backtests) + data inventory ----------
+app.get('/api/past/seasons', (_req, res) => {
+  try { res.json({ data: pastSeasons(), timestamp: new Date().toISOString() }); } catch (e: any) { sendError(res, e, 'Past seasons failed'); }
+});
+app.get('/api/past/predictions', (req, res) => {
+  try {
+    const q = req.query;
+    res.json({
+      data: pastPredictions({
+        season: String(q.season || '2526'), model: String(q.model || 'grid-v3'),
+        division: q.division ? String(q.division) : undefined, team: q.team ? String(q.team).slice(0, 40) : undefined,
+        result: q.result ? String(q.result) : undefined, page: parseInt(String(q.page || '1'), 10), limit: parseInt(String(q.limit || '50'), 10)
+      }),
+      timestamp: new Date().toISOString()
+    });
+  } catch (e: any) { sendError(res, e, 'Past predictions failed'); }
+});
+app.get('/api/past/data', (_req, res) => {
+  try { res.json({ data: dataInventory(), timestamp: new Date().toISOString() }); } catch (e: any) { sendError(res, e, 'Data inventory failed'); }
+});
+
 // Where the model loses to the market + which missing information would help (admin)
 app.get('/api/backtest/gap', (req, res) => {
   try {
