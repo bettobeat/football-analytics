@@ -160,20 +160,77 @@ function statusLabel(m: Match) {
   return fmtTime(m.utcDate)
 }
 
+// Display order: the most telling numbers first (like a live-score app)
 const STAT_LABELS: Record<string, string> = {
+  expected_goals: 'Expected goals (xG)',
   ball_possession: 'Possession %',
-  shots: 'Shots',
+  shots: 'Total shots',
   shots_on_goal: 'Shots on target',
   shots_off_goal: 'Shots off target',
+  blocked_shots: 'Blocked shots',
+  shots_inside_box: 'Shots inside the box',
+  shots_outside_box: 'Shots outside the box',
   corner_kicks: 'Corners',
+  saves: 'Goalkeeper saves',
+  passes: 'Passes',
+  pass_accuracy: 'Pass accuracy %',
   fouls: 'Fouls',
   offsides: 'Offsides',
-  saves: 'Saves',
   free_kicks: 'Free kicks',
   goal_kicks: 'Goal kicks',
   throw_ins: 'Throw-ins',
   yellow_cards: 'Yellow cards',
   red_cards: 'Red cards'
+}
+
+/** Two-sided stat bars (home left, away right), possession as one big split bar. */
+function StatsPanel({ home, away, hs, as, keys }: { home: Team; away: Team; hs: Record<string, number>; as: Record<string, number>; keys: string[] }) {
+  const fmt = (k: string, v: number) => (k === 'expected_goals' || k === 'goals_prevented' ? v.toFixed(2) : String(Math.round(v)))
+  const poss = keys.includes('ball_possession') ? { h: hs.ball_possession ?? 0, a: as.ball_possession ?? 0 } : null
+  return (
+    <div>
+      <div className="flex items-center justify-between text-xs font-semibold mb-3">
+        <span className="text-home truncate">{home.shortName || home.name}</span>
+        <span className="text-away truncate text-right">{away.shortName || away.name}</span>
+      </div>
+      {poss && (
+        <div className="mb-5">
+          <div className="text-[11px] text-faint text-center mb-1.5">Possession</div>
+          <div className="flex h-7 rounded-lg overflow-hidden text-xs font-bold num">
+            <div className="bg-home/80 text-bg grid place-items-center transition-all" style={{ width: `${poss.h || 50}%` }}>{Math.round(poss.h)}%</div>
+            <div className="bg-away/80 text-bg grid place-items-center transition-all" style={{ width: `${poss.a || 50}%` }}>{Math.round(poss.a)}%</div>
+          </div>
+        </div>
+      )}
+      <div className="space-y-3">
+        {keys
+          .filter(k => k !== 'ball_possession')
+          .map(k => {
+            const h = hs[k] ?? 0
+            const a = as[k] ?? 0
+            const total = h + a || 1
+            const lead = h === a ? null : h > a ? 'H' : 'A'
+            return (
+              <div key={k} className="grid grid-cols-[52px_1fr_52px] items-center gap-3 text-sm">
+                <span className={`num font-semibold text-right ${lead === 'H' ? 'text-ink' : 'text-muted'}`}>{fmt(k, h)}</span>
+                <div>
+                  <div className="text-[11px] text-faint text-center mb-1">{STAT_LABELS[k]}</div>
+                  <div className="flex h-1.5 gap-0.5">
+                    <div className="flex-1 flex justify-end">
+                      <div className={`h-full rounded-l-full bg-home transition-all ${lead === 'A' ? 'opacity-50' : ''}`} style={{ width: `${(h / total) * 100}%` }} />
+                    </div>
+                    <div className="flex-1">
+                      <div className={`h-full rounded-r-full bg-away transition-all ${lead === 'H' ? 'opacity-50' : ''}`} style={{ width: `${(a / total) * 100}%` }} />
+                    </div>
+                  </div>
+                </div>
+                <span className={`num font-semibold ${lead === 'A' ? 'text-ink' : 'text-muted'}`}>{fmt(k, a)}</span>
+              </div>
+            )
+          })}
+      </div>
+    </div>
+  )
 }
 
 /* ---------- page ---------- */
@@ -484,6 +541,13 @@ function MatchDetail() {
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-start">
         {/* ---------- Main column ---------- */}
         <div className="space-y-6 min-w-0">
+          {/* Live stats first while the match is on */}
+          {live && statKeys.length > 0 && homeStats && awayStats && (
+            <Section title="Live stats" note={m.minute ? `${m.minute}'${m.injuryTime ? `+${m.injuryTime}` : ''} · updates every minute` : 'updates every minute'}>
+              <StatsPanel home={home} away={away} hs={homeStats} as={awayStats} keys={statKeys} />
+            </Section>
+          )}
+
           {/* Prediction */}
           <Section
             title="Prediction"
@@ -653,32 +717,9 @@ function MatchDetail() {
           )}
 
           {/* Statistics */}
-          {statKeys.length > 0 && homeStats && awayStats && (
+          {!live && statKeys.length > 0 && homeStats && awayStats && (
             <Section title="Statistics">
-              <div className="space-y-3">
-                {statKeys.map(k => {
-                  const h = homeStats[k] ?? 0
-                  const a = awayStats[k] ?? 0
-                  const total = h + a || 1
-                  return (
-                    <div key={k} className="grid grid-cols-[48px_1fr_48px] items-center gap-3 text-sm">
-                      <span className="num font-semibold text-ink text-right">{h}</span>
-                      <div>
-                        <div className="text-[11px] text-faint text-center mb-1">{STAT_LABELS[k]}</div>
-                        <div className="flex h-1.5 gap-0.5">
-                          <div className="flex-1 flex justify-end">
-                            <div className="h-full rounded-l-full bg-home" style={{ width: `${(h / total) * 100}%` }} />
-                          </div>
-                          <div className="flex-1">
-                            <div className="h-full rounded-r-full bg-away" style={{ width: `${(a / total) * 100}%` }} />
-                          </div>
-                        </div>
-                      </div>
-                      <span className="num font-semibold text-ink">{a}</span>
-                    </div>
-                  )
-                })}
-              </div>
+              <StatsPanel home={home} away={away} hs={homeStats} as={awayStats} keys={statKeys} />
             </Section>
           )}
 

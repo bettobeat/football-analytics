@@ -27,7 +27,7 @@ import { marketTest, drawTest, anchoredDrawTest } from './services/marketTest';
 import { clvTick, clvReport, startClvScheduler, clvProbe } from './services/clv';
 import {
   isAfMatchId, isAfCode, afUpcoming, afLive, afWithPredictions, getAfMatchDetails, getAfStandings, getAfScorers,
-  afCompetitions, pollAfLive, startAfMatchesScheduler, afWindowStatus, refreshAfWindow, onAfWindow, isKnownAfFixture
+  afCompetitions, pollAfLive, startAfMatchesScheduler, afWindowStatus, refreshAfWindow, onAfWindow, isKnownAfFixture, afExtrasForFd
 } from './services/afMatches';
 import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNationalEloScheduler } from './services/nationalElo';
 import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler, clubValueReport } from './services/clubElo';
@@ -373,7 +373,31 @@ app.get('/api/matches/:id(\\d+)/details', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isAfMatchId(id) && !isKnownAfFixture(id)) return res.status(404).json({ error: 'Match not found' });
-    const details = isAfMatchId(id) ? await getAfMatchDetails(id) : await footballDataAPI.getMatchDetails(id);
+    const details: any = isAfMatchId(id) ? await getAfMatchDetails(id) : await footballDataAPI.getMatchDetails(id);
+    // Football-Data.org has no statistics / lineups on our plan: fill them from API-Football (free for everyone)
+    if (!isAfMatchId(id)) {
+      try {
+        const x = await afExtrasForFd(details.match);
+        if (x) {
+          const m = (details.match = { ...details.match, homeTeam: { ...details.match.homeTeam }, awayTeam: { ...details.match.awayTeam } });
+          for (const [side, t] of [['homeTeam', x.home], ['awayTeam', x.away]] as const) {
+            const cur = m[side];
+            const hasStats = cur.statistics && typeof cur.statistics === 'object' && !('msg' in cur.statistics) && Object.keys(cur.statistics).length;
+            if (!hasStats && t.statistics && Object.keys(t.statistics).length) cur.statistics = t.statistics;
+            if (!(cur.lineup?.length) && t.lineup.length) {
+              cur.lineup = t.lineup;
+              cur.bench = t.bench;
+              cur.formation = cur.formation || t.formation;
+              cur.coach = cur.coach?.name ? cur.coach : t.coach;
+            }
+          }
+          if ((m.minute === null || m.minute === undefined) && x.minute !== null) m.minute = x.minute;
+          if (m.homeTeam.lineup?.length) details.probableLineups = null;
+        }
+      } catch (e: any) {
+        logger.warn('Live extras failed', { id, message: e.message });
+      }
+    }
     res.json({ data: details, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Failed to fetch match details');

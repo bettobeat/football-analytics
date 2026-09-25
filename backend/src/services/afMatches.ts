@@ -11,7 +11,7 @@ import logger from '../utils/logger';
 import { db } from '../db';
 import { afGet, afConfigured } from './apiFootball';
 import { predictFromStandings, Prediction } from './predictionModel';
-import { groupForCompetition, buildTeamMap } from './history';
+import { groupForCompetition, buildTeamMap, fdNameFor } from './history';
 import { predictV2 } from './historyModel';
 import { predictV3 } from './gridModel';
 import { predictNational } from './nationalElo';
@@ -135,8 +135,10 @@ export function toFdMatch(f: any) {
 const POS: Record<string, string> = { G: 'Goalkeeper', D: 'Defence', M: 'Midfield', F: 'Offence' };
 const STAT_KEYS: Record<string, string> = {
   'Ball Possession': 'ball_possession', 'Total Shots': 'shots', 'Shots on Goal': 'shots_on_goal', 'Shots off Goal': 'shots_off_goal',
+  'Blocked Shots': 'blocked_shots', 'Shots insidebox': 'shots_inside_box', 'Shots outsidebox': 'shots_outside_box',
   'Corner Kicks': 'corner_kicks', Fouls: 'fouls', Offsides: 'offsides', 'Goalkeeper Saves': 'saves',
-  'Yellow Cards': 'yellow_cards', 'Red Cards': 'red_cards'
+  'Yellow Cards': 'yellow_cards', 'Red Cards': 'red_cards', 'Total passes': 'passes', 'Passes accurate': 'passes_accurate',
+  'Passes %': 'pass_accuracy', expected_goals: 'expected_goals', goals_prevented: 'goals_prevented'
 };
 
 /** Full match (events, lineups, statistics) from /fixtures?id=. */
@@ -515,4 +517,88 @@ export async function getAfMatchDetails(matchId: number) {
     probableLineups: null,
     market
   };
+}
+
+
+/* ------------------------------------------------------------------ */
+/* Live stats + lineups for Football-Data.org matches                   */
+/* (Football-Data.org's plan has no statistics / lineups; API-Football does) */
+/* ------------------------------------------------------------------ */
+
+const FD_TO_AF_LEAGUE: Record<string, number> = { CL: 2 };
+const fdToAf = new Map<number, number | null>(); // FD match id → AF fixture id (null = not found)
+
+function nameKey(s: string) {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ')
+    .split(' ').filter(w => w && !['fc', 'cf', 'afc', 'sc', 'ac', 'as', 'ssc', 'sv', 'club', 'de', 'cp'].includes(w)).join(' ');
+}
+function sameTeam(a: string, b: string) {
+  const x = nameKey(a), y = nameKey(b);
+  return !!x && !!y && (x === y || x.includes(y) || y.includes(x));
+}
+
+/** API-Football fixture id for a Football-Data.org match, or null. */
+async function afFixtureForFd(match: any): Promise<number | null> {
+  if (fdToAf.has(match.id)) return fdToAf.get(match.id)!;
+  const day = String(match.utcDate || '').slice(0, 10);
+  if (!day) return null;
+  const d = new Date(day + 'T00:00:00Z').getTime();
+  const lo = new Date(d - 86400000).toISOString().slice(0, 10), hi = new Date(d + 86400000).toISOString().slice(0, 10);
+  let found: number | null = null;
+  // domestic leagues: our own fixture table, matched through the team-name mapping used by the models
+  const group = match.competition?.code ? groupForCompetition(match.competition.code) : null;
+  if (group) {
+    const home = fdNameFor(group, match.homeTeam?.id), away = fdNameFor(group, match.awayTeam?.id);
+    if (home && away) {
+      const r: any = db.prepare(`
+        SELECT f.fixture_id FROM af_fixtures f
+        JOIN af_teams th ON th.grp = f.grp AND th.team_id = f.home_id
+        JOIN af_teams ta ON ta.grp = f.grp AND ta.team_id = f.away_id
+        WHERE f.grp = ? AND th.fd_name = ? AND ta.fd_name = ? AND f.date BETWEEN ? AND ?`).get(group, home, away, lo, hi);
+      if (r) found = r.fixture_id;
+    }
+  }
+  // cups (Champions League): that day's fixtures of the competition, matched by team names
+  const leagueId = FD_TO_AF_LEAGUE[match.competition?.code];
+  if (!found && leagueId) {
+    try {
+      const dt = new Date(day + 'T00:00:00Z');
+      const season = dt.getUTCMonth() >= 6 ? dt.getUTCFullYear() : dt.getUTCFullYear() - 1; // European season = start year
+      const j = await cached(`day:${leagueId}:${day}`, 6 * 3600 * 1000, () => afGet('/fixtures', { league: leagueId, season, date: day }));
+      const f = (j.response || []).find((x: any) =>
+        sameTeam(x.teams?.home?.name, match.homeTeam?.name) || sameTeam(x.teams?.home?.name, match.homeTeam?.shortName || '')
+          ? sameTeam(x.teams?.away?.name, match.awayTeam?.name) || sameTeam(x.teams?.away?.name, match.awayTeam?.shortName || '')
+          : false
+      );
+      if (f) found = f.fixture.id;
+    } catch (e: any) {
+      logger.warn(`AF lookup for FD ${match.id}: ${e.message}`);
+      return null; // don't remember a failure caused by the API
+    }
+  }
+  fdToAf.set(match.id, found);
+  return found;
+}
+
+/**
+ * Live statistics (possession, shots, xG, corners…), lineups and minute for a Football-Data.org match,
+ * from the matching API-Football fixture. Only around the match (1 h before kick-off onwards).
+ */
+export async function afExtrasForFd(match: any): Promise<{ home: any; away: any; minute: number | null } | null> {
+  if (!afConfigured()) return null;
+  const ko = new Date(match.utcDate).getTime();
+  if (!Number.isFinite(ko) || Date.now() < ko - 75 * 60 * 1000) return null;
+  const fid = await afFixtureForFd(match);
+  if (!fid) return null;
+  const live = ['IN_PLAY', 'PAUSED'].includes(match.status);
+  const done = ['FINISHED', 'AWARDED'].includes(match.status);
+  const ttl = live ? 45 * 1000 : done ? 6 * 3600 * 1000 : 5 * 60 * 1000;
+  const raw = await cached(`fixture:${fid}`, ttl, async () => {
+    const j = await afGet('/fixtures', { id: fid });
+    return j.response?.[0] || null;
+  });
+  if (!raw) return null;
+  const m = toFdMatchFull(raw);
+  const pick = (t: any) => ({ statistics: t.statistics || null, formation: t.formation || null, lineup: t.lineup || [], bench: t.bench || [], coach: t.coach || null });
+  return { home: pick(m.homeTeam), away: pick(m.awayTeam), minute: m.minute ?? null };
 }
