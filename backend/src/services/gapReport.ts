@@ -252,8 +252,33 @@ export function gapReport(season: string, model = 'grid-v3') {
     });
   })();
 
+  // Teams the model systematically rates differently from the market (win chance for that team, model − market)
+  const teamAgg = new Map<string, { n: number; d: number; pm: number; mm: number; w: number }>();
+  for (const r of rows) {
+    for (const [t, i] of [[r.home, 0], [r.away, 2]] as const) {
+      const e = teamAgg.get(t) || { n: 0, d: 0, pm: 0, mm: 0, w: 0 };
+      e.n++; e.d += r.p[i] - r.m[i]; e.pm += r.p[i]; e.mm += r.m[i]; e.w += IDX[r.outcome] === i ? 1 : 0;
+      teamAgg.set(t, e);
+    }
+  }
+  const teamBias = [...teamAgg.entries()]
+    .filter(([, e]) => e.n >= 15)
+    .map(([team, e]) => ({ team, n: e.n, modelMinusMarketPp: r1((e.d / e.n) * 100), modelWin: r1((e.pm / e.n) * 100), marketWin: r1((e.mm / e.n) * 100), actualWin: r1((e.w / e.n) * 100) }))
+    .sort((x, y) => Math.abs(y.modelMinusMarketPp) - Math.abs(x.modelMinusMarketPp))
+    .slice(0, 25);
+  // The biggest single disagreements
+  const biggest = rows
+    .map(r => ({ r, d: Math.max(...r.p.map((x, i) => Math.abs(x - r.m[i]))) }))
+    .sort((x, y) => y.d - x.d)
+    .slice(0, 25)
+    .map(({ r }) => ({
+      date: r.date, division: r.division, match: `${r.home} – ${r.away}`, outcome: r.outcome,
+      model: r.p.map(x => Math.round(x * 100)).join('/'), market: r.m.map(x => Math.round(x * 100)).join('/')
+    }));
+
   return {
     season, model, n: rows.length, statsCoverage: r1(statsCoverage * 100),
+    teamBias, biggest,
     overall: summarise(rows),
     byDivision: groupBy(rows, r => r.division),
     byFavourite: groupBy(rows, favB, ['<40%', '40-50%', '50-60%', '60-70%', '70%+']),

@@ -80,6 +80,11 @@ export const CONV = {
   // drawMode 0: draw pot base by match type (drawBase);  1: base = goals-model draw chance (Poisson + Dixon-Coles) × drawPoisScale
   drawMode: 1,
   drawPoisScale: 1.0,
+  // draw spread: the gap report showed v3's draw chance is too flat (too high in mismatches, too low in even games).
+  // drawStretch > 1 pushes draw points away from drawCenter; drawGapK removes draw points as the rating gap grows.
+  drawStretch: 1.0,
+  drawCenter: 260,
+  drawGapK: 0,
   // availability rows (#13 injuries, #12 confirmed XI): value = 5.5 − k × (starter-equivalents missing)
   injK: 2.0, // backtest 2025-26: 1–4 all help a little, 2 best on hit rate
   xiK: 1.0,
@@ -489,7 +494,9 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   const volatility = 0; // no card/referee feed yet
   // closeness: draws are likelier when the sides are level
   const closeness = CONV.drawClose * Math.max(0, 1 - Math.abs(gap) / CONV.drawCloseSpan);
-  let drawPts = clamp(base + drawFactors + volatility + closeness, CONV.floorDraw, CONV.drawCap[type]);
+  let drawPts = base + drawFactors + volatility + closeness;
+  drawPts = CONV.drawCenter + CONV.drawStretch * (drawPts - CONV.drawCenter) - CONV.drawGapK * 1000 * Math.abs(gap - CONV.homeGap);
+  drawPts = clamp(drawPts, CONV.floorDraw, CONV.drawCap[type]);
 
   // --- split the rest by the gap
   const pH = 1 / (1 + Math.exp(-gap / CONV.gapScale));
@@ -707,6 +714,11 @@ function mergeConv(base: typeof CONV, over: Partial<typeof CONV> | undefined): t
 /** Automatic variant lists for a coordinate-descent style search. */
 export function autoVariants(kind: string, step = 1): SweepVariant[] {
   const out: SweepVariant[] = [];
+  if (kind === 'drawspread') {
+    for (const st of [1, 1.25, 1.5, 1.75, 2, 2.5])
+      for (const gk of [0, 0.1, 0.2, 0.35])
+        if (st !== 1 || gk !== 0) out.push({ name: `drawStretch ${st} drawGapK ${gk}`, conv: { drawStretch: st, drawGapK: gk } as any });
+  }
   if (kind === 'rel') {
     for (const row of ROWS)
       for (const t of MATCH_TYPES)
