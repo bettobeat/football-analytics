@@ -32,7 +32,11 @@ db.exec(`
 
 let byClub = new Map<string, Map<string, number>>();
 let compOf = new Map<string, string>();
+let loadCount = 0;
+/** Changes every time the history is (re)loaded — lets callers drop cached name matches. */
+export const historyVersion = () => loadCount;
 function load() {
+  loadCount++;
   byClub = new Map();
   compOf = new Map((db.prepare(`SELECT club, comp FROM club_value_comp`).all() as any[]).map(r => [r.club, r.comp]));
   for (const r of db.prepare(`SELECT club, month, top_eur FROM club_value_month`).all() as any[]) {

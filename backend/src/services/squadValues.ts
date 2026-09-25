@@ -15,7 +15,7 @@ import { gunzipSync } from 'zlib';
 import { db } from '../db';
 import logger from '../utils/logger';
 import { GROUPS, ALIASES, similarity } from './history';
-import { clubValueAt, syncClubValueHistory, historyClubs } from './squadHistory';
+import { clubValueAt, syncClubValueHistory, historyClubs, historyVersion } from './squadHistory';
 
 const SOURCE_URL =
   process.env.SQUAD_VALUES_URL || 'https://pub-e682421888d945d684bcae8890b0ec20.r2.dev/data/players.csv.gz';
@@ -289,10 +289,11 @@ export function squadValueAt(group: string, fdName: string, date: string): numbe
 const histNameMemo = new Map<string, string | null>();
 let histNamesSize = -1;
 function historyNameFor(group: string, fdName: string): string | null {
+  if (historyVersion() !== histNamesSize) { histNameMemo.clear(); histNamesSize = historyVersion(); }
+  const mk0 = `${group}|${fdName}`;
+  if (histNameMemo.has(mk0)) return histNameMemo.get(mk0)!;
   const all = historyClubs();
-  if (all.length !== histNamesSize) { histNameMemo.clear(); histNamesSize = all.length; }
-  const mk = `${group}|${fdName}`;
-  if (histNameMemo.has(mk)) return histNameMemo.get(mk)!;
+  const mk = mk0;
   // only clubs of this group's leagues (a club without a known league is allowed only on an exact alias)
   const names = all.filter(c => COMPETITION_GROUP[c.comp] === group).map(c => c.name);
   const key = fdName.toLowerCase();
