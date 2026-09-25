@@ -93,6 +93,7 @@ export const CONV = {
   eloRelegPct: 0.75,
   eloK: 20,
   formCurDiv: 0, // 1 = form (last 6) only from games in the team's current division
+  useDivHint: 1, // take each team's division from the fixture being predicted (see buildState)
   // availability rows (#13 injuries, #12 confirmed XI): value = 5.5 − k × (starter-equivalents missing)
   injK: 2.0, // backtest 2025-26: 1–4 all help a little, 2 best on hit rate
   xiK: 1.0,
@@ -215,7 +216,18 @@ function seasonOf(date: string) {
 /**
  * Build the state of every team in a group as of a date, from matches strictly before it.
  */
-export function buildState(group: string, all: HistoryMatch[], asOf: string): GroupState {
+/**
+ * divHint: the division each team plays the upcoming matches in (from the fixtures). Before a promoted
+ * side's first game, "last division seen" is still the old one, so without the hint it would be rated
+ * against second-division teams (Hamburg 68% at Gladbach on matchday 1).
+ */
+const weekDivs = (week: HistoryMatch[]) => {
+  const m = new Map<string, string>();
+  for (const x of week) { m.set(x.home, x.division); m.set(x.away, x.division); }
+  return m;
+};
+
+export function buildState(group: string, all: HistoryMatch[], asOf: string, divHint?: Map<string, string>): GroupState {
   const past = all.filter(m => m.date < asOf);
   const season = seasonOf(asOf);
   const divisions = GROUPS[group]?.divisions || [];
@@ -228,6 +240,7 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string): Gr
       if (m.season === season || !divOf.has(t)) divOf.set(t, m.division);
     }
   }
+  if (divHint && CONV.useDivHint) divHint.forEach((d, t) => divOf.set(t, d));
   // teams whose only appearances are in older seasons and not in this one: still keep (early season)
   const ensure = (name: string) => {
     let t = teams.get(name);
@@ -291,6 +304,20 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string): Gr
       const mult = gd <= 1 ? 1 : gd === 2 ? 1.5 : 1.75 + (gd - 3) / 8;
       const delta = K * mult * (res - exp);
       elo.set(m.home, rh + delta); elo.set(m.away, ra - delta);
+    }
+    // teams about to play in a different division than their last one (promoted / relegated, before their first game)
+    if (divHint && CONV.useDivHint && CONV.eloDivTransfer) {
+      divHint.forEach((d, t) => {
+        const prev = lastDiv.get(t);
+        if (prev && prev.div === d) return;
+        const peers: number[] = [];
+        lastDiv.forEach((v, o) => { if (o !== t && v.div === d && elo.has(o)) peers.push(elo.get(o)!); });
+        if (peers.length < 8) return;
+        peers.sort((x, y) => x - y);
+        const up = !prev || divRank(d) < divRank(prev.div);
+        const q = up ? CONV.eloPromoPct : CONV.eloRelegPct;
+        elo.set(t, peers[Math.min(peers.length - 1, Math.max(0, Math.round(q * (peers.length - 1))))]);
+      });
     }
   }
 
@@ -664,7 +691,7 @@ export async function runBacktestV3(season: string, group: string, conv: Partial
       const to = new Date(cursor.getTime() + 7 * DAY).toISOString().slice(0, 10);
       const week = target.filter(m => m.date >= from && m.date < to);
       if (week.length) {
-        const state = buildState(group, all, from);
+        const state = buildState(group, all, from, weekDivs(week));
         db.exec('BEGIN');
         try {
           for (const m of week) {
@@ -840,7 +867,7 @@ export async function sweepV3(season: string, variants: SweepVariant[], baseConv
         const to = new Date(cursor.getTime() + 7 * DAY).toISOString().slice(0, 10);
         const week = target.filter(m => m.date >= from && m.date < to);
         if (week.length) {
-          const state = buildState(group, all, from);
+          const state = buildState(group, all, from, weekDivs(week));
           for (const m of week) items.push({ state, all, m, from });
           await new Promise<void>(resolve => setImmediate(() => resolve()));
         }
