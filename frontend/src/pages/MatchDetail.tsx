@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
-import { fairOdds, bookLabel, modelInfo, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, drawAlert, type Market, type Prediction } from '../lib/predict'
+import { fairOdds, bookLabel, modelInfo, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, drawAlert, pickOfPrediction, type Market, type Prediction } from '../lib/predict'
+import { useAuth } from '../lib/auth'
 
 /* ---------- types (Football-Data.org v4 shapes, loosely) ---------- */
 
@@ -410,7 +411,7 @@ function MatchDetail() {
         }
       : null
 
-  const pick: 'H' | 'D' | 'A' | null = p ? (p.home >= p.draw && p.home >= p.away ? 'H' : p.away >= p.draw ? 'A' : 'D') : null
+  const pick: 'H' | 'D' | 'A' | null = p ? pickOfPrediction(p) : null
   const pickVar = pick === 'H' ? '--home' : pick === 'A' ? '--away' : '--draw'
 
   return (
@@ -484,7 +485,9 @@ function MatchDetail() {
             title="Prediction"
             note={p ? `${modelInfo(p.model).tag} · ${modelInfo(p.model).name} · ${CONFIDENCE_LABEL[p.confidence]}` : undefined}
           >
-            {p && pick ? (
+            {p && pick && p.locked ? (
+              <LockedPrediction p={p} pick={pick} home={home} away={away} market={details.market || null} />
+            ) : p && pick ? (
               <>
                 {models.length > 1 && (
                   <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
@@ -759,6 +762,52 @@ function TeamHero({ team, align }: { team: Team; align: 'left' | 'right' }) {
   )
 }
 
+/** Free / signed-out view: the pick and confidence; percentages, value and the breakdown are Premium. */
+function LockedPrediction({ p, pick, home, away, market }: { p: Prediction; pick: 'H' | 'D' | 'A'; home: Team; away: Team; market: Market | null }) {
+  const { user } = useAuth()
+  const name = pick === 'H' ? home.shortName || home.name : pick === 'A' ? away.shortName || away.name : 'Draw'
+  const color = pick === 'H' ? 'text-home' : pick === 'D' ? 'text-draw' : 'text-away'
+  const tiles: { k: 'H' | 'D' | 'A'; label: string }[] = [
+    { k: 'H', label: home.shortName || home.name },
+    { k: 'D', label: 'Draw' },
+    { k: 'A', label: away.shortName || away.name }
+  ]
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-2 text-sm mb-4">
+        <span className="px-2.5 py-1 rounded-full text-xs font-bold border bg-surface2 text-ink border-line">Model pick</span>
+        <span className={`font-display font-bold text-lg ${color}`}>{name}</span>
+      </div>
+      <div className="relative min-h-[190px]">
+        <div className="grid grid-cols-3 gap-3 pt-6 select-none blur-[5px] opacity-60" aria-hidden>
+          {tiles.map(t => (
+            <OutcomeTile key={t.k} k={t.k} label={t.label} v={t.k === pick ? 48.5 : 25.7} active={t.k === pick} />
+          ))}
+        </div>
+        <div className="absolute inset-0 grid place-items-center">
+          <div className="rounded-2xl border border-line bg-surface/95 shadow-lift px-5 py-4 text-center max-w-sm">
+            <div className="font-display font-bold text-ink">Full prediction with Premium</div>
+            <div className="text-xs text-muted mt-1">
+              Win / draw / loss %, fair odds, model vs market, strong picks, draw alerts and the full v3 breakdown.
+            </div>
+            <div className="mt-3 flex justify-center gap-2">
+              <Link to="/premium" className="px-3.5 py-1.5 rounded-xl bg-accent text-bg text-sm font-semibold">
+                See Premium
+              </Link>
+              {!user && (
+                <Link to="/login" className="px-3.5 py-1.5 rounded-xl border border-line text-sm font-medium text-ink hover:border-faint">
+                  Sign in
+                </Link>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+      {market && <MarketStrip p={p} m={market} home={home} away={away} />}
+    </div>
+  )
+}
+
 function OutcomeTile({ k, label, v, active }: { k: 'H' | 'D' | 'A'; label: string; v: number; active: boolean }) {
   const color = k === 'H' ? 'text-home' : k === 'D' ? 'text-draw' : 'text-away'
   const border = k === 'H' ? 'border-home/50 bg-home/10' : k === 'D' ? 'border-draw/50 bg-draw/10' : 'border-away/50 bg-away/10'
@@ -781,6 +830,7 @@ function MarketStrip({ p, m, home, away }: { p: Prediction; m: Market; home: Tea
     { k: 'D', label: 'Draw', odds: m.msw.draw, mkt: m.probs.draw, model: p.draw },
     { k: 'A', label: away.shortName || away.name, odds: m.msw.awayWin, mkt: m.probs.away, model: p.away }
   ]
+  const showModel = !p.locked
   const age = Math.max(0, Math.round((Date.now() - new Date(m.fetchedAt).getTime()) / 60000))
   const ageText = age < 60 ? `${age} min ago` : age < 60 * 48 ? `${Math.round(age / 60)} h ago` : `${Math.round(age / 1440)} d ago`
   return (
@@ -806,10 +856,12 @@ function MarketStrip({ p, m, home, away }: { p: Prediction; m: Market; home: Tea
                 <span className="font-semibold">{r.odds.toFixed(2)}</span>
                 <span className="text-muted"> · {r.mkt.toFixed(1)}%</span>
               </div>
-              <div className={`num text-[11px] ${Math.abs(delta) >= 5 ? 'text-ink font-semibold' : 'text-faint'}`} title="Model minus market">
-                model {delta >= 0 ? '+' : ''}
-                {delta.toFixed(1)} pp
-              </div>
+              {showModel && (
+                <div className={`num text-[11px] ${Math.abs(delta) >= 5 ? 'text-ink font-semibold' : 'text-faint'}`} title="Model minus market">
+                  model {delta >= 0 ? '+' : ''}
+                  {delta.toFixed(1)} pp
+                </div>
+              )}
             </div>
           )
         })}

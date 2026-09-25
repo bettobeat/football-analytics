@@ -3,6 +3,12 @@ import { BrowserRouter as Router, Routes, Route, Link, NavLink } from 'react-rou
 import Dashboard from './pages/Dashboard'
 import MatchDetail from './pages/MatchDetail'
 import Accuracy from './pages/Accuracy'
+import Login from './pages/Login'
+import Account from './pages/Account'
+import Premium from './pages/Premium'
+import Admin from './pages/Admin'
+import PremiumGate from './components/PremiumGate'
+import { AuthProvider, useAuth } from './lib/auth'
 import { socket } from './lib/socket'
 import { useTheme } from './lib/theme'
 
@@ -41,7 +47,63 @@ function ThemeToggle({ theme, onToggle }: { theme: 'dark' | 'light'; onToggle: (
   )
 }
 
+function UserMenu() {
+  const { user, access, loading } = useAuth()
+  if (loading) return <div className="w-9 h-9" />
+  if (!user)
+    return (
+      <Link to="/login" className="px-3.5 py-2 rounded-xl bg-accent text-bg text-sm font-semibold whitespace-nowrap">
+        Sign in
+      </Link>
+    )
+  const badge = access === 'admin' ? 'Admin' : access === 'premium' ? 'Premium' : 'Free'
+  return (
+    <Link
+      to="/account"
+      className="flex items-center gap-2 pl-1 pr-2.5 py-1 rounded-xl border border-line/80 bg-surface hover:border-faint transition-colors"
+      title={user.email}
+    >
+      <span className="w-7 h-7 rounded-lg bg-accent/15 text-accent grid place-items-center text-xs font-bold uppercase">
+        {(user.name || user.email).charAt(0)}
+      </span>
+      <span className={`text-[11px] font-semibold ${access === 'free' ? 'text-muted' : 'text-accent'}`}>{badge}</span>
+    </Link>
+  )
+}
+
+function NavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
+  const { access } = useAuth()
+  return (
+    <>
+      <NavLink to="/" end className={cls}>
+        Matches
+      </NavLink>
+      <NavLink to="/accuracy" className={cls}>
+        Accuracy
+      </NavLink>
+      {access !== 'premium' && access !== 'admin' && (
+        <NavLink to="/premium" className={cls}>
+          Premium
+        </NavLink>
+      )}
+      {access === 'admin' && (
+        <NavLink to="/admin" className={cls}>
+          Users
+        </NavLink>
+      )}
+    </>
+  )
+}
+
 function App() {
+  return (
+    <AuthProvider>
+      <Shell />
+    </AuthProvider>
+  )
+}
+
+function Shell() {
   const [connected, setConnected] = useState(socket.connected)
   const { theme, toggle } = useTheme()
 
@@ -69,12 +131,7 @@ function App() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
             <Logo />
             <nav className="hidden sm:flex items-center gap-1">
-              <NavLink to="/" end className={navCls}>
-                Matches
-              </NavLink>
-              <NavLink to="/accuracy" className={navCls}>
-                Accuracy
-              </NavLink>
+              <NavLinks cls={navCls} />
             </nav>
             <div className="flex items-center gap-3">
               <div
@@ -89,17 +146,13 @@ function App() {
                 {connected ? 'Live' : 'Offline'}
               </div>
               <ThemeToggle theme={theme} onToggle={toggle} />
+              <UserMenu />
             </div>
           </div>
           {/* mobile nav */}
           <div className="sm:hidden border-t border-line/60">
-            <div className="max-w-7xl mx-auto px-4 flex gap-1 py-1.5">
-              <NavLink to="/" end className={navCls}>
-                Matches
-              </NavLink>
-              <NavLink to="/accuracy" className={navCls}>
-                Accuracy
-              </NavLink>
+            <div className="max-w-7xl mx-auto px-4 flex gap-1 py-1.5 overflow-x-auto">
+              <NavLinks cls={navCls} />
             </div>
           </div>
         </header>
@@ -108,7 +161,19 @@ function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/match/:id" element={<MatchDetail />} />
-            <Route path="/accuracy" element={<Accuracy />} />
+            <Route
+              path="/accuracy"
+              element={
+                <PremiumGate title="Accuracy">
+                  <Accuracy />
+                </PremiumGate>
+              }
+            />
+            <Route path="/login" element={<Login mode="login" />} />
+            <Route path="/signup" element={<Login mode="signup" />} />
+            <Route path="/account" element={<Account />} />
+            <Route path="/premium" element={<Premium />} />
+            <Route path="/admin" element={<Admin />} />
           </Routes>
         </main>
 

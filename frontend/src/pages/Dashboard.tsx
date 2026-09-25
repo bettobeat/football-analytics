@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
-import { bookLabel, type Market, type Prediction } from '../lib/predict'
+import { bookLabel, pickOfPrediction, type Market, type Prediction } from '../lib/predict'
 
 interface Team {
   id: number
@@ -67,9 +67,41 @@ function kickoff(iso: string) {
 }
 
 function pickOf(p: Prediction): Pick {
-  if (p.home >= p.draw && p.home >= p.away) return 'H'
-  if (p.away >= p.draw) return 'A'
-  return 'D'
+  return pickOfPrediction(p)
+}
+
+/** Free / signed-out view of a prediction: the pick, blurred bars, and what Premium adds. */
+function LockedPick({ match, p, pick, big }: { match: APIMatch; p: Prediction; pick: Pick; big?: boolean }) {
+  const name = pick === 'H' ? match.homeTeam.shortName || match.homeTeam.name : pick === 'A' ? match.awayTeam.shortName || match.awayTeam.name : 'Draw'
+  return (
+    <div className="relative">
+      <div className="flex items-baseline justify-between gap-2 mb-2">
+        <span className="label whitespace-nowrap">Model pick</span>
+        <span className={`font-display font-bold truncate ${big ? '' : 'text-sm'} ${PICK_COLOR[pick]}`}>{name}</span>
+      </div>
+      <div className={`flex ${big ? 'h-2.5' : 'h-2'} gap-[3px] blur-[1.5px] opacity-50`} aria-hidden>
+        {(['H', 'D', 'A'] as Pick[]).map(k => (
+          <div key={k} className={`${pick === k ? PICK_BG[k] : 'bg-faint/40'} rounded-full`} style={{ width: pick === k ? 'calc(46% - 3px)' : 'calc(27% - 3px)' }} />
+        ))}
+      </div>
+      {match.market && <MarketRow p={p} m={match.market} pick={pick} />}
+      <div className="mt-2.5 flex items-center justify-between gap-2 text-[11px] text-faint">
+        <span className="inline-flex items-center gap-1">
+          <LockIcon /> Win % and value with Premium
+        </span>
+        {p.confidence && <ConfidenceTag c={p.confidence} />}
+      </div>
+    </div>
+  )
+}
+
+function LockIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="4" y="11" width="16" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
+  )
 }
 
 // "Big club" ranking for the Spotlight — global recognition, not current form.
@@ -181,7 +213,7 @@ function Dashboard() {
         const fa = fame(m.awayTeam)
         // the biggest club decides, the opponent adds a little; model strength only breaks ties
         const f = Math.max(fh, fa) + 0.4 * Math.min(fh, fa)
-        const s = m.prediction ? (m.prediction.factors.homeAttack + m.prediction.factors.awayAttack) / 20 : 0
+        const s = m.prediction?.factors ? (m.prediction.factors.homeAttack + m.prediction.factors.awayAttack) / 20 : 0
         return { m, s: f + s }
       })
       .sort((a, b) => b.s - a.s)
@@ -588,7 +620,7 @@ function ConfidenceTag({ c }: { c: Prediction['confidence'] }) {
 function MarketRow({ p, m, pick }: { p: Prediction; m: Market; pick: Pick }) {
   const modelPick = pick === 'H' ? p.home : pick === 'D' ? p.draw : p.away
   const marketPick = pick === 'H' ? m.probs.home : pick === 'D' ? m.probs.draw : m.probs.away
-  const delta = modelPick - marketPick
+  const delta = p.locked ? null : modelPick - marketPick
   const seg = (v: number) => <div className="rounded-full bg-faint/50" style={{ width: `calc(${v}% - 3px)` }} />
   return (
     <div className="mt-2">
@@ -602,10 +634,12 @@ function MarketRow({ p, m, pick }: { p: Prediction; m: Market; pick: Pick }) {
           <span className="font-semibold mr-1.5">{bookLabel(m)}</span>
           {Math.round(m.probs.home)} · {Math.round(m.probs.draw)} · {Math.round(m.probs.away)}
         </span>
-        <span className={`num ${Math.abs(delta) >= 5 ? 'text-ink font-semibold' : ''}`} title="Model minus market on the pick">
-          {delta >= 0 ? '+' : ''}
-          {delta.toFixed(1)} pp
-        </span>
+        {delta !== null && (
+          <span className={`num ${Math.abs(delta) >= 5 ? 'text-ink font-semibold' : ''}`} title="Model minus market on the pick">
+            {delta >= 0 ? '+' : ''}
+            {delta.toFixed(1)} pp
+          </span>
+        )}
       </div>
     </div>
   )
@@ -663,7 +697,9 @@ function MatchCard({ match, delay = 0 }: { match: APIMatch; delay?: number }) {
         })}
       </div>
 
-      {p && pick ? (
+      {p && pick && p.locked ? (
+        <LockedPick match={match} p={p} pick={pick} />
+      ) : p && pick ? (
         <div className="relative">
           <ProbBar p={p} pick={pick} />
           <div className="mt-2">
@@ -699,6 +735,7 @@ function SpotlightCard({ match }: { match: APIMatch }) {
   const favName = pick === 'H' ? match.homeTeam.shortName || match.homeTeam.name : pick === 'A' ? match.awayTeam.shortName || match.awayTeam.name : 'Draw'
   const favProb = pick === 'H' ? p.home : pick === 'A' ? p.away : p.draw
   const d = new Date(match.utcDate)
+  const locked = !!p.locked
 
   return (
     <Link to={`/match/${match.id}`} className="card card-hover relative overflow-hidden p-5 block">
@@ -728,6 +765,11 @@ function SpotlightCard({ match }: { match: APIMatch }) {
         </div>
       </div>
 
+      {locked ? (
+        <div className="relative mt-5">
+          <LockedPick match={match} p={p} pick={pick} big />
+        </div>
+      ) : (
       <div className="relative mt-5">
         <div className="flex items-baseline justify-between gap-2 mb-2">
           <span className="label whitespace-nowrap">{fromMarket ? 'Market favourite' : 'Pick'}</span>
@@ -742,6 +784,7 @@ function SpotlightCard({ match }: { match: APIMatch }) {
         {match.market && !fromMarket && <MarketRow p={p} m={match.market} pick={pick} />}
         {fromMarket && <div className="mt-2 text-[11px] text-faint">No model prediction for this competition · bookmaker odds</div>}
       </div>
+      )}
     </Link>
   )
 }

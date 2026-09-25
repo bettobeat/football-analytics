@@ -32,6 +32,10 @@ import {
 import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNationalEloScheduler } from './services/nationalElo';
 import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler } from './services/clubElo';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures } from './services/apiFootball';
+import {
+  signup, login, changePassword, setPlan, adminResetPassword, listUsers, userStats, createSession, destroySession, userForToken,
+  parseCookies, setSessionCookie, clearSessionCookie, SESSION_COOKIE, accessOf, canSeeFull, teaseDeep, AuthError, Access, User
+} from './services/auth';
 import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, backfillV3, setRelOverride, SweepVariant } from './services/gridModel';
 
 const isDev = (process.env.NODE_ENV || 'development') !== 'production';
@@ -62,7 +66,21 @@ const io = new Server(server, {
   allowRequest: (req, cb) => cb(null, !SITE_AUTH || req.headers.authorization === SITE_AUTH)
 });
 
+// Each socket joins 'full' (premium/admin) or 'teaser' (anonymous/free) — predictions are trimmed for 'teaser'
+io.use((socket, next) => {
+  try {
+    const cookies = parseCookies(socket.request.headers.cookie);
+    const user = userForToken(cookies[SESSION_COOKIE]);
+    socket.data.full = canSeeFull(accessOf(user));
+  } catch {
+    socket.data.full = false;
+  }
+  next();
+});
+
 // Middleware (CSP off: the site loads Google Fonts and club crests from other hosts)
+// Railway terminates TLS in front of us: trust the first proxy so req.ip / req.secure are real
+app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json());
@@ -87,6 +105,142 @@ if (SITE_PASSWORD) {
   });
   logger.info('Private beta gate enabled (SITE_USER / SITE_PASSWORD)');
 }
+
+// ---------- Accounts: who is asking, and what they may see ----------
+// anon / free  → matches, leagues, teams (predictions trimmed to the pick)
+// premium      → + full predictions, Accuracy page data
+// admin        → everything (maintenance, backtests, syncs, user admin). ADMIN_EMAILS or the read token (GET only).
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      user?: User | null;
+      access?: Access;
+    }
+  }
+}
+
+app.use((req, _res, next) => {
+  const cookies = parseCookies(req.headers.cookie);
+  let user: User | null = null;
+  try {
+    user = userForToken(cookies[SESSION_COOKIE]);
+  } catch (e: any) {
+    logger.warn('Session lookup failed', { message: e.message });
+  }
+  req.user = user;
+  req.access = accessOf(user);
+  if (API_READ_TOKEN && req.method === 'GET' && req.query.token === API_READ_TOKEN) req.access = 'admin';
+  next();
+});
+
+const OPEN_API = /^\/api\/(health$|auth\/|matches(\/|$)|leagues(\/|$)|teams\/)/;
+const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|backtest|history\/status|clv)$/;
+
+app.use('/api', (req, res, next) => {
+  const p = req.originalUrl.split('?')[0];
+  const access = req.access || 'anon';
+  if (OPEN_API.test(p)) {
+    // Trim predictions for anonymous and free users
+    if (!canSeeFull(access) && p.startsWith('/api/matches')) {
+      const json = res.json.bind(res);
+      res.json = (body: any) => json(teaseDeep(body));
+    }
+    return next();
+  }
+  if (access === 'admin') return next();
+  if (req.method === 'GET' && PREMIUM_GET_API.test(p)) {
+    if (access === 'premium') return next();
+    return res.status(access === 'anon' ? 401 : 402).json({ error: access === 'anon' ? 'Sign in required' : 'Premium required', premium: true });
+  }
+  return res.status(access === 'anon' ? 401 : 403).json({ error: 'Not allowed' });
+});
+
+function authFail(res: express.Response, e: any) {
+  if (e instanceof AuthError) return res.status(e.status).json({ error: e.message });
+  logger.error('Auth error', { message: e?.message });
+  return res.status(500).json({ error: 'Something went wrong. Please try again.' });
+}
+
+function sessionPayload(user: User | null) {
+  return { user, access: accessOf(user) };
+}
+
+// Only JSON bodies on auth POSTs (with SameSite=Lax cookies this blocks cross-site form posts)
+function jsonOnly(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (!req.is('application/json')) return res.status(415).json({ error: 'JSON body required' });
+  next();
+}
+
+app.get('/api/auth/me', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(sessionPayload(req.user || null));
+});
+
+app.post('/api/auth/signup', jsonOnly, (req, res) => {
+  try {
+    const user = signup(req.body?.email, req.body?.password, req.body?.name, req.ip || '');
+    const s = createSession(user.id, req.headers['user-agent']);
+    setSessionCookie(res, s.token, s.expires, req.secure);
+    res.status(201).json(sessionPayload(user));
+  } catch (e) {
+    authFail(res, e);
+  }
+});
+
+app.post('/api/auth/login', jsonOnly, (req, res) => {
+  try {
+    const user = login(req.body?.email, req.body?.password, req.ip || '');
+    const s = createSession(user.id, req.headers['user-agent']);
+    setSessionCookie(res, s.token, s.expires, req.secure);
+    res.json(sessionPayload(user));
+  } catch (e) {
+    authFail(res, e);
+  }
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  destroySession(parseCookies(req.headers.cookie)[SESSION_COOKIE]);
+  clearSessionCookie(res, req.secure);
+  res.json(sessionPayload(null));
+});
+
+app.post('/api/auth/password', jsonOnly, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  try {
+    changePassword(req.user.id, req.body?.current, req.body?.next);
+    const s = createSession(req.user.id, req.headers['user-agent']);
+    setSessionCookie(res, s.token, s.expires, req.secure);
+    res.json({ ok: true });
+  } catch (e) {
+    authFail(res, e);
+  }
+});
+
+// ---------- Admin: users and plans (payments will call setPlan later) ----------
+
+app.get('/api/admin/users', (_req, res) => {
+  res.json({ data: listUsers(), stats: userStats() });
+});
+
+app.post('/api/admin/users/:id(\\d+)/plan', jsonOnly, (req, res) => {
+  try {
+    const plan = req.body?.plan === 'premium' ? 'premium' : 'free';
+    const until = req.body?.until ? new Date(String(req.body.until)).toISOString() : null;
+    res.json({ data: setPlan(parseInt(req.params.id, 10), plan, until) });
+  } catch (e) {
+    authFail(res, e);
+  }
+});
+
+app.post('/api/admin/users/:id(\\d+)/password', jsonOnly, (req, res) => {
+  try {
+    adminResetPassword(parseInt(req.params.id, 10), req.body?.password);
+    res.json({ ok: true });
+  } catch (e) {
+    authFail(res, e);
+  }
+});
 
 function sendError(res: express.Response, error: any, fallback: string) {
   const status = error?.response?.status || 500;
@@ -586,12 +740,15 @@ app.get('/api/backtest', (req, res) => {
 io.on('connection', socket => {
   logger.info(`Client connected: ${socket.id}`);
 
+  const tier = socket.data.full ? 'full' : 'teaser';
+  socket.join(tier);
+
   socket.on('subscribe_match', (matchId: number) => {
-    socket.join(`match:${matchId}`);
+    socket.join(`match:${matchId}:${tier}`);
   });
 
   socket.on('unsubscribe_match', (matchId: number) => {
-    socket.leave(`match:${matchId}`);
+    socket.leave(`match:${matchId}:${tier}`);
   });
 
   socket.on('disconnect', reason => {
@@ -608,10 +765,13 @@ setInterval(async () => {
     const fdLive = footballDataAPI.withPredictions(await footballDataAPI.getLiveMatches());
     recordPredictions(fdLive); // locks anything that has kicked off (Football-Data.org matches only)
     const live = [...fdLive, ...afWithPredictions(await pollAfLive())];
-    io.emit('matches:live', { data: live, timestamp: new Date().toISOString() });
+    const ts = new Date().toISOString();
+    io.to('full').emit('matches:live', { data: live, timestamp: ts });
+    io.to('teaser').emit('matches:live', teaseDeep({ data: live, timestamp: ts }));
     // Per-match rooms get their own update (score / status / minute)
     for (const m of live) {
-      io.to(`match:${m.id}`).emit('match:live', m);
+      io.to(`match:${m.id}:full`).emit('match:live', m);
+      io.to(`match:${m.id}:teaser`).emit('match:live', teaseDeep({ m }).m);
     }
   } catch (error: any) {
     logger.warn('Live poll failed', { message: error.message });

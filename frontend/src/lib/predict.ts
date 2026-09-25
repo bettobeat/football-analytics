@@ -1,6 +1,9 @@
 // Prediction shape served by the backend (see backend/src/services/predictionModel.ts)
 export interface Prediction {
   model: string
+  /** Free / signed-out view: the server sends only { model, locked, pick, confidence } */
+  locked?: boolean
+  pick?: 'H' | 'D' | 'A'
   home: number // %
   draw: number // %
   away: number // %
@@ -36,6 +39,14 @@ export const MATCH_TYPE_LABEL: Record<NonNullable<Prediction['grid']>['matchType
   standard: 'Standard',
   even: 'Even match',
   big: 'Big match'
+}
+
+/** The model's pick (works for full and locked predictions). */
+export function pickOfPrediction(p: Prediction): 'H' | 'D' | 'A' {
+  if (p.locked && p.pick) return p.pick
+  if (p.home >= p.draw && p.home >= p.away) return 'H'
+  if (p.away >= p.draw) return 'A'
+  return 'D'
 }
 
 /** Fair (no-margin) decimal odds implied by a probability in %. */
@@ -90,7 +101,7 @@ export function modelInfo(model: string) {
  */
 export const DRAW_ALERT = { k: 0.75, minEdge: 0.02, minV3Draw: 30, excluded: ['PD'] }
 export function drawAlert(p: Prediction, m: Market | null | undefined, competitionCode?: string) {
-  if (!m || p.model !== 'grid-v3' || p.draw < DRAW_ALERT.minV3Draw) return null
+  if (!m || p.locked || p.model !== 'grid-v3' || p.draw < DRAW_ALERT.minV3Draw) return null
   if (competitionCode && DRAW_ALERT.excluded.includes(competitionCode)) return null
   const price = m.best?.draw || m.msw.draw
   if (!price) return null
