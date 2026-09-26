@@ -29,12 +29,16 @@ const logo = (id: number) => `https://media.api-sports.io/football/teams/${id}.p
  * They win over provider data and are shown as-is.
  */
 db.exec(`CREATE TABLE IF NOT EXISTS team_overrides (af_id INTEGER NOT NULL, field TEXT NOT NULL, value TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (af_id, field))`);
+// Last good copy of every team page, kept in the database: survives restarts (no API calls after a deploy) and is
+// served when the daily API-Football budget runs out, instead of an error page.
+db.exec(`CREATE TABLE IF NOT EXISTS team_page_store (af_id INTEGER PRIMARY KEY, json TEXT NOT NULL, built_at TEXT NOT NULL)`);
 const OVERRIDE_FIELDS = new Set(['venue', 'city', 'capacity', 'founded', 'name']);
 export function setTeamOverride(afId: number, field: string, value: string | null) {
   if (!OVERRIDE_FIELDS.has(field)) throw new Error(`field must be one of ${[...OVERRIDE_FIELDS].join(', ')}`);
   if (value === null || value === '') db.prepare(`DELETE FROM team_overrides WHERE af_id = ? AND field = ?`).run(afId, field);
   else db.prepare(`INSERT OR REPLACE INTO team_overrides (af_id, field, value, updated_at) VALUES (?, ?, ?, ?)`).run(afId, field, value, new Date().toISOString());
   cache.delete(`team:${afId}`);
+  db.prepare(`DELETE FROM team_page_store WHERE af_id = ?`).run(afId);
   return teamOverrides(afId);
 }
 export function teamOverrides(afId?: number) {
@@ -300,8 +304,32 @@ async function build(afId: number) {
 }
 
 /** Full team page (premium) or the free cut. */
+async function pageData(afId: number): Promise<any> {
+  const stored: any = db.prepare(`SELECT json, built_at FROM team_page_store WHERE af_id = ?`).get(afId);
+  const mem = cache.get(`team:${afId}`);
+  // a fresh stored copy (e.g. just after a restart) is as good as the memory one
+  if (!mem && stored && Date.now() - new Date(stored.built_at).getTime() < PAGE_TTL) {
+    const data = JSON.parse(stored.json);
+    cache.set(`team:${afId}`, { at: new Date(stored.built_at).getTime(), data });
+    return data;
+  }
+  try {
+    const data = await cached(`team:${afId}`, PAGE_TTL, () => build(afId));
+    if (!stored || stored.built_at !== data.builtAt)
+      db.prepare(`INSERT OR REPLACE INTO team_page_store (af_id, json, built_at) VALUES (?, ?, ?)`).run(afId, JSON.stringify(data), data.builtAt);
+    return data;
+  } catch (e: any) {
+    // out of API budget (or the provider is down): show the last good copy, marked with its age
+    if (stored) {
+      logger.warn(`team page ${afId}: serving the copy from ${stored.built_at} (${e.message})`);
+      return { ...JSON.parse(stored.json), stale: true };
+    }
+    throw e;
+  }
+}
+
 export async function teamPage(afId: number, full: boolean) {
-  const data: any = await cached(`team:${afId}`, PAGE_TTL, () => build(afId));
+  const data: any = await pageData(afId);
   if (full) return { ...data, premium: true };
   return {
     ...data,

@@ -25,6 +25,7 @@ interface TeamData {
   premium: boolean
   locked?: string[]
   builtAt?: string
+  stale?: boolean
 }
 
 const FORM_BG = { W: 'bg-win', D: 'bg-draw', L: 'bg-loss' }
@@ -107,7 +108,10 @@ export default function Team() {
     axios
       .get(`${API_URL}/team-page/${id}`, { params: { c: sp.get('c') || undefined, n: sp.get('n') || undefined } })
       .then(r => setData(r.data.data))
-      .catch(e => setError(e?.response?.status === 404 ? "We couldn't find this team yet." : errorText(e)))
+      .catch(e => setError(
+        e?.response?.status === 404 ? "We couldn't find this team yet."
+          : /budget/i.test(e?.response?.data?.message || '') ? "This team page isn't available right now — our data provider's daily limit has been reached. It comes back automatically after 03:00 (Israel time)."
+          : errorText(e)))
   }, [id, sp, access])
 
   useEffect(() => {
@@ -153,7 +157,11 @@ export default function Team() {
           </div>
           {data.builtAt && (
             <div className="text-[11px] text-[#9AA3B2]">
-              Updated {Math.max(1, Math.round((Date.now() - new Date(data.builtAt).getTime()) / 60000))} min ago · results and table refresh every 15 minutes
+              {(() => {
+                const m = Math.max(1, Math.round((Date.now() - new Date(data.builtAt!).getTime()) / 60000))
+                return `Updated ${m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`} ago`
+              })()}
+              {data.stale ? ' · live data paused (daily data limit reached), refreshes after 03:00' : ' · results and table refresh every 15 minutes'}
             </div>
           )}
         </div>
