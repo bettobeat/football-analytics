@@ -735,7 +735,7 @@ function MatchDetail() {
           </Section>
 
           {/* How the chances moved: live win probability / after the game, how it swung (premium: it starts from our prediction) */}
-          {(live || done) && p && !p.locked && (
+          {(live || done) && p && !p.locked && !hidden && (
             <Section title={live ? 'Live win probability' : 'How the game swung'} note="From our pre-match prediction, updated with the score, time and red cards">
               <WinProbability p={p} m={m} />
             </Section>
@@ -778,8 +778,8 @@ function MatchDetail() {
 
           {/* Lineups */}
           {hasLineups ? (
-            <Section title="Official lineups" note={[home.formation, away.formation].filter(Boolean).join(' vs ') || undefined}>
-              <Pitch home={home} away={away} />
+            <Section title={live ? 'Live pitch' : done ? 'Lineups and match events' : 'Official lineups'} note={[home.formation, away.formation].filter(Boolean).join(' vs ') || undefined}>
+              {live || done ? <LivePitch m={m} home={home} away={away} live={live} /> : <Pitch home={home} away={away} />}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-5">
                 <Bench team={home} />
                 <Bench team={away} />
@@ -1458,6 +1458,117 @@ function Pitch({ home, away, probable = false }: { home: Team; away: Team; proba
           <div className="absolute top-2 right-3 text-[10px] text-white/70 drop-shadow">Coach {team.coach.name}</div>
         )}
       </div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Live pitch: both XIs in their formation, with what happened to each */
+/* player (goals, assists, cards, substitutions). From the event feed — */
+/* no positions or ball tracking (our data provider doesn't have them).  */
+/* ------------------------------------------------------------------ */
+
+const nameKey = (n: string) => lastName(n || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
+function LivePitch({ m, home, away, live }: { m: Match; home: Team; away: Team; live: boolean }) {
+  // events are matched to players by id, or by surname when the lineup and the events come from different feeds
+  const same = (pl: { id: number; name: string }, x?: { id: number; name: string } | null) =>
+    !!x && (x.id === pl.id || (!!x.name && nameKey(x.name) === nameKey(pl.name)))
+  const info = (pl: PitchPlayer, teamId: number) => {
+    const goals = (m.goals || []).filter(g => g.type !== 'OWN' && g.team.id === teamId && same(pl, g.scorer)).length
+    const own = (m.goals || []).filter(g => g.type === 'OWN' && same(pl, g.scorer)).length
+    const assists = (m.goals || []).filter(g => g.team.id === teamId && same(pl, g.assist)).length
+    const cards = (m.bookings || []).filter(b => b.team.id === teamId && same(pl, b.player))
+    const yellow = cards.some(c => c.card === 'YELLOW')
+    const red = cards.find(c => c.card === 'RED' || c.card === 'YELLOW_RED')
+    return { goals, own, assists, yellow, red }
+  }
+  // who is in each starting slot now: follow the substitutions
+  const slot = (starter: PitchPlayer, teamId: number) => {
+    let cur: PitchPlayer = starter
+    const chain: { out: string; in: string; minute: number }[] = []
+    for (const sub of [...(m.substitutions || [])].filter(x => x.team.id === teamId).sort((a, b) => a.minute - b.minute)) {
+      if (same(cur, sub.playerOut)) {
+        chain.push({ out: cur.name, in: sub.playerIn.name, minute: sub.minute })
+        cur = { id: sub.playerIn.id, name: sub.playerIn.name, shirtNumber: null }
+      }
+    }
+    return { cur, chain }
+  }
+  const side = (team: Team, isHome: boolean) => {
+    const rows = formationRows(team)
+    const n = rows.length
+    return rows.flatMap((row, i) =>
+      row.map((pl, j) => {
+        const t = n <= 1 ? 0 : i / (n - 1)
+        const x = isHome ? 5 + t * 40 : 95 - t * 40
+        const y = ((j + 1) / (row.length + 1)) * 100
+        return { pl, x: isHome ? x : x, y: isHome ? y : 100 - y, teamId: team.id }
+      })
+    )
+  }
+  const dots = [...side(home, true), ...side(away, false)]
+  const ft = m.score?.fullTime
+  const Mark = ({ children, cls }: { children: ReactNode; cls: string }) => <span className={`absolute grid place-items-center rounded-full text-[9px] font-extrabold leading-none ${cls}`}>{children}</span>
+  return (
+    <div>
+      <div className="relative w-full rounded-2xl overflow-hidden border border-line/60" style={{ aspectRatio: '16 / 10', background: 'repeating-linear-gradient(90deg, rgb(28 120 66) 0 10%, rgb(33 131 73) 10% 20%)' }}>
+        <svg viewBox="0 0 1000 625" className="absolute inset-0 w-full h-full" preserveAspectRatio="none" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="2" aria-hidden>
+          <rect x="15" y="15" width="970" height="595" rx="3" />
+          <line x1="500" y1="15" x2="500" y2="610" />
+          <circle cx="500" cy="312" r="72" />
+          <rect x="15" y="150" width="140" height="325" /><rect x="15" y="235" width="50" height="155" />
+          <rect x="845" y="150" width="140" height="325" /><rect x="935" y="235" width="50" height="155" />
+          <path d="M155 250 A70 70 0 0 1 155 375" /><path d="M845 250 A70 70 0 0 0 845 375" />
+        </svg>
+        {/* scoreboard */}
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1 rounded-full bg-black/55 backdrop-blur text-white text-xs font-bold">
+          {live && <span className="w-1.5 h-1.5 rounded-full bg-live animate-pulseDot" />}
+          <span>{home.tla || home.shortName || home.name}</span>
+          <span className="num">{ft?.home ?? 0} – {ft?.away ?? 0}</span>
+          <span>{away.tla || away.shortName || away.name}</span>
+          <span className="text-white/70 font-semibold">{live ? (m.status === 'PAUSED' ? 'HT' : m.minute ? `${m.minute}'` : 'Live') : 'FT'}</span>
+        </div>
+        {dots.map(({ pl, x, y, teamId }) => {
+          const { cur, chain } = slot(pl, teamId)
+          const a = info(pl, teamId), b = cur !== pl ? info(cur as PitchPlayer, teamId) : null
+          const goals = a.goals + (b?.goals || 0), assists = a.assists + (b?.assists || 0), own = a.own + (b?.own || 0)
+          const red = (b || a).red || a.red
+          const yellow = (b || a).yellow
+          const isHome = teamId === home.id
+          const title = [
+            chain.length ? `${chain.map(c => `${c.out} ⟶ ${c.in} (${c.minute}')`).join(', ')}` : pl.name,
+            goals ? `${goals} goal${goals > 1 ? 's' : ''}` : '', assists ? `${assists} assist${assists > 1 ? 's' : ''}` : '',
+            own ? 'own goal' : '', red ? `sent off ${red.minute}'` : yellow ? 'booked' : ''
+          ].filter(Boolean).join(' · ')
+          return (
+            <div key={`${teamId}-${pl.id}`} className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center w-[72px] sm:w-[84px]" style={{ left: `${x}%`, top: `${y}%` }} title={title}>
+              <div className={`relative w-7 h-7 sm:w-9 sm:h-9 rounded-full grid place-items-center text-[11px] sm:text-xs font-extrabold num shadow-[0_2px_6px_rgba(0,0,0,0.45)] ${isHome ? 'bg-home text-white' : 'bg-away text-white'} ${red ? 'opacity-40 grayscale' : ''}`}>
+                {cur.shirtNumber ?? pl.shirtNumber ?? ''}
+                {goals > 0 && <Mark cls="-top-1.5 -right-2 w-4 h-4 bg-white text-black ring-1 ring-black/30">{goals > 1 ? goals : '⚽'}</Mark>}
+                {assists > 0 && <Mark cls="-bottom-1 -right-2 w-4 h-4 bg-accent text-black">A</Mark>}
+                {own > 0 && <Mark cls="-top-1.5 -left-2 w-4 h-4 bg-loss text-white">OG</Mark>}
+                {(yellow || red) && <span className={`absolute -top-1 -left-1.5 w-2.5 h-3.5 rounded-[2px] ring-1 ring-black/30 ${red ? 'bg-loss' : 'bg-draw'}`} />}
+                {chain.length > 0 && <Mark cls="-bottom-1 -left-2 w-4 h-4 bg-win text-black">⇅</Mark>}
+              </div>
+              <span className="mt-0.5 text-[10px] sm:text-[11px] leading-tight text-white font-semibold text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)] truncate max-w-full">
+                {lastName(cur.name)}
+              </span>
+              {chain.length > 0 && (
+                <span className="text-[9px] leading-tight text-white/75 drop-shadow truncate max-w-full">{chain[chain.length - 1].minute}' for {lastName(chain[chain.length - 1].out)}</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-[11px] text-muted">
+        <span className="inline-flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded-full bg-white text-black text-[8px] grid place-items-center">⚽</span>Goal</span>
+        <span className="inline-flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded-full bg-accent text-black text-[8px] font-extrabold grid place-items-center">A</span>Assist</span>
+        <span className="inline-flex items-center gap-1.5"><span className="w-2 h-3 rounded-[2px] bg-draw" />Yellow</span>
+        <span className="inline-flex items-center gap-1.5"><span className="w-2 h-3 rounded-[2px] bg-loss" />Red (greyed out)</span>
+        <span className="inline-flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded-full bg-win text-black text-[8px] grid place-items-center">⇅</span>Came on</span>
+      </div>
+      <p className="mt-2 text-center text-[11px] text-faint">Players in their starting formation; the pitch updates with goals, cards and substitutions. It does not show player or ball positions.</p>
     </div>
   )
 }
