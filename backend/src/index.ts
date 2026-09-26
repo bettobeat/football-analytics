@@ -45,6 +45,7 @@ import {
   parseCookies, setSessionCookie, clearSessionCookie, SESSION_COOKIE, accessOf, canSeeFull, teaseDeep, AuthError, Access, User,
   sendVerification, verifyEmail, requestPasswordReset, resetPassword, setMarketingOptIn, usersCsv, verificationRequired
 } from './services/auth';
+import { playerDataStatus, teamPlayers } from './services/playerData';
 import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, backfillV3, setRelOverride, SweepVariant, tuneLeaguesV3, leagueTuneProgress, leagueConvStatus, clearLeagueConv } from './services/gridModel';
 
 const isDev = (process.env.NODE_ENV || 'development') !== 'production';
@@ -924,6 +925,15 @@ const sweepHandler = (req: express.Request, res: express.Response) => {
   res.json({ data: { started: true, season, variants: variants.length, groups: groups || 'ALL', base }, timestamp: new Date().toISOString() });
 };
 app.get('/api/backtest/sweep', sweepHandler);
+// Player data (API-Football /players per team & season) for the coming player-quality row
+app.get('/api/players/data-status', (_req, res) => {
+  res.json({ data: playerDataStatus(), timestamp: new Date().toISOString() });
+});
+app.get('/api/players/team', (req, res) => {
+  const team = Number(req.query.team), season = Number(req.query.season);
+  if (!team || !season) { res.status(400).json({ error: 'team and season required' }); return; }
+  res.json({ data: teamPlayers(team, season), timestamp: new Date().toISOString() });
+});
 app.post('/api/backtest/sweep', sweepHandler);
 app.get('/api/backtest/sweep/result', (_req, res) => {
   res.json({ data: sweeping ? { running: true, progress: sweepProgress } : lastSweep, timestamp: new Date().toISOString() });

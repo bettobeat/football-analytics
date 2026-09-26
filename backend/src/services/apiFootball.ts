@@ -19,6 +19,7 @@ import { db } from '../db';
 import logger from '../utils/logger';
 import { GROUPS, ALIASES, similarity, seasonCodes } from './history';
 import { playerValue } from './squadValues';
+import { syncPlayerData } from './playerData';
 
 const BASE = 'https://v3.football.api-sports.io';
 const KEY = () => process.env.API_FOOTBALL_KEY || '';
@@ -547,7 +548,13 @@ export async function afTick(force = false) {
     }
     if (got) notes.push(`${got} past lineups`);
 
-    // 4) match statistics (xG) of finished matches, most recent first — every league we model
+    // 4) player seasons (minutes / ratings per club and league) for the player-quality row — before xG
+    try {
+      const pn = await syncPlayerData();
+      if (pn) notes.push(pn);
+    } catch (e: any) { notes.push(`players: ${e.message}`); }
+
+    // 5) match statistics (xG) of finished matches, most recent first — every league we model
     const xgBacklog = db.prepare(`
       SELECT fixture_id, home_id FROM af_fixtures WHERE stats = 0 AND status IN ('FT','AET','PEN') ORDER BY kickoff DESC LIMIT ?
     `).all(XG_PER_TICK) as any[];
