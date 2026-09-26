@@ -39,6 +39,7 @@ import { drawAlertsReport, drawFactorTest } from './services/drawAlerts';
 import { teamPage, searchTeams, resolveAfTeamId, setTeamOverride, teamOverrides } from './services/teamPage';
 import { footballNews } from './services/news';
 import { highlightsFor, highlightsStatus, lastCandidates } from './services/highlights';
+import { rebuildPlayerQuality, playerQualityTable } from './services/playerQuality';
 import { db } from './db';
 import { normalizeName } from './services/history';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures, afGet, afRemaining, xgCoverage } from './services/apiFootball';
@@ -424,6 +425,16 @@ app.get('/api/highlights/debug', async (req, res) => {
   if (!row) { res.status(404).json({ error: 'not tracked' }); return; }
   const h = await highlightsFor({ id, status: 'FINISHED', utcDate: row.utc_date, homeTeam: { name: row.home_team }, awayTeam: { name: row.away_team } }, true);
   res.json({ data: { found: h, search: lastCandidates }, timestamp: new Date().toISOString() });
+});
+// Player quality (v3 row #1p): rebuild from af_player_season, and inspect
+app.get('/api/model/v3/player-quality/rebuild', (req, res) => {
+  try {
+    const k = req.query.k !== undefined ? Number(req.query.k) : 0.5;
+    res.json({ data: rebuildPlayerQuality([2025, 2026], Number.isFinite(k) ? k : 0.5), timestamp: new Date().toISOString() });
+  } catch (e: any) { sendError(res, e, 'Player quality rebuild failed'); }
+});
+app.get('/api/model/v3/player-quality', (req, res) => {
+  res.json({ data: playerQualityTable(Number(req.query.season) || 2026, req.query.grp ? String(req.query.grp) : undefined), timestamp: new Date().toISOString() });
 });
 app.get('/api/highlights/status', (_req, res) => {
   res.json({ data: highlightsStatus(), timestamp: new Date().toISOString() });

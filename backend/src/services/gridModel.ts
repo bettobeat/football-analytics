@@ -47,6 +47,7 @@ const ROWS: RowDef[] = [
   { id: '#1', name: 'Squad value', rel: { mismatch: 10, standard: 10, even: 10, big: 10 }, kind: 'team', note: 'market value of the 15 most valuable players (transfermarkt-datasets snapshot); stands in for lineup value until lineups are priced' },
   { id: '#13', name: 'Missing players (injuries / suspensions)', rel: { mismatch: 3, standard: 4, even: 5, big: 5 }, kind: 'team', note: 'regulars listed out for this match, weighted by how often they started the last 10 (API-Football)' },
   { id: '#12', name: 'Confirmed XI vs usual XI', rel: { mismatch: 4, standard: 5, even: 5, big: 5 }, kind: 'team', note: 'usual starters left out of the confirmed XI (published ~1 h before kick-off)' },
+  { id: '#1p', name: 'Player quality', rel: { mismatch: 0, standard: 0, even: 0, big: 0 }, kind: 'team', note: 'how strong the clubs its players played for last season were (minutes-weighted, with match ratings); off until backtested' },
   { id: '#1e', name: 'Strength (Elo)', rel: { mismatch: 5, standard: 5, even: 4, big: 4 }, kind: 'team', note: 'Elo over all results, margin-aware' },
   { id: '#19', name: 'Attack vs opponent tier', rel: { mismatch: 4, standard: 5, even: 5, big: 4 }, kind: 'team' },
   { id: '#14', name: 'Defence vs opponent tier', rel: { mismatch: 4, standard: 4, even: 4, big: 3 }, kind: 'team' },
@@ -243,6 +244,21 @@ const DAY = 24 * 3600 * 1000;
 const days = (a: string, b: string) => (new Date(b).getTime() - new Date(a).getTime()) / DAY;
 const decay = (age: number, halfLife: number) => Math.pow(0.5, age / halfLife);
 const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x));
+
+/* Squad quality from players' previous season (services/playerQuality.ts writes team_player_quality) */
+let pqCache: { at: number; map: Map<string, number> } | null = null;
+export function clearPlayerQualityCache() { pqCache = null; }
+function playerQualityOf(group: string, name: string, seasonCode: string): number | null {
+  if (!pqCache || Date.now() - pqCache.at > 10 * 60 * 1000) {
+    const map = new Map<string, number>();
+    try {
+      for (const r of db.prepare(`SELECT season, grp, fd_name, pq FROM team_player_quality WHERE pq IS NOT NULL`).all() as any[]) map.set(`${r.season}|${r.grp}|${r.fd_name}`, r.pq);
+    } catch { /* table not built yet */ }
+    pqCache = { at: Date.now(), map };
+  }
+  const v = pqCache.map.get(`${2000 + parseInt(seasonCode.slice(0, 2), 10)}|${group}|${name}`);
+  return v === undefined ? null : v;
+}
 
 /**
  * 1–10 value within a league from the metric itself (standardised), not just the rank:
@@ -482,6 +498,9 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string, div
       for (const x of logs) if (x.raw < floor) { x.raw = floor; floored.set(x.name, Math.exp(floor)); }
     }
     const squad = rankValues(logs);
+    // player quality (#1p): rank within the division; unknown = neutral
+    const pqRaw = list.map(t => ({ name: t.name, raw: playerQualityOf(group, t.name, season) })).filter(x => x.raw !== null) as { name: string; raw: number }[];
+    const pqVals = pqRaw.length >= 6 ? rankValues(pqRaw) : new Map<string, number>();
     let squadMissing = 5;
     if (CONV.squadMissingPct >= 0 && withValue.length >= 6) {
       const vs = [...squad.values()].sort((x, y) => x - y);
@@ -494,6 +513,7 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string, div
         strength: strength.get(t.name)!, attack: att.get(t.name)!, defence: def.get(t.name)!, form: form.get(t.name)!,
         home: home.get(t.name)!, away: away.get(t.name)!, draws: draws.get(t.name)!,
         squad: squad.get(t.name) ?? squadMissing,
+        pq: pqVals.get(t.name) ?? 5.5,
         fresh: t.gamesLast8 === 0 ? 8 : t.gamesLast8 === 1 ? 6 : t.gamesLast8 === 2 ? 4 : 2
       };
     }
@@ -581,6 +601,7 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
 
   const push = (def: RowDef, vh: number, va: number, note?: string, counted = true) => {
     const rel = REL_OVERRIDE?.[def.id]?.[type] ?? def.rel[type];
+    if (rel === 0 && def.id === '#1p') return; // switched off: not shown, no effect
     if (def.kind === 'team') {
       const ph = vh * rel, pa = va * rel;
       totH += ph; totA += pa; if (counted) relSum += rel;
@@ -597,6 +618,7 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   push(R('#1'), h.v.squad, a.v.squad, h.squadEur || a.squadEur
     ? `top-15 value ${h.squadEst ? '~' : ''}${eur(h.squadEur)} vs ${a.squadEst ? '~' : ''}${eur(a.squadEur)}${h.squadEst || a.squadEst ? ' (~ = estimated, incomplete data for a promoted club)' : ''}`
     : 'no squad values loaded — neutral');
+  push(R('#1p'), h.v.pq ?? 5.5, a.v.pq ?? 5.5);
   push(R('#1e'), h.v.strength, a.v.strength);
   // availability (API-Football): confirmed XI supersedes the injury list; rows without data are neutral and not counted
   const av = availabilityFor(state.group, home, away, matchDate || asOf);
