@@ -110,6 +110,7 @@ export const CONV = {
   injK: 2.0, // backtest 2025-26: 1–4 all help a little, 2 best on hit rate
   xiK: 1.0,
   useLineups: 1, // backtest/sweep: 1 = final prediction (with confirmed XI), 0 = provisional (injuries only)
+  xiNet: 0, // 1 = the confirmed-XI row uses absent minus replacements (like-for-like rotation ≈ no effect)
   drawClose: 0, // extra draw points when the two totals are level, fading to 0 as |gap| reaches drawCloseSpan
   drawCloseSpan: 0.3,
   gapScale: 0.2, // logistic scale on the relative gap between team totals (backtest-calibrated)
@@ -628,7 +629,8 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   const avVal = (x: number | null, k: number) => (x === null ? 5.5 : Math.round(clamp(5.5 - k * x, CONV.valueLo, CONV.valueHi) * 10) / 10);
   const names = (l: string[], known: boolean) => (known ? l.join(', ') || 'none' : 'n/a');
   if (xiKnown) {
-    push(R('#12'), avVal(av!.home.absent, CONV.xiK), avVal(av!.away.absent, CONV.xiK),
+    const xiOf = (t: any) => (CONV.xiNet && t.absentNet !== undefined && t.absentNet !== null ? t.absentNet : t.absent);
+    push(R('#12'), avVal(xiOf(av!.home), CONV.xiK), avVal(xiOf(av!.away), CONV.xiK),
       `usual starters out: ${names(av!.home.absentNames, av!.home.absent !== null)} | ${names(av!.away.absentNames, av!.away.absent !== null)}`, false);
     push(R('#13'), 5.5, 5.5, 'covered by the confirmed XI', false);
   } else {

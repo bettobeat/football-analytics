@@ -336,6 +336,7 @@ function mapTeams(group: string) {
 export interface TeamAvail {
   missing: number | null; // Σ regular-weight of injured/suspended (doubtful = half)
   absent: number | null; // Σ regular-weight of the usual top-11 not in the confirmed XI (null = XI not known)
+  absentNet?: number | null; // same, minus the value of the players who replace them (a like-for-like swap ≈ 0)
   missingNames: string[];
   absentNames: string[];
   lineups: number; // how many past lineups the regulars come from
@@ -416,6 +417,15 @@ function buildFeatures(group: string) {
       const absentList: { name: string; w: number }[] = [];
       for (const [id] of top11) if (!xi.ids.has(id)) { const w = imp(id, names.get(id) || ''); absent += w; absentList.push({ name: names.get(id) || String(id), w }); }
       out.absent = Math.round(absent * 100) / 100;
+      // net: who comes in matters too — each replacement is worth his own quality at the absent players' average weight
+      const absentIds = top11.filter(([id]) => !xi.ids.has(id));
+      if (absentIds.length) {
+        const avgW = absentIds.reduce((s, [id]) => s + (weight.get(id) || 0), 0) / absentIds.length;
+        const top11Ids = new Set(top11.map(([id]) => id));
+        let repl = 0;
+        xi.ids.forEach(id => { if (!top11Ids.has(id)) repl += avgW * quality(id, xi.names.get(id) || ''); });
+        out.absentNet = Math.round(Math.max(-3, absent - repl) * 100) / 100;
+      } else out.absentNet = 0;
       out.absentNames = absentList.sort((a, b) => b.w - a.w).slice(0, 4).map(p => p.name);
     }
     return out;
