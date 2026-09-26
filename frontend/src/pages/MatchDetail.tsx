@@ -679,12 +679,7 @@ function MatchDetail() {
 
                 {details.market && <MarketStrip p={p} m={details.market} home={home} away={away} />}
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
-                  <Stat label="Expected goals" value={`${p.expectedGoals.home} – ${p.expectedGoals.away}`} />
-                  <Stat label="Over 2.5" value={`${Math.round(p.over25)}%`} />
-                  <Stat label="Both teams score" value={`${Math.round(p.btts)}%`} />
-                  <Stat label="Most likely score" value={p.topScores[0] ? `${p.topScores[0].home}–${p.topScores[0].away}` : '–'} sub={p.topScores[0] ? `${Math.round(p.topScores[0].prob)}%` : undefined} />
-                </div>
+                <GoalsPanel p={p} home={home} away={away} roll={justRevealed(matchId)} />
 
                 {p.grid && <GridBreakdown p={p} home={home} away={away} />}
 
@@ -981,6 +976,69 @@ function MarketStrip({ p, m, home, away }: { p: Prediction; m: Market; home: Tea
             </div>
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Goals and scores: total-goals lines (over 1.5 / 2.5 / 3.5 / 4.5) and the most likely correct scores.
+ * Worked out from the model's expected goals (a Poisson score grid, the same method the models use); where the model
+ * sends its own figure (over 2.5, BTTS, its top scores) that figure is used, so the page never shows two numbers
+ * for the same thing.
+ */
+function scoreGrid(lh: number, la: number) {
+  const pois = (l: number, k: number) => { let f = 1; for (let i = 2; i <= k; i++) f *= i; return (Math.exp(-l) * Math.pow(l, k)) / f }
+  const cells: { home: number; away: number; prob: number }[] = []
+  for (let i = 0; i <= 10; i++) for (let j = 0; j <= 10; j++) cells.push({ home: i, away: j, prob: pois(lh, i) * pois(la, j) * 100 })
+  return cells
+}
+
+function GoalsPanel({ p, home, away, roll }: { p: Prediction; home: Team; away: Team; roll: boolean }) {
+  const cells = scoreGrid(p.expectedGoals.home, p.expectedGoals.away)
+  const over = (line: number) => cells.filter(c => c.home + c.away > line).reduce((a, c) => a + c.prob, 0)
+  // keep the model's own over 2.5, and keep the lines in order (1.5 ≥ 2.5 ≥ 3.5 ≥ 4.5)
+  const o25 = p.over25
+  const o15 = Math.max(over(1.5), o25), o35 = Math.min(over(3.5), o25), o45 = Math.min(over(4.5), o35)
+  const lines = [{ l: '1.5', v: o15 }, { l: '2.5', v: o25 }, { l: '3.5', v: o35 }, { l: '4.5', v: o45 }]
+  const own = new Map(p.topScores.map(t => [`${t.home}-${t.away}`, t.prob]))
+  const scores = cells.map(c => ({ ...c, prob: own.get(`${c.home}-${c.away}`) ?? c.prob })).sort((a, b) => b.prob - a.prob).slice(0, 8)
+  const hn = home.shortName || home.name, an = away.shortName || away.name
+  return (
+    <div className="mt-5 space-y-3">
+      <div className="grid grid-cols-3 gap-3">
+        <Stat label="Expected goals" value={`${p.expectedGoals.home} – ${p.expectedGoals.away}`} />
+        <Stat label="Both teams score" value={`${Math.round(p.btts)}%`} />
+        <Stat label="Most likely score" value={scores[0] ? `${scores[0].home}–${scores[0].away}` : '–'} sub={scores[0] ? `${Math.round(scores[0].prob)}%` : undefined} />
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="rounded-xl border border-line/70 bg-surface2/40 p-4">
+          <div className="label mb-3">Total goals</div>
+          <div className="space-y-2.5">
+            {lines.map((x, i) => (
+              <div key={x.l} className="grid grid-cols-[74px_1fr_44px] items-center gap-3 text-sm">
+                <span className="text-muted">Over {x.l}</span>
+                <span className="h-2 rounded-full bg-surface2 overflow-hidden">
+                  <span className="block h-full rounded-full bg-accent transition-[width] duration-1000 ease-out" style={{ width: `${Math.round(x.v)}%`, transitionDelay: `${i * 90}ms` }} />
+                </span>
+                <span className="num font-bold text-ink text-right"><CountUp value={x.v} suffix="%" animate={roll} delay={300 + i * 90} /></span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 text-[11px] text-faint">Under = 100% minus over. Under 2.5: <span className="num text-muted">{Math.round(100 - o25)}%</span></div>
+        </div>
+        <div className="rounded-xl border border-line/70 bg-surface2/40 p-4">
+          <div className="label mb-3">Correct score</div>
+          <div className="grid grid-cols-4 gap-2">
+            {scores.map((c, i) => (
+              <div key={`${c.home}-${c.away}`} className={`rounded-lg px-2 py-2 text-center ${i === 0 ? 'bg-accent/15 border border-accent/40' : 'bg-surface2/70'}`}>
+                <div className={`num font-bold ${i === 0 ? 'text-accent' : 'text-ink'}`}>{c.home}–{c.away}</div>
+                <div className="num text-[11px] text-muted"><CountUp value={c.prob} decimals={1} suffix="%" animate={roll} delay={400 + i * 60} /></div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 text-[11px] text-faint">{hn} first · {an} second</div>
+        </div>
       </div>
     </div>
   )
