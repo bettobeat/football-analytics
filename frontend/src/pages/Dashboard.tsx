@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useReveal } from '../lib/reveal'
+import { useReveal, justRevealed } from '../lib/reveal'
+import CountUp from '../components/CountUp'
 import { RevealChip } from '../components/Reveal'
 import { Link, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
@@ -612,11 +613,11 @@ function ProbBar({ p, pick, height = 'h-2' }: { p: Prediction; pick: Pick; heigh
   )
 }
 
-function ProbRow({ p, pick, big }: { p: Prediction; pick: Pick; big?: boolean }) {
+function ProbRow({ p, pick, big, roll = false }: { p: Prediction; pick: Pick; big?: boolean; roll?: boolean }) {
   const cell = (k: Pick, v: number, label: string) => (
     <div className={`flex items-baseline gap-1.5 ${pick === k ? PICK_COLOR[k] : 'text-faint'}`}>
       <span className={`text-[11px] font-semibold ${pick === k ? '' : 'text-faint'}`}>{label}</span>
-      <span className={`num font-semibold ${big ? 'text-xl' : 'text-sm'}`}>{Math.round(v)}%</span>
+      <span className={`num font-semibold ${big ? 'text-xl' : 'text-sm'}`}><CountUp value={v} suffix="%" animate={roll} delay={k === 'H' ? 0 : k === 'D' ? 100 : 200} /></span>
     </div>
   )
   return (
@@ -724,7 +725,7 @@ function MatchCard({ match, delay = 0 }: { match: APIMatch; delay?: number }) {
         <div className="relative">
           <ProbBar p={p} pick={pick} />
           <div className="mt-2">
-            <ProbRow p={p} pick={pick} />
+            <ProbRow p={p} pick={pick} roll={justRevealed(match.id)} />
           </div>
           {match.market && <MarketRow p={p} m={match.market} pick={pick} />}
           <div className="mt-2.5 flex items-center justify-between text-[11px] text-faint">
@@ -802,7 +803,7 @@ function SpotlightCard({ match }: { match: APIMatch }) {
         </div>
         <ProbBar p={p} pick={pick} height="h-2.5" />
         <div className="mt-2">
-          <ProbRow p={p} pick={pick} />
+          <ProbRow p={p} pick={pick} roll={justRevealed(match.id)} />
         </div>
         {match.market && !fromMarket && <MarketRow p={p} m={match.market} pick={pick} />}
         {fromMarket && <div className="mt-2 text-[11px] text-faint">No model prediction for this competition · bookmaker odds</div>}

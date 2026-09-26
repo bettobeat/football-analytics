@@ -5,7 +5,8 @@ import { API_URL, socket } from '../lib/socket'
 import { fairOdds, bookLabel, modelInfo, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, drawAlert, pickOfPrediction, type Market, type Prediction } from '../lib/predict'
 import { useAuth } from '../lib/auth'
 import { explainPrediction } from '../lib/explain'
-import { useReveal } from '../lib/reveal'
+import { useReveal, justRevealed } from '../lib/reveal'
+import CountUp from '../components/CountUp'
 import { RevealCover } from '../components/Reveal'
 
 /* ---------- types (Football-Data.org v4 shapes, loosely) ---------- */
@@ -610,9 +611,9 @@ function MatchDetail() {
                   </div>
                 )}
                 <div className="grid grid-cols-3 gap-3">
-                  <OutcomeTile k="H" label={home.shortName || home.name} v={p.home} active={pick === 'H'} />
-                  <OutcomeTile k="D" label="Draw" v={p.draw} active={pick === 'D'} />
-                  <OutcomeTile k="A" label={away.shortName || away.name} v={p.away} active={pick === 'A'} />
+                  <OutcomeTile k="H" label={home.shortName || home.name} v={p.home} active={pick === 'H'} roll={justRevealed(matchId)} delay={0} />
+                  <OutcomeTile k="D" label="Draw" v={p.draw} active={pick === 'D'} roll={justRevealed(matchId)} delay={120} />
+                  <OutcomeTile k="A" label={away.shortName || away.name} v={p.away} active={pick === 'A'} roll={justRevealed(matchId)} delay={240} />
                 </div>
                 {(() => {
                   const opts = [
@@ -918,16 +919,16 @@ function LockedPrediction({ p, pick, home, away, market }: { p: Prediction; pick
   )
 }
 
-function OutcomeTile({ k, label, v, active }: { k: 'H' | 'D' | 'A'; label: string; v: number; active: boolean }) {
+function OutcomeTile({ k, label, v, active, roll = false, delay = 0 }: { k: 'H' | 'D' | 'A'; label: string; v: number; active: boolean; roll?: boolean; delay?: number }) {
   const color = k === 'H' ? 'text-home' : k === 'D' ? 'text-draw' : 'text-away'
   const border = k === 'H' ? 'border-home/50 bg-home/10' : k === 'D' ? 'border-draw/50 bg-draw/10' : 'border-away/50 bg-away/10'
   return (
-    <div className={`rounded-xl border p-3 sm:p-4 text-center ${active ? border : 'border-line/70 bg-surface2/40'}`}>
+    <div className={`rounded-xl border p-3 sm:p-4 text-center ${active ? border : 'border-line/70 bg-surface2/40'} ${roll && active ? 'animate-pop' : ''}`}>
       <div className="text-[11px] text-faint mb-1 truncate">
         <span className={`font-bold mr-1 ${active ? color : ''}`}>{k === 'H' ? '1' : k === 'D' ? 'X' : '2'}</span>
         {label}
       </div>
-      <div className={`num text-2xl sm:text-3xl font-extrabold ${active ? color : 'text-ink/70'}`}>{v.toFixed(1)}%</div>
+      <div className={`num text-2xl sm:text-3xl font-extrabold ${active ? color : 'text-ink/70'}`}><CountUp value={v} decimals={1} suffix="%" animate={roll} delay={delay} /></div>
       <div className="num text-[11px] text-faint mt-0.5">fair odds {fairOdds(v)}</div>
     </div>
   )

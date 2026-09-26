@@ -52,8 +52,16 @@ export function isCovered(matchId: number | undefined, status: string | undefine
   return enabled && !!matchId && guessFirstOn() && !DONE.has(String(status || '')) && !revealedIds().includes(matchId)
 }
 
+const revealedAt = new Map<number, number>()
+/** Revealed in the last few seconds (on this page)? Then the numbers roll in instead of just appearing. */
+export function justRevealed(matchId: number | undefined) {
+  const t = matchId ? revealedAt.get(matchId) : undefined
+  return !!t && Date.now() - t < 4000
+}
+
 export function revealMatch(matchId: number | undefined) {
   if (!matchId) return
+  revealedAt.set(matchId, Date.now())
   const ids = revealedIds().filter(x => x !== matchId)
   ids.push(matchId)
   memRevealed = ids.slice(-500)

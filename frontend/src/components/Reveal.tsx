@@ -1,9 +1,17 @@
+import { useEffect, useState } from 'react'
 import { setGuessFirst } from '../lib/reveal'
 
 const Eye = ({ size = 18 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
     <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
     <circle cx="12" cy="12" r="3" />
+  </svg>
+)
+
+const Spinner = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" className="animate-spin" aria-hidden>
+    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+    <path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
   </svg>
 )
 
@@ -14,13 +22,60 @@ const stop = (fn: () => void) => (e: { preventDefault(): void; stopPropagation()
   fn()
 }
 
-/** Big cover for the match page: the prediction stays hidden until the member taps Reveal. */
+const reduced = () => {
+  try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches } catch { return false }
+}
+
+const STEPS = ['Loading both squads', 'Reading form and strength', 'Checking injuries and lineups', 'Comparing with the bookmakers', 'Scoring the match']
+
+/**
+ * Big cover for the match page. Tap Reveal → a short "v3 is analysing" sequence (steps tick by, a bar fills,
+ * a scan line sweeps), then the prediction appears and its numbers roll in to their values.
+ */
 export function RevealCover({ onReveal }: { onReveal: () => void }) {
+  const [phase, setPhase] = useState<'idle' | 'loading'>('idle')
+  const [step, setStep] = useState(0)
+  const [fill, setFill] = useState(false)
+  useEffect(() => {
+    if (phase !== 'loading') return
+    if (reduced()) { onReveal(); return }
+    const total = 1700
+    const f = requestAnimationFrame(() => setFill(true))
+    const iv = setInterval(() => setStep(s => Math.min(STEPS.length - 1, s + 1)), total / STEPS.length)
+    const done = setTimeout(onReveal, total)
+    return () => { cancelAnimationFrame(f); clearInterval(iv); clearTimeout(done) }
+  }, [phase])
+
+  if (phase === 'loading')
+    return (
+      <div className="relative overflow-hidden rounded-2xl border border-accent/40 bg-accent/[0.06] p-6 sm:p-8" role="status" aria-live="polite">
+        <div aria-hidden className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-accent/15 to-transparent animate-[scan_1.1s_linear_infinite]" />
+        <div className="relative flex flex-col items-center gap-4 text-center">
+          <div className="flex items-center gap-2.5 text-accent font-display font-bold">
+            <Spinner size={18} /> v3 is analysing this match
+          </div>
+          <div className="w-full max-w-md h-2 rounded-full bg-surface2 overflow-hidden">
+            <div className="h-full rounded-full bg-accent transition-[width] ease-out" style={{ width: fill ? '100%' : '4%', transitionDuration: '1700ms' }} />
+          </div>
+          <ul className="w-full max-w-md space-y-1.5 text-left text-sm">
+            {STEPS.map((s, i) => (
+              <li key={s} className={`flex items-center gap-2.5 transition-opacity duration-300 ${i <= step ? 'opacity-100' : 'opacity-30'}`}>
+                <span className={`w-4 h-4 rounded-full grid place-items-center text-[10px] font-extrabold ${i < step ? 'bg-accent text-bg' : i === step ? 'border-2 border-accent' : 'border border-line'}`}>
+                  {i < step ? '✓' : ''}
+                </span>
+                <span className={i <= step ? 'text-ink' : 'text-faint'}>{s}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    )
+
   return (
     <div className="rounded-2xl border border-dashed border-accent/40 bg-accent/[0.06] p-6 sm:p-8 text-center flex flex-col items-center gap-3">
       <div className="font-display text-lg font-bold text-ink">What's your call?</div>
       <p className="text-sm text-muted max-w-sm">Make your own guess first, then see what v3 thinks — the percentages, why this pick, and the full breakdown.</p>
-      <button type="button" onClick={stop(onReveal)} className="mt-1 h-12 px-6 inline-flex items-center gap-2 rounded-2xl bg-accent text-bg font-extrabold hover:brightness-105">
+      <button type="button" onClick={stop(() => setPhase('loading'))} className="mt-1 h-12 px-6 inline-flex items-center gap-2 rounded-2xl bg-accent text-bg font-extrabold hover:brightness-105 active:scale-[0.98] transition">
         <Eye /> Reveal prediction
       </button>
       <button type="button" onClick={stop(() => setGuessFirst(false))} className="text-xs text-faint hover:text-ink underline underline-offset-4">
@@ -32,15 +87,23 @@ export function RevealCover({ onReveal }: { onReveal: () => void }) {
 
 /** Small version for match cards and the home page. `dark` = on the always-dark featured hero. */
 export function RevealChip({ onReveal, dark = false }: { onReveal: () => void; dark?: boolean }) {
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    if (!busy) return
+    const t = setTimeout(onReveal, reduced() ? 0 : 750)
+    return () => clearTimeout(t)
+  }, [busy])
   return (
     <button
       type="button"
-      onClick={stop(onReveal)}
-      className={`w-full h-11 inline-flex items-center justify-center gap-2 rounded-xl text-sm font-bold transition-colors ${
+      onClick={stop(() => setBusy(true))}
+      disabled={busy}
+      className={`relative overflow-hidden w-full h-11 inline-flex items-center justify-center gap-2 rounded-xl text-sm font-bold transition-colors ${
         dark ? 'bg-white/10 text-[#C8FF3D] border border-white/15 hover:bg-white/15' : 'bg-accent/10 text-accent border border-accent/30 hover:bg-accent/15'
       }`}
     >
-      <Eye size={16} /> Reveal prediction
+      {busy && <span aria-hidden className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-current to-transparent opacity-20 animate-[scan_0.75s_linear_infinite]" />}
+      {busy ? <><Spinner size={15} /> Analysing…</> : <><Eye size={16} /> Reveal prediction</>}
     </button>
   )
 }

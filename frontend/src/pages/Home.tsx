@@ -4,7 +4,8 @@ import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
 import { drawAlert, type Market, type Prediction } from '../lib/predict'
 import { useAuth } from '../lib/auth'
-import { isCovered, revealMatch, useRevealState } from '../lib/reveal'
+import { isCovered, revealMatch, useRevealState, justRevealed } from '../lib/reveal'
+import CountUp from '../components/CountUp'
 import { RevealChip } from '../components/Reveal'
 
 interface Team { id: number; name: string; shortName?: string; tla?: string; crest?: string }
@@ -78,10 +79,11 @@ function FeaturedHero({ m, p }: { m: Match | null; p: Prediction | null }) {
       <span className="font-display font-extrabold text-lg sm:text-3xl tracking-tight text-center leading-tight max-w-full break-words">{tn(t)}</span>
     </Link>
   )
+  const roll = justRevealed(m.id)
   const pill = (o: 'H' | 'D' | 'A', label: string, v: number) => (
-    <div className={`glass px-3 py-2.5 sm:px-4 text-center ${k === o ? 'ring-2 ring-[#C8FF3D]/70' : ''}`}>
+    <div className={`glass px-3 py-2.5 sm:px-4 text-center ${k === o ? 'ring-2 ring-[#C8FF3D]/70' : ''} ${roll && k === o ? 'animate-pop' : ''}`}>
       <div className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.08em] text-[#9AA3B2] truncate">{label}</div>
-      <div className={`font-display font-extrabold text-xl sm:text-2xl ${k === o ? 'text-[#C8FF3D]' : 'text-white'}`}>{Math.round(v)}%</div>
+      <div className={`font-display font-extrabold text-xl sm:text-2xl ${k === o ? 'text-[#C8FF3D]' : 'text-white'}`}><CountUp value={v} suffix="%" animate={roll} delay={o === 'H' ? 0 : o === 'D' ? 120 : 240} /></div>
     </div>
   )
   return (
@@ -330,7 +332,7 @@ export default function Home() {
                         {(['H', 'D', 'A'] as const).map(o => (
                           <span key={o} className={`rounded-xl py-1.5 text-xs font-bold num ${k === o ? (o === 'H' ? 'bg-home/20 text-home' : o === 'D' ? 'bg-draw/20 text-draw' : 'bg-away/20 text-away') : 'bg-surface2/70 text-muted'}`}>
                             <span className="block text-[10px] font-semibold opacity-80">{o === 'H' ? '1' : o === 'D' ? 'X' : '2'}</span>
-                            {Math.round(o === 'H' ? p.home : o === 'D' ? p.draw : p.away)}%
+                            <CountUp value={o === 'H' ? p.home : o === 'D' ? p.draw : p.away} suffix="%" animate={justRevealed(m.id)} delay={o === 'H' ? 0 : o === 'D' ? 100 : 200} />
                           </span>
                         ))}
                       </div>

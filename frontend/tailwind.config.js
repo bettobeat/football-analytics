@@ -40,10 +40,20 @@ export default {
           '0%': { opacity: '0', transform: 'translateY(6px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
+        scan: {
+          '0%': { transform: 'translateX(0)' },
+          '100%': { transform: 'translateX(400%)' },
+        },
+        pop: {
+          '0%': { transform: 'scale(1)', boxShadow: '0 0 0 0 rgb(var(--accent) / 0)' },
+          '40%': { transform: 'scale(1.045)', boxShadow: '0 0 0 6px rgb(var(--accent) / 0.25)' },
+          '100%': { transform: 'scale(1)', boxShadow: '0 0 0 0 rgb(var(--accent) / 0)' },
+        },
       },
       animation: {
         pulseDot: 'pulseDot 1.4s ease-in-out infinite',
         rise: 'rise 0.35s ease-out both',
+        pop: 'pop 0.6s ease-out 1.45s both',
       },
     },
   },
