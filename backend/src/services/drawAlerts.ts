@@ -104,9 +104,11 @@ function live() {
   };
 }
 
-const bucketOut = (b: { range: string; n: number; wins: number; profit: number; moved: number; movedN: number }) => ({
+const bucketOut = (b: { range: string; n: number; wins: number; profit: number; moved: number; movedN: number; exp?: number; expN?: number }) => ({
   range: b.range, n: b.n, hitRate: b.n ? r1((b.wins / b.n) * 100) : null, roi: b.n ? r1((b.profit / b.n) * 100) : null,
-  lineMovedOurWay: b.movedN ? r1((b.moved / b.movedN) * 100) : null
+  lineMovedOurWay: b.movedN ? r1((b.moved / b.movedN) * 100) : null,
+  // draws the CLOSING odds expected on these games (fair, margin removed): wins far below this = bad luck is unlikely
+  closingExpected: b.expN ? r1(b.exp || 0) : null
 });
 
 const SEASON_LABEL: Record<string, string> = { '2324': '2023-24', '2425': '2024-25', '2526': '2025-26', '2627': '2026-27' };
@@ -152,6 +154,12 @@ function history() {
       { range: 'both teams drew 32%+ of last 20', lo: 0.32, hi: 2, n: 0, wins: 0, profit: 0, moved: 0, movedN: 0 },
       { range: 'other alerts', lo: -1, hi: 0.32, n: 0, wins: 0, profit: 0, moved: 0, movedN: 0 }
     ];
+    // early season (Jul–Sep, ~first 6 rounds: promoted teams, new signings, ratings still settling) vs the rest
+    const byPhase = [
+      { range: 'early season (Jul–Sep)', early: true, n: 0, wins: 0, profit: 0, moved: 0, movedN: 0, exp: 0, expN: 0 },
+      { range: 'rest of season', early: false, n: 0, wins: 0, profit: 0, moved: 0, movedN: 0, exp: 0, expN: 0 }
+    ];
+    let exp = 0, expN = 0;
     const byMkt = MKT_B.map(([lo, hi]) => ({ range: hi > 99 ? `${lo}%+` : `under ${hi}%`.replace('under 26%', '22–26%'), lo, hi, n: 0, wins: 0, profit: 0, moved: 0, movedN: 0 }));
     for (const r of rows) {
       if (r.division.startsWith('SP')) continue;
@@ -172,6 +180,14 @@ function history() {
       const ef = fair([r.eh, r.ed, r.ea]), cf = fair([r.ch, r.cd, r.ca]);
       const mv = ef && cf ? (cf[1] > ef[1] ? 1 : 0) : -1;
       if (mv >= 0) { movedN++; moved += mv; }
+      if (cf) { exp += cf[1]; expN++; }
+      const mon = Number(String(r.date).slice(5, 7));
+      const phase = byPhase.find(x => x.early === (mon >= 7 && mon <= 9))!;
+      phase.n++;
+      if (won) phase.wins++;
+      phase.profit += won ? r.max_d - 1 : -1;
+      if (mv >= 0) { phase.movedN++; phase.moved += mv; }
+      if (cf) { phase.exp += cf[1]; phase.expN++; }
       const td = tdm.get(`${r.division}|${r.date}|${r.home}|${r.away}`);
       const streak = td === undefined ? byStreak[1] : byStreak.find(x => td >= x.lo && td < x.hi);
       for (const b of [byEdge.find(x => a.edge >= x.lo && a.edge < x.hi), byMkt.find(x => a.marketDraw >= x.lo && a.marketDraw < x.hi), streak]) {
@@ -187,6 +203,8 @@ function history() {
       season, label: SEASON_LABEL[season] || season, matches, drawRate: matches ? r1((draws / matches) * 100) : null,
       alerts: n, wins, hitRate: r1((wins / n) * 100), roi: r1((profit / n) * 100),
       lineMovedOurWay: movedN ? r1((moved / movedN) * 100) : null,
+      closingExpected: expN ? r1(exp) : null,
+      byPhase: byPhase.map(bucketOut),
       byEdge: byEdge.map(bucketOut),
       byMarketDraw: byMkt.map(bucketOut),
       byDrawStreak: byStreak.map(bucketOut),
