@@ -100,6 +100,10 @@ export const CONV = {
   // a team with no squad value (usually a promoted club missing from the Transfermarkt dump) gets the value at this
   // percentile of its division instead of the neutral 5 (= league average, which overrates promoted sides). −1 = neutral.
   squadMissingPct: -1,
+  // Transfermarkt only values players while their club is in a league the dataset covers, so a promoted club's
+  // value is built from the few players who came from covered clubs (Hull 2026: €24m for the "top 15"). Floor every
+  // club at this share of its division's median value (log scale). −1 = off.
+  squadFloorRatio: -1,
   useDivHint: 1, // take each team's division from the fixture being predicted (see buildState)
   // availability rows (#13 injuries, #12 confirmed XI): value = 5.5 − k × (starter-equivalents missing)
   injK: 2.0, // backtest 2025-26: 1–4 all help a little, 2 best on hit rate
@@ -469,7 +473,13 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string, div
     // pitSquad: squad value as known at the time (monthly history) instead of today's snapshot — no look-ahead in backtests
     const sq = (n: string) => (CONV.pitSquad ? squadValueAt(group, n, asOf) : squadValueFor(group, n)?.top) || 0;
     const withValue = list.map(t => ({ name: t.name, raw: sq(t.name) })).filter(x => x.raw > 0);
-    const squad = rankValues(withValue.map(x => ({ name: x.name, raw: Math.log(x.raw) })));
+    const logs = withValue.map(x => ({ name: x.name, raw: Math.log(x.raw) }));
+    if (CONV.squadFloorRatio > 0 && logs.length >= 8) {
+      const sorted = logs.map(x => x.raw).sort((x, y) => x - y);
+      const floor = sorted[Math.floor(sorted.length / 2)] + Math.log(CONV.squadFloorRatio);
+      for (const x of logs) x.raw = Math.max(x.raw, floor);
+    }
+    const squad = rankValues(logs);
     let squadMissing = 5;
     if (CONV.squadMissingPct >= 0 && withValue.length >= 6) {
       const vs = [...squad.values()].sort((x, y) => x - y);
