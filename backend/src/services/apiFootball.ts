@@ -138,7 +138,8 @@ const nextUtcMidnight = () => {
 
 async function af(path: string, params: Record<string, string | number> = {}, retry = true): Promise<any> {
   if (!KEY()) throw new Error('API_FOOTBALL_KEY is not set');
-  if (Date.now() < blockedUntil) throw new Error('API-Football daily request limit reached');
+  // /status is free (does not count) — always allowed, so a plan upgrade can lift the block (see refreshQuota)
+  if (Date.now() < blockedUntil && path !== '/status') throw new Error('API-Football daily request limit reached');
   const wait = lastCall + MIN_GAP_MS - Date.now();
   if (wait > 0) await sleep(wait);
   lastCall = Date.now();
@@ -149,7 +150,7 @@ async function af(path: string, params: Record<string, string | number> = {}, re
   const rem = res.headers.get('x-ratelimit-requests-remaining');
   const lim = res.headers.get('x-ratelimit-requests-limit');
   if (rem !== null && rem !== '') remainingDay = parseInt(rem, 10);
-  if (remainingDay !== null && remainingDay <= 0) blockedUntil = nextUtcMidnight();
+  if (path !== '/status' && remainingDay !== null && remainingDay <= 0) blockedUntil = nextUtcMidnight();
   if (lim !== null && lim !== '') limitDay = parseInt(lim, 10);
   if (res.status === 429 && retry) {
     await sleep(61_000);
@@ -172,6 +173,27 @@ async function af(path: string, params: Record<string, string | number> = {}, re
     throw new Error(`${path}: ${msg}`);
   }
   return json;
+}
+
+/**
+ * Ask the account how many requests are left today (free call). Lifts a "daily limit reached" block when the plan
+ * was upgraded during the day (e.g. 7,500 → 75,000), instead of waiting for midnight.
+ */
+export async function refreshQuota() {
+  if (!KEY()) return null;
+  try {
+    const j = await af('/status');
+    const r = j.response?.requests;
+    if (r && Number.isFinite(r.limit_day) && Number.isFinite(r.current)) {
+      limitDay = r.limit_day;
+      remainingDay = Math.max(0, r.limit_day - r.current);
+      if (remainingDay > 0 && blockedUntil) { blockedUntil = 0; lastError = null; logger.info(`API-Football: ${remainingDay} requests left (limit ${limitDay}) — block lifted`); }
+    }
+    return { limitDay, remainingDay };
+  } catch (e: any) {
+    logger.warn(`API-Football status: ${e.message}`);
+    return null;
+  }
 }
 
 const budgetLeft = () => (remainingDay === null ? Infinity : remainingDay - RESERVE);
@@ -502,6 +524,7 @@ let lastTick: { at: string; calls: number; note: string } | null = null;
 export async function afTick(force = false) {
   if (!KEY() || running) return lastTick;
   running = true;
+  if (Date.now() < blockedUntil) await refreshQuota();
   const before = callsThisBoot;
   const notes: string[] = [];
   try {
@@ -594,6 +617,7 @@ export function startApiFootballScheduler(onUpdated?: () => void) {
 /* ------------------------------------------------------------------ */
 
 export async function afStatus(withAccount = true) {
+  if (withAccount) await refreshQuota(); // also lifts a limit block after a plan upgrade
   let account: any = null;
   if (withAccount && KEY()) {
     try {
