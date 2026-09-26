@@ -232,6 +232,17 @@ export default function AccuracySimple() {
                 {typeof sel.pending === 'number' && sel.pending > 0 && <span className="text-faint"> · {sel.pending} predictions waiting for a result</span>}
               </div>
             </div>
+            {v3 && v2 && mkt && (v3.settled !== v2.settled || v3.settled !== mkt.settled) && (
+              <div className="mt-4 pt-3 border-t border-line/60 text-xs text-muted leading-relaxed">
+                <span className="font-semibold text-ink">Why the number of games is different in each tab: </span>
+                {view === 'main' && <>v3 is counted on every game we predicted ({v3.settled}).{' '}</>}
+                {view === 'dc-history-v2' && <>v2 is counted on {v2.settled} games because it only predicts league matches.{' '}</>}
+                {view === 'market' && <>Bookmakers are counted on {mkt.settled} games — only games where betting odds were published.{' '}</>}
+                {view !== 'dc-history-v2' && v2.settled < v3.settled && <>v2 shows {v2.settled} because it only predicts league matches, not national teams or European cups.{' '}</>}
+                {view !== 'market' && mkt.settled < v3.settled && <>Bookmakers show {mkt.settled} because {v3.settled - mkt.settled === 1 ? '1 game had' : `${v3.settled - mkt.settled} games had`} no published odds.{' '}</>}
+                {view !== 'main' && <>v3 shows {v3.settled} because it predicts every game: leagues, national teams and European cups.</>}
+              </div>
+            )}
           </Card>
         </>
       )}
