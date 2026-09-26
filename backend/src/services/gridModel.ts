@@ -23,7 +23,7 @@ import logger from '../utils/logger';
 import { GROUPS, groupForCompetition, loadGroupMatches, fdNameFor, HistoryMatch } from './history';
 import { Prediction } from './predictionModel';
 import { squadValueFor, squadValueAt } from './squadValues';
-import { availabilityFor } from './apiFootball';
+import { availabilityFor, xgByMatch } from './apiFootball';
 
 export const MODEL_V3 = 'grid-v3';
 
@@ -109,6 +109,7 @@ export const CONV = {
   // availability rows (#13 injuries, #12 confirmed XI): value = 5.5 − k × (starter-equivalents missing)
   injK: 2.0, // backtest 2025-26: 1–4 all help a little, 2 best on hit rate
   xiK: 1.0,
+  xgBlend: 0, // attack/defence from goals (0) … expected goals (1) where API-Football has match xG; points/form stay real
   useLineups: 1, // backtest/sweep: 1 = final prediction (with confirmed XI), 0 = provisional (injuries only)
   xiNet: 0, // 1 = the confirmed-XI row uses absent minus replacements (like-for-like rotation ≈ no effect)
   drawClose: 0, // extra draw points when the two totals are level, fading to 0 as |gap| reaches drawCloseSpan
@@ -245,6 +246,17 @@ const DAY = 24 * 3600 * 1000;
 const days = (a: string, b: string) => (new Date(b).getTime() - new Date(a).getTime()) / DAY;
 const decay = (age: number, halfLife: number) => Math.pow(0.5, age / halfLife);
 const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x));
+
+/* Match xG per group (API-Football), cached — key date|home|away in our history names */
+const xgCache = new Map<string, { at: number; map: Map<string, { xh: number; xa: number }> }>();
+function xgFor(group: string) {
+  const c = xgCache.get(group);
+  if (c && Date.now() - c.at < 30 * 60 * 1000) return c.map;
+  let map = new Map<string, { xh: number; xa: number }>();
+  try { map = xgByMatch(group); } catch { /* no API-Football data */ }
+  xgCache.set(group, { at: Date.now(), map });
+  return map;
+}
 
 /* Squad quality from players' previous season (services/playerQuality.ts writes team_player_quality) */
 let pqCache: { at: number; map: Map<string, number> } | null = null;
@@ -395,6 +407,15 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string, div
     }
   }
 
+  // --- goals used for attack/defence: real goals, or a blend with expected goals (xG) when the match has it
+  const xgMap = CONV.xgBlend > 0 ? xgFor(group) : null;
+  const eff = (m: HistoryMatch) => {
+    const x = xgMap?.get(`${m.date}|${m.home}|${m.away}`);
+    if (!x) return { hg: m.hg, ag: m.ag };
+    const w = CONV.xgBlend;
+    return { hg: (1 - w) * m.hg + w * x.xh, ag: (1 - w) * m.ag + w * x.xa };
+  };
+
   // --- raw decayed aggregates per team
   interface Agg { w: number; gf: number; ga: number; pts: number; hw: number; hpts: number; aw: number; apts: number; d: number; games: { date: string; pts: number; season: string; division: string }[] }
   const agg = new Map<string, Agg>();
@@ -411,12 +432,13 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string, div
     const h = A(m.home), a = A(m.away);
     h.games.push({ date: m.date, pts: hPts, season: m.season, division: m.division });
     a.games.push({ date: m.date, pts: aPts, season: m.season, division: m.division });
+    const e = eff(m);
     if (divOf.get(m.home) === m.division) {
-      h.w += kP; h.gf += kP * m.hg; h.ga += kP * m.ag; h.pts += kP * hPts; h.d += kP * (hPts === 1 ? 1 : 0);
+      h.w += kP; h.gf += kP * e.hg; h.ga += kP * e.ag; h.pts += kP * hPts; h.d += kP * (hPts === 1 ? 1 : 0);
       h.hw += kL; h.hpts += kL * hPts;
     }
     if (divOf.get(m.away) === m.division) {
-      a.w += kP; a.gf += kP * m.ag; a.ga += kP * m.hg; a.pts += kP * aPts; a.d += kP * (aPts === 1 ? 1 : 0);
+      a.w += kP; a.gf += kP * e.ag; a.ga += kP * e.hg; a.pts += kP * aPts; a.d += kP * (aPts === 1 ? 1 : 0);
       a.aw += kL; a.apts += kL * aPts;
     }
   }
@@ -442,8 +464,9 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string, div
       const oppAttH = (adjAtt.get(m.away) || avg) / avg;
       const oppDefA = (adjDef.get(m.home) || avg) / avg;
       const oppAttA = (adjAtt.get(m.home) || avg) / avg;
-      if (divOf.get(m.home) === m.division) { const h = acc.get(m.home) || { w: 0, att: 0, def: 0 }; h.w += k; h.att += k * m.hg / Math.max(0.5, oppDefH); h.def += k * m.ag / Math.max(0.5, oppAttH); acc.set(m.home, h); }
-      if (divOf.get(m.away) === m.division) { const a = acc.get(m.away) || { w: 0, att: 0, def: 0 }; a.w += k; a.att += k * m.ag / Math.max(0.5, oppDefA); a.def += k * m.hg / Math.max(0.5, oppAttA); acc.set(m.away, a); }
+      const e = eff(m);
+      if (divOf.get(m.home) === m.division) { const h = acc.get(m.home) || { w: 0, att: 0, def: 0 }; h.w += k; h.att += k * e.hg / Math.max(0.5, oppDefH); h.def += k * e.ag / Math.max(0.5, oppAttH); acc.set(m.home, h); }
+      if (divOf.get(m.away) === m.division) { const a = acc.get(m.away) || { w: 0, att: 0, def: 0 }; a.w += k; a.att += k * e.ag / Math.max(0.5, oppDefA); a.def += k * e.hg / Math.max(0.5, oppAttA); acc.set(m.away, a); }
     }
     agg.forEach((_, n) => {
       const x = acc.get(n) || { w: 0, att: 0, def: 0 };
