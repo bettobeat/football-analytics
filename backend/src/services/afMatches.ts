@@ -675,6 +675,24 @@ function sameTeam(a: string, b: string) {
   return !!x && !!y && (x === y || x.includes(y) || y.includes(x));
 }
 
+/**
+ * Our Football-Data.org match for an API-Football fixture (the page that carries the v3 prediction), or null.
+ * Same kick-off (±10 min) and at least one team name that matches; only when exactly one candidate fits.
+ */
+export function fdTwinOf(kickoff: string, homeName: string, awayName: string): number | null {
+  const t = new Date(kickoff).getTime();
+  if (!Number.isFinite(t)) return null;
+  const lo = new Date(t - 10 * 60000).toISOString().slice(0, 19), hi = new Date(t + 10 * 60000 + 1000).toISOString().slice(0, 19);
+  let rows: any[] = [];
+  try {
+    rows = db.prepare(`SELECT DISTINCT match_id, home_team, away_team FROM predictions WHERE match_id < ? AND utc_date >= ? AND utc_date < ?`).all(AF_OFFSET, lo, hi) as any[];
+  } catch {
+    return null;
+  }
+  const hits = rows.filter(r => sameTeam(r.home_team, homeName) || sameTeam(r.away_team, awayName));
+  return hits.length === 1 ? hits[0].match_id : null;
+}
+
 /** API-Football fixture id for a Football-Data.org match, or null. */
 async function afFixtureForFd(match: any): Promise<number | null> {
   if (fdToAf.has(match.id)) return fdToAf.get(match.id)!;

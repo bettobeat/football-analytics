@@ -4,6 +4,7 @@ import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
 import { fairOdds, bookLabel, modelInfo, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, drawAlert, pickOfPrediction, type Market, type Prediction } from '../lib/predict'
 import { useAuth } from '../lib/auth'
+import { explainPrediction } from '../lib/explain'
 
 /* ---------- types (Football-Data.org v4 shapes, loosely) ---------- */
 
@@ -641,6 +642,8 @@ function MatchDetail() {
                   <div className={`rounded-full bg-away ${pick === 'A' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.away}% - 3px)` }} />
                 </div>
 
+                <WhyThisPick p={p} home={home} away={away} market={details.market || null} upcoming={['SCHEDULED', 'TIMED'].includes(m.status)} />
+
                 {(() => {
                   const da = drawAlert(p, details.market, m.competition.code)
                   if (!da) return null
@@ -836,6 +839,32 @@ function TeamHero({ team, align, code }: { team: Team; align: 'left' | 'right'; 
 }
 
 /** Free / signed-out view: the pick and confidence; percentages, value and the breakdown are Premium. */
+function WhyThisPick({ p, home, away, market, upcoming }: { p: Prediction; home: Team; away: Team; market: Market | null; upcoming: boolean }) {
+  const ex = explainPrediction(p, home.shortName || home.name, away.shortName || away.name, market, upcoming)
+  if (!ex) return null
+  return (
+    <div className="mt-4 rounded-xl border border-line bg-surface2/50 p-4">
+      <div className="text-[11px] font-extrabold uppercase tracking-wide text-accent">Why this pick</div>
+      <p className="mt-1.5 font-semibold text-ink leading-snug">{ex.headline}</p>
+      {ex.forPick.length > 0 && (
+        <ul className="mt-2 space-y-1 text-sm text-muted">
+          {ex.forPick.map((t, i) => (
+            <li key={i} className="flex gap-2"><span className="text-win mt-[1px]">+</span><span>{t}</span></li>
+          ))}
+        </ul>
+      )}
+      {ex.against && (
+        <div className="mt-1 flex gap-2 text-sm text-muted"><span className="text-loss mt-[1px]">−</span><span>On the other side: {ex.against}</span></div>
+      )}
+      {ex.draw.length > 0 && (
+        <div className="mt-2 text-sm text-muted"><span className="text-draw font-semibold">Draw: </span>{ex.draw.join(' ')}</div>
+      )}
+      {ex.market && <div className="mt-2 text-sm text-muted">{ex.market}</div>}
+      {ex.caution && <div className="mt-2 text-xs text-faint">{ex.caution}</div>}
+    </div>
+  )
+}
+
 function LockedPrediction({ p, pick, home, away, market }: { p: Prediction; pick: 'H' | 'D' | 'A'; home: Team; away: Team; market: Market | null }) {
   const { user } = useAuth()
   const name = pick === 'H' ? home.shortName || home.name : pick === 'A' ? away.shortName || away.name : 'Draw'
@@ -861,7 +890,7 @@ function LockedPrediction({ p, pick, home, away, market }: { p: Prediction; pick
           <div className="rounded-2xl border border-line bg-surface/95 shadow-lift px-5 py-4 text-center max-w-sm">
             <div className="font-display font-bold text-ink">Full prediction with Premium</div>
             <div className="text-xs text-muted mt-1">
-              Win / draw / loss %, fair odds, model vs market, strong picks, draw alerts and the full v3 breakdown.
+              Win / draw / loss %, why this pick in plain words, model vs market, strong picks, draw alerts and the full v3 breakdown.
             </div>
             <div className="mt-3 flex justify-center gap-2">
               <Link to="/premium" className="px-3.5 py-1.5 rounded-xl bg-accent text-bg text-sm font-semibold">

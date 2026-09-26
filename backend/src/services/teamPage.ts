@@ -14,7 +14,7 @@ import { db } from '../db';
 import logger from '../utils/logger';
 import { afGet, afRemaining, afConfigured } from './apiFootball';
 import { groupForCompetition, fdNameFor, normalizeName } from './history';
-import { isKnownAfFixture } from './afMatches';
+import { isKnownAfFixture, fdTwinOf } from './afMatches';
 
 const AF_OFFSET = 1_000_000_000;
 const TTL = 6 * 3600 * 1000; // search index
@@ -118,7 +118,8 @@ export function resolveAfTeamId(rawId: number, code?: string, name?: string): nu
 /* ---------------- team page ---------------- */
 
 const simpleFixture = (f: any) => ({
-  matchId: isKnownAfFixture(AF_OFFSET + f.fixture.id) ? AF_OFFSET + f.fixture.id : null,
+  // prefer our Football-Data twin of the fixture (it carries the v3 prediction), else the API-Football page
+  matchId: fdTwinOf(f.fixture.date, f.teams.home.name, f.teams.away.name) ?? (isKnownAfFixture(AF_OFFSET + f.fixture.id) ? AF_OFFSET + f.fixture.id : null),
   date: f.fixture.date,
   status: f.fixture.status?.short,
   comp: f.league?.name,
