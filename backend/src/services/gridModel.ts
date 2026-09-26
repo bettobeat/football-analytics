@@ -103,7 +103,7 @@ export const CONV = {
   // Transfermarkt only values players while their club is in a league the dataset covers, so a promoted club's
   // value is built from the few players who came from covered clubs (Hull 2026: €24m for the "top 15"). Floor every
   // club at this share of its division's median value (log scale). −1 = off.
-  squadFloorRatio: -1,
+  squadFloorRatio: 0.5, // tested 26 Sep 2026: no change in Brier/log loss on 2025-26 and 2026-27, removes impossible values
   useDivHint: 1, // take each team's division from the fixture being predicted (see buildState)
   // availability rows (#13 injuries, #12 confirmed XI): value = 5.5 − k × (starter-equivalents missing)
   injK: 2.0, // backtest 2025-26: 1–4 all help a little, 2 best on hit rate
@@ -225,6 +225,7 @@ interface TeamFeat {
   gamesLast8: number; // matches in the 8 days before asOf
   lastMatch: string | null;
   squadEur: number | null; // top-15 squad value, EUR (null = unknown)
+  squadEst?: boolean; // value raised to the division floor (incomplete Transfermarkt data, usually a promoted club)
   /** values 1–10 (rank within division) */
   v: Record<string, number>;
 }
@@ -473,11 +474,12 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string, div
     // pitSquad: squad value as known at the time (monthly history) instead of today's snapshot — no look-ahead in backtests
     const sq = (n: string) => (CONV.pitSquad ? squadValueAt(group, n, asOf) : squadValueFor(group, n)?.top) || 0;
     const withValue = list.map(t => ({ name: t.name, raw: sq(t.name) })).filter(x => x.raw > 0);
+    const floored = new Map<string, number>();
     const logs = withValue.map(x => ({ name: x.name, raw: Math.log(x.raw) }));
     if (CONV.squadFloorRatio > 0 && logs.length >= 8) {
       const sorted = logs.map(x => x.raw).sort((x, y) => x - y);
       const floor = sorted[Math.floor(sorted.length / 2)] + Math.log(CONV.squadFloorRatio);
-      for (const x of logs) x.raw = Math.max(x.raw, floor);
+      for (const x of logs) if (x.raw < floor) { x.raw = floor; floored.set(x.name, Math.exp(floor)); }
     }
     const squad = rankValues(logs);
     let squadMissing = 5;
@@ -486,7 +488,8 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string, div
       squadMissing = vs[Math.round(CONV.squadMissingPct * (vs.length - 1))];
     }
     for (const t of list) {
-      t.squadEur = sq(t.name) || null;
+      t.squadEur = floored.get(t.name) ?? (sq(t.name) || null);
+      t.squadEst = floored.has(t.name);
       t.v = {
         strength: strength.get(t.name)!, attack: att.get(t.name)!, defence: def.get(t.name)!, form: form.get(t.name)!,
         home: home.get(t.name)!, away: away.get(t.name)!, draws: draws.get(t.name)!,
@@ -591,7 +594,9 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   const R = (id: string) => ROWS.find(r => r.id === id)!;
 
   const eur = (x: number | null) => (x ? `€${Math.round(x / 1e6)}m` : 'n/a');
-  push(R('#1'), h.v.squad, a.v.squad, h.squadEur || a.squadEur ? `top-15 value ${eur(h.squadEur)} vs ${eur(a.squadEur)}` : 'no squad values loaded — neutral');
+  push(R('#1'), h.v.squad, a.v.squad, h.squadEur || a.squadEur
+    ? `top-15 value ${h.squadEst ? '~' : ''}${eur(h.squadEur)} vs ${a.squadEst ? '~' : ''}${eur(a.squadEur)}${h.squadEst || a.squadEst ? ' (~ = estimated, incomplete data for a promoted club)' : ''}`
+    : 'no squad values loaded — neutral');
   push(R('#1e'), h.v.strength, a.v.strength);
   // availability (API-Football): confirmed XI supersedes the injury list; rows without data are neutral and not counted
   const av = availabilityFor(state.group, home, away, matchDate || asOf);
