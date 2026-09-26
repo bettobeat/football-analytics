@@ -38,7 +38,7 @@ import { nationalValueSearch, historyMatchReport } from './services/squadValues'
 import { drawAlertsReport, drawFactorTest } from './services/drawAlerts';
 import { teamPage, searchTeams, resolveAfTeamId, setTeamOverride, teamOverrides } from './services/teamPage';
 import { footballNews } from './services/news';
-import { highlightsFor, highlightsStatus } from './services/highlights';
+import { highlightsFor, highlightsStatus, lastCandidates } from './services/highlights';
 import { db } from './db';
 import { normalizeName } from './services/history';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures, afGet, afRemaining, xgCoverage } from './services/apiFootball';
@@ -416,6 +416,14 @@ app.get('/api/matches/:id(\\d+)/highlights', async (req, res) => {
   } catch (error: any) {
     sendError(res, error, 'Failed to fetch highlights');
   }
+});
+// Admin: search again now and show what YouTube returned (to tune the official-channel list)
+app.get('/api/highlights/debug', async (req, res) => {
+  const id = Number(req.query.id);
+  const row: any = db.prepare(`SELECT match_id, utc_date, home_team, away_team FROM predictions WHERE match_id = ? LIMIT 1`).get(id);
+  if (!row) { res.status(404).json({ error: 'not tracked' }); return; }
+  const h = await highlightsFor({ id, status: 'FINISHED', utcDate: row.utc_date, homeTeam: { name: row.home_team }, awayTeam: { name: row.away_team } }, true);
+  res.json({ data: { found: h, search: lastCandidates }, timestamp: new Date().toISOString() });
 });
 app.get('/api/highlights/status', (_req, res) => {
   res.json({ data: highlightsStatus(), timestamp: new Date().toISOString() });
