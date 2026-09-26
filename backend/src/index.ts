@@ -38,6 +38,8 @@ import { nationalValueSearch, historyMatchReport } from './services/squadValues'
 import { drawAlertsReport, drawFactorTest } from './services/drawAlerts';
 import { teamPage, searchTeams, resolveAfTeamId, setTeamOverride, teamOverrides } from './services/teamPage';
 import { footballNews } from './services/news';
+import { highlightsFor, highlightsStatus } from './services/highlights';
+import { db } from './db';
 import { normalizeName } from './services/history';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures, afGet, afRemaining, xgCoverage } from './services/apiFootball';
 import {
@@ -399,6 +401,26 @@ app.get('/api/matches/:id(\\d+)', async (req, res) => {
 });
 
 // Everything for the match page: match + events + lineups + stats + h2h + standings + form
+// Official highlights (YouTube) for a finished match we tracked. Names and date come from our own saved prediction,
+// so only real matches can trigger a search (protects the YouTube quota).
+app.get('/api/matches/:id(\\d+)/highlights', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const row: any = db.prepare(`
+      SELECT p.match_id AS id, p.utc_date, p.home_team, p.away_team, r.outcome
+      FROM predictions p LEFT JOIN results r ON r.match_id = p.match_id
+      WHERE p.match_id = ? LIMIT 1`).get(id);
+    if (!row || !row.outcome || !['H', 'D', 'A'].includes(row.outcome)) { res.json({ data: null, timestamp: new Date().toISOString() }); return; }
+    const h = await highlightsFor({ id, status: 'FINISHED', utcDate: row.utc_date, homeTeam: { name: row.home_team }, awayTeam: { name: row.away_team } });
+    res.json({ data: h, timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Failed to fetch highlights');
+  }
+});
+app.get('/api/highlights/status', (_req, res) => {
+  res.json({ data: highlightsStatus(), timestamp: new Date().toISOString() });
+});
+
 app.get('/api/matches/:id(\\d+)/details', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);

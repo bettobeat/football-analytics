@@ -5,6 +5,7 @@ import { API_URL, socket } from '../lib/socket'
 import { fairOdds, bookLabel, modelInfo, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, drawAlert, pickOfPrediction, type Market, type Prediction } from '../lib/predict'
 import { useAuth } from '../lib/auth'
 import { explainPrediction } from '../lib/explain'
+import WinProbability from '../components/WinProbability'
 import { useReveal, justRevealed, hideMatch, guessFirstOn } from '../lib/reveal'
 import CountUp from '../components/CountUp'
 import { RevealCover } from '../components/Reveal'
@@ -733,6 +734,16 @@ function MatchDetail() {
             )}
           </Section>
 
+          {/* How the chances moved: live win probability / after the game, how it swung (premium: it starts from our prediction) */}
+          {(live || done) && p && !p.locked && (
+            <Section title={live ? 'Live win probability' : 'How the game swung'} note="From our pre-match prediction, updated with the score, time and red cards">
+              <WinProbability p={p} m={m} />
+            </Section>
+          )}
+
+          {/* Official highlights after full time */}
+          {done && <Highlights matchId={matchId} />}
+
           {/* Events */}
           {events.length > 0 && (
             <Section title="Match events">
@@ -855,6 +866,43 @@ function TeamHero({ team, align, code }: { team: Team; align: 'left' | 'right'; 
 }
 
 /** Free / signed-out view: the pick and confidence; percentages, value and the breakdown are Premium. */
+/** Official highlights (YouTube), click-to-play: nothing loads from YouTube until the viewer presses play. */
+function Highlights({ matchId }: { matchId: number }) {
+  const [h, setH] = useState<{ videoId: string; title: string; channel: string } | null>(null)
+  const [play, setPlay] = useState(false)
+  useEffect(() => {
+    let off = false
+    axios.get(`${API_URL}/matches/${matchId}/highlights`).then(r => { if (!off) setH(r.data.data || null) }).catch(() => undefined)
+    return () => { off = true }
+  }, [matchId])
+  if (!h) return null
+  return (
+    <Section title="Highlights" note={`Official video · ${h.channel}`}>
+      <div className="relative aspect-video rounded-2xl overflow-hidden bg-black border border-line/60">
+        {play ? (
+          <iframe
+            src={`https://www.youtube-nocookie.com/embed/${h.videoId}?autoplay=1&rel=0&modestbranding=1`}
+            title={h.title}
+            className="absolute inset-0 w-full h-full"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        ) : (
+          <button type="button" onClick={() => setPlay(true)} className="group absolute inset-0 w-full h-full" aria-label={`Play highlights: ${h.title}`}>
+            <img src={`https://i.ytimg.com/vi/${h.videoId}/hqdefault.jpg`} alt="" className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+            <span className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full bg-accent text-bg grid place-items-center shadow-lift group-hover:scale-105 transition-transform">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden><path d="M8 5v14l11-7z" /></svg>
+            </span>
+            <span className="absolute left-4 right-4 bottom-3 text-left text-sm font-bold text-white line-clamp-2">{h.title}</span>
+          </button>
+        )}
+      </div>
+      <p className="mt-2 text-[11px] text-faint">Played by YouTube from the official channel. Some videos are only available in certain countries.</p>
+    </Section>
+  )
+}
+
 function WhyThisPick({ p, home, away, market, upcoming }: { p: Prediction; home: Team; away: Team; market: Market | null; upcoming: boolean }) {
   const ex = explainPrediction(p, home.shortName || home.name, away.shortName || away.name, market, upcoming)
   if (!ex) return null
