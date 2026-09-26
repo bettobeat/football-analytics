@@ -883,7 +883,7 @@ function LockedPrediction({ p, pick, home, away, market }: { p: Prediction; pick
       <div className="relative min-h-[190px]">
         <div className="grid grid-cols-3 gap-3 pt-6 select-none blur-[5px] opacity-60" aria-hidden>
           {tiles.map(t => (
-            <OutcomeTile key={t.k} k={t.k} label={t.label} v={t.k === pick ? 48.5 : 25.7} active={t.k === pick} />
+            <OutcomeTile key={t.k} k={t.k} label={t.label} v={33.3} active={false} />
           ))}
         </div>
         <div className="absolute inset-0 grid place-items-center">
