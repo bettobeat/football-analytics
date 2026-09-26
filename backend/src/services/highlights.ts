@@ -29,35 +29,59 @@ const RETRY_MS = 2 * 3600 * 1000;
 const GIVE_UP_MS = 14 * 86400 * 1000;
 let quotaBlockedUntil = 0;
 
-// Official channels (name as YouTube shows it, lower-case; matched exactly or as "<name> …")
-const OFFICIAL = [
-  'premier league', 'sky sports premier league', 'sky sports football', 'nbc sports', 'efl', 'sky sports football league',
-  'laliga', 'laliga hypermotion', 'laliga en español', 'serie a', 'lega serie b', 'bundesliga', '2. bundesliga', 'ligue 1 mcdonald\'s',
-  'ligue 1', 'ligue 2 bkt', 'eredivisie', 'espn nl', 'liga portugal', 'liga portugal betclic', 'spfl', 'trendyol süper lig', 'süper lig',
-  'pro league', 'jupiler pro league', 'super league greece', 'uefa', 'uefa champions league', 'uefa europa league',
-  'uefa conference league', 'cbs sports golazo', 'tnt sports football', 'dazn football', 'dazn', 'canal+ sport', 'bein sports',
-  'fifa', 'concacaf', 'caf tv', 'afc asian cup', 'the afc channel', 'conmebol'
+// Official channels (as YouTube shows the name). Tier 0 = the competition itself (best), tier 2 = a licensed broadcaster.
+// A club's own channel is tier 1 (see isOfficial).
+const LEAGUES = [
+  'premier league', 'efl', 'laliga', 'laliga ea sports', 'laliga hypermotion', 'laliga en espanol', 'serie a', 'lega serie b',
+  'bundesliga', '2. bundesliga', 'ligue 1 mcdonalds', 'ligue 1', 'ligue 2 bkt', 'eredivisie', 'liga portugal', 'liga portugal betclic',
+  'spfl', 'trendyol super lig', 'super lig', 'pro league', 'jupiler pro league', 'super league greece', 'uefa', 'uefa champions league',
+  'uefa europa league', 'uefa conference league', 'fifa', 'concacaf', 'caf tv', 'the afc channel', 'afc asian cup', 'conmebol'
+];
+const BROADCASTERS = [
+  'sky sports premier league', 'sky sports football', 'sky sports football league', 'nbc sports', 'cbs sports golazo', 'tnt sports football',
+  'dazn football', 'dazn', 'canal+ sport', 'bein sports', 'bein sports usa', 'bein sports france', 'espn fc', 'espn nl', 'espn deportes',
+  'espn brasil', 'fox soccer', 'tudn usa', 'viaplay football'
 ];
 
+// apostrophes of any kind are dropped, so "Ligue 1 McDonald’s" = "ligue 1 mcdonalds"
 const norm = (s: string) =>
-  String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/&amp;/g, '&').replace(/[^a-z0-9+.' ]+/g, ' ').replace(/\s+/g, ' ').trim();
-const clubKey = (s: string) => norm(s).split(' ').filter(w => !['fc', 'cf', 'afc', 'sc', 'ac', 'club', 'de', 'cd', 'sad', 'official'].includes(w)).join(' ');
+  String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/&amp;/g, '&').replace(/['’`´]/g, '')
+    .replace(/[^a-z0-9+. ]+/g, ' ').replace(/\s+/g, ' ').trim();
+const STOP = ['fc', 'cf', 'afc', 'sc', 'ac', 'club', 'de', 'cd', 'sad', 'official', 'oficial', 'ufficiale', 'tv', 'channel', 'the'];
+const clubKey = (s: string) => norm(s).split(' ').filter(w => !STOP.includes(w)).join(' ');
 
-function isOfficial(channel: string, home: string, away: string) {
+// short names in our data → the words a title or channel uses
+const ALIAS: Record<string, string[]> = {
+  psg: ['paris saint germain', 'paris sg', 'psg'], 'man city': ['manchester city', 'man city'], 'man united': ['manchester united', 'man united', 'man utd'],
+  'man utd': ['manchester united', 'man utd'], inter: ['inter', 'internazionale'], spurs: ['tottenham', 'spurs'], wolves: ['wolverhampton', 'wolves'],
+  'atletico': ['atletico'], 'atl. madrid': ['atletico'], bayern: ['bayern'], 'b. dortmund': ['dortmund'], 'ath bilbao': ['athletic'], om: ['marseille']
+};
+const names = (team: string) => [clubKey(team), ...(ALIAS[norm(team)] || []).map(clubKey)].filter(Boolean);
+
+/** 0 = the competition's channel, 1 = one of the two clubs' own channel, 2 = licensed broadcaster; null = not official. */
+function tierOf(channel: string, home: string, away: string): number | null {
   const c = norm(channel);
-  if (OFFICIAL.some(o => c === norm(o))) return true;
+  if (LEAGUES.some(o => c === norm(o))) return 0;
+  if (BROADCASTERS.some(o => c === norm(o))) return 2;
+  // a club's own channel: "FC Barcelona", "Real Sociedad TV", "PSG - Paris Saint-Germain" (nothing but the club's names)
   const ck = clubKey(channel);
-  // a club's own channel: "FC Barcelona", "Liverpool FC", "Juventus"
-  return !!ck && (ck === clubKey(home) || ck === clubKey(away));
+  for (const team of [home, away]) {
+    const ns = names(team);
+    if (!ck || !ns.length) continue;
+    let rest = ` ${ck} `;
+    for (const n of ns) rest = rest.split(` ${n} `).join(' ')
+    if (rest.trim() === '' || ns.includes(ck)) return 1;
+  }
+  return null;
 }
+const isOfficial = (channel: string, home: string, away: string) => tierOf(channel, home, away) !== null;
 
 /** The words of a team name worth searching for ("Wolverhampton Wanderers" → "Wolverhampton"). */
 const short = (s: string) => clubKey(s).split(' ').sort((a, b) => b.length - a.length)[0] || s;
 
 function mentions(title: string, team: string) {
-  const t = norm(title);
-  const k = clubKey(team);
-  return k.split(' ').some(w => w.length >= 4 && t.includes(w)) || t.includes(k);
+  const t = ` ${norm(title)} `;
+  return names(team).some(k => t.includes(` ${k} `) || k.split(' ').some(w => w.length >= 4 && t.includes(w)));
 }
 
 export interface Highlight { videoId: string; title: string; channel: string; published: string }
@@ -86,16 +110,24 @@ export async function highlightsFor(match: any, force = false): Promise<Highligh
     if (r.status === 403) { quotaBlockedUntil = Date.now() + 3600 * 1000; throw new Error('quota or key refused (403)'); }
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const j: any = await r.json();
+    // every official candidate that names both teams; best = the competition's own video, then the clubs', then
+    // broadcasters; a title that says highlights/resumen/… beats one that doesn't; extended beats short
+    const cands: { tier: number; score: number; h: Highlight }[] = [];
     for (const it of j.items || []) {
       const s = it.snippet || {};
       const title = String(s.title || '').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
-      lastCandidates.items.push({ channel: s.channelTitle, title, official: isOfficial(s.channelTitle, match.homeTeam?.name || home, match.awayTeam?.name || away) });
-      if (!it.id?.videoId || !isOfficial(s.channelTitle, match.homeTeam?.name || home, match.awayTeam?.name || away)) continue;
+      const tier = tierOf(s.channelTitle, match.homeTeam?.name || home, match.awayTeam?.name || away);
+      lastCandidates.items.push({ channel: s.channelTitle, title, official: tier !== null });
+      if (!it.id?.videoId || tier === null) continue;
       if (!mentions(title, home) || !mentions(title, away)) continue;
-      if (!/highlight|resumen|sintesi|samenvatting|resume|zusammenfassung|melhores momentos|özet|all goals|goals/i.test(title)) continue;
-      found = { videoId: it.id.videoId, title, channel: s.channelTitle, published: s.publishedAt };
-      break;
+      const hl = /highlight|resumen|sintesi|samenvatting|r[eé]sum[eé]|zusammenfassung|melhores momentos|ozet|özet|all goals|goals/i.test(title)
+      // a broadcaster or club must say it is highlights; the competition's own match video may just be "A - B (1-2)"
+      if (!hl && !(tier === 0 && /\d\s*[-–]\s*\d/.test(title))) continue;
+      if (/\b(reaction|preview|press conference|conference|interview|live|watchalong|podcast)\b/i.test(title)) continue;
+      cands.push({ tier, score: tier * 10 - (hl ? 2 : 0) - (/extended/i.test(title) ? 1 : 0), h: { videoId: it.id.videoId, title, channel: s.channelTitle, published: s.publishedAt } });
     }
+    cands.sort((x, y) => x.score - y.score);
+    found = cands[0]?.h || null;
   } catch (e: any) {
     logger.warn(`highlights ${match.id}: ${e.message}`);
     if (lastCandidates) lastCandidates.error = e.message;
