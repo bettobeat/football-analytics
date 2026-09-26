@@ -1,9 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 
-const reduced = () => {
-  try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches } catch { return false }
-}
-
 /**
  * A number that "rolls" to its value: a short scramble (like a slot machine), then it eases in to the real
  * figure. Only animates when `animate` is true (the moment a prediction is revealed); otherwise it just shows it.
@@ -15,8 +11,8 @@ export default function CountUp({ value, decimals = 0, suffix = '', animate, del
   const raf = useRef(0)
   useEffect(() => {
     if (!animate) { setShown(value); return }
-    // devices set to "reduce motion" (Windows: animation effects off) get a calm count-up: no scramble, no overshoot
-    const calm = reduced()
+    // same for everyone: the numbers only change in place (nothing slides or zooms), so it is fine with "reduce motion" too
+    const calm = false
     const SCRAMBLE = calm ? 0 : 550, SETTLE = calm ? 700 : 950
     const t0 = performance.now() + delay
     let last = 0
