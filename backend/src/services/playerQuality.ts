@@ -37,21 +37,32 @@ db.exec(`
 const LEAGUE_IDS = new Set(AF_LEAGUES.map(l => l.id));
 const TOP_N = 14, MIN_KNOWN = 8, MIN_MINUTES = 300;
 
-/** Club strength at the end of a season: Elo z-score vs the group's top division. key = team_id */
+/**
+ * Club strength at the end of a season, on one scale for top and second divisions. key = team_id.
+ * Elo is only comparable within a division (a club that dominates the Championship gains Elo from Championship
+ * opponents), so: strength = division base + scale × z-score within the division. Top division: base 0, scale 1.
+ * Second division: base −1.8, scale 0.5 → the best Championship side ≈ a bottom-half Premier League side, which is
+ * about where promoted clubs end up.
+ */
+const SECOND_BASE = -1.8, SECOND_SCALE = 0.5;
 function clubStrength(seasonYear: number): Map<number, number> {
   const out = new Map<number, number>();
   const asOf = `${seasonYear + 1}-07-01`;
   for (const group of Object.keys(GROUPS)) {
-    const top = GROUPS[group].divisions[0];
+    const divs = GROUPS[group].divisions;
     let all;
     try { all = loadGroupMatches(group); } catch { continue; }
     if (!all.length) continue;
     const st = buildState(group, all, asOf);
-    const topElos = [...st.teams.values()].filter(t => t.division === top).map(t => t.elo);
-    if (topElos.length < 8) continue;
-    const mean = topElos.reduce((a, b) => a + b, 0) / topElos.length;
-    const sd = Math.sqrt(topElos.reduce((a, b) => a + (b - mean) ** 2, 0) / (topElos.length - 1)) || 1;
-    const byName = new Map([...st.teams.values()].map(t => [t.name, (t.elo - mean) / sd]));
+    const byName = new Map<string, number>();
+    divs.forEach((div, i) => {
+      const list = [...st.teams.values()].filter(t => t.division === div);
+      if (list.length < 8) return;
+      const mean = list.reduce((a, t) => a + t.elo, 0) / list.length;
+      const sd = Math.sqrt(list.reduce((a, t) => a + (t.elo - mean) ** 2, 0) / (list.length - 1)) || 1;
+      const base = i === 0 ? 0 : SECOND_BASE, scale = i === 0 ? 1 : SECOND_SCALE;
+      for (const t of list) byName.set(t.name, base + scale * ((t.elo - mean) / sd));
+    });
     for (const r of db.prepare(`SELECT team_id, fd_name FROM af_teams WHERE grp = ? AND fd_name IS NOT NULL`).all(group) as any[]) {
       const z = byName.get(r.fd_name);
       if (z !== undefined) out.set(r.team_id, z);
@@ -60,27 +71,32 @@ function clubStrength(seasonYear: number): Map<number, number> {
   return out;
 }
 
-/** Player qualities for season Y from season Y-1. */
+/**
+ * Player qualities for season Y from season Y-1. The rating adjustment compares a player with his own team-mates
+ * (ratings run higher at dominant clubs and in some leagues, so the raw number would double-count club strength).
+ */
 function playerQualities(seasonYear: number, kRating: number): Map<number, { q: number; name: string }> {
   const prev = seasonYear - 1;
   const strength = clubStrength(prev);
-  const rows = db.prepare(`SELECT player_id, name, team_id, league_id, minutes, rating FROM af_player_season WHERE season = ? AND minutes > 0`).all(prev) as any[];
-  const acc = new Map<number, { m: number; s: number; rm: number; r: number; name: string }>();
+  const rows = (db.prepare(`SELECT player_id, name, team_id, league_id, minutes, rating FROM af_player_season WHERE season = ? AND minutes > 0`).all(prev) as any[])
+    .filter(r => LEAGUE_IDS.has(r.league_id) && strength.has(r.team_id)); // league minutes at clubs we rate
+  // team average rating (minutes-weighted)
+  const teamAvg = new Map<number, { m: number; r: number }>();
+  for (const r of rows) if (r.rating) { const t = teamAvg.get(r.team_id) || { m: 0, r: 0 }; t.m += r.minutes; t.r += r.minutes * r.rating; teamAvg.set(r.team_id, t); }
+  const acc = new Map<number, { m: number; s: number; rm: number; rd: number; name: string }>();
   for (const r of rows) {
-    if (!LEAGUE_IDS.has(r.league_id)) continue; // league minutes only (cups and European games excluded)
-    const z = strength.get(r.team_id);
-    if (z === undefined) continue;
-    const a = acc.get(r.player_id) || { m: 0, s: 0, rm: 0, r: 0, name: r.name };
+    const z = strength.get(r.team_id)!;
+    const a = acc.get(r.player_id) || { m: 0, s: 0, rm: 0, rd: 0, name: r.name };
     a.m += r.minutes;
     a.s += r.minutes * z;
-    if (r.rating) { a.rm += r.minutes; a.r += r.minutes * r.rating; }
+    const ta = teamAvg.get(r.team_id);
+    if (r.rating && ta?.m) { a.rm += r.minutes; a.rd += r.minutes * (r.rating - ta.r / ta.m); }
     acc.set(r.player_id, a);
   }
   const out = new Map<number, { q: number; name: string }>();
   acc.forEach((a, id) => {
     if (a.m < MIN_MINUTES) return;
-    const rating = a.rm ? a.r / a.rm : 6.75;
-    out.set(id, { q: a.s / a.m + kRating * (rating - 6.75), name: a.name });
+    out.set(id, { q: a.s / a.m + kRating * (a.rm ? a.rd / a.rm : 0), name: a.name });
   });
   return out;
 }
