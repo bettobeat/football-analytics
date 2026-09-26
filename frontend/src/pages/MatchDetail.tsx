@@ -650,6 +650,13 @@ function MatchDetail() {
                   <div className={`rounded-full bg-away ${pick === 'A' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.away}% - 3px)` }} />
                 </div>
 
+                {p.frozen && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
+                    <span className="px-2.5 py-1 rounded-full bg-surface2 border border-line font-semibold text-ink">Saved before kick-off</span>
+                    <span>This is exactly what we predicted before the game — it is never recalculated after the result.{p.frozen.full ? '' : ' The detailed breakdown was only stored from 26 Sept 2026.'}</span>
+                  </div>
+                )}
+
                 <WhyThisPick p={p} home={home} away={away} market={details.market || null} upcoming={['SCHEDULED', 'TIMED'].includes(m.status)} />
                 {guessFirstOn() && ['SCHEDULED', 'TIMED'].includes(m.status) && (
                   <div className="mt-2 text-right">

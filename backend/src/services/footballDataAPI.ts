@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import { freezePredictions } from './tracking';
 import logger from '../utils/logger';
 import { predictFromStandings, Prediction, StandingsResponse } from './predictionModel';
 import { predictV2, prepareModelV2 } from './historyModel';
@@ -279,6 +280,10 @@ class FootballDataAPI {
 
   /** All model predictions for a match (v1 standings, v2 history) — for tracking both. */
   allPredictionsFor(match: any): Prediction[] {
+    return freezePredictions(match, this.computePredictions(match));
+  }
+
+  private computePredictions(match: any): Prediction[] {
     const out: Prediction[] = [];
     const v1 = this.predictionV1(match);
     if (v1) out.push(v1);

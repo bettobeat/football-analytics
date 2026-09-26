@@ -25,6 +25,8 @@ export interface Prediction {
   }
   /** Grid model (v3) breakdown — absent on v1/v2 */
   drawStreak?: { home: number; away: number }
+  /** Started / finished match: the prediction saved before kick-off (full = with its breakdown) */
+  frozen?: { at: string | null; full: boolean }
   grid?: {
     matchType: 'mismatch' | 'standard' | 'even' | 'big'
     points: { home: number; draw: number; away: number } // out of 1000

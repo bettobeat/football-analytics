@@ -15,6 +15,10 @@ export type Outcome = 'H' | 'D' | 'A';
 // draw_streak: the lower of the two teams' draw share over their last 20 games (v3 league predictions), for the draw-alert rule
 if (!(db.prepare(`PRAGMA table_info(predictions)`).all() as any[]).some(c => c.name === 'draw_streak'))
   db.exec(`ALTER TABLE predictions ADD COLUMN draw_streak REAL`);
+// payload: the whole prediction as shown before kick-off (breakdown, reasons, scores), so a finished match can show
+// exactly what we said — not a recalculation made after the result moved the ratings
+if (!(db.prepare(`PRAGMA table_info(predictions)`).all() as any[]).some(c => c.name === 'payload'))
+  db.exec(`ALTER TABLE predictions ADD COLUMN payload TEXT`);
 
 const upsertStmt = db.prepare(`
   INSERT INTO predictions (
@@ -22,8 +26,8 @@ const upsertStmt = db.prepare(`
     home_team_id, home_team, away_team_id, away_team,
     p_home, p_draw, p_away, xg_home, xg_away, over25, btts, confidence,
     games_home, games_away, odds_home, odds_draw, odds_away,
-    locked, settled, created_at, updated_at, draw_streak
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)
+    locked, settled, created_at, updated_at, draw_streak, payload
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?)
   ON CONFLICT(match_id, model) DO UPDATE SET
     utc_date = excluded.utc_date,
     p_home = excluded.p_home, p_draw = excluded.p_draw, p_away = excluded.p_away,
@@ -31,6 +35,7 @@ const upsertStmt = db.prepare(`
     over25 = excluded.over25, btts = excluded.btts, confidence = excluded.confidence,
     games_home = excluded.games_home, games_away = excluded.games_away,
     draw_streak = excluded.draw_streak,
+    payload = excluded.payload,
     odds_home = COALESCE(excluded.odds_home, predictions.odds_home),
     odds_draw = COALESCE(excluded.odds_draw, predictions.odds_draw),
     odds_away = COALESCE(excluded.odds_away, predictions.odds_away),
@@ -89,12 +94,54 @@ export function recordPredictions(matches: any[]) {
       odds.awayWin ?? null,
       now,
       now,
-      p.drawStreak ? Math.min(p.drawStreak.home, p.drawStreak.away) : null
+      p.drawStreak ? Math.min(p.drawStreak.home, p.drawStreak.away) : null,
+      JSON.stringify(p)
     );
     if (Number(res.changes) > 0) saved++;
     }
   }
   if (saved || locked) logger.info(`Predictions saved: ${saved}, newly locked: ${locked}`);
+}
+
+/* ------------------------------------------------------------------ */
+/* Frozen predictions: what a started / finished match shows            */
+/* ------------------------------------------------------------------ */
+
+const frozenStmt = db.prepare(`
+  SELECT model, p_home, p_draw, p_away, xg_home, xg_away, over25, btts, confidence, games_home, games_away, draw_streak, payload, locked_at
+  FROM predictions WHERE match_id = ? AND locked = 1`);
+
+/**
+ * Once a match has started, the site must show the prediction we saved BEFORE kick-off. Recomputing it later would
+ * use ratings that already include this result (Grenada–Cuba: 45% Grenada before the game, 35% after the 0–3).
+ * Matches we never saved (older than tracking) keep the computed prediction.
+ * Rows saved before the full payload was stored (≤ 26 Sep 2026) keep their saved 1X2 and goals figures; the
+ * breakdown and scores from the recalculation are dropped, because they would be hindsight.
+ */
+export function freezePredictions(match: any, computed: Prediction[]): Prediction[] {
+  if (!match || !LIVE_OR_DONE.has(match.status)) return computed;
+  let rows: any[] = [];
+  try { rows = frozenStmt.all(match.id) as any[]; } catch { return computed; }
+  if (!rows.length) return computed;
+  const order = (m: string) => { const i = computed.findIndex(p => p.model === m); return i < 0 ? 99 : i; };
+  return rows.sort((a, b) => order(a.model) - order(b.model)).map(r => {
+    let full: any = null;
+    if (r.payload) { try { full = JSON.parse(r.payload); } catch { full = null; } }
+    const recalc: any = computed.find(p => p.model === r.model);
+    const base: any = full || recalc || {
+      model: r.model, topScores: [],
+      factors: { homeAttack: 0, homeDefence: 0, awayAttack: 0, awayDefence: 0, homeAdvantage: 1, homeForm: 0, awayForm: 0, gamesPlayed: { home: r.games_home || 0, away: r.games_away || 0 }, leagueAvgGoals: 0 }
+    };
+    const out: any = {
+      ...base,
+      home: r.p_home, draw: r.p_draw, away: r.p_away,
+      expectedGoals: { home: r.xg_home, away: r.xg_away },
+      over25: r.over25, btts: r.btts, confidence: r.confidence,
+      frozen: { at: r.locked_at || null, full: !!full }
+    };
+    if (!full) { delete out.grid; out.topScores = []; }
+    return out as Prediction;
+  });
 }
 
 const pendingStmt = db.prepare(

@@ -8,6 +8,7 @@
  * these matches is in play, match details / tables / scorers / odds on demand with caching.
  */
 import logger from '../utils/logger';
+import { freezePredictions } from './tracking';
 import { db } from '../db';
 import { afGet, afConfigured, afRemaining } from './apiFootball';
 import { predictFromStandings, Prediction } from './predictionModel';
@@ -461,6 +462,10 @@ export function afPrediction(m: any): Prediction | null {
 
 /** Every model that covers the match: v1 (table), plus v2/v3 where the league has history (Belgium, Turkey, Scotland, Greece). */
 export function afPredictions(m: any): Prediction[] {
+  return freezePredictions(m, computeAfPredictions(m));
+}
+
+function computeAfPredictions(m: any): Prediction[] {
   const out: Prediction[] = [];
   // national teams: international Elo first (the main prediction), table model as a second opinion
   if (m.competition?.type === 'NATIONAL') {
