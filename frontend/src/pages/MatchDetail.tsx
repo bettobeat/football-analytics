@@ -5,7 +5,7 @@ import { API_URL, socket } from '../lib/socket'
 import { fairOdds, bookLabel, modelInfo, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, drawAlert, pickOfPrediction, type Market, type Prediction } from '../lib/predict'
 import { useAuth } from '../lib/auth'
 import { explainPrediction } from '../lib/explain'
-import { useReveal, justRevealed } from '../lib/reveal'
+import { useReveal, justRevealed, hideMatch, guessFirstOn } from '../lib/reveal'
 import CountUp from '../components/CountUp'
 import { RevealCover } from '../components/Reveal'
 
@@ -651,6 +651,11 @@ function MatchDetail() {
                 </div>
 
                 <WhyThisPick p={p} home={home} away={away} market={details.market || null} upcoming={['SCHEDULED', 'TIMED'].includes(m.status)} />
+                {guessFirstOn() && ['SCHEDULED', 'TIMED'].includes(m.status) && (
+                  <div className="mt-2 text-right">
+                    <button type="button" onClick={() => hideMatch(matchId)} className="text-xs text-faint hover:text-ink underline underline-offset-4">Hide prediction again</button>
+                  </div>
+                )}
 
                 {(() => {
                   const da = drawAlert(p, details.market, m.competition.code)

@@ -69,6 +69,14 @@ export function revealMatch(matchId: number | undefined) {
   window.dispatchEvent(new Event(EVT))
 }
 
+/** Cover it again (so the member can replay the reveal). */
+export function hideMatch(matchId: number | undefined) {
+  if (!matchId) return
+  memRevealed = revealedIds().filter(x => x !== matchId)
+  write(KEY, JSON.stringify(memRevealed))
+  window.dispatchEvent(new Event(EVT))
+}
+
 /** Re-render when reveals or the preference change (for pages that call isCovered in a list). */
 export function useRevealState() {
   useTick()
