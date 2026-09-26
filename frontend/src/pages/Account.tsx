@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { errorText, useAuth } from '../lib/auth'
+import { useGuessFirst } from '../lib/reveal'
 
 function fmtDay(iso: string | null) {
   return iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''
@@ -15,6 +16,7 @@ export default function Account() {
   const [next, setNext] = useState('')
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [guessFirst, setGuessFirst] = useGuessFirst()
 
   useEffect(() => {
     if (!loading && !user) nav('/login?next=/account', { replace: true })
@@ -68,6 +70,18 @@ export default function Account() {
           )}
         </div>
       </div>
+
+      {(access === 'premium' || access === 'admin') && (
+        <div className="card p-6">
+          <label className="flex items-start justify-between gap-4 cursor-pointer select-none">
+            <span>
+              <span className="font-display font-bold text-ink block">Guess first</span>
+              <span className="text-sm text-muted">Hide our prediction on upcoming games until you tap "Reveal prediction", so you can make your own call first. Saved on this device.</span>
+            </span>
+            <input type="checkbox" checked={guessFirst} onChange={e => setGuessFirst(e.target.checked)} className="mt-1 w-5 h-5 accent-[rgb(var(--accent))]" />
+          </label>
+        </div>
+      )}
 
       <div className="card p-6">
         <label className="flex items-start justify-between gap-4 cursor-pointer select-none">

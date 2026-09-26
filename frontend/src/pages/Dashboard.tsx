@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useReveal } from '../lib/reveal'
+import { RevealChip } from '../components/Reveal'
 import { Link, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
@@ -663,7 +665,9 @@ function MarketRow({ p, m, pick }: { p: Prediction; m: Market; pick: Pick }) {
 function MatchCard({ match, delay = 0 }: { match: APIMatch; delay?: number }) {
   const isLive = LIVE.has(match.status)
   const p = match.prediction
-  const pick = p ? pickOf(p) : null
+  const { hidden: covered, reveal } = useReveal(match.id, match.status, !!p && !p.locked)
+  // while covered, nothing on the card may hint at the pick
+  const pick = p && !covered ? pickOf(p) : null
   const ft = match.score?.fullTime
 
   return (
@@ -712,7 +716,9 @@ function MatchCard({ match, delay = 0 }: { match: APIMatch; delay?: number }) {
         })}
       </div>
 
-      {p && pick && p.locked ? (
+      {covered ? (
+        <RevealChip onReveal={reveal} />
+      ) : p && pick && p.locked ? (
         <LockedPick match={match} p={p} pick={pick} />
       ) : p && pick ? (
         <div className="relative">
@@ -737,6 +743,8 @@ function MatchCard({ match, delay = 0 }: { match: APIMatch; delay?: number }) {
 }
 
 function SpotlightCard({ match }: { match: APIMatch }) {
+  const { hidden: covered, reveal } = useReveal(match.id, match.status, !!match.prediction && !match.prediction.locked)
+  if (covered) return <SpotlightCovered match={match} onReveal={reveal} />
   // Matches without a model prediction (friendlies, knockout ties) use the market's probabilities
   const mk = match.market
   const p: Prediction | null =
@@ -800,6 +808,31 @@ function SpotlightCard({ match }: { match: APIMatch }) {
         {fromMarket && <div className="mt-2 text-[11px] text-faint">No model prediction for this competition · bookmaker odds</div>}
       </div>
       )}
+    </Link>
+  )
+}
+
+/** Spotlight card while the member's "guess first" cover is on: crests and kick-off, no hint of the pick. */
+function SpotlightCovered({ match, onReveal }: { match: APIMatch; onReveal: () => void }) {
+  return (
+    <Link to={`/match/${match.id}`} className="card card-hover relative overflow-hidden p-5 block">
+      <div className="relative flex items-center justify-between text-xs text-muted mb-4">
+        <span className="flex items-center gap-1.5">
+          {match.competition.emblem && <img src={match.competition.emblem} alt="" className="w-4 h-4 object-contain" />}
+          {match.competition.name}
+        </span>
+        <span className="num">{new Date(match.utcDate).toLocaleDateString('en-GB', { weekday: 'short' })} {kickoff(match.utcDate)}</span>
+      </div>
+      <div className="relative grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+        {[match.homeTeam, match.awayTeam].map((t, i) => (
+          <div key={t.id} className={`flex flex-col items-center text-center gap-2 min-w-0 ${i ? 'order-3' : ''}`}>
+            <Crest team={t} size={56} />
+            <span className="font-display font-bold text-ink leading-tight text-sm truncate max-w-full">{t.shortName || t.name}</span>
+          </div>
+        ))}
+        <div className="order-2 font-display text-faint text-sm font-bold">VS</div>
+      </div>
+      <div className="relative mt-5"><RevealChip onReveal={onReveal} /></div>
     </Link>
   )
 }

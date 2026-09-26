@@ -5,6 +5,8 @@ import { API_URL, socket } from '../lib/socket'
 import { fairOdds, bookLabel, modelInfo, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, drawAlert, pickOfPrediction, type Market, type Prediction } from '../lib/predict'
 import { useAuth } from '../lib/auth'
 import { explainPrediction } from '../lib/explain'
+import { useReveal } from '../lib/reveal'
+import { RevealCover } from '../components/Reveal'
 
 /* ---------- types (Football-Data.org v4 shapes, loosely) ---------- */
 
@@ -335,6 +337,8 @@ function MatchDetail() {
   const [details, setDetails] = useState<Details | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  // premium "guess first": the prediction stays covered until the member taps Reveal (upcoming games only)
+  const { hidden, reveal } = useReveal(matchId, details?.match.status, true)
 
   const load = (initial = false) => {
     if (initial) setLoading(true)
@@ -580,6 +584,9 @@ function MatchDetail() {
             {p && pick && p.locked ? (
               <LockedPrediction p={p} pick={pick} home={home} away={away} market={details.market || null} />
             ) : p && pick ? (
+              hidden ? (
+                <RevealCover onReveal={reveal} />
+              ) : (
               <>
                 {models.length > 1 && (
                   <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
@@ -712,6 +719,7 @@ function MatchDetail() {
                   </p>
                 </details>
               </>
+              )
             ) : (
               <p className="text-sm text-faint">No prediction available for this match yet.</p>
             )}

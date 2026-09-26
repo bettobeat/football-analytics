@@ -4,6 +4,8 @@ import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
 import { drawAlert, type Market, type Prediction } from '../lib/predict'
 import { useAuth } from '../lib/auth'
+import { isCovered, revealMatch, useRevealState } from '../lib/reveal'
+import { RevealChip } from '../components/Reveal'
 
 interface Team { id: number; name: string; shortName?: string; tla?: string; crest?: string }
 interface Match {
@@ -121,7 +123,9 @@ function FeaturedHero({ m, p }: { m: Match | null; p: Prediction | null }) {
         <div className="flex flex-col sm:flex-row sm:items-end gap-4 sm:gap-6">
           <div className="flex-1 space-y-2">
             <div className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#9AA3B2] text-center sm:text-left">v3 prediction</div>
-            {hasPct(p) ? (
+            {hasPct(p) && isCovered(m.id, m.status, true) ? (
+              <RevealChip dark onReveal={() => revealMatch(m.id)} />
+            ) : hasPct(p) ? (
               <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 {pill('H', tn(m.homeTeam), p.home)}
                 {pill('D', 'Draw', p.draw)}
@@ -182,6 +186,7 @@ export default function Home() {
   const [summary, setSummary] = useState<Summary | null>(null)
   const [news, setNews] = useState<News[]>([])
   const [alerts, setAlerts] = useState<Alert[]>([])
+  useRevealState()
 
   useEffect(() => {
     axios.get(`${API_URL}/matches/upcoming`, { params: { days: 14 } }).then(r => setUpcoming(r.data.data || [])).catch(() => undefined)
@@ -317,7 +322,9 @@ export default function Home() {
                     <div className="flex items-center gap-3"><Crest team={m.homeTeam} size={32} /><span className="font-bold truncate">{tn(m.homeTeam)}</span></div>
                     <div className="flex items-center gap-3"><Crest team={m.awayTeam} size={32} /><span className="font-bold truncate">{tn(m.awayTeam)}</span></div>
                   </div>
-                  {pct ? (
+                  {pct && isCovered(m.id, m.status, true) ? (
+                    <RevealChip onReveal={() => revealMatch(m.id)} />
+                  ) : pct ? (
                     <div className="space-y-2">
                       <div className="grid grid-cols-3 gap-1.5 text-center">
                         {(['H', 'D', 'A'] as const).map(o => (
