@@ -26,7 +26,7 @@ db.exec(`
 
 const KEY = () => process.env.YOUTUBE_API_KEY || '';
 const RETRY_MS = 2 * 3600 * 1000;
-const GIVE_UP_MS = 4 * 86400 * 1000;
+const GIVE_UP_MS = 14 * 86400 * 1000;
 let quotaBlockedUntil = 0;
 
 // Official channels (name as YouTube shows it, lower-case; matched exactly or as "<name> …")
@@ -62,14 +62,16 @@ function mentions(title: string, team: string) {
 
 export interface Highlight { videoId: string; title: string; channel: string; published: string }
 
-export async function highlightsFor(match: any): Promise<Highlight | null> {
+export let lastCandidates: { q: string; items: { channel: string; title: string; official: boolean }[]; error?: string } | null = null;
+
+export async function highlightsFor(match: any, force = false): Promise<Highlight | null> {
   if (!match || !['FINISHED', 'AWARDED'].includes(match.status)) return null;
   const row: any = db.prepare(`SELECT * FROM match_highlights WHERE match_id = ?`).get(match.id);
   if (row?.video_id) return { videoId: row.video_id, title: row.title, channel: row.channel, published: row.published };
   if (!KEY() || Date.now() < quotaBlockedUntil) return null;
   const ko = new Date(match.utcDate).getTime();
   if (!Number.isFinite(ko) || Date.now() - ko > GIVE_UP_MS) return null;
-  if (row && Date.now() - new Date(row.checked_at).getTime() < RETRY_MS) return null;
+  if (!force && row && Date.now() - new Date(row.checked_at).getTime() < RETRY_MS) return null;
 
   const home = match.homeTeam?.shortName || match.homeTeam?.name || '', away = match.awayTeam?.shortName || match.awayTeam?.name || '';
   const q = `${short(home)} ${short(away)} highlights`;
@@ -78,6 +80,7 @@ export async function highlightsFor(match: any): Promise<Highlight | null> {
     publishedAfter: new Date(ko).toISOString(), key: KEY()
   });
   let found: Highlight | null = null;
+  lastCandidates = { q, items: [] };
   try {
     const r = await fetch(`https://www.googleapis.com/youtube/v3/search?${params}`, { signal: AbortSignal.timeout(8000) });
     if (r.status === 403) { quotaBlockedUntil = Date.now() + 3600 * 1000; throw new Error('quota or key refused (403)'); }
@@ -86,6 +89,7 @@ export async function highlightsFor(match: any): Promise<Highlight | null> {
     for (const it of j.items || []) {
       const s = it.snippet || {};
       const title = String(s.title || '').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+      lastCandidates.items.push({ channel: s.channelTitle, title, official: isOfficial(s.channelTitle, match.homeTeam?.name || home, match.awayTeam?.name || away) });
       if (!it.id?.videoId || !isOfficial(s.channelTitle, match.homeTeam?.name || home, match.awayTeam?.name || away)) continue;
       if (!mentions(title, home) || !mentions(title, away)) continue;
       if (!/highlight|resumen|sintesi|samenvatting|resume|zusammenfassung|melhores momentos|özet|all goals|goals/i.test(title)) continue;
@@ -94,6 +98,7 @@ export async function highlightsFor(match: any): Promise<Highlight | null> {
     }
   } catch (e: any) {
     logger.warn(`highlights ${match.id}: ${e.message}`);
+    if (lastCandidates) lastCandidates.error = e.message;
   }
   db.prepare(`
     INSERT INTO match_highlights (match_id, video_id, title, channel, published, checked_at, tries) VALUES (?, ?, ?, ?, ?, ?, 1)

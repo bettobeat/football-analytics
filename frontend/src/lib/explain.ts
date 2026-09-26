@@ -31,7 +31,7 @@ function rowSentence(r: Row, side: Side, names: { H: string; A: string }): strin
     {
       // note is "home vs away"; put the favoured team's value first
       const m = note?.match(/(~?€[\d.]+m) vs (~?€[\d.]+m)/)
-      return `${t} have the more valuable squad${m ? ` (${side === 'H' ? m[1] : m[2]} vs ${side === 'H' ? m[2] : m[1]})` : ''}.`
+      return `${t} have the more valuable squad${m ? ` (${side === 'H' ? m[1] : m[2]} vs ${side === 'H' ? m[2] : m[1]})` : ''}.${m && (m[1] + m[2]).includes('~') ? ' (~ = estimate: the data source is incomplete for newly promoted clubs.)' : ''}`
     }
     case '#1e':
       return `${t} are the stronger side on results over time${note ? ` (${note})` : ''}.`

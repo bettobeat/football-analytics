@@ -1503,7 +1503,7 @@ function LivePitch({ m, home, away, live }: { m: Match; home: Team; away: Team; 
         const t = n <= 1 ? 0 : i / (n - 1)
         const x = isHome ? 5 + t * 40 : 95 - t * 40
         const y = ((j + 1) / (row.length + 1)) * 100
-        return { pl, x: isHome ? x : x, y: isHome ? y : 100 - y, teamId: team.id }
+        return { pl, x, y: isHome ? y : 100 - y, teamId: team.id }
       })
     )
   }
