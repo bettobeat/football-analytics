@@ -170,14 +170,14 @@ function BottomTabs() {
   return (
     <>
       {searching && (
-        <div className="sm:hidden fixed inset-0 z-50 bg-bg/95 backdrop-blur-md p-4 pt-6">
+        <div className="lg:hidden fixed inset-0 z-50 bg-bg/95 backdrop-blur-md p-4 pt-6">
           <div className="flex items-center gap-2">
             <div className="flex-1"><SearchBox compact onDone={() => setSearching(false)} /></div>
             <button onClick={() => setSearching(false)} className="h-11 px-3 text-sm font-semibold text-muted">Close</button>
           </div>
         </div>
       )}
-      <nav aria-label="Tabs" className="sm:hidden fixed left-3 right-3 bottom-3 z-40 grid grid-cols-5 gap-1 p-1.5 rounded-3xl bg-surface/95 backdrop-blur-md border border-line/80 shadow-lift">
+      <nav aria-label="Tabs" className="lg:hidden fixed left-3 right-3 bottom-3 z-40 grid grid-cols-5 gap-1 p-1.5 rounded-3xl bg-surface/85 backdrop-blur-xl border border-line/80 shadow-lift sm:max-w-lg sm:mx-auto">
         {tab('/', 'Home', true)}
         {tab('/matches', 'Matches')}
         {tab('/draw-alerts', 'Alerts')}
@@ -251,10 +251,11 @@ function Shell() {
   return (
     <Router>
       <div className="min-h-screen">
-        <header className="sticky top-0 z-40 backdrop-blur-md bg-bg/80 border-b border-line/60">
+        <div className="stage" aria-hidden />
+        <header className="sticky top-0 z-40 backdrop-blur-xl bg-bg/70 border-b border-line/50">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-[72px] flex items-center gap-3 lg:gap-5">
             <Logo />
-            <nav className="hidden sm:flex items-center gap-0.5 p-1 rounded-full bg-surface2/60 border border-line/60 overflow-x-auto">
+            <nav className="hidden lg:flex items-center gap-0.5 p-1 rounded-full bg-surface2/60 border border-line/60">
               <NavLinks cls={navCls} />
             </nav>
             <div className="hidden lg:block flex-1 min-w-[180px] max-w-md ml-auto">
@@ -278,7 +279,7 @@ function Shell() {
 
         <PageTitle />
         <VerifyBanner />
-        <main className="pb-24 sm:pb-0">
+        <main>
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/matches" element={<Dashboard />} />
@@ -321,7 +322,7 @@ function Shell() {
           </Routes>
         </main>
 
-        <footer className="max-w-7xl mx-auto px-4 sm:px-6 py-10 text-xs text-faint space-y-2">
+        <footer className="max-w-7xl mx-auto px-4 sm:px-6 pt-10 pb-28 lg:pb-10 text-xs text-faint space-y-2">
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             <Link to="/terms" className="hover:text-ink">Terms</Link>
             <Link to="/privacy" className="hover:text-ink">Privacy</Link>

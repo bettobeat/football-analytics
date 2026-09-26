@@ -13,7 +13,7 @@ const FEEDS: { source: string; url: string }[] = [
 ];
 const TTL = 20 * 60 * 1000;
 
-export interface NewsItem { title: string; link: string; source: string; published: string | null; summary: string }
+export interface NewsItem { title: string; link: string; source: string; published: string | null; summary: string; image: string | null }
 
 let cache: { at: number; items: NewsItem[] } | null = null;
 let inflight: Promise<NewsItem[]> | null = null;
@@ -49,8 +49,21 @@ async function fetchFeed(f: { source: string; url: string }): Promise<NewsItem[]
     if (/\/(tennis|f1|formula-1|cricket|golf|boxing|rugby-union|rugby-league|nfl|nba|darts|racing|cycling|snooker|netball|athletics)\//i.test(link)) continue;
     const pub = tag(b, 'pubDate') || tag(b, 'dc:date');
     const d = pub ? new Date(pub) : null;
+    // picture the feed ships with the story (media:content / media:thumbnail / enclosure) — the largest one
+    let image: string | null = null, best = -1;
+    for (const im of b.matchAll(/<(media:content|media:thumbnail|enclosure)\b([^>]*)>/gi)) {
+      const attrs = im[2];
+      const url = attrs.match(/url="([^"]+)"/i)?.[1];
+      if (!url || !/^https:\/\//.test(url)) continue;
+      const type = attrs.match(/type="([^"]+)"/i)?.[1] || '';
+      if (type && !/^image\//i.test(type)) continue;
+      const w = Number(attrs.match(/width="(\d+)"/i)?.[1] || 0);
+      if (w > best) { best = w; image = url.replace(/&amp;/g, '&'); }
+    }
+    // BBC ships 240px thumbnails; its image server has the same picture at 480px
+    if (image && /ichef\.bbci\.co\.uk\/.*\/240\//.test(image)) image = image.replace('/240/', '/480/');
     const summary = tag(b, 'description').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(); // some feeds escape their HTML
-    items.push({ title, link, source: f.source, published: d && !isNaN(d.getTime()) && d.getTime() <= Date.now() + 5 * 60000 ? d.toISOString() : null, summary: summary.length > 180 ? summary.slice(0, 177) + '…' : summary });
+    items.push({ title, link, source: f.source, published: d && !isNaN(d.getTime()) && d.getTime() <= Date.now() + 5 * 60000 ? d.toISOString() : null, summary: summary.length > 180 ? summary.slice(0, 177) + '…' : summary, image });
     if (items.length >= 15) break;
   }
   // Some feeds (ESPN) stamp every item with the feed's build time, not the article's. That date is meaningless, so drop it.
