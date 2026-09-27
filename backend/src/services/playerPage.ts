@@ -16,7 +16,7 @@ import { resolveAfTeamId } from './teamPage';
 
 const AF_OFFSET = 1_000_000_000;
 const PAGE_TTL = 12 * 3600 * 1000;
-const PAGE_VERSION = 3; // bump when the page shape changes: older stored copies are rebuilt
+const PAGE_VERSION = 4; // bump when the page shape changes: older stored copies are rebuilt
 const cache = new Map<number, { at: number; data: any }>();
 
 db.exec(`CREATE TABLE IF NOT EXISTS player_page_store (player_id INTEGER PRIMARY KEY, json TEXT NOT NULL, built_at TEXT NOT NULL)`);
@@ -37,10 +37,12 @@ function statRow(s: any) {
     team: siteTeam(s.team),
     position: s.games?.position || null,
     number: n(s.games?.number),
-    apps: n(s.games?.appearences) || 0,
+    // the provider sometimes records minutes (and even goals) with 0 appearances: a player who played did appear
+    apps: Math.max(n(s.games?.appearences) || 0, minutes > 0 ? 1 : 0),
     starts: n(s.games?.lineups) || 0,
     minutes,
-    rating: s.games?.rating ? Math.round(Number(s.games.rating) * 100) / 100 : null,
+    // a rating from a few minutes on the pitch says little (a 17-minute cameo can read 3.4): shown from 30 minutes
+    rating: s.games?.rating && minutes >= 30 ? Math.round(Number(s.games.rating) * 100) / 100 : null,
     goals: n(s.goals?.total) || 0,
     assists: n(s.goals?.assists) || 0,
     conceded: n(s.goals?.conceded),
@@ -289,6 +291,8 @@ function sameName(a: string, b: string) {
 }
 
 const findCache = new Map<string, number | null>();
+// Football-Data.org competition code → API-Football league id
+const FD_TO_AF: Record<string, number> = { PL: 39, ELC: 40, PD: 140, SA: 135, BL1: 78, FL1: 61, DED: 88, PPL: 94, BSA: 71, CL: 2, EC: 4, WC: 1 };
 
 export async function findPlayer(name: string, teamId: number, code?: string, teamName?: string): Promise<number | null> {
   const key = `${name}|${teamId}|${code}`;
@@ -308,6 +312,18 @@ export async function findPlayer(name: string, teamId: number, code?: string, te
         } catch (e: any) {
           logger.warn(`player find ${name}: ${e.message}`);
         }
+      }
+    }
+  }
+  // promoted clubs the history mapping doesn't know yet: search the league instead of the team
+  if (!hit && code && FD_TO_AF[code] && afRemaining() > 500) {
+    const last = plain(name).split(' ').pop() || '';
+    if (last.length >= 4) {
+      try {
+        const j: any = await afGet('/players', { league: FD_TO_AF[code], season: seasonNow(), search: last });
+        hit = (j.response || []).find((it: any) => sameName(it.player?.name, name) || sameName(`${it.player?.firstname} ${it.player?.lastname}`, name))?.player?.id ?? null;
+      } catch (e: any) {
+        logger.warn(`player find (league) ${name}: ${e.message}`);
       }
     }
   }
