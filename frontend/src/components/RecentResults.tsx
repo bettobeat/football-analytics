@@ -20,7 +20,7 @@ interface Settled {
   outcome: Pick
   pick: Pick
   hit: boolean
-  p: Record<Pick, number>
+  p: Record<Pick, number> | null
 }
 
 export default function RecentResults({ code, limit, days = 14, compact, large, listClass = '' }: { code?: string; limit: number; days?: number; compact?: boolean; large?: boolean; listClass?: string }) {
@@ -30,8 +30,8 @@ export default function RecentResults({ code, limit, days = 14, compact, large, 
     let cancelled = false
     const load = () =>
       axios
-        .get(`${API_URL}/accuracy/recent`, { params: { days, model: 'main', limit, ...(code ? { competition: code } : {}) } })
-        .then(r => !cancelled && (setRows(r.data.data || []), setError(false)))
+        .get(`${API_URL}/public/results`, { params: { days, limit, ...(code ? { competition: code } : {}) } })
+        .then(r => !cancelled && (setRows(r.data.data?.rows || []), setError(false)))
         .catch(() => !cancelled && setError(true))
     load()
     const t = setInterval(load, 5 * 60 * 1000)
@@ -101,7 +101,7 @@ function ResultRow({ r, compact }: { r: Settled; compact?: boolean }) {
       <div className="mt-1 flex items-center justify-between gap-2 text-[11px]">
         <span className="text-faint truncate">
           Pick <span className={`font-semibold ${PICK_COLOR[r.pick]}`}>{pickName}</span>
-          {!compact && <span className="num"> {Math.round(r.p[r.pick])}%</span>}
+          {!compact && r.p && <span className="num"> {Math.round(r.p[r.pick])}%</span>}
         </span>
         <span
           className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${r.hit ? 'bg-win/15 text-win' : 'bg-loss/15 text-loss'}`}

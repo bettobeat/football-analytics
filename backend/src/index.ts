@@ -173,7 +173,7 @@ app.use((req, _res, next) => {
   next();
 });
 
-const OPEN_API = /^\/api\/(health$|auth\/|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|search$|news$|public\/summary$)/;
+const OPEN_API = /^\/api\/(health$|auth\/|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|search$|news$|public\/(summary|results)$)/;
 const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|backtest|history\/status|clv|past\/(seasons|predictions|data|patterns)|draw-alerts)$/;
 
 app.use('/api', (req, res, next) => {
@@ -592,6 +592,32 @@ app.get('/api/news', async (req, res) => {
     res.json({ data: await footballNews(Math.min(30, parseInt(String(req.query.limit || '12'), 10) || 12)), timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'News failed');
+  }
+});
+
+// Latest results with the pick saved before kick-off (open: it is the public proof). Percentages only for premium.
+// /api/public/results?competition=PL&days=30&limit=50 → { rows, record } (record = hit rate over the same period)
+app.get('/api/public/results', (req, res) => {
+  try {
+    const days = Math.min(400, parseInt(String(req.query.days || '30'), 10) || 30);
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || '50'), 10) || 50));
+    const competition = req.query.competition ? String(req.query.competition).toUpperCase() : undefined;
+    const full = canSeeFull(req.access || 'anon');
+    const rows = recentSettled(days, competition, limit, 'main').map((r: any) => {
+      const { odds, confidence, model, ...rest } = r;
+      return full ? rest : { ...rest, p: null };
+    });
+    const main: any = accuracy(days, competition, 'main');
+    const mkt: any = accuracy(days, competition, 'market');
+    res.json({
+      data: {
+        rows,
+        record: { days, n: main.settled, hitRate: main.model?.hitRate ?? null, market: mkt.settled ? { n: mkt.settled, hitRate: mkt.model?.hitRate ?? null } : null }
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    sendError(res, error, 'Failed to list results');
   }
 });
 

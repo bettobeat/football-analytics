@@ -45,7 +45,7 @@ interface Scorer {
   penalties: number | null
   playedMatches?: number | null
 }
-interface Record_ { settled: number; model: { hitRate: number } | null; market: { n: number; hitRate: number } | null }
+interface Record_ { n: number; hitRate: number | null; market: { n: number; hitRate: number | null } | null }
 
 const MAIN = ['grid-v3', 'elo-intl', 'elo-euro']
 const LIVE = new Set(['IN_PLAY', 'PAUSED', 'LIVE'])
@@ -102,7 +102,7 @@ export default function League() {
         if (cancelled) return
         setTables(r.data.data?.standings || [])
         const c = r.data.data?.competition
-        if (c?.name) setComp(prev => prev || { code, name: c.name, emblem: c.emblem, area: r.data.data?.area })
+        if (c?.name) setComp(prev => (prev ? { ...prev, area: prev.area || r.data.data?.area } : { code, name: c.name, emblem: c.emblem, area: r.data.data?.area }))
       })
       .catch(() => !cancelled && setTables([]))
     axios
@@ -115,12 +115,12 @@ export default function League() {
         if (cancelled) return
         const list = ((r.data.data || []) as Match[]).filter(m => m.competition.code === code)
         setMatches(list)
-        if (list[0]) setComp(list[0].competition)
+        if (list[0]) setComp(prev => ({ ...list[0].competition, area: list[0].competition.area || prev?.area }))
       })
       .catch(() => !cancelled && setMatches([]))
     axios
-      .get(`${API_URL}/accuracy`, { params: { days: 365, competition: code, model: 'main' } })
-      .then(r => !cancelled && setRecord(r.data.data))
+      .get(`${API_URL}/public/results`, { params: { days: 365, competition: code, limit: 1 } })
+      .then(r => !cancelled && setRecord(r.data.data?.record || null))
       .catch(() => undefined)
     // name and emblem for competitions with no table and no fixtures right now
     axios
@@ -128,7 +128,7 @@ export default function League() {
       .then(r => {
         if (cancelled) return
         const c = (r.data.data || []).find((x: any) => String(x.code).toUpperCase() === code)
-        if (c) setComp(prev => prev || { code, name: c.name, emblem: c.emblem, area: c.area })
+        if (c) setComp(prev => (prev ? { ...prev, area: prev.area || c.area } : { code, name: c.name, emblem: c.emblem, area: c.area }))
       })
       .catch(() => undefined)
     return () => {
@@ -153,6 +153,7 @@ export default function League() {
     return [...scorers].filter(s => (s[key] || 0) > 0).sort((a, b) => (b[key] || 0) - (a[key] || 0) || (b[other] || 0) - (a[other] || 0)).slice(0, 15)
   }, [scorers, leaders])
 
+  const hasForm = totals.some(t => t.table.some(r => r.form))
   const upcoming = (matches || []).filter(m => !LIVE.has(m.status)).slice(0, 12)
   const live = (matches || []).filter(m => LIVE.has(m.status))
 
@@ -172,14 +173,14 @@ export default function League() {
             </div>
             <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink truncate">{comp?.name || code}</h1>
           </div>
-          {record?.model && record.settled > 0 && (
+          {record && record.hitRate !== null && record.n > 0 && (
             <div className="flex gap-3">
               <div className="glass px-4 py-3 text-center">
                 <div className="text-[11px] text-faint">v3 picks right</div>
-                <div className="font-display text-2xl font-extrabold text-accent num">{Math.round(record.model.hitRate)}%</div>
-                <div className="text-[10px] text-faint num">{record.settled} games · 12 months</div>
+                <div className="font-display text-2xl font-extrabold text-accent num">{Math.round(record.hitRate)}%</div>
+                <div className="text-[10px] text-faint num">{record.n} games · 12 months</div>
               </div>
-              {record.market && (
+              {record.market && record.market.hitRate !== null && (
                 <div className="glass px-4 py-3 text-center">
                   <div className="text-[11px] text-faint">Bookmakers' favourite</div>
                   <div className="font-display text-2xl font-extrabold text-ink num">{Math.round(record.market.hitRate)}%</div>
@@ -203,7 +204,7 @@ export default function League() {
               <div className="space-y-5">
                 {totals.map((t, i) => (
                   <div key={i} className="overflow-x-auto">
-                    {t.group && <div className="label pb-2">{t.group.replace(/_/g, ' ')}</div>}
+                    {t.group && totals.length > 1 && <div className="label pb-2">{t.group.replace(/_/g, ' ')}</div>}
                     <table className="w-full text-sm min-w-[520px]">
                       <thead>
                         <tr className="text-[11px] text-faint">
@@ -216,7 +217,7 @@ export default function League() {
                           <th className="text-right font-medium py-1.5 num w-16 hidden sm:table-cell">Goals</th>
                           <th className="text-right font-medium py-1.5 num w-10">GD</th>
                           <th className="text-right font-medium py-1.5 num w-10 pr-2">Pts</th>
-                          <th className="text-center font-medium py-1.5 w-[104px] hidden md:table-cell">Form</th>
+                          {hasForm && <th className="text-center font-medium py-1.5 w-[104px] hidden md:table-cell">Form</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -239,7 +240,7 @@ export default function League() {
                               {r.goalDifference}
                             </td>
                             <td className="py-2 pr-2 text-right num font-bold text-ink">{r.points}</td>
-                            <td className="py-2 hidden md:table-cell">
+                            {hasForm && <td className="py-2 hidden md:table-cell">
                               <span className="flex justify-center gap-1">
                                 {String(r.form || '')
                                   .split(/[,\s]*/)
@@ -249,7 +250,7 @@ export default function League() {
                                     <span key={j} className={`w-4 h-4 rounded-[4px] grid place-items-center text-[9px] font-extrabold text-bg ${FORM_BG[x]}`}>{x}</span>
                                   ))}
                               </span>
-                            </td>
+                            </td>}
                           </tr>
                         ))}
                       </tbody>
