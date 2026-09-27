@@ -120,7 +120,7 @@ async function build(pid: number) {
     },
     team: main?.team || null,
     position: main?.position || null,
-    number: cur?.rows.find(r => r.number)?.number ?? null,
+    number: cur?.rows.find((r: any) => r.number)?.number ?? null,
     status: out ? { out: true, type: out.type, since: out.start, until: out.end } : (cur?.player?.injured ? { out: true, type: 'Injured', since: null, until: null } : { out: false }),
     seasons: [cur && { season: S, label: `${S}-${String(S + 1).slice(2)}`, rows: cur.rows, totals: cur.totals }, prev && { season: S - 1, label: `${S - 1}-${String(S).slice(2)}`, rows: prev.rows, totals: prev.totals }].filter(Boolean),
     sidelined,
