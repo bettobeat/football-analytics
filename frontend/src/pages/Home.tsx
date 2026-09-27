@@ -408,7 +408,7 @@ export default function Home() {
         </div>
 
         <div className="card p-3 flex flex-col">
-          <RecentResults limit={4} compact large />
+          <RecentResults limit={50} days={30} compact large listClass="max-h-[340px] overflow-y-auto overscroll-contain pr-1" />
         </div>
       </div>
 

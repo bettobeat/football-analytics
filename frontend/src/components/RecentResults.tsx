@@ -23,7 +23,7 @@ interface Settled {
   p: Record<Pick, number>
 }
 
-export default function RecentResults({ code, limit, days = 14, compact, large }: { code?: string; limit: number; days?: number; compact?: boolean; large?: boolean }) {
+export default function RecentResults({ code, limit, days = 14, compact, large, listClass = '' }: { code?: string; limit: number; days?: number; compact?: boolean; large?: boolean; listClass?: string }) {
   const [rows, setRows] = useState<Settled[] | null>(null)
   const [error, setError] = useState(false)
   useEffect(() => {
@@ -61,7 +61,7 @@ export default function RecentResults({ code, limit, days = 14, compact, large }
         </div>
       )}
       {rows && rows.length === 0 && <p className="px-1 text-xs text-faint">No finished games in the last {days} days.</p>}
-      <ul className="space-y-1">
+      <ul className={`space-y-1 ${listClass}`}>
         {rows?.map(r => (
           <li key={r.matchId}>
             <ResultRow r={r} compact={compact} />
