@@ -43,6 +43,7 @@ interface PlayerData {
   status: { out: boolean; type?: string; since?: string | null; until?: string | null }
   seasons: Season[]
   sidelined: { type: string; start: string; end: string | null }[]
+  international?: (Row & { from: string | null; to: string | null })[]
   transfers: { date: string; type: string; from: SiteTeam; to: SiteTeam }[]
   premium: boolean
   locked?: string[]
@@ -80,6 +81,9 @@ function Lock() {
     </svg>
   )
 }
+
+const mon = (d: string) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+const span = (a: string | null, b: string | null) => (a && b ? (mon(a) === mon(b) ? mon(a) : `${mon(a)} – ${mon(b)}`) : '')
 
 const teamHref = (t: SiteTeam) => `/team/${t.id}`
 
@@ -281,6 +285,42 @@ export default function Player() {
         <div className="card p-6 text-sm text-muted">No season data for this player yet.</div>
       )}
 
+      {data.international && data.international.length > 0 && (
+        <Card title="National team">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[520px]">
+              <thead>
+                <tr className="text-[11px] text-faint">
+                  <th className="text-left font-medium py-1.5 pl-2">Competition</th>
+                  <th className="text-left font-medium py-1.5">Played</th>
+                  <th className="text-right font-medium py-1.5 num w-12">Apps</th>
+                  <th className="text-right font-medium py-1.5 num w-12">Goals</th>
+                  {full && <th className="text-right font-medium py-1.5 num w-12 pr-2">Ast</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {data.international.map((r, i) => (
+                  <tr key={i} className="border-t border-line/50">
+                    <td className="py-2 pl-2">
+                      <span className="flex items-center gap-2 min-w-0">
+                        {r.team && <img src={r.team.logo} alt="" className="w-4 h-4 object-contain" />}
+                        <span className="truncate text-ink">{r.league.name}</span>
+                        {r.team && <span className="text-[11px] text-faint truncate">· {r.team.name}</span>}
+                      </span>
+                    </td>
+                    <td className="py-2 text-[11px] text-faint whitespace-nowrap">{span(r.from, r.to)}</td>
+                    <td className="py-2 text-right num text-muted">{r.apps}</td>
+                    <td className="py-2 text-right num font-bold text-ink">{r.goals}</td>
+                    {full && <td className="py-2 pr-2 text-right num text-muted">{r.assists}</td>}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-[11px] text-faint">National-team games are listed by tournament, not counted in the club season above.</p>
+        </Card>
+      )}
+
       {!full && data.locked && (
         <div className="rounded-3xl p-6 border border-home/40 bg-[linear-gradient(150deg,#1B2A55_0%,#101624_70%)] text-[#EEF1F6] flex flex-wrap items-center justify-between gap-4">
           <div className="space-y-1">
@@ -307,7 +347,7 @@ export default function Player() {
                     <img src={tr.to.logo} alt="" className="w-4 h-4 object-contain" />
                     <span className="truncate">{tr.to.name}</span>
                   </Link>
-                  <span className="ml-auto text-[11px] text-faint whitespace-nowrap">{tr.type && tr.type !== 'N/A' ? tr.type : ''}</span>
+                  <span className="ml-auto text-[11px] text-faint whitespace-nowrap">{tr.type}</span>
                 </li>
               ))}
             </ul>
