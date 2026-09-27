@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import RecentResults from '../components/RecentResults'
 import { Link } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
@@ -226,10 +227,6 @@ export default function Home() {
     return ranked.filter(m => m.id !== featured?.id).slice(0, 10).sort((a, b) => a.utcDate.localeCompare(b.utcDate))
   }, [notStarted, featured])
 
-  const strong = useMemo(
-    () => (full ? notStarted.map(m => ({ m, p: mainPred(m) })).filter(x => hasPct(x.p) && topPct(x.p!) >= 60).sort((a, b) => topPct(b.p!) - topPct(a.p!)).slice(0, 4) : []),
-    [notStarted, full]
-  )
 
   const liveMain = live[0]
   const fp = featured ? mainPred(featured) : null
@@ -410,34 +407,8 @@ export default function Home() {
           <Link to={full ? '/draw-alerts' : '/premium'} className="mt-auto text-sm font-bold text-accent">{full ? 'All draw alerts →' : 'Unlock draw alerts →'}</Link>
         </div>
 
-        <div className="card p-6 flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="font-display text-lg font-bold">Strong picks</h2>
-            {summary?.v3.strong60?.hitRate != null && <span className="text-xs text-muted">60%+ right {Math.round(summary.v3.strong60.hitRate)}% of the time</span>}
-          </div>
-          {full ? (
-            strong.length ? (
-              strong.map(({ m, p }) => (
-                <Link key={m.id} to={`/match/${m.id}`} className="flex items-center gap-3.5 py-2.5 border-b border-line/50 last:border-0">
-                  <span className="w-12 h-12 rounded-full grid place-items-center flex-shrink-0" style={{ background: `conic-gradient(rgb(var(--accent)) ${topPct(p!)}%, rgb(var(--surface-2)) 0)` }}>
-                    <span className="w-9 h-9 rounded-full bg-surface grid place-items-center font-display font-extrabold text-xs">{Math.round(topPct(p!))}%</span>
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-extrabold truncate">{pickName(m, p)}{pickName(m, p) === 'Draw' ? '' : ' to win'}</span>
-                    <span className="block text-xs text-muted truncate">{tn(m.homeTeam)} – {tn(m.awayTeam)} · {new Date(m.utcDate).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
-                  </span>
-                </Link>
-              ))
-            ) : (
-              <p className="text-sm text-muted">No 60%+ picks in the next two weeks yet.</p>
-            )
-          ) : (
-            <div className="rounded-2xl p-4 bg-surface2/60 space-y-2">
-              <div className="flex items-center gap-2 font-bold"><Lock /> v3's most confident picks</div>
-              <p className="text-sm text-muted">Every match where v3 gives one result 60% or more, with the full percentages.</p>
-            </div>
-          )}
-          {!full && <Link to="/premium" className="mt-auto text-sm font-bold text-accent">Unlock strong picks →</Link>}
+        <div className="card p-3 flex flex-col">
+          <RecentResults limit={4} compact large />
         </div>
       </div>
 
