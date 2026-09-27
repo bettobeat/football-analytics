@@ -204,13 +204,14 @@ function nll(xs: { f: Feat; o: 'H' | 'D' | 'A' }[], w: GridW) {
  * Pattern search (coordinate steps that only ever lower the log loss, step halves when nothing improves).
  * Starts from the Elo-only fit, so the grid can only end up at least as good as Elo on the training data.
  */
-function fitGrid(xs: { f: Feat; o: 'H' | 'D' | 'A' }[], start: GridW): GridW {
+function fitGrid(xs: { f: Feat; o: 'H' | 'D' | 'A' }[], start: GridW, fixed: string[] = []): GridW {
   const w: any = { ...start };
   let best = nll(xs, w);
   let step = 0.2;
   for (let pass = 0; pass < 80 && step > 0.002; pass++) {
     let improved = false;
     for (const k of GW) {
+      if (fixed.includes(k)) continue;
       for (const dir of [1, -1]) {
         const old = w[k];
         w[k] = old + dir * step;
@@ -230,6 +231,26 @@ const gridFromElo = (e: { c: number; s: number; beta: number }): GridW => ({
   ...GRID0, w_elo: 100 / e.s, w_squad: e.beta / e.s, w_goals: 0, w_form: 0, w_rest: 0,
   w_homeComp: 90 / e.s, w_homeFriendly: 50 / e.s, m_friendly: 1, c_finals: e.c / e.s, c_comp: e.c / e.s, c_friendly: e.c / e.s, g_draw: 0
 });
+
+let lastSplit: { trainOld: any[]; test: any[]; gridOld: GridW; eloOld: { c: number; s: number; beta: number }; score: (pf: (x: any) => { h: number; d: number; a: number }) => any } | null = null;
+
+/**
+ * How much should the goals row (#19, attack vs defence) count? Scores the last-2-years test set with its weight
+ * at 0 / 25 / 50 / 75 / 100 / 125 % of the fitted value: "as is" (other weights unchanged) and "refit" (the other
+ * weights re-fitted on the training years with the goals weight held at that level).
+ */
+export function nationalGoalsSensitivity() {
+  if (!lastSplit) buildNationalElo();
+  const s = lastSplit!;
+  const base = s.gridOld.w_goals;
+  const out: any[] = [];
+  for (const m of [0, 0.25, 0.5, 0.75, 1, 1.25]) {
+    const asIs = { ...s.gridOld, w_goals: base * m };
+    const refit = m === 1 ? s.gridOld : fitGrid(s.trainOld, asIs, ['w_goals']);
+    out.push({ share: m, goalsWeight: Math.round(base * m * 1000) / 1000, asIs: s.score(x => gridProbs(x.f, asIs)), refit: s.score(x => gridProbs(x.f, refit)) });
+  }
+  return { testMatches: s.test.length, fittedGoalsWeight: Math.round(base * 1000) / 1000, results: out };
+}
 
 export function buildNationalElo() {
   const rows = db.prepare(`SELECT * FROM nat_matches ORDER BY date, fixture_id`).all() as any[];
@@ -306,6 +327,7 @@ export function buildNationalElo() {
   const eloOld = fitElo(trainOld, BETAS);
   const gridOld = fitGrid(trainOld, gridFromElo(eloOld));
   const eloTest = score(x => probs(x.d + eloOld.beta * x.lv, eloOld.c, eloOld.s));
+  lastSplit = { trainOld, test, gridOld, eloOld, score };
   const gridTest = score(x => gridProbs(x.f, gridOld));
   engine = test.length >= 300 && gridTest.logLoss < eloTest.logLoss ? 'grid' : 'elo';
   // live parameters: refit on everything since 2018

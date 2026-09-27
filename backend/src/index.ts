@@ -32,7 +32,7 @@ import {
   isAfMatchId, isAfCode, afUpcoming, afLive, afWithPredictions, getAfMatchDetails, getAfStandings, getAfScorers,
   afCompetitions, pollAfLive, startAfMatchesScheduler, afWindowStatus, refreshAfWindow, onAfWindow, isKnownAfFixture, afExtrasForFd, withAfOdds, backfillAfOdds
 } from './services/afMatches';
-import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNationalEloScheduler } from './services/nationalElo';
+import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNationalEloScheduler, nationalGoalsSensitivity } from './services/nationalElo';
 import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler, clubValueReport } from './services/clubElo';
 import { nationalValueSearch, historyMatchReport } from './services/squadValues';
 import { drawAlertsReport, drawFactorTest } from './services/drawAlerts';
@@ -725,6 +725,7 @@ app.get('/api/model/elo', async (req, res) => {
   try {
     if (req.query.sync === '1') { await syncNationalHistory(req.query.force === '1'); buildNationalElo(); }
     else if (req.query.rebuild === '1') buildNationalElo();
+    if (req.query.goals === '1') { res.json({ data: nationalGoalsSensitivity(), timestamp: new Date().toISOString() }); return; }
     res.json({ data: nationalEloStatus(), timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'National Elo failed');
