@@ -512,8 +512,10 @@ function MatchDetail() {
         )}
         <div className="relative flex flex-wrap items-center justify-between gap-2 text-sm text-muted mb-6">
           <div className="flex items-center gap-2">
-            {m.competition.emblem && <img src={m.competition.emblem} alt="" className="w-5 h-5 object-contain" />}
-            <span className="font-medium text-ink/90">{m.competition.name}</span>
+            <Link to={`/league/${m.competition.code}`} className="flex items-center gap-2 hover:text-ink">
+              {m.competition.emblem && <img src={m.competition.emblem} alt="" className="w-5 h-5 object-contain" />}
+              <span className="font-medium text-ink/90 hover:underline">{m.competition.name}</span>
+            </Link>
             {m.matchday && <span className="text-faint">· Matchday {m.matchday}</span>}
             {m.stage && m.stage !== 'REGULAR_SEASON' && <span className="text-faint">· {m.stage.replace(/_/g, ' ').toLowerCase()}</span>}
             {m.group && <span className="text-faint">· {m.group.replace(/_/g, ' ')}</span>}

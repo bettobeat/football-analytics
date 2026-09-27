@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Link, NavLink, useLocation } fr
 import Dashboard from './pages/Dashboard'
 import Home from './pages/Home'
 import Team from './pages/Team'
+import League from './pages/League'
 import SearchBox from './components/SearchBox'
 import MatchDetail from './pages/MatchDetail'
 import AccuracySimple from './pages/AccuracySimple'
@@ -197,6 +198,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/$/, 'Home'],
   [/^\/matches/, 'Matches'],
   [/^\/team\//, 'Team'],
+  [/^\/league\//, 'League'],
   [/^\/match\//, 'Match'],
   [/^\/accuracy/, 'Accuracy'],
   [/^\/draw-alerts/, 'Draw alerts'],
@@ -284,6 +286,7 @@ function Shell() {
             <Route path="/" element={<Home />} />
             <Route path="/matches" element={<Dashboard />} />
             <Route path="/team/:id" element={<Team />} />
+            <Route path="/league/:code" element={<League />} />
             <Route path="/match/:id" element={<MatchDetail />} />
             <Route
               path="/accuracy"

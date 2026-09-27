@@ -351,6 +351,11 @@ function Dashboard() {
               </h1>
               <p className="mt-1 text-sm text-muted">
                 <span className="num text-ink font-semibold">{upcoming.length}</span> fixtures in the next {days} days
+                {league !== 'ALL' && (
+                  <Link to={`/league/${league}`} className="ml-3 font-bold text-accent">
+                    League page →
+                  </Link>
+                )}
               </p>
             </div>
             <div className="seg">
