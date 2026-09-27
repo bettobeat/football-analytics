@@ -144,7 +144,7 @@ function fmtTime(iso: string) {
 }
 
 function shortDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 function resultFor(teamId: number, m: Match): 'W' | 'D' | 'L' | null {
@@ -1174,7 +1174,7 @@ function TeamPanel({ team, row, recent }: { team: Team; row: StandingRow | null;
             const ga = isHome ? m.score.fullTime.away : m.score.fullTime.home
             return (
               <li key={m.id} className="flex items-center gap-2">
-                <span className="num w-12 text-[11px] text-faint whitespace-nowrap">{shortDate(m.utcDate)}</span>
+                <span className="num w-[76px] flex-shrink-0 text-[11px] text-faint whitespace-nowrap">{shortDate(m.utcDate)}</span>
                 <FormBadge r={resultFor(team.id, m)} />
                 <span className="text-[10px] text-faint w-3">{isHome ? 'H' : 'A'}</span>
                 <span className="flex-1 truncate text-muted">{opp.shortName || opp.name}</span>
@@ -1222,7 +1222,7 @@ function H2H({ details }: { details: Details }) {
       <ul className="space-y-1 text-sm">
         {details.head2head!.matches.filter(h => DONE.has(h.status)).map(h => (
           <li key={h.id} className="flex items-center gap-2">
-            <span className="num w-12 text-[11px] text-faint whitespace-nowrap">{shortDate(h.utcDate)}</span>
+            <span className="num w-[76px] flex-shrink-0 text-[11px] text-faint whitespace-nowrap">{shortDate(h.utcDate)}</span>
             <span className="flex-1 text-right truncate text-muted">{h.homeTeam.shortName || h.homeTeam.name}</span>
             <span className="num font-semibold text-ink px-1">{h.score.fullTime.home}–{h.score.fullTime.away}</span>
             <span className="flex-1 truncate text-muted">{h.awayTeam.shortName || h.awayTeam.name}</span>
