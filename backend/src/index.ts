@@ -37,6 +37,7 @@ import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler, c
 import { nationalValueSearch, historyMatchReport } from './services/squadValues';
 import { drawAlertsReport, drawFactorTest } from './services/drawAlerts';
 import { teamPage, searchTeams, resolveAfTeamId, setTeamOverride, teamOverrides } from './services/teamPage';
+import { playerPage, findPlayer } from './services/playerPage';
 import { footballNews } from './services/news';
 import { highlightsFor, highlightsStatus, lastCandidates } from './services/highlights';
 import { rebuildPlayerQuality, playerQualityTable } from './services/playerQuality';
@@ -173,7 +174,7 @@ app.use((req, _res, next) => {
   next();
 });
 
-const OPEN_API = /^\/api\/(health$|auth\/|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|search$|news$|public\/(summary|results)$)/;
+const OPEN_API = /^\/api\/(health$|auth\/|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|public\/(summary|results)$)/;
 const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|backtest|history\/status|clv|past\/(seasons|predictions|data|patterns)|draw-alerts)$/;
 
 app.use('/api', (req, res, next) => {
@@ -535,6 +536,27 @@ app.get('/api/team-page/:id(\\d+)', async (req, res) => {
     res.json({ data: await teamPage(afId, canSeeFull(req.access || 'anon')), timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Team page failed');
+  }
+});
+
+// Player page: /api/player-page/<API-Football player id>; /api/player-page/find?name=&team=<site team id>&c=&n= → { id }
+app.get('/api/player-page/find', async (req, res) => {
+  try {
+    const name = String(req.query.name || '').trim();
+    const team = parseInt(String(req.query.team || ''), 10);
+    if (!name || !team) return res.status(400).json({ error: 'name and team are required' });
+    const id = await findPlayer(name, team, req.query.c ? String(req.query.c) : undefined, req.query.n ? String(req.query.n) : undefined);
+    if (!id) return res.status(404).json({ error: 'Player not found' });
+    res.json({ data: { id }, timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Player lookup failed');
+  }
+});
+app.get('/api/player-page/:id(\\d+)', async (req, res) => {
+  try {
+    res.json({ data: await playerPage(parseInt(req.params.id, 10), canSeeFull(req.access || 'anon')), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Player page failed');
   }
 });
 

@@ -52,6 +52,10 @@ const LIVE = new Set(['IN_PLAY', 'PAUSED', 'LIVE'])
 const tn = (t: Team) => t.shortName || t.name
 const mainPred = (m: Match) => m.predictions?.find(p => MAIN.includes(p.model)) || m.prediction || null
 const hasPct = (p: Prediction | null): p is Prediction => !!p && !p.locked && typeof p.home === 'number'
+const playerHref = (s: Scorer, code: string) =>
+  code.startsWith('AF') || s.player.id >= 1_000_000_000
+    ? `/player/${s.player.id}`
+    : `/player/find?${new URLSearchParams({ name: s.player.name, team: String(s.team.id), c: code, n: s.team.name }).toString()}`
 const teamLink = (t: Team, code: string) => `/team/${t.id}?${new URLSearchParams({ c: code, n: t.name }).toString()}`
 
 function Card({ title, action, children, className = '' }: { title: string; action?: ReactNode; children: ReactNode; className?: string }) {
@@ -287,7 +291,7 @@ export default function League() {
                       <span className="w-5 text-xs num text-faint text-right">{i + 1}</span>
                       <Crest team={s.team} size={22} />
                       <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-semibold text-ink truncate">{s.player.name}</span>
+                        <Link to={playerHref(s, code)} className="block text-sm font-semibold text-ink truncate hover:text-accent">{s.player.name}</Link>
                         <span className="block h-1.5 mt-1 rounded-full bg-surface2">
                           <span className="block h-full rounded-full bg-accent" style={{ width: `${(v / max) * 100}%` }} />
                         </span>

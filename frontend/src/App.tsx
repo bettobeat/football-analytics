@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard'
 import Home from './pages/Home'
 import Team from './pages/Team'
 import League from './pages/League'
+import Player from './pages/Player'
 import SearchBox from './components/SearchBox'
 import MatchDetail from './pages/MatchDetail'
 import AccuracySimple from './pages/AccuracySimple'
@@ -199,6 +200,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/matches/, 'Matches'],
   [/^\/team\//, 'Team'],
   [/^\/league\//, 'League'],
+  [/^\/player\//, 'Player'],
   [/^\/match\//, 'Match'],
   [/^\/accuracy/, 'Accuracy'],
   [/^\/draw-alerts/, 'Draw alerts'],
@@ -287,6 +289,7 @@ function Shell() {
             <Route path="/matches" element={<Dashboard />} />
             <Route path="/team/:id" element={<Team />} />
             <Route path="/league/:code" element={<League />} />
+            <Route path="/player/:id" element={<Player />} />
             <Route path="/match/:id" element={<MatchDetail />} />
             <Route
               path="/accuracy"

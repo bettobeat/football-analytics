@@ -234,7 +234,7 @@ export default function Team() {
                             <td className="px-2 py-2">
                               <span className="flex items-center gap-2.5">
                                 {p.photo ? <img src={p.photo} alt="" className="w-7 h-7 rounded-full object-cover bg-surface2" loading="lazy" /> : <span className="w-7 h-7 rounded-full bg-surface2" />}
-                                <span className="font-semibold text-ink truncate">{p.name}</span>
+                                <Link to={`/player/${p.id}`} className="font-semibold text-ink truncate hover:text-accent">{p.name}</Link>
                               </span>
                             </td>
                             <td className="px-2 py-2 text-right text-muted num">{p.age ?? ''}</td>
