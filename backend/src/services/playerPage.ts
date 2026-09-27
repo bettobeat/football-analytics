@@ -16,6 +16,7 @@ import { resolveAfTeamId } from './teamPage';
 
 const AF_OFFSET = 1_000_000_000;
 const PAGE_TTL = 12 * 3600 * 1000;
+const PAGE_VERSION = 2; // bump when the page shape changes: older stored copies are rebuilt
 const cache = new Map<number, { at: number; data: any }>();
 
 db.exec(`CREATE TABLE IF NOT EXISTS player_page_store (player_id INTEGER PRIMARY KEY, json TEXT NOT NULL, built_at TEXT NOT NULL)`);
@@ -96,8 +97,28 @@ async function build(pid: number) {
     afGet('/sidelined', { player: pid }).catch(() => null),
     afGet('/transfers', { player: pid }).catch(() => null)
   ]);
+  // Summer tournaments (World Cup, Euro, Copa América, Gold Cup) are filed under the year they are played in, i.e.
+  // the NEXT club season's number: move them back to the season they end (World Cup 2026 → 2025-26).
+  const SUMMER = /^(world cup|euro championship|copa america|gold cup|concacaf gold cup|uefa nations league - finals?)$/i;
+  if (cur) {
+    const moved = cur.rows.filter((r: any) => SUMMER.test(r.league.name || ''));
+    if (moved.length) {
+      cur.rows = cur.rows.filter((r: any) => !moved.includes(r));
+      cur.totals = totalsOf(cur.rows);
+      if (prev) {
+        prev.rows = [...prev.rows.filter((r: any) => !SUMMER.test(r.league.name || '')), ...moved].sort((a: any, b: any) => b.minutes - a.minutes);
+        prev.totals = totalsOf(prev.rows);
+      }
+    }
+  }
+  if (prev && !cur) prev.rows = prev.rows.filter((r: any) => !SUMMER.test(r.league.name || ''));
   const p = (cur || prev)!.player;
-  const main = (cur?.rows[0] || prev?.rows[0]) ?? null;
+  // his club (not the national team) for the header
+  const isNational = (r: any) => !!r.team && !!p.nationality && r.team.name === p.nationality;
+  const pool = [...(cur?.rows || []), ...(prev?.rows || [])];
+  const main = pool.find(r => !isNational(r)) || pool[0] || null;
+  // "E. Haaland" → "Erling Haaland"
+  const display = /^[A-Z]\.\s/.test(p.name || '') && p.firstname && p.lastname ? `${String(p.firstname).split(' ')[0]} ${p.lastname}` : p.name;
 
   const today = new Date().toISOString().slice(0, 10);
   const sidelined = ((sideRes as any)?.response || [])
@@ -114,8 +135,8 @@ async function build(pid: number) {
 
   return {
     player: {
-      id: p.id, name: p.name, firstname: p.firstname, lastname: p.lastname, age: p.age ?? null,
-      birth: p.birth || null, nationality: p.nationality || null, height: p.height || null, weight: p.weight || null,
+      id: p.id, name: display, short: p.name, firstname: p.firstname, lastname: p.lastname, age: p.age ?? null,
+      birth: p.birth || null, nationality: p.nationality || null, height: p.height ? (/^\d+$/.test(String(p.height)) ? `${p.height} cm` : p.height) : null, weight: p.weight ? (/^\d+$/.test(String(p.weight)) ? `${p.weight} kg` : p.weight) : null,
       photo: p.photo || `https://media.api-sports.io/football/players/${p.id}.png`
     },
     team: main?.team || null,
@@ -125,16 +146,18 @@ async function build(pid: number) {
     seasons: [cur && { season: S, label: `${S}-${String(S + 1).slice(2)}`, rows: cur.rows, totals: cur.totals }, prev && { season: S - 1, label: `${S - 1}-${String(S).slice(2)}`, rows: prev.rows, totals: prev.totals }].filter(Boolean),
     sidelined,
     transfers,
+    v: PAGE_VERSION,
     builtAt: new Date().toISOString()
   };
 }
 
 async function pageData(pid: number) {
   const mem = cache.get(pid);
-  if (mem && Date.now() - mem.at < PAGE_TTL) return mem.data;
+  if (mem && Date.now() - mem.at < PAGE_TTL && mem.data.v === PAGE_VERSION) return mem.data;
   const stored: any = db.prepare(`SELECT json, built_at FROM player_page_store WHERE player_id = ?`).get(pid);
-  if (stored && Date.now() - new Date(stored.built_at).getTime() < PAGE_TTL) {
-    const data = JSON.parse(stored.json);
+  const storedData = stored ? JSON.parse(stored.json) : null;
+  if (stored && storedData.v === PAGE_VERSION && Date.now() - new Date(stored.built_at).getTime() < PAGE_TTL) {
+    const data = storedData;
     cache.set(pid, { at: new Date(stored.built_at).getTime(), data });
     return data;
   }
