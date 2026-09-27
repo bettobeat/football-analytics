@@ -235,7 +235,8 @@ export default function Home() {
   const fp = featured ? mainPred(featured) : null
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-10">
+    <div className="max-w-7xl 2xl:max-w-[1760px] mx-auto px-4 sm:px-6 py-6 sm:py-8 2xl:grid 2xl:grid-cols-[minmax(0,1fr)_360px] 2xl:gap-8 2xl:items-start">
+    <div className="space-y-10 min-w-0">
       {/* ---------- hero: featured match (team colours from the crests) + live / next kick-offs ---------- */}
       <div className="grid gap-5 lg:grid-cols-[1.75fr_1fr]">
         <FeaturedHero m={featured} p={fp} />
@@ -441,7 +442,8 @@ export default function Home() {
       </div>
 
       {/* ---------- news + premium ---------- */}
-      <div className={`grid gap-5 ${full ? '' : 'xl:grid-cols-[2.4fr_1fr]'}`}>
+      <div className={`grid gap-5 ${full ? '2xl:hidden' : 'xl:grid-cols-[2.4fr_1fr] 2xl:grid-cols-1'}`}>
+        <div className="2xl:hidden">
         <Section title="Around the world">
           {news.length ? (
             <div className="grid gap-4 md:grid-cols-[1.25fr_1fr]">
@@ -490,6 +492,7 @@ export default function Home() {
             <div className="card p-6 text-sm text-muted">Loading the latest football news…</div>
           )}
         </Section>
+        </div>
         {!full && (
           <div className="rounded-3xl p-7 border border-home/40 bg-[linear-gradient(150deg,#1B2A55_0%,#101624_70%)] text-[#EEF1F6] flex flex-col gap-4 self-start">
             <span className="self-start text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#07090D] bg-[#C8FF3D] px-3 py-1 rounded-full">Premium</span>
@@ -500,5 +503,57 @@ export default function Home() {
         )}
       </div>
     </div>
+
+      {/* ---------- news rail (wide screens only; smaller screens show the news at the bottom) ---------- */}
+      <aside className="hidden 2xl:block sticky top-20">
+        <NewsRail news={news} />
+      </aside>
+    </div>
+  )
+}
+
+function NewsRail({ news }: { news: News[] }) {
+  const lead = news.find(n => n.image) || news[0]
+  const rest = lead ? news.filter(n => n !== lead).slice(0, 8) : []
+  return (
+    <section className="card p-3 max-h-[calc(100vh-6.5rem)] overflow-y-auto flex flex-col gap-2">
+      <h2 className="font-display text-lg font-bold px-2 pt-1">Around the world</h2>
+      {!lead ? (
+        <p className="px-2 pb-2 text-sm text-muted">Loading the latest football news…</p>
+      ) : (
+        <>
+          <a href={lead.link} target="_blank" rel="noreferrer" className="rounded-2xl overflow-hidden bg-surface2/40 hover:bg-surface2/70 transition-colors flex flex-col">
+            {lead.image && (
+              <span className="relative block aspect-[16/9] bg-surface2 overflow-hidden">
+                <img src={lead.image} alt="" loading="lazy" className="absolute inset-0 w-full h-full object-cover" onError={e => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none' }} />
+                <span className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                <span className="absolute left-3 bottom-2 text-[10px] font-extrabold uppercase tracking-wide text-[#C8FF3D]">{lead.source}</span>
+              </span>
+            )}
+            <span className="p-3 flex flex-col gap-1.5">
+              {!lead.image && <span className="text-[10px] font-extrabold uppercase tracking-wide text-accent">{lead.source}</span>}
+              <span className="font-display font-bold leading-snug text-ink">{lead.title}</span>
+              {lead.summary && <span className="text-xs text-muted line-clamp-2">{lead.summary}</span>}
+              <span className="text-[11px] text-faint">{lead.published ? ago(lead.published) : lead.source}</span>
+            </span>
+          </a>
+          {rest.map(n => (
+            <a key={n.link} href={n.link} target="_blank" rel="noreferrer" className="flex gap-3 p-2 rounded-2xl hover:bg-surface2/60 transition-colors">
+              <span className="w-20 h-14 rounded-xl overflow-hidden bg-surface2 flex-shrink-0 grid place-items-center">
+                {n.image ? (
+                  <img src={n.image} alt="" loading="lazy" className="w-full h-full object-cover" onError={e => { e.currentTarget.style.display = 'none' }} />
+                ) : (
+                  <span className="text-[9px] font-extrabold uppercase tracking-wide text-faint px-1 text-center">{n.source}</span>
+                )}
+              </span>
+              <span className="min-w-0 flex flex-col gap-1">
+                <span className="text-[13px] font-bold leading-snug text-ink line-clamp-2">{n.title}</span>
+                <span className="text-[11px] text-faint">{n.source}{n.published ? ` · ${ago(n.published)}` : ''}</span>
+              </span>
+            </a>
+          ))}
+        </>
+      )}
+    </section>
   )
 }
