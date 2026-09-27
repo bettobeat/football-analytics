@@ -286,6 +286,11 @@ function sameName(a: string, b: string) {
   if (!x.length || !y.length) return false;
   if (plain(a) === plain(b)) return true;
   const lx = x[x.length - 1], ly = y[y.length - 1];
+  // one name only ("Zabiri", "Pedri"): the other's surname or first name
+  if (x.length === 1 || y.length === 1) {
+    const one = x.length === 1 ? x[0] : y[0], other = x.length === 1 ? y : x;
+    return one.length >= 4 && (other[other.length - 1] === one || other[0] === one);
+  }
   // "E. Haaland" vs "Erling Haaland"; "Vinícius Júnior" vs "Vinicius Junior"
   return lx === ly && x[0][0] === y[0][0];
 }
@@ -324,6 +329,19 @@ export async function findPlayer(name: string, teamId: number, code?: string, te
         hit = (j.response || []).find((it: any) => sameName(it.player?.name, name) || sameName(`${it.player?.firstname} ${it.player?.lastname}`, name))?.player?.id ?? null;
       } catch (e: any) {
         logger.warn(`player find (league) ${name}: ${e.message}`);
+      }
+    }
+  }
+  // last resort: the provider's profile search (all players, any club)
+  if (!hit && afRemaining() > 500) {
+    const last = plain(name).split(' ').pop() || '';
+    if (last.length >= 4) {
+      try {
+        const j: any = await afGet('/players/profiles', { search: last });
+        const cands = (j.response || []).filter((it: any) => sameName(it.player?.name, name) || sameName(`${it.player?.firstname} ${it.player?.lastname}`, name));
+        if (cands.length === 1) hit = cands[0].player.id; // only when it is unambiguous
+      } catch (e: any) {
+        logger.warn(`player find (profiles) ${name}: ${e.message}`);
       }
     }
   }
