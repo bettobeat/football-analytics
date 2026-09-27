@@ -253,8 +253,8 @@ function Dashboard() {
   }, [upcoming, spotlightIds])
 
   return (
-    <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-6 lg:py-8">
-      <div className={`grid grid-cols-1 gap-6 lg:gap-8 items-start ${league === 'ALL' ? 'lg:grid-cols-[250px_1fr]' : 'lg:grid-cols-[250px_1fr] xl:grid-cols-[250px_1fr_320px]'}`}>
+    <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 py-6 lg:py-8 ${league === 'ALL' ? '2xl:max-w-[1760px]' : ''}`}>
+      <div className={`grid grid-cols-1 gap-6 lg:gap-8 items-start ${league === 'ALL' ? 'lg:grid-cols-[250px_1fr] 2xl:grid-cols-[250px_1fr_340px]' : 'lg:grid-cols-[250px_1fr] xl:grid-cols-[250px_1fr_320px]'}`}>
         {/* ---------- Sidebar ---------- */}
         <aside className="lg:sticky lg:top-20 space-y-6">
           {/* Live */}
@@ -332,6 +332,13 @@ function Dashboard() {
               })}
             </ul>
           </section>
+
+          {/* Latest results (medium screens; wide screens get the full column on the right) */}
+          {league === 'ALL' && (
+            <section className="card p-3 hidden lg:block 2xl:hidden">
+              <RecentResults limit={6} compact />
+            </section>
+          )}
         </aside>
 
         {/* ---------- Main ---------- */}
@@ -396,6 +403,15 @@ function Dashboard() {
 
         {/* ---------- League panel ---------- */}
         {league !== 'ALL' && <LeaguePanel code={league} />}
+
+        {/* ---------- Latest results (wide screens) ---------- */}
+        {league === 'ALL' && (
+          <aside className="hidden 2xl:block 2xl:sticky 2xl:top-20">
+            <section className="card p-3 max-h-[calc(100vh-6.5rem)] overflow-y-auto">
+              <RecentResults limit={40} />
+            </section>
+          </aside>
+        )}
       </div>
     </div>
   )
@@ -426,7 +442,7 @@ interface Scorer {
 function LeaguePanel({ code }: { code: string }) {
   const [tables, setTables] = useState<{ type: string; group?: string | null; table: StandingRow[] }[]>([])
   const [scorers, setScorers] = useState<Scorer[]>([])
-  const [tab, setTab] = useState<'table' | 'scorers' | 'assists'>('table')
+  const [tab, setTab] = useState<'table' | 'scorers' | 'assists' | 'results'>('table')
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -451,9 +467,9 @@ function LeaguePanel({ code }: { code: string }) {
   return (
     <aside className="xl:sticky xl:top-20 space-y-4">
       <div className="seg w-full">
-        {(['table', 'scorers', 'assists'] as const).map(t => (
+        {(['table', 'results', 'scorers', 'assists'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)} className={`seg-btn flex-1 ${tab === t ? 'seg-btn-active' : ''}`}>
-            {t === 'table' ? 'Table' : t === 'scorers' ? 'Scorers' : 'Assists'}
+            {t === 'table' ? 'Table' : t === 'results' ? 'Results' : t === 'scorers' ? 'Scorers' : 'Assists'}
           </button>
         ))}
       </div>
@@ -497,7 +513,13 @@ function LeaguePanel({ code }: { code: string }) {
           </section>
         ))}
 
-      {tab !== 'table' && (
+      {tab === 'results' && (
+        <section className="card p-3">
+          <RecentResults code={code} limit={30} days={60} />
+        </section>
+      )}
+
+      {(tab === 'scorers' || tab === 'assists') && (
         <section className="card p-3">
           <table className="w-full text-xs">
             <thead>
@@ -536,6 +558,141 @@ function LeaguePanel({ code }: { code: string }) {
         </section>
       )}
     </aside>
+  )
+}
+
+/* ---------- latest results: finished games with the pick we saved before kick-off ---------- */
+
+interface Settled {
+  matchId: number
+  date: string
+  competition: string | null
+  home: string
+  away: string
+  homeCrest?: string | null
+  awayCrest?: string | null
+  score: string
+  outcome: Pick
+  pick: Pick
+  hit: boolean
+  p: Record<Pick, number>
+}
+
+function RecentResults({ code, limit, days = 14, compact }: { code?: string; limit: number; days?: number; compact?: boolean }) {
+  const [rows, setRows] = useState<Settled[] | null>(null)
+  const [error, setError] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    const load = () =>
+      axios
+        .get(`${API_URL}/accuracy/recent`, { params: { days, model: 'main', limit, ...(code ? { competition: code } : {}) } })
+        .then(r => !cancelled && (setRows(r.data.data || []), setError(false)))
+        .catch(() => !cancelled && setError(true))
+    load()
+    const t = setInterval(load, 5 * 60 * 1000)
+    return () => {
+      cancelled = true
+      clearInterval(t)
+    }
+  }, [code, limit, days])
+
+  const hits = rows?.filter(r => r.hit).length || 0
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-2 px-1 pb-2">
+        <h2 className="font-display font-bold text-ink">Latest results</h2>
+        {rows && rows.length > 0 && (
+          <span className="text-[11px] text-faint">
+            <span className="num font-semibold text-ink">{hits}</span>/<span className="num">{rows.length}</span> picks right
+          </span>
+        )}
+      </div>
+      {error && <p className="px-1 text-xs text-faint">Couldn't load results.</p>}
+      {!rows && !error && (
+        <div className="space-y-2">
+          {Array.from({ length: compact ? 3 : 6 }).map((_, i) => (
+            <div key={i} className="h-14 rounded-xl bg-surface2/60 animate-pulse" />
+          ))}
+        </div>
+      )}
+      {rows && rows.length === 0 && <p className="px-1 text-xs text-faint">No finished games in the last {days} days.</p>}
+      <ul className="space-y-1">
+        {rows?.map(r => (
+          <li key={r.matchId}>
+            <ResultRow r={r} compact={compact} />
+          </li>
+        ))}
+      </ul>
+      {rows && rows.length > 0 && (
+        <Link to="/accuracy" className="block px-1 pt-2 text-[11px] font-semibold text-muted hover:text-ink">
+          How accurate is the model? →
+        </Link>
+      )}
+    </div>
+  )
+}
+
+function ResultRow({ r, compact }: { r: Settled; compact?: boolean }) {
+  const [hg, ag] = r.score.split(/[–-]/).map(x => x.trim())
+  const pickName = r.pick === 'H' ? r.home : r.pick === 'A' ? r.away : 'Draw'
+  const when = new Date(r.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+  const side = (name: string, crest: string | null | undefined, goals: string, won: boolean) => (
+    <div className="flex items-center justify-between gap-2 py-0.5">
+      <span className="flex items-center gap-2 min-w-0">
+        <SmallCrest src={crest} name={name} />
+        <span className={`text-sm truncate ${won ? 'font-semibold text-ink' : 'text-muted'}`}>{name}</span>
+      </span>
+      <span className={`num text-sm ${won ? 'font-bold text-ink' : 'text-muted'}`}>{goals}</span>
+    </div>
+  )
+  return (
+    <Link to={`/match/${r.matchId}`} className="block rounded-xl px-2 py-2 hover:bg-surface2 transition-colors">
+      <div className="flex items-center justify-between gap-2 text-[10px] text-faint mb-1">
+        <span className="truncate">{r.competition}</span>
+        <span className="flex-shrink-0">{when}</span>
+      </div>
+      {side(r.home, r.homeCrest, hg, r.outcome === 'H')}
+      {side(r.away, r.awayCrest, ag, r.outcome === 'A')}
+      <div className="mt-1 flex items-center justify-between gap-2 text-[11px]">
+        <span className="text-faint truncate">
+          Pick <span className={`font-semibold ${PICK_COLOR[r.pick]}`}>{pickName}</span>
+          {!compact && <span className="num"> {Math.round(r.p[r.pick])}%</span>}
+        </span>
+        <span
+          className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${r.hit ? 'bg-win/15 text-win' : 'bg-loss/15 text-loss'}`}
+          aria-label={r.hit ? 'Pick was right' : 'Pick was wrong'}
+        >
+          {r.hit ? '✓ Hit' : '✗ Miss'}
+        </span>
+      </div>
+    </Link>
+  )
+}
+
+/** A badge from a URL; falls back to .svg (some football-data.org crests), then to initials. */
+function SmallCrest({ src, name }: { src?: string | null; name: string }) {
+  const [url, setUrl] = useState(src || '')
+  const [failed, setFailed] = useState(!src)
+  useEffect(() => {
+    setUrl(src || '')
+    setFailed(!src)
+  }, [src])
+  if (failed)
+    return (
+      <span className="w-[18px] h-[18px] rounded-full bg-surface2 flex-shrink-0 grid place-items-center text-[8px] font-bold text-faint">
+        {name.replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase()}
+      </span>
+    )
+  return (
+    <img
+      src={url}
+      alt=""
+      width={18}
+      height={18}
+      loading="lazy"
+      className="w-[18px] h-[18px] object-contain flex-shrink-0"
+      onError={() => (url.endsWith('.png') && url.includes('football-data.org') ? setUrl(url.replace(/\.png$/, '.svg')) : setFailed(true))}
+    />
   )
 }
 

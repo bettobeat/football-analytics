@@ -283,6 +283,8 @@ interface SettledRow {
   utc_date: string;
   home_team: string;
   away_team: string;
+  home_team_id?: number | null;
+  away_team_id?: number | null;
   p_home: number;
   p_draw: number;
   p_away: number;
@@ -343,7 +345,7 @@ function settledRowsRaw(days: number, competition?: string, model?: string): Set
   }
   const sql = `
     SELECT p.match_id, p.model, p.competition_code, p.competition_name, p.utc_date,
-           p.home_team, p.away_team, p.p_home, p.p_draw, p.p_away, p.confidence,
+           p.home_team, p.away_team, p.home_team_id, p.away_team_id, p.p_home, p.p_draw, p.p_away, p.confidence,
            p.odds_home, p.odds_draw, p.odds_away, p.draw_streak,
            r.home_goals, r.away_goals, r.outcome
     FROM predictions p JOIN results r ON r.match_id = p.match_id
@@ -587,6 +589,12 @@ export function accuracy(days: number = 90, competition?: string, model?: string
   };
 }
 
+/** Club / national-team badge from a stored team id (API-Football ids are offset by 1e9). */
+function crestOf(id?: number | null): string | null {
+  if (!id) return null;
+  return id >= 1_000_000_000 ? `https://media.api-sports.io/football/teams/${id - 1_000_000_000}.png` : `https://crests.football-data.org/${id}.png`;
+}
+
 export function recentSettled(days: number = 90, competition?: string, limit: number = 100, model?: string) {
   return settledRows(days, competition, model)
     .slice(0, limit)
@@ -597,6 +605,8 @@ export function recentSettled(days: number = 90, competition?: string, limit: nu
       code: r.competition_code,
       home: r.home_team,
       away: r.away_team,
+      homeCrest: crestOf(r.home_team_id),
+      awayCrest: crestOf(r.away_team_id),
       score: `${r.home_goals}–${r.away_goals}`,
       outcome: r.outcome,
       pick: pick(r),
