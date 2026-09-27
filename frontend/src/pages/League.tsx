@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, Navigate, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import type { Prediction } from '../lib/predict'
@@ -82,7 +82,18 @@ function Crest({ team, size = 20 }: { team: Team; size?: number }) {
 
 const FORM_BG: Record<string, string> = { W: 'bg-win', D: 'bg-draw', L: 'bg-loss' }
 
-export default function League() {
+// Leagues we get from Football-Data.org (fixtures, predictions and results are filed under these codes): the
+// API-Football code of the same league (from player pages) opens the main page instead
+const FD_OF: Record<string, string> = { AF39: 'PL', AF40: 'ELC', AF140: 'PD', AF135: 'SA', AF78: 'BL1', AF61: 'FL1', AF88: 'DED', AF94: 'PPL', AF2: 'CL', AF71: 'BSA' }
+
+export default function LeagueRoute() {
+  const { code = '' } = useParams()
+  const fd = FD_OF[code.toUpperCase()]
+  if (fd) return <Navigate to={`/league/${fd}`} replace />
+  return <League key={code.toUpperCase()} />
+}
+
+function League() {
   const { code: raw = '' } = useParams()
   const code = raw.toUpperCase()
   const [comp, setComp] = useState<Comp | null>(null)
