@@ -17,7 +17,7 @@ console.log('API Key:', process.env.FOOTBALL_DATA_API_KEY ? '✅ SET' : '❌ NOT
 
 // Import after env is loaded
 import footballDataAPI from './services/footballDataAPI';
-import { recordPredictions, settlePending, accuracy, recentSettled, trackingStatus, computeMetrics } from './services/tracking';
+import { recordPredictions, settlePending, accuracy, recentSettled, trackingStatus, computeMetrics, publicRecord } from './services/tracking';
 import { historyStatus, teamMapStatus, GROUPS, syncAll } from './services/history';
 import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestRows, backtestRunsList } from './services/historyModel';
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
@@ -222,7 +222,7 @@ app.use('/api', rateLimit('api', 600, 60000)); // ~10 a second, far above a pers
 app.use(['/api/team-page', '/api/player-page'], rateLimit('pages', 60, 10 * 60000));
 app.use('/api/unlocks', (req, res, next) => (req.method === 'POST' ? rateLimit('unlock', 30, 60000, r => String(r.user?.id || r.ip))(req, res, next) : next()));
 
-const OPEN_API = /^\/api\/(health$|auth\/|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|public\/(summary|results)$|unlocks(\/|$)|billing\/)/;
+const OPEN_API = /^\/api\/(health$|auth\/|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|public\/(summary|results|record)$|unlocks(\/|$)|billing\/)/;
 const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|backtest|history\/status|clv|past\/(seasons|predictions|data|patterns)|draw-alerts)$/;
 
 app.use('/api', (req, res, next) => {
@@ -723,6 +723,25 @@ app.get('/api/news', async (req, res) => {
 
 // Latest results with the pick saved before kick-off (open: it is the public proof). Percentages only for premium.
 // /api/public/results?competition=PL&days=30&limit=50 → { rows, record } (record = hit rate over the same period)
+// The public record (Accuracy page): v3 vs the bookmakers on the match result, both teams to score, over/under 2.5
+const recordCache = new Map<string, { at: number; data: any }>();
+app.get('/api/public/record', (req, res) => {
+  try {
+    const days = Math.min(400, Math.max(1, parseInt(String(req.query.days || '30'), 10) || 30));
+    const competition = req.query.competition ? String(req.query.competition).toUpperCase() : undefined;
+    const ck = `${days}|${competition || ''}`;
+    let c = recordCache.get(ck);
+    if (!c || Date.now() - c.at > 5 * 60000) {
+      c = { at: Date.now(), data: publicRecord(days, competition) };
+      recordCache.set(ck, c);
+      if (recordCache.size > 200) recordCache.delete(recordCache.keys().next().value as string);
+    }
+    res.json({ data: c.data, timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Record failed');
+  }
+});
+
 const resultsCache = new Map<string, { at: number; data: any }>();
 app.get('/api/public/results', (req, res) => {
   try {

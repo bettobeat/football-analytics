@@ -17,7 +17,7 @@ const PREMIUM = [
   'Win / draw / loss %, fair odds, why this pick',
   'Goals: over/under, both teams score, likely scores',
   'Every finished match in full',
-  'Full team and player stats, the complete track record'
+  'Full team and player stats'
 ]
 const PRO = [
   'Unlimited predictions, no counting',

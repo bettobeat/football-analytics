@@ -293,6 +293,8 @@ interface SettledRow {
   odds_draw: number | null;
   odds_away: number | null;
   draw_streak?: number | null;
+  over25?: number | null;
+  btts?: number | null;
   home_goals: number;
   away_goals: number;
   outcome: Outcome;
@@ -346,7 +348,7 @@ function settledRowsRaw(days: number, competition?: string, model?: string): Set
   const sql = `
     SELECT p.match_id, p.model, p.competition_code, p.competition_name, p.utc_date,
            p.home_team, p.away_team, p.home_team_id, p.away_team_id, p.p_home, p.p_draw, p.p_away, p.confidence,
-           p.odds_home, p.odds_draw, p.odds_away, p.draw_streak,
+           p.odds_home, p.odds_draw, p.odds_away, p.draw_streak, p.over25, p.btts,
            r.home_goals, r.away_goals, r.outcome
     FROM predictions p JOIN results r ON r.match_id = p.match_id
     WHERE p.settled = 1 AND r.outcome IN ('H','D','A') AND p.utc_date >= ?${where}
@@ -624,4 +626,77 @@ export function trackingStatus() {
   const settled = (db.prepare(`SELECT COUNT(*) AS c FROM predictions WHERE settled = 1`).get() as any).c;
   const withOdds = (db.prepare(`SELECT COUNT(*) AS c FROM predictions WHERE odds_home IS NOT NULL`).get() as any).c;
   return { total, open: total - locked - settled, locked, settled, withOdds };
+}
+
+
+/**
+ * The public record (Accuracy page): three numbers, every settled game our main model predicted before kick-off.
+ *  1. Match result, v3 vs the bookmakers: on games with bookmaker odds, how often v3's most likely result happened
+ *     vs how often the bookmakers' favourite (lowest odds) did.
+ *  2. Both teams to score: yes if v3 gave it 50%+, else no.
+ *  3. Over / under 2.5 goals: over if v3 gave it 50%+, else under.
+ */
+export function publicRecord(days = 30, competition?: string, recentLimit = 60) {
+  const rows = settledRows(days, competition, 'main');
+  const res = { n: 0, v3: 0, market: 0 };
+  const btts = { n: 0, hits: 0, yesPicks: 0 };
+  const ou = { n: 0, hits: 0, overPicks: 0 };
+  const byComp = new Map<string, { code: string; name: string; n: number; v3: number; market: number }>();
+  const recent: any[] = [];
+  for (const r of rows) {
+    const hg = Number(r.home_goals), ag = Number(r.away_goals);
+    const v3pick = pick(r);
+    const v3hit = v3pick === r.outcome;
+    let mkPick: Outcome | null = null;
+    if (r.odds_home && r.odds_draw && r.odds_away) {
+      mkPick = r.odds_home <= r.odds_draw && r.odds_home <= r.odds_away ? 'H' : r.odds_away <= r.odds_draw ? 'A' : 'D';
+      res.n++;
+      if (v3hit) res.v3++;
+      if (mkPick === r.outcome) res.market++;
+      const key = r.competition_code || r.competition_name || '?';
+      const c = byComp.get(key) || { code: r.competition_code || '', name: r.competition_name || key, n: 0, v3: 0, market: 0 };
+      c.n++;
+      if (v3hit) c.v3++;
+      if (mkPick === r.outcome) c.market++;
+      byComp.set(key, c);
+    }
+    let bttsPick: boolean | null = null, bttsHit: boolean | null = null;
+    if (r.btts !== null && r.btts !== undefined) {
+      bttsPick = Number(r.btts) >= 50;
+      bttsHit = bttsPick === (hg > 0 && ag > 0);
+      btts.n++;
+      if (bttsHit) btts.hits++;
+      if (bttsPick) btts.yesPicks++;
+    }
+    let ouPick: boolean | null = null, ouHit: boolean | null = null;
+    if (r.over25 !== null && r.over25 !== undefined) {
+      ouPick = Number(r.over25) >= 50;
+      ouHit = ouPick === (hg + ag > 2.5);
+      ou.n++;
+      if (ouHit) ou.hits++;
+      if (ouPick) ou.overPicks++;
+    }
+    if (recent.length < recentLimit)
+      recent.push({
+        matchId: r.match_id, date: r.utc_date, competition: r.competition_name, code: r.competition_code,
+        home: r.home_team, away: r.away_team, homeCrest: crestOf(r.home_team_id), awayCrest: crestOf(r.away_team_id),
+        score: `${hg}–${ag}`, outcome: r.outcome,
+        result: { pick: v3pick, hit: v3hit, market: mkPick, marketHit: mkPick ? mkPick === r.outcome : null },
+        btts: bttsPick === null ? null : { pick: bttsPick, hit: bttsHit },
+        over25: ouPick === null ? null : { pick: ouPick, hit: ouHit }
+      });
+  }
+  const pc = (a: number, n: number) => (n ? Math.round((a / n) * 1000) / 10 : null);
+  return {
+    days,
+    competition: competition || null,
+    result: { n: res.n, v3: pc(res.v3, res.n), market: pc(res.market, res.n), v3Hits: res.v3, marketHits: res.market },
+    btts: { n: btts.n, hitRate: pc(btts.hits, btts.n), hits: btts.hits, yesShare: pc(btts.yesPicks, btts.n) },
+    over25: { n: ou.n, hitRate: pc(ou.hits, ou.n), hits: ou.hits, overShare: pc(ou.overPicks, ou.n) },
+    byCompetition: [...byComp.values()]
+      .filter(c => c.n >= 5)
+      .map(c => ({ ...c, v3: pc(c.v3, c.n), market: pc(c.market, c.n) }))
+      .sort((a, b) => b.n - a.n),
+    recent
+  };
 }

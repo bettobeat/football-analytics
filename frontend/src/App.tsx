@@ -318,11 +318,7 @@ function Shell() {
             <Route path="/match/:id" element={<MatchDetail />} />
             <Route
               path="/accuracy"
-              element={
-                <PremiumGate title="Accuracy">
-                  <AccuracySimple />
-                </PremiumGate>
-              }
+              element={<AccuracySimple />}
             />
             <Route
               path="/draw-alerts"
