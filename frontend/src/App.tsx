@@ -21,6 +21,7 @@ import PremiumGate from './components/PremiumGate'
 import { AuthProvider, useAuth } from './lib/auth'
 import { socket } from './lib/socket'
 import { useTheme } from './lib/theme'
+import { useUnlocks, resetDay } from './lib/unlocks'
 
 export function LogoMark({ size = 36 }: { size?: number }) {
   return (
@@ -77,7 +78,7 @@ function UserMenu() {
         Sign in
       </Link>
     )
-  const badge = access === 'admin' ? 'Admin' : access === 'premium' ? 'Premium' : 'Free'
+  const badge = access === 'admin' ? 'Admin' : access === 'pro' ? 'Pro' : access === 'premium' ? 'Premium' : 'Free'
   return (
     <Link
       to="/account"
@@ -93,6 +94,29 @@ function UserMenu() {
 }
 
 /** Reminder for signed-in users who haven't confirmed their email yet. */
+/** $15 Premium: a nudge when the monthly unlocks run low (10 or fewer left). */
+function UnlocksBanner() {
+  const { access } = useAuth()
+  const u = useUnlocks(access === 'premium')
+  if (access !== 'premium' || !u || u.left === null || u.left > 10) return null
+  return (
+    <div className="border-b border-accent/30 bg-accent/10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-2 text-sm">
+        <span className="text-ink">
+          {u.left === 0 ? (
+            <>You've used all <b>{u.allowance}</b> unlocks this month. They renew on {resetDay(u.resetsAt)}.</>
+          ) : (
+            <><b className="num">{u.left}</b> unlock{u.left === 1 ? '' : 's'} left this month. You're using Bet To Beat a lot.</>
+          )}
+        </span>
+        <Link to="/premium" className="px-3 py-1 rounded-lg bg-accent text-bg text-xs font-extrabold">
+          Pro is unlimited →
+        </Link>
+      </div>
+    </div>
+  )
+}
+
 function VerifyBanner() {
   const { needsVerification } = useAuth()
   const loc = useLocation()
@@ -128,9 +152,9 @@ function NavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
       <NavLink to="/past" className={cls}>
         Past seasons
       </NavLink>
-      {access !== 'premium' && access !== 'admin' && (
+      {access !== 'pro' && access !== 'admin' && (
         <NavLink to="/premium" className={cls}>
-          Premium
+          {access === 'premium' ? 'Go Pro' : 'Premium'}
         </NavLink>
       )}
       {access === 'admin' && (
@@ -283,6 +307,7 @@ function Shell() {
 
         <PageTitle />
         <VerifyBanner />
+        <UnlocksBanner />
         <main>
           <Routes>
             <Route path="/" element={<Home />} />
@@ -302,7 +327,7 @@ function Shell() {
             <Route
               path="/draw-alerts"
               element={
-                <PremiumGate title="Draw alerts">
+                <PremiumGate title="Draw alerts" pro>
                   <DrawAlerts />
                 </PremiumGate>
               }

@@ -183,7 +183,7 @@ function Section({ title, action, children }: { title: string; action?: ReactNod
 
 export default function Home() {
   const { access } = useAuth()
-  const full = access === 'premium' || access === 'admin'
+  const full = access === 'pro' || access === 'admin'
   const [upcoming, setUpcoming] = useState<Match[]>([])
   const [live, setLive] = useState<Match[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)

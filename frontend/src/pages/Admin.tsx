@@ -34,10 +34,10 @@ export default function Admin() {
   if (loading) return null
   if (access !== 'admin') return <div className="max-w-3xl mx-auto px-4 sm:px-6 py-16 text-sm text-muted">Admins only.</div>
 
-  const setPlan = async (u: Row, plan: 'free' | 'premium') => {
+  const setPlan = async (u: Row, plan: 'free' | 'premium' | 'pro') => {
     let until: string | null = null
-    if (plan === 'premium') {
-      const days = window.prompt(`Premium for ${u.email}: number of days (empty = no end date)`, '30')
+    if (plan !== 'free') {
+      const days = window.prompt(`${plan === 'pro' ? 'Pro' : 'Premium'} for ${u.email}: number of days (empty = no end date)`, '30')
       if (days === null) return
       const n = parseInt(days, 10)
       if (n > 0) until = new Date(Date.now() + n * 86400000).toISOString()
@@ -112,9 +112,9 @@ export default function Admin() {
                 <td className="px-4 py-3">
                   {u.isAdmin ? (
                     <span className="text-xs font-semibold text-accent">Admin</span>
-                  ) : u.plan === 'premium' ? (
+                  ) : u.plan !== 'free' ? (
                     <span className="text-xs font-semibold text-accent">
-                      Premium{u.premiumUntil ? <span className="text-faint font-normal"> · until {fmt(u.premiumUntil)}</span> : null}
+                      {u.plan === 'pro' ? 'Pro' : 'Premium'}{u.premiumUntil ? <span className="text-faint font-normal"> · until {fmt(u.premiumUntil)}</span> : null}
                     </span>
                   ) : (
                     <span className="text-xs text-muted">Free</span>
@@ -126,15 +126,23 @@ export default function Admin() {
                 <td className="px-4 py-3 num text-muted">{fmt(u.lastLoginAt)}</td>
                 <td className="px-4 py-3 text-right whitespace-nowrap">
                   {!u.isAdmin &&
-                    (u.plan === 'premium' ? (
-                      <button onClick={() => setPlan(u, 'free')} className="text-xs text-muted hover:text-loss mr-3">
-                        Remove premium
-                      </button>
-                    ) : (
-                      <button onClick={() => setPlan(u, 'premium')} className="text-xs font-semibold text-accent mr-3">
-                        Give premium
-                      </button>
-                    ))}
+                    <>
+                      {u.plan !== 'premium' && (
+                        <button onClick={() => setPlan(u, 'premium')} className="text-xs font-semibold text-accent mr-3">
+                          Premium
+                        </button>
+                      )}
+                      {u.plan !== 'pro' && (
+                        <button onClick={() => setPlan(u, 'pro')} className="text-xs font-semibold text-accent mr-3">
+                          Pro
+                        </button>
+                      )}
+                      {u.plan !== 'free' && (
+                        <button onClick={() => setPlan(u, 'free')} className="text-xs text-muted hover:text-loss mr-3">
+                          Free
+                        </button>
+                      )}
+                    </>}
                   <button onClick={() => resetPw(u)} className="text-xs text-muted hover:text-ink">
                     Reset password
                   </button>

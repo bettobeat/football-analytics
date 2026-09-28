@@ -6,7 +6,8 @@ import { fairOdds, bookLabel, modelInfo, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, dra
 import { useAuth } from '../lib/auth'
 import { explainPrediction } from '../lib/explain'
 import WinProbability from '../components/WinProbability'
-import { useReveal, justRevealed, hideMatch, guessFirstOn } from '../lib/reveal'
+import { useReveal, justRevealed, hideMatch, guessFirstOn, revealMatch } from '../lib/reveal'
+import { useUnlocks, unlockMatch, resetDay } from '../lib/unlocks'
 import CountUp from '../components/CountUp'
 import { RevealCover } from '../components/Reveal'
 
@@ -586,7 +587,7 @@ function MatchDetail() {
             note={p ? `${modelInfo(p.model).tag} · ${modelInfo(p.model).name} · ${CONFIDENCE_LABEL[p.confidence]}` : undefined}
           >
             {p && pick && p.locked ? (
-              <LockedPrediction p={p} pick={pick} home={home} away={away} market={details.market || null} />
+              <LockedPrediction p={p} pick={pick} home={home} away={away} market={details.market || null} matchId={m.id} status={m.status} onUnlocked={() => { revealMatch(m.id); load(false) }} />
             ) : p && pick ? (
               hidden ? (
                 <RevealCover onReveal={reveal} />
@@ -931,8 +932,28 @@ function WhyThisPick({ p, home, away, market, upcoming }: { p: Prediction; home:
   )
 }
 
-function LockedPrediction({ p, pick, home, away, market }: { p: Prediction; pick: 'H' | 'D' | 'A'; home: Team; away: Team; market: Market | null }) {
-  const { user } = useAuth()
+function LockedPrediction({ p, pick, home, away, market, matchId, status, onUnlocked }: {
+  p: Prediction; pick: 'H' | 'D' | 'A'; home: Team; away: Team; market: Market | null; matchId: number; status: string; onUnlocked: () => void
+}) {
+  const { user, access } = useAuth()
+  const u = useUnlocks(access === 'premium')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [needPro, setNeedPro] = useState(false)
+  const doUnlock = async () => {
+    setBusy(true)
+    setErr(null)
+    try {
+      await unlockMatch(matchId, status)
+      onUnlocked()
+    } catch (e: any) {
+      if (e?.upgrade) setNeedPro(true)
+      else setErr(e?.message || 'Could not unlock this match.')
+    } finally {
+      setBusy(false)
+    }
+  }
+  const out = access === 'premium' && (needPro || (u && u.left === 0))
   const name = pick === 'H' ? home.shortName || home.name : pick === 'A' ? away.shortName || away.name : 'Draw'
   const color = pick === 'H' ? 'text-home' : pick === 'D' ? 'text-draw' : 'text-away'
   const tiles: { k: 'H' | 'D' | 'A'; label: string }[] = [
@@ -953,6 +974,37 @@ function LockedPrediction({ p, pick, home, away, market }: { p: Prediction; pick
           ))}
         </div>
         <div className="absolute inset-0 grid place-items-center">
+          {access === 'premium' ? (
+          <div className="rounded-2xl border border-line bg-surface/95 shadow-lift px-5 py-4 text-center max-w-sm">
+            {out ? (
+              <>
+                <div className="font-display font-bold text-ink">You've used all your unlocks this month</div>
+                <div className="text-xs text-muted mt-1">
+                  {u ? `Your ${u.allowance} unlocks renew on ${resetDay(u.resetsAt)}. ` : ''}Pro is unlimited, and adds draw alerts.
+                </div>
+                <div className="mt-3 flex justify-center">
+                  <Link to="/premium" className="px-4 py-2 rounded-xl bg-accent text-bg text-sm font-extrabold">
+                    Upgrade to Pro
+                  </Link>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="font-display font-bold text-ink">Unlock this match</div>
+                <div className="text-xs text-muted mt-1">
+                  The full prediction, why this pick, goals and the v3 breakdown. Uses 1 of your monthly unlocks; it stays open after that.
+                </div>
+                <div className="mt-3 flex flex-col items-center gap-1.5">
+                  <button onClick={doUnlock} disabled={busy} className="px-4 py-2 rounded-xl bg-accent text-bg text-sm font-extrabold disabled:opacity-60">
+                    {busy ? 'Unlocking…' : 'Unlock prediction'}
+                  </button>
+                  {u && u.left !== null && <span className="text-[11px] text-faint num">{u.left} of {u.allowance} unlocks left this month</span>}
+                  {err && <span className="text-[11px] text-loss">{err}</span>}
+                </div>
+              </>
+            )}
+          </div>
+          ) : (
           <div className="rounded-2xl border border-line bg-surface/95 shadow-lift px-5 py-4 text-center max-w-sm">
             <div className="font-display font-bold text-ink">Full prediction with Premium</div>
             <div className="text-xs text-muted mt-1">
@@ -969,6 +1021,7 @@ function LockedPrediction({ p, pick, home, away, market }: { p: Prediction; pick
               )}
             </div>
           </div>
+          )}
         </div>
       </div>
       {market && <MarketStrip p={p} m={market} home={home} away={away} />}

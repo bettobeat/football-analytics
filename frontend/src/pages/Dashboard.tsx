@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useReveal, justRevealed } from '../lib/reveal'
 import CountUp from '../components/CountUp'
 import { RevealChip } from '../components/Reveal'
+import { useAuth } from '../lib/auth'
 import RecentResults from '../components/RecentResults'
 import { Link, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
@@ -76,6 +77,7 @@ function pickOf(p: Prediction): Pick {
 
 /** Free / signed-out view of a prediction: the pick, blurred bars, and what Premium adds. */
 function LockedPick({ match, p, pick, big }: { match: APIMatch; p: Prediction; pick: Pick; big?: boolean }) {
+  const { access } = useAuth()
   const name = pick === 'H' ? match.homeTeam.shortName || match.homeTeam.name : pick === 'A' ? match.awayTeam.shortName || match.awayTeam.name : 'Draw'
   return (
     <div className="relative">
@@ -91,7 +93,7 @@ function LockedPick({ match, p, pick, big }: { match: APIMatch; p: Prediction; p
       {match.market && <MarketRow p={p} m={match.market} pick={pick} />}
       <div className="mt-2.5 flex items-center justify-between gap-2 text-[11px] text-faint">
         <span className="inline-flex items-center gap-1">
-          <LockIcon /> Win % and value with Premium
+          <LockIcon /> {access === 'premium' ? 'Open the match to unlock' : 'Win % and value with Premium'}
         </span>
         {p.confidence && <ConfidenceTag c={p.confidence} />}
       </div>
@@ -196,7 +198,14 @@ function Dashboard() {
     const onLive = (payload: { data: APIMatch[] }) => {
       const live = new Map(payload.data.map(m => [m.id, m]))
       if (live.size === 0) return
-      setMatches(prev => prev.map(m => live.get(m.id) || m))
+      // the live feed carries the pick only for $15 Premium: keep a prediction this user already unlocked
+      setMatches(prev =>
+        prev.map(m => {
+          const n = live.get(m.id)
+          if (!n) return m
+          return n.prediction?.locked && m.prediction && !m.prediction.locked ? { ...n, prediction: m.prediction, market: m.market ?? n.market } : n
+        })
+      )
     }
     socket.on('matches:live', onLive)
     return () => {

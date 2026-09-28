@@ -38,6 +38,7 @@ import { nationalValueSearch, historyMatchReport } from './services/squadValues'
 import { drawAlertsReport, drawFactorTest } from './services/drawAlerts';
 import { teamPage, searchTeams, resolveAfTeamId, setTeamOverride, teamOverrides } from './services/teamPage';
 import { playerPage, findPlayer } from './services/playerPage';
+import { unlockStatus, unlockMatch, unlockedIds, isFinished, testCheckout, PLANS, billingTestMode, unlockStats } from './services/billing';
 import { runDataAudit, lastDataAudit, startDataAuditScheduler } from './services/dataAudit';
 import { footballNews } from './services/news';
 import { highlightsFor, highlightsStatus, lastCandidates } from './services/highlights';
@@ -47,7 +48,7 @@ import { normalizeName } from './services/history';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures, afGet, afRemaining, xgCoverage } from './services/apiFootball';
 import {
   signup, login, changePassword, setPlan, adminResetPassword, listUsers, userStats, createSession, destroySession, userForToken,
-  parseCookies, setSessionCookie, clearSessionCookie, SESSION_COOKIE, accessOf, canSeeFull, teaseDeep, AuthError, Access, User,
+  parseCookies, setSessionCookie, clearSessionCookie, SESSION_COOKIE, accessOf, canSeeFull, isPaid, teaseDeep, teaseDeepExcept, AuthError, Access, User,
   sendVerification, verifyEmail, requestPasswordReset, resetPassword, setMarketingOptIn, usersCsv, verificationRequired
 } from './services/auth';
 import { playerDataStatus, teamPlayers } from './services/playerData';
@@ -175,24 +176,29 @@ app.use((req, _res, next) => {
   next();
 });
 
-const OPEN_API = /^\/api\/(health$|auth\/|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|public\/(summary|results)$)/;
+const OPEN_API = /^\/api\/(health$|auth\/|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|public\/(summary|results)$|unlocks(\/|$)|billing\/)/;
 const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|backtest|history\/status|clv|past\/(seasons|predictions|data|patterns)|draw-alerts)$/;
 
 app.use('/api', (req, res, next) => {
   const p = req.originalUrl.split('?')[0];
   const access = req.access || 'anon';
   if (OPEN_API.test(p)) {
-    // Trim predictions for anonymous and free users
+    // Trim predictions: anonymous and free users see the pick only; $15 Premium sees unlocked and finished matches in full
     if (!canSeeFull(access) && p.startsWith('/api/matches')) {
       const json = res.json.bind(res);
-      res.json = (body: any) => json(teaseDeep(body));
+      if (access === 'premium' && req.user) {
+        const ids = unlockedIds(req.user.id);
+        res.json = (body: any) => json(teaseDeepExcept(body, (id, status) => ids.has(id) || isFinished(status)));
+      } else res.json = (body: any) => json(teaseDeep(body));
     }
     return next();
   }
   if (access === 'admin') return next();
   if (req.method === 'GET' && PREMIUM_GET_API.test(p)) {
-    if (access === 'premium') return next();
-    return res.status(access === 'anon' ? 401 : 402).json({ error: access === 'anon' ? 'Sign in required' : 'Premium required', premium: true });
+    // draw alerts are a Pro feature; the rest is open to every paid plan
+    const proOnly = p.startsWith('/api/draw-alerts');
+    if (proOnly ? access === 'pro' : isPaid(access)) return next();
+    return res.status(access === 'anon' ? 401 : 402).json({ error: access === 'anon' ? 'Sign in required' : proOnly ? 'Pro required' : 'Premium required', premium: true, pro: proOnly });
   }
   return res.status(access === 'anon' ? 401 : 403).json({ error: 'Not allowed' });
 });
@@ -332,7 +338,7 @@ app.get('/api/admin/users', (_req, res) => {
 
 app.post('/api/admin/users/:id(\\d+)/plan', jsonOnly, (req, res) => {
   try {
-    const plan = req.body?.plan === 'premium' ? 'premium' : 'free';
+    const plan = req.body?.plan === 'premium' || req.body?.plan === 'pro' ? req.body.plan : 'free';
     const untilDate = req.body?.until ? new Date(String(req.body.until)) : null;
     if (untilDate && isNaN(untilDate.getTime())) return res.status(400).json({ error: 'Invalid end date' });
     const until = untilDate ? untilDate.toISOString() : null;
@@ -341,6 +347,37 @@ app.post('/api/admin/users/:id(\\d+)/plan', jsonOnly, (req, res) => {
     authFail(res, e);
   }
 });
+
+// ---------- Plans and match unlocks (services/billing.ts) ----------
+
+// This month's unlocks for the signed-in user: { plan, unlimited, allowance, used, left, resetsAt, testMode }
+app.get('/api/unlocks', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: unlockStatus(req.user || null, req.access || 'anon') });
+});
+// Spend one unlock on a match. Body: { status } (finished matches are free and need no unlock)
+app.post('/api/unlocks/:id(\\d+)', jsonOnly, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  try {
+    res.json({ data: unlockMatch(req.user, req.access || 'anon', parseInt(req.params.id, 10), String(req.body?.status || '')) });
+  } catch (e: any) {
+    if (e instanceof AuthError) return res.status(e.status).json({ error: e.message, upgrade: !!(e as any).upgrade, data: unlockStatus(req.user, req.access || 'anon') });
+    authFail(res, e);
+  }
+});
+app.get('/api/billing/plans', (_req, res) => res.json({ data: { plans: PLANS, testMode: billingTestMode } }));
+// Test checkout (only while BILLING_TEST_MODE=1): switch your own plan
+app.post('/api/billing/test-checkout', jsonOnly, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  try {
+    const user = testCheckout(req.user, String(req.body?.plan || ''));
+    logger.info(`Test checkout: user #${user.id} → ${user.plan}`);
+    res.json(sessionPayload(user));
+  } catch (e) {
+    authFail(res, e);
+  }
+});
+app.get('/api/admin/unlocks', (_req, res) => res.json({ data: unlockStats() }));
 
 app.post('/api/admin/users/:id(\\d+)/password', jsonOnly, (req, res) => {
   try {
@@ -543,7 +580,7 @@ app.get('/api/team-page/:id(\\d+)', async (req, res) => {
   try {
     const afId = resolveAfTeamId(parseInt(req.params.id, 10), req.query.c ? String(req.query.c) : undefined, req.query.n ? String(req.query.n) : undefined);
     if (!afId) return res.status(404).json({ error: 'Team not found' });
-    res.json({ data: await teamPage(afId, canSeeFull(req.access || 'anon')), timestamp: new Date().toISOString() });
+    res.json({ data: await teamPage(afId, isPaid(req.access || 'anon')), timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Team page failed');
   }
@@ -564,7 +601,7 @@ app.get('/api/player-page/find', async (req, res) => {
 });
 app.get('/api/player-page/:id(\\d+)', async (req, res) => {
   try {
-    res.json({ data: await playerPage(parseInt(req.params.id, 10), canSeeFull(req.access || 'anon')), timestamp: new Date().toISOString() });
+    res.json({ data: await playerPage(parseInt(req.params.id, 10), isPaid(req.access || 'anon')), timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Player page failed');
   }
@@ -644,7 +681,7 @@ app.get('/api/public/results', (req, res) => {
     const days = Math.min(400, parseInt(String(req.query.days || '30'), 10) || 30);
     const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || '50'), 10) || 50));
     const competition = req.query.competition ? String(req.query.competition).toUpperCase() : undefined;
-    const full = canSeeFull(req.access || 'anon');
+    const full = isPaid(req.access || 'anon'); // finished games: every paid plan sees the percentages
     const rows = recentSettled(days, competition, limit, 'main').map((r: any) => {
       const { odds, confidence, model, ...rest } = r;
       return full ? rest : { ...rest, p: null };

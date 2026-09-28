@@ -14,8 +14,9 @@ import { db } from '../db';
 import logger from '../utils/logger';
 import { emailEnabled, sendVerificationCode, sendResetCode } from './email';
 
-export type Plan = 'free' | 'premium';
-export type Access = 'anon' | 'free' | 'premium' | 'admin';
+/** premium = $15 plan with a monthly allowance of match unlocks; pro = $30 plan, unlimited (see services/billing.ts) */
+export type Plan = 'free' | 'premium' | 'pro';
+export type Access = 'anon' | 'free' | 'premium' | 'pro' | 'admin';
 
 export interface User {
   id: number;
@@ -152,12 +153,12 @@ setInterval(() => {
 // ---------- users ----------
 
 function rowToUser(r: any): User {
-  const premiumActive = r.plan === 'premium' && (!r.premium_until || r.premium_until > new Date().toISOString());
+  const paidActive = (r.plan === 'premium' || r.plan === 'pro') && (!r.premium_until || r.premium_until > new Date().toISOString());
   return {
     id: r.id,
     email: r.email,
     name: r.name || null,
-    plan: premiumActive ? 'premium' : 'free',
+    plan: paidActive ? r.plan : 'free',
     premiumUntil: r.premium_until || null,
     // admin only with a confirmed inbox, so nobody can claim an admin address by just signing up with it
     isAdmin: ADMIN_EMAILS.has(String(r.email).toLowerCase()) && !!r.email_verified,
@@ -174,11 +175,17 @@ export function accessOf(user: User | null): Access {
   if (!user) return 'anon';
   if (verificationRequired && !user.emailVerified) return 'free'; // unconfirmed: free view only
   if (user.isAdmin) return 'admin';
-  return user.plan === 'premium' ? 'premium' : 'free';
+  return user.plan;
 }
 
+/** Every prediction in full, no counting: Pro and admins. ($15 Premium sees a match in full once it is unlocked.) */
 export function canSeeFull(access: Access): boolean {
-  return access === 'premium' || access === 'admin';
+  return access === 'pro' || access === 'admin';
+}
+
+/** Any paid plan: full team / player stats, the track record, finished matches in full. */
+export function isPaid(access: Access): boolean {
+  return access === 'premium' || access === 'pro' || access === 'admin';
 }
 
 export class AuthError extends Error {
@@ -233,7 +240,8 @@ export function changePassword(userId: number, current: unknown, next: unknown):
 
 /** Set a user's plan (admin screen now, payment webhooks later). until = ISO date or null for no end. */
 export function setPlan(userId: number, plan: Plan, until: string | null): User {
-  const r = db.prepare('UPDATE users SET plan = ?, premium_until = ? WHERE id = ?').run(plan, plan === 'premium' ? until : null, userId);
+  if (!['free', 'premium', 'pro'].includes(plan)) throw new AuthError(400, 'Unknown plan.');
+  const r = db.prepare('UPDATE users SET plan = ?, premium_until = ? WHERE id = ?').run(plan, plan === 'free' ? null : until, userId);
   if (!Number(r.changes)) throw new AuthError(404, 'Account not found.');
   return rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(userId));
 }
@@ -260,6 +268,7 @@ export function userStats() {
   return {
     total: all.length,
     premium: all.filter(u => u.plan === 'premium').length,
+    pro: all.filter(u => u.plan === 'pro').length,
     admins: all.filter(u => u.isAdmin).length,
     verified: all.filter(u => u.emailVerified).length,
     optIn: all.filter(u => u.marketingOptIn).length
@@ -378,7 +387,16 @@ export function usersCsv(): string {
 
 const sha = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
 
+/** Signed-in devices per account (account sharing): the oldest session is signed out when a new one starts. */
+const MAX_DEVICES = parseInt(process.env.MAX_DEVICES || '2', 10);
+const MAX_DEVICES_ADMIN = 6;
+
 export function createSession(userId: number, userAgent?: string): { token: string; expires: Date } {
+  const u: any = db.prepare('SELECT email, email_verified FROM users WHERE id = ?').get(userId);
+  const admin = !!u && ADMIN_EMAILS.has(String(u.email).toLowerCase()) && !!u.email_verified;
+  const keep = (admin ? MAX_DEVICES_ADMIN : MAX_DEVICES) - 1;
+  const old = db.prepare('SELECT token_hash FROM sessions WHERE user_id = ? ORDER BY created_at DESC').all(userId) as any[];
+  for (const s of old.slice(Math.max(0, keep))) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(s.token_hash);
   const token = crypto.randomBytes(32).toString('base64url');
   const now = new Date();
   const expires = new Date(now.getTime() + SESSION_DAYS * 86400000);
@@ -465,6 +483,26 @@ export function teasePrediction(p: any) {
  * Deep copy of an API payload with every `prediction` / `predictions` value replaced by a teaser.
  * Works for match lists, match details and the live socket feed alike.
  */
+/**
+ * Like teaseDeep, but keeps the full prediction of matches `keep(id, status)` allows ($15 Premium: unlocked or
+ * finished). The match is the object that carries `prediction(s)` (a match) or its `match` (a match-details payload).
+ */
+export function teaseDeepExcept(value: any, keep: (id: number, status: string) => boolean, depth = 0): any {
+  if (depth > 8 || value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map(v => teaseDeepExcept(v, keep, depth + 1));
+  const has = 'prediction' in value || 'predictions' in value;
+  const owner = has ? (typeof value.id === 'number' ? value : value.match && typeof value.match.id === 'number' ? value.match : null) : null;
+  const open = !!owner && keep(owner.id, String(owner.status || ''));
+  const out: any = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (k === 'prediction' && !open) out[k] = v ? teasePrediction(v) : v;
+    else if (k === 'predictions' && Array.isArray(v) && !open) out[k] = v.map(teasePrediction);
+    else if (k === 'prediction' || k === 'predictions') out[k] = v;
+    else out[k] = teaseDeepExcept(v, keep, depth + 1);
+  }
+  return out;
+}
+
 export function teaseDeep(value: any, depth = 0): any {
   if (depth > 8 || value === null || typeof value !== 'object') return value;
   if (Array.isArray(value)) return value.map(v => teaseDeep(v, depth + 1));

@@ -4,6 +4,7 @@ import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { errorText, useAuth } from '../lib/auth'
 import { useGuessFirst } from '../lib/reveal'
+import { useUnlocks, resetDay } from '../lib/unlocks'
 
 function fmtDay(iso: string | null) {
   return iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''
@@ -11,6 +12,7 @@ function fmtDay(iso: string | null) {
 
 export default function Account() {
   const { user, access, loading, logout, needsVerification, setOptIn } = useAuth()
+  const unlocks = useUnlocks(access === 'premium')
   const nav = useNavigate()
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
@@ -41,7 +43,7 @@ export default function Account() {
 
   const input =
     'w-full rounded-xl border border-line bg-surface2/60 px-3.5 py-2.5 text-sm text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20'
-  const planLabel = access === 'admin' ? 'Admin (full access)' : user.plan === 'premium' ? 'Premium' : 'Free'
+  const planLabel = access === 'admin' ? 'Admin (full access)' : user.plan === 'pro' ? 'Pro' : user.plan === 'premium' ? 'Premium' : 'Free'
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-10 space-y-6">
@@ -55,7 +57,12 @@ export default function Account() {
           <div>
             <div className="label">Plan</div>
             <div className="font-display text-xl font-bold text-ink mt-0.5">{planLabel}</div>
-            {user.plan === 'premium' && user.premiumUntil && <div className="text-xs text-muted mt-0.5">Until {fmtDay(user.premiumUntil)}</div>}
+            {user.plan !== 'free' && user.premiumUntil && <div className="text-xs text-muted mt-0.5">Until {fmtDay(user.premiumUntil)}</div>}
+            {access === 'premium' && unlocks && unlocks.left !== null && (
+              <div className="text-xs text-ink mt-1">
+                <b className="num">{unlocks.left}</b> of {unlocks.allowance} unlocks left this month · renews {resetDay(unlocks.resetsAt)}
+              </div>
+            )}
             <div className="text-xs text-faint mt-0.5">Member since {fmtDay(user.createdAt)}</div>
             {needsVerification && (
               <Link to="/verify?next=/account" className="text-xs font-semibold text-draw mt-1 inline-block">
@@ -63,15 +70,15 @@ export default function Account() {
               </Link>
             )}
           </div>
-          {access === 'free' && (
+          {(access === 'free' || access === 'premium') && (
             <Link to="/premium" className="px-4 py-2 rounded-xl bg-accent text-bg text-sm font-semibold">
-              See Premium
+              {access === 'premium' ? 'Go Pro: unlimited' : 'See plans'}
             </Link>
           )}
         </div>
       </div>
 
-      {(access === 'premium' || access === 'admin') && (
+      {(access === 'premium' || access === 'pro' || access === 'admin') && (
         <div className="card p-6">
           <label className="flex items-start justify-between gap-4 cursor-pointer select-none">
             <span>

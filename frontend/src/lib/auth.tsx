@@ -5,13 +5,13 @@ import { API_URL, socket } from './socket'
 // Same-origin cookies are sent by default; this also covers a separate API host
 axios.defaults.withCredentials = true
 
-export type Access = 'anon' | 'free' | 'premium' | 'admin'
+export type Access = 'anon' | 'free' | 'premium' | 'pro' | 'admin'
 
 export interface User {
   id: number
   email: string
   name: string | null
-  plan: 'free' | 'premium'
+  plan: 'free' | 'premium' | 'pro'
   premiumUntil: string | null
   isAdmin: boolean
   emailVerified: boolean
@@ -29,8 +29,10 @@ interface AuthState {
   user: User | null
   access: Access
   loading: boolean
-  /** premium or admin: full predictions */
+  /** Pro or admin: every prediction in full, no counting */
   full: boolean
+  /** any paid plan (Premium $15 with unlocks, Pro, admin) */
+  paid: boolean
   /** signed in but the email is not confirmed yet */
   needsVerification: boolean
   login: (email: string, password: string) => Promise<void>
@@ -141,12 +143,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     apply({ user: null, access: 'anon' })
   }
 
-  const full = access === 'premium' || access === 'admin'
+  const full = access === 'pro' || access === 'admin'
+  const paid = full || access === 'premium'
   const needsVerification = !!user && verificationRequired && !user.emailVerified
 
   return (
     <AuthContext.Provider
-      value={{ user, access, loading, full, needsVerification, login, signup, verify, resendCode, resetPassword, setOptIn, logout, refresh }}
+      value={{ user, access, loading, full, paid, needsVerification, login, signup, verify, resendCode, resetPassword, setOptIn, logout, refresh }}
     >
       {children}
     </AuthContext.Provider>
