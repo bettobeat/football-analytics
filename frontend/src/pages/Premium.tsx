@@ -153,9 +153,10 @@ export default function Premium() {
           </div>
         </div>
 
-        {/* Pro yearly */}
-        <div className="card p-6 flex flex-col">
-          <div className="label">Pro yearly</div>
+        {/* Pro yearly: the best price per month */}
+        <div className="card p-6 flex flex-col relative border-home/60">
+          <span className="absolute top-4 right-4 text-[10px] font-extrabold uppercase tracking-wider text-white bg-home px-2.5 py-1 rounded-full">Best offer</span>
+          <div className="label text-home">Pro yearly</div>
           <div className="mt-1 flex items-baseline gap-1">
             <span className="font-display text-4xl font-extrabold text-ink">$249</span>
             <span className="text-sm text-muted">/ year</span>
