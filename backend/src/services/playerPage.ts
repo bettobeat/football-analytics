@@ -134,8 +134,19 @@ function ageFrom(date?: string | null) {
   return a;
 }
 
+// Safety cap on new page builds (each costs API-Football calls): protects the daily budget from scripted scraping
+// across many addresses. Stored pages are still served when the cap is hit.
+const BUILD_CAP = parseInt(process.env.PLAYER_BUILDS_PER_HOUR || '1500', 10);
+let builds = { hour: 0, n: 0 };
+function buildAllowed() {
+  const h = Math.floor(Date.now() / 3600000);
+  if (builds.hour !== h) builds = { hour: h, n: 0 };
+  return ++builds.n <= BUILD_CAP;
+}
+
 async function build(pid: number) {
   if (!afConfigured()) throw new Error('API-Football is not configured');
+  if (!buildAllowed()) throw Object.assign(new Error('Busy right now, try again in a few minutes'), { response: { status: 503 } });
   if (afRemaining() < 200) throw new Error('Daily data budget reached, try again later');
   const S = seasonNow();
   // three provider seasons: S+1 catches this summer's tournaments and calendar-year leagues filed ahead

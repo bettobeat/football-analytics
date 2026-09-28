@@ -157,8 +157,17 @@ function currentVenue(afId: number, t: any, lastFixtures: any[]) {
 const g = (path: string, params: Record<string, string | number>, ttl: number) =>
   cached<any>(`${path}?${JSON.stringify(params)}`, ttl, () => afGet(path, params));
 
+const BUILD_CAP = parseInt(process.env.TEAM_BUILDS_PER_HOUR || '600', 10);
+let builds = { hour: 0, n: 0 };
+function buildAllowed() {
+  const h = Math.floor(Date.now() / 3600000);
+  if (builds.hour !== h) builds = { hour: h, n: 0 };
+  return ++builds.n <= BUILD_CAP;
+}
+
 async function build(afId: number) {
   if (!afConfigured()) throw new Error('API-Football is not configured');
+  if (!buildAllowed()) throw Object.assign(new Error('Busy right now, try again in a few minutes'), { response: { status: 503 } });
   if (afRemaining() < 200) throw new Error('Daily data budget reached, try again later');
   const [teamRes, leaguesRes, squadRes, lastRes, nextRes] = await Promise.all([
     g('/teams', { id: afId }, SLOW),

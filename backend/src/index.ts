@@ -68,6 +68,17 @@ const SITE_PASSWORD = process.env.SITE_PASSWORD || '';
 const SITE_AUTH = SITE_PASSWORD ? 'Basic ' + Buffer.from(`${SITE_USER}:${SITE_PASSWORD}`).toString('base64') : '';
 // Read token for maintenance: GET /api/...?token=<API_READ_TOKEN> passes the gate (pages and sockets stay locked)
 const API_READ_TOKEN = process.env.API_READ_TOKEN || '';
+// Job token: like the read token but it may also START maintenance jobs (syncs, backfills, backtests, the data check).
+// Leave it unset normally; set it on Railway only while such work is being done, then remove it.
+const API_JOB_TOKEN = process.env.API_JOB_TOKEN || '';
+const tokenKind = (t: unknown): 'read' | 'job' | null =>
+  typeof t === 'string' && t ? (API_JOB_TOKEN && t === API_JOB_TOKEN ? 'job' : API_READ_TOKEN && t === API_READ_TOKEN ? 'read' : null) : null;
+
+// GET endpoints that DO something (start a job, spend API calls, change data). The read token may not call them,
+// and a browser may not call them from another website (see the cross-site guard below).
+const ACTION_GET = /^\/api\/(model\/v3\/player-quality\/rebuild|data-audit\/run|history\/(sync-season|refit)|af\/(odds-backfill|sync|raw)|clv\/(tick|probe)|model\/v3\/(backfill|squad\/sync|league-tune|league-conv)|backtest\/(run|sweep))$/;
+const isActionGet = (req: express.Request) =>
+  req.method === 'GET' && (ACTION_GET.test(req.path) || (req.path === '/api/team-overrides' && !!req.query.field));
 
 const app = express();
 const server = http.createServer(app);
@@ -137,7 +148,7 @@ if (SITE_PASSWORD) {
   app.use((req, res, next) => {
     if (req.path === '/api/health' || PUBLIC_FILES.has(req.path)) return next();
     if (req.headers.authorization === SITE_AUTH) return next();
-    if (API_READ_TOKEN && req.method === 'GET' && req.path.startsWith('/api/') && req.query.token === API_READ_TOKEN) return next();
+    if (req.method === 'GET' && req.path.startsWith('/api/') && tokenKind(req.query.token)) return next();
     res.set('WWW-Authenticate', 'Basic realm="Bet To Beat - private beta", charset="UTF-8"');
     res.status(401).send('Private beta. Sign in to continue.');
   });
@@ -168,13 +179,48 @@ app.use((req, _res, next) => {
   }
   req.user = user;
   req.access = accessOf(user);
-  // Maintenance read token: admin reads, but never the user data (/api/admin/*)
-  if (API_READ_TOKEN && req.method === 'GET' && req.query.token === API_READ_TOKEN) {
-    if (req.path.startsWith('/api/admin')) return _res.status(403).json({ error: 'Not allowed with the read token' });
+  // Maintenance tokens (GET only): admin reads, never the user data (/api/admin/*). The read token cannot start jobs.
+  const kind = req.method === 'GET' ? tokenKind(req.query.token) : null;
+  if (kind) {
+    if (req.path.startsWith('/api/admin')) return _res.status(403).json({ error: 'Not allowed with a maintenance token' });
+    if (kind === 'read' && isActionGet(req)) return _res.status(403).json({ error: 'The read token is read-only' });
     req.access = 'admin';
   }
   next();
 });
+
+// Cross-site guard: another website may not make a signed-in browser change anything here (POST / PUT / DELETE, or a
+// GET that starts a job). Browsers send Sec-Fetch-Site; typed URLs are "none", our own pages "same-origin".
+app.use('/api', (req, res, next) => {
+  const site = req.get('sec-fetch-site');
+  if (site === 'cross-site' && (req.method !== 'GET' || isActionGet(req))) return res.status(403).json({ error: 'Cross-site request blocked' });
+  next();
+});
+
+// Rate limits (per visitor; admins exempt). In memory: fine for one server.
+const buckets = new Map<string, { n: number; reset: number }>();
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, b] of buckets) if (b.reset < now) buckets.delete(k);
+}, 60000).unref();
+function rateLimit(name: string, max: number, windowMs: number, key: (req: express.Request) => string = req => req.ip || 'unknown') {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (req.access === 'admin') return next();
+    const k = `${name}:${key(req)}`;
+    const now = Date.now();
+    const b = buckets.get(k);
+    if (!b || b.reset < now) buckets.set(k, { n: 1, reset: now + windowMs });
+    else if (++b.n > max) {
+      res.set('Retry-After', String(Math.ceil((b.reset - now) / 1000)));
+      return res.status(429).json({ error: 'Too many requests. Please slow down and try again in a minute.' });
+    }
+    next();
+  };
+}
+app.use('/api', rateLimit('api', 600, 60000)); // ~10 a second, far above a person browsing
+// team / player pages can cost API-Football calls the first time: 60 page opens per 10 minutes per visitor
+app.use(['/api/team-page', '/api/player-page'], rateLimit('pages', 60, 10 * 60000));
+app.use('/api/unlocks', (req, res, next) => (req.method === 'POST' ? rateLimit('unlock', 30, 60000, r => String(r.user?.id || r.ip))(req, res, next) : next()));
 
 const OPEN_API = /^\/api\/(health$|auth\/|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|public\/(summary|results)$|unlocks(\/|$)|billing\/)/;
 const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|backtest|history\/status|clv|past\/(seasons|predictions|data|patterns)|draw-alerts)$/;
@@ -676,25 +722,29 @@ app.get('/api/news', async (req, res) => {
 
 // Latest results with the pick saved before kick-off (open: it is the public proof). Percentages only for premium.
 // /api/public/results?competition=PL&days=30&limit=50 → { rows, record } (record = hit rate over the same period)
+const resultsCache = new Map<string, { at: number; data: any }>();
 app.get('/api/public/results', (req, res) => {
   try {
     const days = Math.min(400, parseInt(String(req.query.days || '30'), 10) || 30);
     const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || '50'), 10) || 50));
     const competition = req.query.competition ? String(req.query.competition).toUpperCase() : undefined;
     const full = isPaid(req.access || 'anon'); // finished games: every paid plan sees the percentages
-    const rows = recentSettled(days, competition, limit, 'main').map((r: any) => {
-      const { odds, confidence, model, ...rest } = r;
-      return full ? rest : { ...rest, p: null };
-    });
-    const main: any = accuracy(days, competition, 'main');
-    const mkt: any = accuracy(days, competition, 'market');
-    res.json({
-      data: {
-        rows,
-        record: { days, n: main.settled, hitRate: main.model?.hitRate ?? null, market: mkt.settled ? { n: mkt.settled, hitRate: mkt.model?.hitRate ?? null } : null }
-      },
-      timestamp: new Date().toISOString()
-    });
+    // computed at most every 5 minutes per question (it scans the whole record)
+    const ck = `${days}|${competition || ''}|${limit}`;
+    let c = resultsCache.get(ck);
+    if (!c || Date.now() - c.at > 5 * 60000) {
+      const rows = recentSettled(days, competition, limit, 'main').map((r: any) => {
+        const { odds, confidence, model, ...rest } = r;
+        return rest;
+      });
+      const main: any = accuracy(days, competition, 'main');
+      const mkt: any = accuracy(days, competition, 'market');
+      c = { at: Date.now(), data: { rows, record: { days, n: main.settled, hitRate: main.model?.hitRate ?? null, market: mkt.settled ? { n: mkt.settled, hitRate: mkt.model?.hitRate ?? null } : null } } };
+      resultsCache.set(ck, c);
+      if (resultsCache.size > 500) resultsCache.delete(resultsCache.keys().next().value as string);
+    }
+    const data = full ? c.data : { ...c.data, rows: c.data.rows.map((r: any) => ({ ...r, p: null })) };
+    res.json({ data, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Failed to list results');
   }
