@@ -470,7 +470,7 @@ export function clearSessionCookie(res: express.Response, secure: boolean) {
 
 // ---------- teaser (what free users receive instead of full predictions) ----------
 
-/** Model pick + confidence only. Keeps the shape recognisable: { model, locked, pick, confidence }. */
+/** Finished matches: the pick and confidence (the public record). Keeps the shape { model, locked, pick, confidence }. */
 export function teasePrediction(p: any) {
   if (!p || typeof p !== 'object') return p;
   if (p.locked) return { model: p.model, locked: true, pick: p.pick, confidence: p.confidence };
@@ -479,38 +479,37 @@ export function teasePrediction(p: any) {
   return { model: p.model, locked: true, pick, confidence: p.confidence };
 }
 
+/** Matches not played yet: nothing about the prediction, not even which side or how confident ({ model, locked }). */
+export function hidePrediction(p: any) {
+  if (!p || typeof p !== 'object') return p;
+  return { model: p.model, locked: true };
+}
+
+const FINISHED = new Set(['FINISHED', 'AWARDED', 'FT', 'AET', 'PEN']);
+
 /**
- * Deep copy of an API payload with every `prediction` / `predictions` value replaced by a teaser.
- * Works for match lists, match details and the live socket feed alike.
- */
-/**
- * Like teaseDeep, but keeps the full prediction of matches `keep(id, status)` allows ($15 Premium: unlocked or
- * finished). The match is the object that carries `prediction(s)` (a match) or its `match` (a match-details payload).
+ * Deep copy of an API payload with predictions trimmed. `keep(id, status)` = show that match in full ($15 Premium:
+ * unlocked or finished). Otherwise finished matches keep the pick, everything else is hidden. The match is the object
+ * that carries `prediction(s)` (a match) or its `match` (a match-details payload).
  */
 export function teaseDeepExcept(value: any, keep: (id: number, status: string) => boolean, depth = 0): any {
   if (depth > 8 || value === null || typeof value !== 'object') return value;
   if (Array.isArray(value)) return value.map(v => teaseDeepExcept(v, keep, depth + 1));
   const has = 'prediction' in value || 'predictions' in value;
   const owner = has ? (typeof value.id === 'number' ? value : value.match && typeof value.match.id === 'number' ? value.match : null) : null;
-  const open = !!owner && keep(owner.id, String(owner.status || ''));
+  const status = String(owner?.status || '');
+  const open = !!owner && keep(owner.id, status);
+  const trim = FINISHED.has(status) ? teasePrediction : hidePrediction;
   const out: any = {};
   for (const [k, v] of Object.entries(value)) {
-    if (k === 'prediction' && !open) out[k] = v ? teasePrediction(v) : v;
-    else if (k === 'predictions' && Array.isArray(v) && !open) out[k] = v.map(teasePrediction);
-    else if (k === 'prediction' || k === 'predictions') out[k] = v;
+    if (k === 'prediction') out[k] = open || !v ? v : trim(v);
+    else if (k === 'predictions' && Array.isArray(v)) out[k] = open ? v : v.map(trim);
     else out[k] = teaseDeepExcept(v, keep, depth + 1);
   }
   return out;
 }
 
-export function teaseDeep(value: any, depth = 0): any {
-  if (depth > 8 || value === null || typeof value !== 'object') return value;
-  if (Array.isArray(value)) return value.map(v => teaseDeep(v, depth + 1));
-  const out: any = {};
-  for (const [k, v] of Object.entries(value)) {
-    if (k === 'prediction') out[k] = v ? teasePrediction(v) : v;
-    else if (k === 'predictions' && Array.isArray(v)) out[k] = v.map(teasePrediction);
-    else out[k] = teaseDeep(v, depth + 1);
-  }
-  return out;
+/** Anonymous and free users (and the live socket feed for them): no match is kept in full. */
+export function teaseDeep(value: any): any {
+  return teaseDeepExcept(value, () => false);
 }

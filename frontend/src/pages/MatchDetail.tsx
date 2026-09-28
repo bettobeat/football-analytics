@@ -494,7 +494,8 @@ function MatchDetail() {
         }
       : null
 
-  const pick: 'H' | 'D' | 'A' | null = p ? pickOfPrediction(p) : null
+  // a locked upcoming match carries no pick at all
+  const pick: 'H' | 'D' | 'A' | null = p && !(p.locked && !p.pick) ? pickOfPrediction(p) : null
   const pickVar = pick === 'H' ? '--home' : pick === 'A' ? '--away' : '--draw'
 
   return (
@@ -586,7 +587,7 @@ function MatchDetail() {
             title="Prediction"
             note={p ? `${modelInfo(p.model).tag} · ${modelInfo(p.model).name} · ${CONFIDENCE_LABEL[p.confidence]}` : undefined}
           >
-            {p && pick && p.locked ? (
+            {p && p.locked ? (
               <LockedPrediction p={p} pick={pick} home={home} away={away} market={details.market || null} matchId={m.id} status={m.status} onUnlocked={() => { revealMatch(m.id); load(false) }} />
             ) : p && pick ? (
               hidden ? (
@@ -933,7 +934,7 @@ function WhyThisPick({ p, home, away, market, upcoming }: { p: Prediction; home:
 }
 
 function LockedPrediction({ p, pick, home, away, market, matchId, status, onUnlocked }: {
-  p: Prediction; pick: 'H' | 'D' | 'A'; home: Team; away: Team; market: Market | null; matchId: number; status: string; onUnlocked: () => void
+  p: Prediction; pick: 'H' | 'D' | 'A' | null; home: Team; away: Team; market: Market | null; matchId: number; status: string; onUnlocked: () => void
 }) {
   const { user, access } = useAuth()
   const u = useUnlocks(access === 'premium')
@@ -954,7 +955,7 @@ function LockedPrediction({ p, pick, home, away, market, matchId, status, onUnlo
     }
   }
   const out = access === 'premium' && (needPro || (u && u.left === 0))
-  const name = pick === 'H' ? home.shortName || home.name : pick === 'A' ? away.shortName || away.name : 'Draw'
+  const name = pick === 'H' ? home.shortName || home.name : pick === 'A' ? away.shortName || away.name : pick === 'D' ? 'Draw' : null
   const color = pick === 'H' ? 'text-home' : pick === 'D' ? 'text-draw' : 'text-away'
   const tiles: { k: 'H' | 'D' | 'A'; label: string }[] = [
     { k: 'H', label: home.shortName || home.name },
@@ -965,7 +966,11 @@ function LockedPrediction({ p, pick, home, away, market, matchId, status, onUnlo
     <div>
       <div className="flex flex-wrap items-center gap-2 text-sm mb-4">
         <span className="px-2.5 py-1 rounded-full text-xs font-bold border bg-surface2 text-ink border-line">Model pick</span>
-        <span className={`font-display font-bold text-lg ${color}`}>{name}</span>
+        {name ? (
+          <span className={`font-display font-bold text-lg ${color}`}>{name}</span>
+        ) : (
+          <span className="font-display font-bold text-lg text-muted">Locked</span>
+        )}
       </div>
       <div className="relative min-h-[190px]">
         <div className="grid grid-cols-3 gap-3 pt-6 select-none blur-[5px] opacity-60" aria-hidden>
@@ -1008,7 +1013,7 @@ function LockedPrediction({ p, pick, home, away, market, matchId, status, onUnlo
           <div className="rounded-2xl border border-line bg-surface/95 shadow-lift px-5 py-4 text-center max-w-sm">
             <div className="font-display font-bold text-ink">Full prediction with Premium</div>
             <div className="text-xs text-muted mt-1">
-              Win / draw / loss %, why this pick in plain words, model vs market, strong picks, draw alerts and the full v3 breakdown.
+              The pick, win / draw / loss %, why this pick in plain words, model vs market, strong picks, draw alerts and the full v3 breakdown.
             </div>
             <div className="mt-3 flex justify-center gap-2">
               <Link to="/premium" className="px-3.5 py-1.5 rounded-xl bg-accent text-bg text-sm font-semibold">

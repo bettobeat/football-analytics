@@ -75,27 +75,36 @@ function pickOf(p: Prediction): Pick {
   return pickOfPrediction(p)
 }
 
-/** Free / signed-out view of a prediction: the pick, blurred bars, and what Premium adds. */
-function LockedPick({ match, p, pick, big }: { match: APIMatch; p: Prediction; pick: Pick; big?: boolean }) {
+/**
+ * Locked view. Upcoming matches: nothing about the prediction (no side, no confidence), grey bars and a way to unlock.
+ * Finished matches (free users): the pick that was made, so the record stays public.
+ */
+function LockedPick({ match, p, pick, big }: { match: APIMatch; p: Prediction; pick: Pick | null; big?: boolean }) {
   const { access } = useAuth()
-  const name = pick === 'H' ? match.homeTeam.shortName || match.homeTeam.name : pick === 'A' ? match.awayTeam.shortName || match.awayTeam.name : 'Draw'
+  const name = pick === 'H' ? match.homeTeam.shortName || match.homeTeam.name : pick === 'A' ? match.awayTeam.shortName || match.awayTeam.name : pick === 'D' ? 'Draw' : null
   return (
     <div className="relative">
       <div className="flex items-baseline justify-between gap-2 mb-2">
         <span className="label whitespace-nowrap">Model pick</span>
-        <span className={`font-display font-bold truncate ${big ? '' : 'text-sm'} ${PICK_COLOR[pick]}`}>{name}</span>
+        {name && pick ? (
+          <span className={`font-display font-bold truncate ${big ? '' : 'text-sm'} ${PICK_COLOR[pick]}`}>{name}</span>
+        ) : (
+          <span className={`inline-flex items-center gap-1.5 font-display font-bold text-muted ${big ? '' : 'text-sm'}`}>
+            <LockIcon /> Locked
+          </span>
+        )}
       </div>
       <div className={`flex ${big ? 'h-2.5' : 'h-2'} gap-[3px] blur-[1.5px] opacity-50`} aria-hidden>
         {(['H', 'D', 'A'] as Pick[]).map(k => (
-          <div key={k} className={`${pick === k ? PICK_BG[k] : 'bg-faint/40'} rounded-full`} style={{ width: pick === k ? 'calc(46% - 3px)' : 'calc(27% - 3px)' }} />
+          <div key={k} className={`${pick === k ? PICK_BG[k] : 'bg-faint/40'} rounded-full`} style={{ width: pick === k ? 'calc(46% - 3px)' : pick ? 'calc(27% - 3px)' : 'calc(33.3% - 3px)' }} />
         ))}
       </div>
-      {match.market && <MarketRow p={p} m={match.market} pick={pick} />}
+      {match.market && pick && <MarketRow p={p} m={match.market} pick={pick} />}
       <div className="mt-2.5 flex items-center justify-between gap-2 text-[11px] text-faint">
         <span className="inline-flex items-center gap-1">
-          <LockIcon /> {access === 'premium' ? 'Open the match to unlock' : 'Win % and value with Premium'}
+          <LockIcon /> {access === 'premium' ? 'Open the match to unlock' : 'Pick and win % with Premium'}
         </span>
-        {p.confidence && <ConfidenceTag c={p.confidence} />}
+        {pick && p.confidence && <ConfidenceTag c={p.confidence} />}
       </div>
     </div>
   )
@@ -705,7 +714,7 @@ function MatchCard({ match, delay = 0 }: { match: APIMatch; delay?: number }) {
   const p = match.prediction
   const { hidden: covered, reveal } = useReveal(match.id, match.status, !!p && !p.locked)
   // while covered, nothing on the card may hint at the pick
-  const pick = p && !covered ? pickOf(p) : null
+  const pick = p && !covered && !(p.locked && !p.pick) ? pickOf(p) : null
   const ft = match.score?.fullTime
 
   return (
@@ -756,7 +765,7 @@ function MatchCard({ match, delay = 0 }: { match: APIMatch; delay?: number }) {
 
       {covered ? (
         <RevealChip onReveal={reveal} />
-      ) : p && pick && p.locked ? (
+      ) : p && p.locked ? (
         <LockedPick match={match} p={p} pick={pick} />
       ) : p && pick ? (
         <div className="relative">
@@ -792,7 +801,9 @@ function SpotlightCard({ match }: { match: APIMatch }) {
       : null)
   if (!p) return <MatchCard match={match} />
   const fromMarket = !match.prediction
-  const pick = pickOf(p)
+  // locked upcoming match: no pick at all (nothing may hint at the side)
+  const hiddenPick = !!p.locked && !p.pick
+  const pick = hiddenPick ? 'D' : pickOf(p)
   const favName = pick === 'H' ? match.homeTeam.shortName || match.homeTeam.name : pick === 'A' ? match.awayTeam.shortName || match.awayTeam.name : 'Draw'
   const favProb = pick === 'H' ? p.home : pick === 'A' ? p.away : p.draw
   const d = new Date(match.utcDate)
@@ -802,7 +813,7 @@ function SpotlightCard({ match }: { match: APIMatch }) {
     <Link to={`/match/${match.id}`} className="card card-hover relative overflow-hidden p-5 block">
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.12]"
-        style={{ background: `radial-gradient(400px 200px at 50% 110%, rgb(var(${PICK_VAR[pick]})), transparent 70%)` }}
+        style={{ background: hiddenPick ? 'none' : `radial-gradient(400px 200px at 50% 110%, rgb(var(${PICK_VAR[pick]})), transparent 70%)` }}
       />
       <div className="relative flex items-center justify-between text-xs text-muted mb-4">
         <span className="flex items-center gap-1.5">
@@ -828,7 +839,7 @@ function SpotlightCard({ match }: { match: APIMatch }) {
 
       {locked ? (
         <div className="relative mt-5">
-          <LockedPick match={match} p={p} pick={pick} big />
+          <LockedPick match={match} p={p} pick={hiddenPick ? null : pick} big />
         </div>
       ) : (
       <div className="relative mt-5">

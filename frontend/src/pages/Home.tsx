@@ -47,10 +47,6 @@ function mainPred(m: Match): Prediction | null {
   return m.predictions?.find(p => MAIN.includes(p.model)) || m.prediction || null
 }
 const hasPct = (p: Prediction | null): p is Prediction => !!p && !p.locked && typeof p.home === 'number'
-const pickName = (m: Match, p: Prediction | null) => {
-  const k = p?.pick || (hasPct(p) ? (p.home >= p.draw && p.home >= p.away ? 'H' : p.away >= p.draw ? 'A' : 'D') : null)
-  return k === 'H' ? tn(m.homeTeam) : k === 'A' ? tn(m.awayTeam) : k === 'D' ? 'Draw' : null
-}
 const topPct = (p: Prediction) => Math.max(p.home, p.draw, p.away)
 const MAJOR = /champions league|world cup|euro(pean championship)?\b|nations league|copa am[eé]rica|europa league|conference league/i
 /** Lower = bigger stage: Champions League, the top leagues, major national-team / European competitions, then the rest. */
@@ -136,8 +132,8 @@ function FeaturedHero({ m, p }: { m: Match | null; p: Prediction | null }) {
               </div>
             ) : (
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 text-sm">
-                <span className="glass !rounded-full px-4 py-2 font-semibold">v3 pick: <span className="text-[#C8FF3D]">{pickName(m, p) || '–'}</span></span>
-                <Link to="/premium" className="inline-flex items-center gap-1.5 text-[#C8FF3D] font-semibold"><Lock /> See the %</Link>
+                <span className="glass !rounded-full px-4 py-2 font-semibold inline-flex items-center gap-2"><Lock /> Prediction locked</span>
+                <Link to={`/match/${m.id}`} className="inline-flex items-center gap-1.5 text-[#C8FF3D] font-semibold">Unlock it →</Link>
               </div>
             )}
           </div>
@@ -339,8 +335,8 @@ export default function Home() {
                     </div>
                   ) : p ? (
                     <div className="flex items-center justify-between text-xs rounded-xl bg-surface2/70 px-3 py-2">
-                      <span className="text-muted">v3 pick: <b className="text-ink">{pickName(m, p)}</b></span>
-                      <span className="text-faint inline-flex items-center gap-1"><Lock /> %</span>
+                      <span className="text-muted inline-flex items-center gap-1.5"><Lock /> Prediction locked</span>
+                      <span className="text-accent font-semibold">Unlock</span>
                     </div>
                   ) : (
                     <div className="text-xs text-faint">No prediction yet</div>
