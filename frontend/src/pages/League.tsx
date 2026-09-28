@@ -232,7 +232,7 @@ function League() {
                           <th className="text-right font-medium py-1.5 num w-16 hidden sm:table-cell">Goals</th>
                           <th className="text-right font-medium py-1.5 num w-10">GD</th>
                           <th className="text-right font-medium py-1.5 num w-10 pr-2">Pts</th>
-                          {hasForm && <th className="text-center font-medium py-1.5 w-[104px] hidden md:table-cell">Form</th>}
+                          {hasForm && <th className="text-center font-medium py-1.5 w-[104px] hidden md:table-cell" title="Last 5 league games, latest on the right">Form</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -260,7 +260,9 @@ function League() {
                                 {String(r.form || '')
                                   .split(/[,\s]*/)
                                   .filter(x => FORM_BG[x])
-                                  .slice(-5)
+                                  // both providers list the newest result first: show the last 5 with the newest on the right
+                                  .slice(0, 5)
+                                  .reverse()
                                   .map((x, j) => (
                                     <span key={j} className={`w-4 h-4 rounded-[4px] grid place-items-center text-[9px] font-extrabold text-bg ${FORM_BG[x]}`}>{x}</span>
                                   ))}

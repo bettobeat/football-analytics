@@ -38,6 +38,7 @@ import { nationalValueSearch, historyMatchReport } from './services/squadValues'
 import { drawAlertsReport, drawFactorTest } from './services/drawAlerts';
 import { teamPage, searchTeams, resolveAfTeamId, setTeamOverride, teamOverrides } from './services/teamPage';
 import { playerPage, findPlayer } from './services/playerPage';
+import { runDataAudit, lastDataAudit, startDataAuditScheduler } from './services/dataAudit';
 import { footballNews } from './services/news';
 import { highlightsFor, highlightsStatus, lastCandidates } from './services/highlights';
 import { rebuildPlayerQuality, playerQualityTable } from './services/playerQuality';
@@ -500,6 +501,15 @@ app.get('/api/leagues/:code/standings', async (req, res) => {
   try {
     const code = req.params.code.toUpperCase();
     const standings = isAfCode(code) ? await getAfStandings(code) : await footballDataAPI.getStandings(code);
+    // Football-Data.org tables come without form on our plan: add it from the finished matches (newest first)
+    if (!isAfCode(code) && standings?.standings?.some((t: any) => t.table?.some((r: any) => !r.form))) {
+      try {
+        const form = await footballDataAPI.getForm(code);
+        standings.standings = standings.standings.map((t: any) => ({ ...t, table: (t.table || []).map((r: any) => ({ ...r, form: r.form || form.get(r.team?.id) || null })) }));
+      } catch (e: any) {
+        logger.warn(`form ${code}: ${e.message}`);
+      }
+    }
     res.json({ data: standings, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Failed to fetch standings');
@@ -557,6 +567,16 @@ app.get('/api/player-page/:id(\\d+)', async (req, res) => {
     res.json({ data: await playerPage(parseInt(req.params.id, 10), canSeeFull(req.access || 'anon')), timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Player page failed');
+  }
+});
+
+// Admin: weekly data check (player pages vs the official scorer lists). GET → last report; /run → run it now.
+app.get('/api/data-audit', (_req, res) => res.json({ data: lastDataAudit(), timestamp: new Date().toISOString() }));
+app.get('/api/data-audit/run', async (req, res) => {
+  try {
+    res.json({ data: await runDataAudit(req.query.email !== '0'), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    res.status(409).json({ error: error.message });
   }
 });
 
@@ -1308,6 +1328,7 @@ server.listen(PORT, () => {
   startSquadValuesScheduler(() => { prepareModelV3(); rebuildAfFeatures(); });
   // Injuries / suspensions / confirmed lineups (API-Football) for model v3 rows #12 and #13
   startApiFootballScheduler();
+  startDataAuditScheduler();
   // Live closing-line value tracking (open price + v3 at 48 h, closing price in the last 35 min)
   startClvScheduler();
   // Extra competitions (national teams, Europa/Conference League, Israel, Saudi, more European leagues)

@@ -781,15 +781,15 @@ function MatchDetail() {
           {/* Lineups */}
           {hasLineups ? (
             <Section title={live ? 'Live pitch' : done ? 'Lineups and match events' : 'Official lineups'} note={[home.formation, away.formation].filter(Boolean).join(' vs ') || undefined}>
-              {live || done ? <LivePitch m={m} home={home} away={away} live={live} /> : <Pitch home={home} away={away} />}
+              {live || done ? <LivePitch m={m} home={home} away={away} live={live} /> : <Pitch home={home} away={away} code={m.competition?.code} />}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-5">
-                <Bench team={home} />
-                <Bench team={away} />
+                <Bench team={home} code={m.competition?.code} />
+                <Bench team={away} code={m.competition?.code} />
               </div>
             </Section>
           ) : probable ? (
             <Section title="Probable lineups" note={[probable.home.formation, probable.away.formation].filter(Boolean).join(' vs ') || undefined}>
-              <Pitch home={probable.home} away={probable.away} probable />
+              <Pitch home={probable.home} away={probable.away} probable code={m.competition?.code} />
               <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-faint">
                 <span>
                   Usual XI from each team's last{' '}
@@ -1368,12 +1368,19 @@ function formationRows(team: Team): PitchPlayer[][] {
   return rows
 }
 
+/** Player page link: API-Football ids open directly; other ids are looked up by name within the team. */
+function playerHref(pl: { id: number; name: string }, team: Team, code?: string) {
+  if (pl.id >= 1_000_000_000) return `/player/${pl.id}`
+  if (!pl.name || pl.name === '?' || pl.id < 0 && !team.id) return null
+  return `/player/find?${new URLSearchParams({ name: pl.name, team: String(team.id), ...(code ? { c: code } : {}), n: team.name }).toString()}`
+}
+
 function lastName(name: string) {
   const parts = name.trim().split(/\s+/)
   return parts.length > 1 ? parts[parts.length - 1] : name
 }
 
-function PlayerDot({ p, side, of }: { p: PitchPlayer; side: 'home' | 'away'; of?: number }) {
+function PlayerDot({ p, side, of, href }: { p: PitchPlayer; side: 'home' | 'away'; of?: number; href?: string | null }) {
   const ring = side === 'home' ? 'ring-home/70' : 'ring-away/70'
   const showStarts = typeof p.starts === 'number' && of
   const title = `${p.name}${p.position ? ` · ${p.position}` : ''}${showStarts ? ` · started ${p.starts}/${of}` : ''}`
@@ -1397,14 +1404,20 @@ function PlayerDot({ p, side, of }: { p: PitchPlayer; side: 'home' | 'away'; of?
           </span>
         )}
       </div>
-      <span className="mt-1 text-[11px] leading-tight text-white font-medium text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)] truncate max-w-full">
-        {lastName(p.name)}
-      </span>
+      {href ? (
+        <Link to={href} className="mt-1 text-[11px] leading-tight text-white font-medium text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)] truncate max-w-full hover:underline">
+          {lastName(p.name)}
+        </Link>
+      ) : (
+        <span className="mt-1 text-[11px] leading-tight text-white font-medium text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)] truncate max-w-full">
+          {lastName(p.name)}
+        </span>
+      )}
     </div>
   )
 }
 
-function Pitch({ home, away, probable = false }: { home: Team; away: Team; probable?: boolean }) {
+function Pitch({ home, away, probable = false, code }: { home: Team; away: Team; probable?: boolean; code?: string }) {
   const [side, setSide] = useState<'home' | 'away'>('home')
   const team = side === 'home' ? home : away
   const of = probable ? team.basedOn : undefined
@@ -1447,7 +1460,7 @@ function Pitch({ home, away, probable = false }: { home: Team; away: Team; proba
         {rows.map((row, i) => (
           <div key={i} className="absolute left-0 right-0 flex justify-evenly px-2 translate-y-1/2" style={rowStyle(i, rows.length)}>
             {row.map(p => (
-              <PlayerDot key={p.id} p={p} side={side} of={of} />
+              <PlayerDot key={p.id} p={p} side={side} of={of} href={playerHref(p, team, code)} />
             ))}
           </div>
         ))}
@@ -1553,9 +1566,11 @@ function LivePitch({ m, home, away, live }: { m: Match; home: Team; away: Team; 
                 {(yellow || red) && <span className={`absolute -top-1 -left-1.5 w-2.5 h-3.5 rounded-[2px] ring-1 ring-black/30 ${red ? 'bg-loss' : 'bg-draw'}`} />}
                 {chain.length > 0 && <Mark cls="-bottom-1 -left-2 w-4 h-4 bg-win text-black">⇅</Mark>}
               </div>
-              <span className="mt-0.5 text-[10px] sm:text-[11px] leading-tight text-white font-semibold text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)] truncate max-w-full">
-                {lastName(cur.name)}
-              </span>
+              {(() => {
+                const href = playerHref(cur, isHome ? home : away, m.competition?.code)
+                const cls = 'mt-0.5 text-[10px] sm:text-[11px] leading-tight text-white font-semibold text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)] truncate max-w-full'
+                return href ? <Link to={href} className={`${cls} hover:underline`}>{lastName(cur.name)}</Link> : <span className={cls}>{lastName(cur.name)}</span>
+              })()}
               {chain.length > 0 && (
                 <span className="text-[9px] leading-tight text-white/75 drop-shadow truncate max-w-full">{chain[chain.length - 1].minute}' for {lastName(chain[chain.length - 1].out)}</span>
               )}
@@ -1575,7 +1590,7 @@ function LivePitch({ m, home, away, live }: { m: Match; home: Team; away: Team; 
   )
 }
 
-function Bench({ team }: { team: Team }) {
+function Bench({ team, code }: { team: Team; code?: string }) {
   const bench = team.bench || []
   return (
     <div>
@@ -1591,7 +1606,10 @@ function Bench({ team }: { team: Team }) {
           {bench.map(pl => (
             <li key={pl.id} className="flex items-center gap-2 min-w-0">
               <span className="num w-5 text-right text-faint">{pl.shirtNumber ?? ''}</span>
-              <span className="truncate">{pl.name}</span>
+              {(() => {
+                const href = playerHref(pl, team, code)
+                return href ? <Link to={href} className="truncate hover:text-ink hover:underline">{pl.name}</Link> : <span className="truncate">{pl.name}</span>
+              })()}
             </li>
           ))}
         </ul>

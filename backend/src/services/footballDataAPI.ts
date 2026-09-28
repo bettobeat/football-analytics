@@ -443,6 +443,34 @@ class FootballDataAPI {
     return response.data;
   }
 
+  /**
+   * Last-5 form for every team of a competition, newest first ("W,D,L,W,W"), from its finished league matches.
+   * Football-Data.org's standings leave form empty on our plan. One call per competition, cached 30 min.
+   */
+  async getForm(leagueCode: string): Promise<Map<number, string>> {
+    const key = `form:${leagueCode}`;
+    const cached = this.getCached<Map<number, string>>(key);
+    if (cached) return cached;
+    const response = await this.client.get(`/competitions/${leagueCode}/matches`, { ...this.bg, params: { status: 'FINISHED' } });
+    const matches: any[] = (response.data.matches || [])
+      .filter((m: any) => m.score?.winner && (!m.stage || m.stage === 'REGULAR_SEASON'))
+      .sort((a: any, b: any) => String(b.utcDate).localeCompare(String(a.utcDate)));
+    const form = new Map<number, string[]>();
+    for (const m of matches) {
+      const w = m.score.winner;
+      for (const [id, me] of [[m.homeTeam?.id, 'HOME_TEAM'], [m.awayTeam?.id, 'AWAY_TEAM']] as [number, string][]) {
+        if (!id) continue;
+        const f = form.get(id) || [];
+        if (f.length < 5) f.push(w === 'DRAW' ? 'D' : w === me ? 'W' : 'L');
+        form.set(id, f);
+      }
+    }
+    const out = new Map<number, string>();
+    form.forEach((f, id) => out.set(id, f.join(',')));
+    this.setCached(key, out, 30 * 60 * 1000);
+    return out;
+  }
+
   /** Top scorers (with assists) for a competition. */
   async getScorers(leagueCode: string, limit: number = 40) {
     const key = `scorers:${leagueCode}:${limit}`;

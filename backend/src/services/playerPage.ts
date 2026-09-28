@@ -297,7 +297,7 @@ function sameName(a: string, b: string) {
 
 const findCache = new Map<string, number | null>();
 // Football-Data.org competition code → API-Football league id
-const FD_TO_AF: Record<string, number> = { PL: 39, ELC: 40, PD: 140, SA: 135, BL1: 78, FL1: 61, DED: 88, PPL: 94, BSA: 71, CL: 2, EC: 4, WC: 1 };
+export const FD_TO_AF: Record<string, number> = { PL: 39, ELC: 40, PD: 140, SA: 135, BL1: 78, FL1: 61, DED: 88, PPL: 94, BSA: 71, CL: 2, EC: 4, WC: 1 };
 
 export async function findPlayer(name: string, teamId: number, code?: string, teamName?: string): Promise<number | null> {
   const key = `${name}|${teamId}|${code}`;
