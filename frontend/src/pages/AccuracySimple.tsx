@@ -190,26 +190,12 @@ export default function AccuracySimple() {
             <p className="text-sm text-muted">Bets that happen more often. Higher hit rates, lower odds: each one is counted and shown on its own.</p>
           </div>
           <div className="grid gap-4 md:grid-cols-3">
-            <Card className="border-accent/40">
-              <div className="label text-accent">Double chance · vs the bookmakers</div>
-              <div className="mt-4 space-y-4">
-                <div>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-sm font-semibold text-ink">Bet To Beat (v3)</span>
-                    <span className="num text-3xl font-extrabold text-accent">{pct(rec.doubleChance?.v3)}</span>
-                  </div>
-                  <Bar v={rec.doubleChance?.v3 ?? null} cls="bg-accent" />
-                </div>
-                <div>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-sm font-semibold text-muted">Bookmakers</span>
-                    <span className="num text-3xl font-extrabold text-ink">{pct(rec.doubleChance?.market)}</span>
-                  </div>
-                  <Bar v={rec.doubleChance?.market ?? null} cls="bg-faint" />
-                </div>
-              </div>
+            <Card>
+              <div className="label">Double chance</div>
+              <div className="num text-5xl font-extrabold text-ink mt-4">{pct(rec.doubleChance?.v3)}</div>
+              <div className="mt-3"><Bar v={rec.doubleChance?.v3 ?? null} cls="bg-accent" /></div>
               <p className="text-xs text-muted mt-4">
-                {rec.doubleChance?.n ? `${rec.doubleChance.v3Hits} vs ${rec.doubleChance.marketHits} right on the same ${rec.doubleChance.n} games. Two of the three results (1X, X2 or 12).` : 'No finished games with odds yet.'}
+                {rec.doubleChance?.n ? `${rec.doubleChance.v3Hits} of ${rec.doubleChance.n} right. The two results we rate highest (1X, X2 or 12).` : 'No finished games yet.'}
               </p>
             </Card>
             <Card>
