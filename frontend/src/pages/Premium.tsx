@@ -11,7 +11,7 @@ import { refreshUnlocks, useUnlocks, resetDay } from '../lib/unlocks'
  * switch the plan straight away (test checkout); otherwise they say payments open soon.
  */
 
-const FREE = ['The model’s pick for every match', 'Live scores, lineups and events', 'League tables, team and player pages', 'Latest results and our public record']
+const FREE = ['2 full picks a day with a free account', 'Live scores, lineups and events', 'League tables, team and player pages', 'Latest results and our public record']
 const PREMIUM = [
   '60 match unlocks a month',
   'Win / draw / loss %, fair odds, why this pick',
@@ -94,6 +94,9 @@ export default function Premium() {
         <p className="text-muted mt-3">
           Our models are measured on every match against the bookmakers, in public. Pick the plan that fits how much you use it.
         </p>
+        <p className="mt-4 inline-flex items-center gap-2 rounded-full border border-win/40 bg-win/10 px-3 py-1 text-xs font-semibold text-win">
+          3-day money-back guarantee · cancel any time
+        </p>
         {testMode && (
           <p className="mt-4 inline-block rounded-full border border-draw/40 bg-draw/10 px-3 py-1 text-xs font-semibold text-draw">
             Test mode: choosing a plan switches it straight away, no payment is taken
@@ -112,7 +115,7 @@ export default function Premium() {
         </div>
       )}
 
-      <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-5 items-stretch">
+      <div className="mt-8 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 items-stretch">
         {/* Premium */}
         <div className="card p-6 flex flex-col">
           <div className="label">Premium</div>
@@ -132,7 +135,7 @@ export default function Premium() {
         </div>
 
         {/* Pro: the plan we steer people to */}
-        <div className="card p-6 flex flex-col relative overflow-hidden border-accent/60 lg:-my-3 lg:py-9 shadow-lift order-first lg:order-none">
+        <div className="card p-6 flex flex-col relative overflow-hidden border-accent/60 xl:-my-3 xl:py-9 shadow-lift order-first xl:order-none">
           <div className="pointer-events-none absolute -top-24 -right-24 w-64 h-64 rounded-full bg-accent/20 blur-3xl" />
           <span className="absolute top-4 right-4 text-[10px] font-extrabold uppercase tracking-wider text-bg bg-accent px-2.5 py-1 rounded-full">Most popular</span>
           <div className="relative flex flex-col flex-1">
@@ -151,6 +154,25 @@ export default function Premium() {
             </ul>
             <div className="mt-6">{button('pro', 'Pro', true)}</div>
           </div>
+        </div>
+
+        {/* Pro 6 months: 20% off */}
+        <div className="card p-6 flex flex-col">
+          <div className="label">Pro 6 months</div>
+          <div className="mt-1 flex items-baseline gap-1">
+            <span className="font-display text-4xl font-extrabold text-ink">$144</span>
+            <span className="text-sm text-muted">/ 6 months</span>
+          </div>
+          <div className="text-xs text-win font-semibold mt-1">$24 a month · save 20%</div>
+          <ul className="mt-5 space-y-2.5 text-sm text-ink/90 flex-1">
+            <li className="flex gap-2">
+              <Check /> Everything in Pro
+            </li>
+            <li className="flex gap-2">
+              <Check /> One payment every 6 months
+            </li>
+          </ul>
+          <div className="mt-6">{button('pro-6m', 'Pro 6 months', false)}</div>
         </div>
 
         {/* Pro yearly: the best price per month */}
@@ -203,6 +225,7 @@ export default function Premium() {
       </div>
 
       <p className="mt-8 text-center text-xs text-faint max-w-xl mx-auto">
+        3-day money-back guarantee on every plan: not for you? Ask within 3 days of paying and you get the full amount back.
         Unlocked matches stay open. Finished matches are always open on paid plans. Unlocks renew on the 1st of every month.
         Predictions are probabilities, not promises. Bet To Beat is an analytics service and does not take bets.
       </p>

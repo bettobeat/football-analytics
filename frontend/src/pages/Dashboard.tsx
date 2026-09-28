@@ -102,7 +102,7 @@ function LockedPick({ match, p, pick, big }: { match: APIMatch; p: Prediction; p
       {match.market && pick && <MarketRow p={p} m={match.market} pick={pick} />}
       <div className="mt-2.5 flex items-center justify-between gap-2 text-[11px] text-faint">
         <span className="inline-flex items-center gap-1">
-          <LockIcon /> {access === 'premium' ? 'Open the match to unlock' : 'Pick and win % with Premium'}
+          <LockIcon /> {access === 'premium' ? 'Open the match to unlock' : access === 'free' ? 'Use a free pick: open the match' : 'Free account: 2 picks a day'}
         </span>
         {pick && p.confidence && <ConfidenceTag c={p.confidence} />}
       </div>

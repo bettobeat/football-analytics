@@ -38,7 +38,7 @@ import { nationalValueSearch, historyMatchReport } from './services/squadValues'
 import { drawAlertsReport, drawFactorTest } from './services/drawAlerts';
 import { teamPage, searchTeams, resolveAfTeamId, setTeamOverride, teamOverrides } from './services/teamPage';
 import { playerPage, findPlayer } from './services/playerPage';
-import { unlockStatus, unlockMatch, unlockedIds, isFinished, testCheckout, PLANS, billingTestMode, unlockStats } from './services/billing';
+import { unlockStatus, unlockMatch, unlockedIds, isFinished, testCheckout, PLANS, billingTestMode, unlockStats, REFUND_DAYS, FREE_DAILY_UNLOCKS } from './services/billing';
 import { runDataAudit, lastDataAudit, startDataAuditScheduler } from './services/dataAudit';
 import { footballNews } from './services/news';
 import { highlightsFor, highlightsStatus, lastCandidates } from './services/highlights';
@@ -232,7 +232,8 @@ app.use('/api', (req, res, next) => {
     // Trim predictions: anonymous and free users see the pick only; $15 Premium sees unlocked and finished matches in full
     if (!canSeeFull(access) && p.startsWith('/api/matches')) {
       const json = res.json.bind(res);
-      if (access === 'premium' && req.user) {
+      // signed-in Free users and $15 Premium users see what they unlocked
+      if ((access === 'premium' || access === 'free') && req.user) {
         const ids = unlockedIds(req.user.id);
         res.json = (body: any) => json(teaseDeepExcept(body, (id, status) => ids.has(id) || isFinished(status)));
       } else res.json = (body: any) => json(teaseDeep(body));
@@ -411,7 +412,7 @@ app.post('/api/unlocks/:id(\\d+)', jsonOnly, (req, res) => {
     authFail(res, e);
   }
 });
-app.get('/api/billing/plans', (_req, res) => res.json({ data: { plans: PLANS, testMode: billingTestMode } }));
+app.get('/api/billing/plans', (_req, res) => res.json({ data: { plans: PLANS, testMode: billingTestMode, refundDays: REFUND_DAYS, freeDaily: FREE_DAILY_UNLOCKS } }));
 // Test checkout (only while BILLING_TEST_MODE=1): switch your own plan
 app.post('/api/billing/test-checkout', jsonOnly, (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Sign in required' });

@@ -946,7 +946,10 @@ function LockedPrediction({ p, pick, home, away, market, matchId, status, onUnlo
   p: Prediction; pick: 'H' | 'D' | 'A' | null; home: Team; away: Team; market: Market | null; matchId: number; status: string; onUnlocked: () => void
 }) {
   const { user, access } = useAuth()
-  const u = useUnlocks(access === 'premium')
+  // signed-in Free (2 picks a day) and $15 Premium (60 a month) unlock match by match
+  const canUnlock = !!user && (access === 'premium' || access === 'free')
+  const u = useUnlocks(canUnlock)
+  const daily = u?.period === 'day'
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [needPro, setNeedPro] = useState(false)
@@ -963,7 +966,7 @@ function LockedPrediction({ p, pick, home, away, market, matchId, status, onUnlo
       setBusy(false)
     }
   }
-  const out = access === 'premium' && (needPro || (u && u.left === 0))
+  const out = canUnlock && (needPro || (u && u.left === 0))
   const name = pick === 'H' ? home.shortName || home.name : pick === 'A' ? away.shortName || away.name : pick === 'D' ? 'Draw' : null
   const color = pick === 'H' ? 'text-home' : pick === 'D' ? 'text-draw' : 'text-away'
   const tiles: { k: 'H' | 'D' | 'A'; label: string }[] = [
@@ -988,17 +991,19 @@ function LockedPrediction({ p, pick, home, away, market, matchId, status, onUnlo
           ))}
         </div>
         <div className="absolute inset-0 grid place-items-center">
-          {access === 'premium' ? (
+          {canUnlock ? (
           <div className="rounded-2xl border border-line bg-surface/95 shadow-lift px-5 py-4 text-center max-w-sm">
             {out ? (
               <>
-                <div className="font-display font-bold text-ink">You've used all your unlocks this month</div>
+                <div className="font-display font-bold text-ink">{daily ? "You've used today's free picks" : "You've used all your unlocks this month"}</div>
                 <div className="text-xs text-muted mt-1">
-                  {u ? `Your ${u.allowance} unlocks renew on ${resetDay(u.resetsAt)}. ` : ''}Pro is unlimited, and adds draw alerts.
+                  {daily
+                    ? `Your ${u?.allowance ?? 2} free picks come back tomorrow. Premium opens 60 matches a month; Pro opens every match.`
+                    : `${u ? `Your ${u.allowance} unlocks renew on ${resetDay(u.resetsAt)}. ` : ''}Pro is unlimited, and adds draw alerts.`}
                 </div>
                 <div className="mt-3 flex justify-center">
                   <Link to="/premium" className="px-4 py-2 rounded-xl bg-accent text-bg text-sm font-extrabold">
-                    Upgrade to Pro
+                    {daily ? 'See plans' : 'Upgrade to Pro'}
                   </Link>
                 </div>
               </>
@@ -1006,13 +1011,14 @@ function LockedPrediction({ p, pick, home, away, market, matchId, status, onUnlo
               <>
                 <div className="font-display font-bold text-ink">Unlock this match</div>
                 <div className="text-xs text-muted mt-1">
-                  The full prediction, why this pick, goals and the v3 breakdown. Uses 1 of your monthly unlocks; it stays open after that.
+                  The full prediction, why this pick, goals and the v3 breakdown.{' '}
+                  {daily ? `Uses 1 of your ${u?.allowance ?? 2} free picks today` : 'Uses 1 of your monthly unlocks'}; it stays open after that.
                 </div>
                 <div className="mt-3 flex flex-col items-center gap-1.5">
                   <button onClick={doUnlock} disabled={busy} className="px-4 py-2 rounded-xl bg-accent text-bg text-sm font-extrabold disabled:opacity-60">
                     {busy ? 'Unlocking…' : 'Unlock prediction'}
                   </button>
-                  {u && u.left !== null && <span className="text-[11px] text-faint num">{u.left} of {u.allowance} unlocks left this month</span>}
+                  {u && u.left !== null && <span className="text-[11px] text-faint num">{u.left} of {u.allowance} {daily ? 'free picks left today' : 'unlocks left this month'}</span>}
                   {err && <span className="text-[11px] text-loss">{err}</span>}
                 </div>
               </>
@@ -1020,18 +1026,26 @@ function LockedPrediction({ p, pick, home, away, market, matchId, status, onUnlo
           </div>
           ) : (
           <div className="rounded-2xl border border-line bg-surface/95 shadow-lift px-5 py-4 text-center max-w-sm">
-            <div className="font-display font-bold text-ink">Full prediction with Premium</div>
+            <div className="font-display font-bold text-ink">{user ? 'Full prediction with Premium' : 'Get 2 free picks every day'}</div>
             <div className="text-xs text-muted mt-1">
-              The pick, win / draw / loss %, why this pick in plain words, model vs market, strong picks, draw alerts and the full v3 breakdown.
+              {user
+                ? 'The pick, win / draw / loss %, why this pick in plain words, model vs market, draw alerts and the full v3 breakdown.'
+                : 'Create a free account and open the full prediction of any 2 matches a day. No card needed.'}
             </div>
             <div className="mt-3 flex justify-center gap-2">
-              <Link to="/premium" className="px-3.5 py-1.5 rounded-xl bg-accent text-bg text-sm font-semibold">
-                See Premium
-              </Link>
-              {!user && (
-                <Link to={`/login?next=${encodeURIComponent(window.location.pathname)}`} className="px-3.5 py-1.5 rounded-xl border border-line text-sm font-medium text-ink hover:border-faint">
-                  Sign in
+              {user ? (
+                <Link to="/premium" className="px-3.5 py-1.5 rounded-xl bg-accent text-bg text-sm font-semibold">
+                  See Premium
                 </Link>
+              ) : (
+                <>
+                  <Link to={`/signup?next=${encodeURIComponent(window.location.pathname)}`} className="px-3.5 py-1.5 rounded-xl bg-accent text-bg text-sm font-semibold">
+                    Create free account
+                  </Link>
+                  <Link to={`/login?next=${encodeURIComponent(window.location.pathname)}`} className="px-3.5 py-1.5 rounded-xl border border-line text-sm font-medium text-ink hover:border-faint">
+                    Sign in
+                  </Link>
+                </>
               )}
             </div>
           </div>

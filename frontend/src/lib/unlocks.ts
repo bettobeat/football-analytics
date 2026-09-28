@@ -10,6 +10,8 @@ export interface UnlockStatus {
   plan: string
   unlimited: boolean
   allowance: number
+  /** 'day' = Free (daily picks), 'month' = Premium */
+  period?: 'day' | 'month'
   used: number
   left: number | null
   resetsAt: string

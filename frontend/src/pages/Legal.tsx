@@ -64,8 +64,10 @@ export function Terms() {
       </Section>
       <Section title="Premium">
         <p>
-          Premium opens extra features (full probabilities, the model breakdown, draw alerts, accuracy pages). Prices, billing and refund
-          terms will be shown before you pay. Payments are handled by a payment provider; we never see or store your card details.
+          Paid plans (Premium, Pro) open extra features: full probabilities, the model breakdown, draw alerts and the track record.
+          Premium includes a monthly number of match unlocks; Pro is unlimited. Every paid plan has a 3-day money-back guarantee: ask
+          within 3 days of a payment and we refund it in full. Plans renew automatically until you cancel; cancelling stops the next
+          renewal. Payments are handled by a payment provider; we never see or store your card details.
         </p>
       </Section>
       <Section title="Fair use">
