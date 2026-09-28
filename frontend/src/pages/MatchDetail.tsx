@@ -6,7 +6,7 @@ import { fairOdds, bookLabel, modelInfo, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, dra
 import { useAuth } from '../lib/auth'
 import { explainPrediction } from '../lib/explain'
 import WinProbability from '../components/WinProbability'
-import { useReveal, justRevealed, hideMatch, guessFirstOn, revealMatch } from '../lib/reveal'
+import { useReveal, justRevealed, hideMatch, guessFirstOn } from '../lib/reveal'
 import { useUnlocks, unlockMatch, resetDay } from '../lib/unlocks'
 import CountUp from '../components/CountUp'
 import { RevealCover } from '../components/Reveal'
@@ -342,6 +342,8 @@ function MatchDetail() {
   const [loading, setLoading] = useState(true)
   // premium "guess first": the prediction stays covered until the member taps Reveal (upcoming games only)
   const { hidden, reveal } = useReveal(matchId, details?.match.status, true)
+  // just unlocked ($15 Premium): play the "v3 is analysing" reveal automatically, then roll the numbers in
+  const [unlockAnim, setUnlockAnim] = useState(false)
 
   const load = (initial = false) => {
     if (initial) setLoading(true)
@@ -588,10 +590,17 @@ function MatchDetail() {
             note={p ? `${modelInfo(p.model).tag} · ${modelInfo(p.model).name} · ${CONFIDENCE_LABEL[p.confidence]}` : undefined}
           >
             {p && p.locked ? (
-              <LockedPrediction p={p} pick={pick} home={home} away={away} market={details.market || null} matchId={m.id} status={m.status} onUnlocked={() => { revealMatch(m.id); load(false) }} />
+              <LockedPrediction p={p} pick={pick} home={home} away={away} market={details.market || null} matchId={m.id} status={m.status} onUnlocked={() => { setUnlockAnim(true); load(false) }} />
             ) : p && pick ? (
-              hidden ? (
-                <RevealCover onReveal={reveal} />
+              hidden || unlockAnim ? (
+                <RevealCover
+                  key={unlockAnim ? 'auto' : 'cover'}
+                  autoStart={unlockAnim}
+                  onReveal={() => {
+                    setUnlockAnim(false)
+                    reveal()
+                  }}
+                />
               ) : (
               <>
                 {models.length > 1 && (
@@ -739,7 +748,7 @@ function MatchDetail() {
           </Section>
 
           {/* How the chances moved: live win probability / after the game, how it swung (premium: it starts from our prediction) */}
-          {(live || done) && p && !p.locked && !hidden && (
+          {(live || done) && p && !p.locked && !hidden && !unlockAnim && (
             <Section title={live ? 'Live win probability' : 'How the game swung'} note="From our pre-match prediction, updated with the score, time and red cards">
               <WinProbability p={p} m={m} />
             </Section>

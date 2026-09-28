@@ -28,8 +28,9 @@ const STEPS = ['Loading both squads', 'Reading form and strength', 'Checking inj
  * Big cover for the match page. Tap Reveal → a short "v3 is analysing" sequence (steps tick by, a bar fills,
  * a scan line sweeps), then the prediction appears and its numbers roll in to their values.
  */
-export function RevealCover({ onReveal }: { onReveal: () => void }) {
-  const [phase, setPhase] = useState<'idle' | 'loading'>('idle')
+export function RevealCover({ onReveal, autoStart = false }: { onReveal: () => void; autoStart?: boolean }) {
+  // autoStart: the analysing sequence plays straight away (right after a match is unlocked)
+  const [phase, setPhase] = useState<'idle' | 'loading'>(autoStart ? 'loading' : 'idle')
   const [step, setStep] = useState(0)
   const [fill, setFill] = useState(false)
   useEffect(() => {
