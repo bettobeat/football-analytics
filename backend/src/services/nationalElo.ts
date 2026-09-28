@@ -239,6 +239,21 @@ let lastSplit: { trainOld: any[]; test: any[]; gridOld: GridW; eloOld: { c: numb
  * at 0 / 25 / 50 / 75 / 100 / 125 % of the fitted value: "as is" (other weights unchanged) and "refit" (the other
  * weights re-fitted on the training years with the goals weight held at that level).
  */
+/**
+ * Expected goals scale for national-team matches (both sides × this). 1 = as fitted. Set from the goals calibration
+ * test (services/goalsCalibration.ts); NAT_GOAL_SCALE on Railway overrides it for a trial.
+ */
+export let NAT_GOAL_SCALE = parseFloat(process.env.NAT_GOAL_SCALE || '1') || 1;
+export function setNatGoalScale(k: number) { NAT_GOAL_SCALE = k; }
+
+/** The last two years of national-team matches with the goal rates the model had before each one (for calibration). */
+export function nationalGoalsTestSet() {
+  if (!lastSplit) buildNationalElo();
+  return lastSplit!.test.map((x: any) => ({
+    lh: Math.min(4, Math.max(0.2, x.f.lamH)), la: Math.min(4, Math.max(0.2, x.f.lamA)), hg: x.hg, ag: x.ag, kind: x.f.kind as string
+  }));
+}
+
 export function nationalGoalsSensitivity() {
   if (!lastSplit) buildNationalElo();
   const s = lastSplit!;
@@ -255,7 +270,7 @@ export function nationalGoalsSensitivity() {
 export function buildNationalElo() {
   const rows = db.prepare(`SELECT * FROM nat_matches ORDER BY date, fixture_id`).all() as any[];
   ratings.clear();
-  const pre: { d: number; lv: number; o: 'H' | 'D' | 'A'; date: string; f: Feat }[] = [];
+  const pre: { d: number; lv: number; o: 'H' | 'D' | 'A'; date: string; f: Feat; hg: number; ag: number; league: number }[] = [];
   const valueCache = new Map<number, number | null>();
   const valueOf = (id: number, name: string) => {
     if (!valueCache.has(id)) valueCache.set(id, nationalValueFor(name));
@@ -269,7 +284,7 @@ export function buildNationalElo() {
     const d = H.elo - A.elo + cfg.ha;
     const o = r.hg > r.ag ? 'H' : r.hg < r.ag ? 'A' : 'D';
     const vh = valueOf(r.home_id, r.home_name), va = valueOf(r.away_id, r.away_name);
-    if (H.n >= 10 && A.n >= 10) pre.push({ d, lv: vh && va ? Math.log(vh / va) : 0, o, date: r.date, f: featOf(H, A, r.league_id, r.date, vh, va) });
+    if (H.n >= 10 && A.n >= 10) pre.push({ d, lv: vh && va ? Math.log(vh / va) : 0, o, date: r.date, f: featOf(H, A, r.league_id, r.date, vh, va), hg: r.hg, ag: r.ag, league: r.league_id });
     // Elo
     const we = 1 / (1 + Math.pow(10, -d / 400));
     const w = o === 'H' ? 1 : o === 'D' ? 0.5 : 0;
@@ -396,8 +411,8 @@ export function predictNational(match: any, leagueId: number): Prediction | null
   const d = H.elo - A.elo + cfg.ha + valueTerm;
   const p = engine === 'grid' ? gridProbs(f) : probs(d);
   // goals: from the goal ratings (grid) or the rating gap (elo)
-  const lamH = engine === 'grid' ? Math.min(4, Math.max(0.2, f.lamH)) : Math.max(0.2, 1.3 * Math.exp(d / 650));
-  const lamA = engine === 'grid' ? Math.min(4, Math.max(0.2, f.lamA)) : Math.max(0.2, 1.3 * Math.exp(-d / 650));
+  const lamH = (engine === 'grid' ? Math.min(4, Math.max(0.2, f.lamH)) : Math.max(0.2, 1.3 * Math.exp(d / 650))) * NAT_GOAL_SCALE;
+  const lamA = (engine === 'grid' ? Math.min(4, Math.max(0.2, f.lamA)) : Math.max(0.2, 1.3 * Math.exp(-d / 650))) * NAT_GOAL_SCALE;
   let over25 = 0, btts = 0;
   const scores: { home: number; away: number; prob: number }[] = [];
   for (let i = 0; i <= 8; i++) for (let j = 0; j <= 8; j++) {

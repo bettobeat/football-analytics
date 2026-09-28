@@ -68,6 +68,9 @@ export function setRelOverride(r: RelOverride | null) { REL_OVERRIDE = r; }
 
 /** Conversion constants — placeholders until calibrated on the backtest. */
 export const CONV = {
+  // expected-goals scale for the goal markets only (xG shown, over/under, BTTS, scores); the 1X2 split is untouched.
+  // Set from the goals calibration test (services/goalsCalibration.ts); GOAL_SCALE on Railway overrides it.
+  goalScale: parseFloat(process.env.GOAL_SCALE || '1') || 1,
   drawBase: { mismatch: 190, standard: 270, even: 320, big: 290 } as Record<MatchType, number>, // backtest-calibrated (2025-26)
   drawCap: { mismatch: 260, standard: 380, even: 400, big: 380 } as Record<MatchType, number>,
   kDraw: 1.0, // points per (value−5) × relevance for draw rows (backtest: 1)
@@ -703,7 +706,8 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   const grid: number[][] = [];
   let over25 = 0, btts = 0;
   const scores: { home: number; away: number; prob: number }[] = [];
-  for (let i = 0; i <= 8; i++) { grid.push([]); for (let j = 0; j <= 8; j++) { const p = poisson(lamH, i) * poisson(lamA, j); grid[i].push(p); if (i + j > 2.5) over25 += p; if (i > 0 && j > 0) btts += p; scores.push({ home: i, away: j, prob: p }); } }
+  const gH = lamH * CONV.goalScale, gA = lamA * CONV.goalScale;
+  for (let i = 0; i <= 8; i++) { grid.push([]); for (let j = 0; j <= 8; j++) { const p = poisson(gH, i) * poisson(gA, j); grid[i].push(p); if (i + j > 2.5) over25 += p; if (i > 0 && j > 0) btts += p; scores.push({ home: i, away: j, prob: p }); } }
   scores.sort((x, y) => y.prob - x.prob);
 
   // --- reasons: the rows with the largest edge, plus draw pushes
@@ -731,7 +735,7 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
     model: MODEL_V3,
     drawStreak: { home: last20(home), away: last20(away) },
     home: ptsH / 10, draw: drawPts / 10, away: ptsA / 10,
-    expectedGoals: { home: Math.round(lamH * 100) / 100, away: Math.round(lamA * 100) / 100 },
+    expectedGoals: { home: Math.round(gH * 100) / 100, away: Math.round(gA * 100) / 100 },
     over25: Math.round(over25 * 1000) / 10,
     btts: Math.round(btts * 1000) / 10,
     topScores: scores.slice(0, 5).map(s => ({ ...s, prob: Math.round(s.prob * 1000) / 10 })),

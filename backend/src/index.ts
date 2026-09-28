@@ -39,6 +39,7 @@ import { drawAlertsReport, drawFactorTest } from './services/drawAlerts';
 import { teamPage, searchTeams, resolveAfTeamId, setTeamOverride, teamOverrides } from './services/teamPage';
 import { playerPage, findPlayer } from './services/playerPage';
 import { unlockStatus, unlockMatch, unlockedIds, isFinished, testCheckout, PLANS, billingTestMode, unlockStats, REFUND_DAYS, FREE_DAILY_UNLOCKS } from './services/billing';
+import { goalsCalibration } from './services/goalsCalibration';
 import { runDataAudit, lastDataAudit, startDataAuditScheduler } from './services/dataAudit';
 import { footballNews } from './services/news';
 import { highlightsFor, highlightsStatus, lastCandidates } from './services/highlights';
@@ -651,6 +652,16 @@ app.get('/api/player-page/:id(\\d+)', async (req, res) => {
     res.json({ data: await playerPage(parseInt(req.params.id, 10), isPaid(req.access || 'anon')), timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Player page failed');
+  }
+});
+
+// Admin: goals calibration test (read-only): /api/model/goals-calibration?seasons=2526,2627&groups=1
+app.get('/api/model/goals-calibration', (req, res) => {
+  try {
+    const seasons = String(req.query.seasons || '2526,2627').split(',').map(x => x.trim()).filter(x => /^\d{4}$/.test(x));
+    res.json({ data: goalsCalibration(seasons.length ? seasons : ['2526', '2627'], req.query.groups === '1'), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Goals calibration failed');
   }
 });
 
