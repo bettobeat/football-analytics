@@ -27,12 +27,18 @@ interface Recent {
   result: { pick: Outcome; hit: boolean; market: Outcome | null; marketHit: boolean | null }
   btts: { pick: boolean; hit: boolean } | null
   over25: { pick: boolean; hit: boolean } | null
+  dc?: { pick: '1X' | 'X2' | '12'; hit: boolean; market: string | null; marketHit: boolean | null }
+  over15?: { pick: boolean; hit: boolean } | null
+  safest?: { market: string; label: string; p: number; hit: boolean }
 }
 interface Record_ {
   days: number
   result: { n: number; v3: number | null; market: number | null; v3Hits: number; marketHits: number }
   btts: { n: number; hitRate: number | null; hits: number; yesShare: number | null }
   over25: { n: number; hitRate: number | null; hits: number; overShare: number | null }
+  doubleChance?: { n: number; v3: number | null; market: number | null; v3Hits: number; marketHits: number }
+  over15?: { n: number; hitRate: number | null; hits: number; overShare: number | null }
+  safest?: { n: number; hitRate: number | null; hits: number; byMarket: { market: string; n: number; hitRate: number | null }[] }
   byCompetition: { code: string; name: string; n: number; v3: number | null; market: number | null }[]
   recent: Recent[]
 }
@@ -124,6 +130,10 @@ export default function AccuracySimple() {
 
       {rec && (
         <>
+          <div>
+            <h2 className="font-display text-xl font-bold text-ink">The hard bets</h2>
+            <p className="text-sm text-muted">Close to a coin flip in most games. Getting these right more often than the bookmakers is the real test.</p>
+          </div>
           <div className="grid gap-4 md:grid-cols-3">
             {/* 1. Match result vs the bookmakers */}
             <Card className="md:col-span-1 border-accent/40">
@@ -175,6 +185,56 @@ export default function AccuracySimple() {
             </Card>
           </div>
 
+          <div className="pt-2">
+            <h2 className="font-display text-xl font-bold text-ink">The safer bets</h2>
+            <p className="text-sm text-muted">Bets that happen more often. Higher hit rates, lower odds: each one is counted and shown on its own.</p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card className="border-accent/40">
+              <div className="label text-accent">Double chance · vs the bookmakers</div>
+              <div className="mt-4 space-y-4">
+                <div>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-sm font-semibold text-ink">Bet To Beat (v3)</span>
+                    <span className="num text-3xl font-extrabold text-accent">{pct(rec.doubleChance?.v3)}</span>
+                  </div>
+                  <Bar v={rec.doubleChance?.v3 ?? null} cls="bg-accent" />
+                </div>
+                <div>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-sm font-semibold text-muted">Bookmakers</span>
+                    <span className="num text-3xl font-extrabold text-ink">{pct(rec.doubleChance?.market)}</span>
+                  </div>
+                  <Bar v={rec.doubleChance?.market ?? null} cls="bg-faint" />
+                </div>
+              </div>
+              <p className="text-xs text-muted mt-4">
+                {rec.doubleChance?.n ? `${rec.doubleChance.v3Hits} vs ${rec.doubleChance.marketHits} right on the same ${rec.doubleChance.n} games. Two of the three results (1X, X2 or 12).` : 'No finished games with odds yet.'}
+              </p>
+            </Card>
+            <Card>
+              <div className="label">Over / under 1.5 goals</div>
+              <div className="num text-5xl font-extrabold text-ink mt-4">{pct(rec.over15?.hitRate)}</div>
+              <div className="mt-3"><Bar v={rec.over15?.hitRate ?? null} cls="bg-home" /></div>
+              <p className="text-xs text-muted mt-4">
+                {rec.over15?.n ? `${rec.over15.hits} of ${rec.over15.n} right. Over when we give it 50%+, else Under.` : 'No finished games yet.'}
+              </p>
+            </Card>
+            <Card>
+              <div className="label">Our safest pick of each match</div>
+              <div className="num text-5xl font-extrabold text-ink mt-4">{pct(rec.safest?.hitRate)}</div>
+              <div className="mt-3"><Bar v={rec.safest?.hitRate ?? null} cls="bg-draw" /></div>
+              <p className="text-xs text-muted mt-4">
+                {rec.safest?.n ? `${rec.safest.hits} of ${rec.safest.n} right. For every match, the one bet we were most sure about.` : 'No finished games yet.'}
+              </p>
+              {rec.safest && rec.safest.byMarket.length > 0 && (
+                <p className="text-[11px] text-faint mt-2">
+                  {rec.safest.byMarket.map(b => `${b.market} ${b.n}× (${pct(b.hitRate)})`).join(' · ')}
+                </p>
+              )}
+            </Card>
+          </div>
+
           {rec.byCompetition.length > 0 && (
             <Card>
               <h2 className="font-display text-xl font-bold text-ink mb-3">Match result by competition</h2>
@@ -212,7 +272,7 @@ export default function AccuracySimple() {
               <p className="text-sm text-muted">No finished games in this period yet.</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[720px]">
+                <table className="w-full text-sm min-w-[880px]">
                   <thead>
                     <tr className="text-xs text-faint">
                       <th className="text-left font-medium py-2">Match</th>
@@ -221,6 +281,8 @@ export default function AccuracySimple() {
                       <th className="text-center font-medium py-2">Bookies</th>
                       <th className="text-left font-medium py-2">BTTS</th>
                       <th className="text-left font-medium py-2">Goals 2.5</th>
+                      <th className="text-left font-medium py-2">Double chance</th>
+                      <th className="text-left font-medium py-2">Goals 1.5</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -244,6 +306,12 @@ export default function AccuracySimple() {
                         </td>
                         <td className="py-2">
                           {x.over25 ? <span className="inline-flex items-center gap-1.5"><Tick hit={x.over25.hit} /> <span className="text-muted">{x.over25.pick ? 'Over' : 'Under'}</span></span> : <span className="text-faint">–</span>}
+                        </td>
+                        <td className="py-2">
+                          {x.dc ? <span className="inline-flex items-center gap-1.5"><Tick hit={x.dc.hit} /> <span className="text-muted">{x.dc.pick}</span></span> : <span className="text-faint">–</span>}
+                        </td>
+                        <td className="py-2">
+                          {x.over15 ? <span className="inline-flex items-center gap-1.5"><Tick hit={x.over15.hit} /> <span className="text-muted">{x.over15.pick ? 'Over' : 'Under'}</span></span> : <span className="text-faint">–</span>}
                         </td>
                       </tr>
                     ))}

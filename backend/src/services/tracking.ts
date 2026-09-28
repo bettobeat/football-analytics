@@ -295,6 +295,8 @@ interface SettledRow {
   draw_streak?: number | null;
   over25?: number | null;
   btts?: number | null;
+  xg_home?: number | null;
+  xg_away?: number | null;
   home_goals: number;
   away_goals: number;
   outcome: Outcome;
@@ -348,7 +350,7 @@ function settledRowsRaw(days: number, competition?: string, model?: string): Set
   const sql = `
     SELECT p.match_id, p.model, p.competition_code, p.competition_name, p.utc_date,
            p.home_team, p.away_team, p.home_team_id, p.away_team_id, p.p_home, p.p_draw, p.p_away, p.confidence,
-           p.odds_home, p.odds_draw, p.odds_away, p.draw_streak, p.over25, p.btts,
+           p.odds_home, p.odds_draw, p.odds_away, p.draw_streak, p.over25, p.btts, p.xg_home, p.xg_away,
            r.home_goals, r.away_goals, r.outcome
     FROM predictions p JOIN results r ON r.match_id = p.match_id
     WHERE p.settled = 1 AND r.outcome IN ('H','D','A') AND p.utc_date >= ?${where}
@@ -643,6 +645,16 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
   const ou = { n: 0, hits: 0, overPicks: 0 };
   const byComp = new Map<string, { code: string; name: string; n: number; v3: number; market: number }>();
   const recent: any[] = [];
+  // "safer" bets: double chance (vs the bookmakers), over/under 1.5, and the most confident pick of each match
+  const dc = { n: 0, v3: 0, market: 0 };
+  const ou15 = { n: 0, hits: 0, overPicks: 0 };
+  const safest = { n: 0, hits: 0, byMarket: {} as Record<string, { n: number; hits: number }> };
+  type DC = '1X' | 'X2' | '12';
+  const dcOf = (h: number, d: number, a: number): { k: DC; p: number } => {
+    const c: { k: DC; p: number }[] = [{ k: '1X', p: h + d }, { k: 'X2', p: d + a }, { k: '12', p: h + a }];
+    return c.sort((x, y) => y.p - x.p)[0];
+  };
+  const dcHit = (k: DC, o: Outcome) => (k === '1X' ? o !== 'A' : k === 'X2' ? o !== 'H' : o !== 'D');
   for (const r of rows) {
     const hg = Number(r.home_goals), ag = Number(r.away_goals);
     const v3pick = pick(r);
@@ -676,8 +688,47 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
       if (ouHit) ou.hits++;
       if (ouPick) ou.overPicks++;
     }
+    // double chance: the two results we rate highest together; the bookmakers' the same from their odds
+    const myDc = dcOf(Number(r.p_home), Number(r.p_draw), Number(r.p_away));
+    const myDcHit = dcHit(myDc.k, r.outcome);
+    let mkDc: DC | null = null;
+    if (r.odds_home && r.odds_draw && r.odds_away) {
+      mkDc = dcOf(1 / r.odds_home, 1 / r.odds_draw, 1 / r.odds_away).k;
+      dc.n++;
+      if (myDcHit) dc.v3++;
+      if (dcHit(mkDc, r.outcome)) dc.market++;
+    }
+    // over/under 1.5 from the expected goals (Poisson): P(2+ goals) = 1 − e^−λ (1 + λ)
+    let o15: { pick: boolean; hit: boolean; p: number } | null = null;
+    if (r.xg_home != null && r.xg_away != null) {
+      const lam = Number(r.xg_home) + Number(r.xg_away);
+      const pOver = (1 - Math.exp(-lam) * (1 + lam)) * 100;
+      const pk = pOver >= 50;
+      o15 = { pick: pk, hit: pk === (hg + ag > 1.5), p: pk ? pOver : 100 - pOver };
+      ou15.n++;
+      if (o15.hit) ou15.hits++;
+      if (pk) ou15.overPicks++;
+    }
+    // the most confident pick of the match across these markets
+    const cands: { market: string; label: string; p: number; hit: boolean }[] = [
+      { market: 'result', label: v3pick === 'H' ? r.home_team : v3pick === 'A' ? r.away_team : 'Draw', p: Math.max(Number(r.p_home), Number(r.p_draw), Number(r.p_away)), hit: v3hit },
+      { market: 'double chance', label: myDc.k, p: myDc.p, hit: myDcHit }
+    ];
+    if (o15) cands.push({ market: 'goals 1.5', label: o15.pick ? 'Over 1.5' : 'Under 1.5', p: o15.p, hit: o15.hit });
+    if (ouPick !== null) cands.push({ market: 'goals 2.5', label: ouPick ? 'Over 2.5' : 'Under 2.5', p: ouPick ? Number(r.over25) : 100 - Number(r.over25), hit: !!ouHit });
+    if (bttsPick !== null) cands.push({ market: 'btts', label: bttsPick ? 'BTTS yes' : 'BTTS no', p: bttsPick ? Number(r.btts) : 100 - Number(r.btts), hit: !!bttsHit });
+    const best = cands.sort((x, y) => y.p - x.p)[0];
+    safest.n++;
+    if (best.hit) safest.hits++;
+    const bm = (safest.byMarket[best.market] ||= { n: 0, hits: 0 });
+    bm.n++;
+    if (best.hit) bm.hits++;
+
     if (recent.length < recentLimit)
       recent.push({
+        dc: { pick: myDc.k, hit: myDcHit, market: mkDc, marketHit: mkDc ? dcHit(mkDc, r.outcome) : null },
+        over15: o15 ? { pick: o15.pick, hit: o15.hit } : null,
+        safest: { market: best.market, label: best.label, p: Math.round(best.p), hit: best.hit },
         matchId: r.match_id, date: r.utc_date, competition: r.competition_name, code: r.competition_code,
         home: r.home_team, away: r.away_team, homeCrest: crestOf(r.home_team_id), awayCrest: crestOf(r.away_team_id),
         score: `${hg}–${ag}`, outcome: r.outcome,
@@ -693,6 +744,14 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
     result: { n: res.n, v3: pc(res.v3, res.n), market: pc(res.market, res.n), v3Hits: res.v3, marketHits: res.market },
     btts: { n: btts.n, hitRate: pc(btts.hits, btts.n), hits: btts.hits, yesShare: pc(btts.yesPicks, btts.n) },
     over25: { n: ou.n, hitRate: pc(ou.hits, ou.n), hits: ou.hits, overShare: pc(ou.overPicks, ou.n) },
+    doubleChance: { n: dc.n, v3: pc(dc.v3, dc.n), market: pc(dc.market, dc.n), v3Hits: dc.v3, marketHits: dc.market },
+    over15: { n: ou15.n, hitRate: pc(ou15.hits, ou15.n), hits: ou15.hits, overShare: pc(ou15.overPicks, ou15.n) },
+    safest: {
+      n: safest.n,
+      hitRate: pc(safest.hits, safest.n),
+      hits: safest.hits,
+      byMarket: Object.entries(safest.byMarket).map(([market, v]) => ({ market, n: v.n, hitRate: pc(v.hits, v.n) })).sort((a, b) => b.n - a.n)
+    },
     byCompetition: [...byComp.values()]
       .filter(c => c.n >= 5)
       .map(c => ({ ...c, v3: pc(c.v3, c.n), market: pc(c.market, c.n) }))
