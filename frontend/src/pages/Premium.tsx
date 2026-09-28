@@ -132,7 +132,7 @@ export default function Premium() {
         </div>
 
         {/* Pro: the plan we steer people to */}
-        <div className="card p-6 flex flex-col relative overflow-hidden border-accent/60 lg:-my-3 lg:py-9 shadow-lift">
+        <div className="card p-6 flex flex-col relative overflow-hidden border-accent/60 lg:-my-3 lg:py-9 shadow-lift order-first lg:order-none">
           <div className="pointer-events-none absolute -top-24 -right-24 w-64 h-64 rounded-full bg-accent/20 blur-3xl" />
           <span className="absolute top-4 right-4 text-[10px] font-extrabold uppercase tracking-wider text-bg bg-accent px-2.5 py-1 rounded-full">Most popular</span>
           <div className="relative flex flex-col flex-1">
