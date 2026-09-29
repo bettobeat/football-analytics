@@ -664,6 +664,10 @@ function MatchDetail() {
                   <div className={`rounded-full bg-away ${pick === 'A' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.away}% - 3px)` }} />
                 </div>
 
+                {['SCHEDULED', 'TIMED'].includes(m.status) && (
+                  <LineupTip kickoff={kickoff} lineupsOut={hasLineups} usesLineups={p.model === 'grid-v3'} />
+                )}
+
                 {p.frozen && (
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
                     <span className="px-2.5 py-1 rounded-full bg-surface2 border border-line font-semibold text-ink">Saved before kick-off</span>
@@ -844,6 +848,40 @@ function MatchDetail() {
 }
 
 /* ---------- pieces ---------- */
+
+/**
+ * Upcoming matches: lineups come out about 1 hour before kick-off, and for league matches (v3) the prediction is
+ * recalculated with the confirmed starting 11. Tell people to come back then.
+ */
+function LineupTip({ kickoff, lineupsOut, usesLineups }: { kickoff: number; lineupsOut: boolean; usesLineups: boolean }) {
+  const checkAt = kickoff ? fmtTime(new Date(kickoff - 60 * 60 * 1000).toISOString()) : null
+  const soon = kickoff > 0 && kickoff - Date.now() <= 75 * 60 * 1000
+  let title: string
+  let text: string
+  if (lineupsOut) {
+    title = 'Lineups are out'
+    text = usesLineups
+      ? 'This prediction is updated with the confirmed starting 11 within a few minutes of the lineups being published. Refresh the page to see the latest numbers.'
+      : 'Check the starting 11 below before you decide: a missing key player can change the picture.'
+  } else {
+    title = 'Check again 1 hour before kick-off'
+    text = usesLineups
+      ? `We recommend coming back to this match about 1 hour before kick-off${soon || !checkAt ? '' : ` (around ${checkAt})`}. That’s when the teams publish their lineups, and we recalculate the prediction with the players who actually start.`
+      : `We recommend checking this match again about 1 hour before kick-off${soon || !checkAt ? '' : ` (around ${checkAt})`}, when the teams publish their lineups. A missing key player can change the picture.`
+  }
+  return (
+    <div className="mt-4 flex gap-3 rounded-xl border border-home/40 bg-home/10 p-3">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-home flex-shrink-0 mt-0.5" aria-hidden>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
+      </svg>
+      <div className="text-sm">
+        <div className="font-semibold text-ink">{title}</div>
+        <div className="text-muted mt-0.5">{text}</div>
+      </div>
+    </div>
+  )
+}
 
 function Section({ title, note, children }: { title: string; note?: string; children: ReactNode }) {
   return (
