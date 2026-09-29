@@ -140,31 +140,80 @@ function playerIndex(): IndexPlayer[] {
   return players;
 }
 
+/** How well a typed search matches a player's name words (0 = no match). */
+function playerMatch(words: string[], norm: string, needle: string): number {
+  const tokens = needle.split(' ');
+  let real = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (words.some(w => w.length > 1 && w.startsWith(t))) real++;
+    // an initial ("e" in "E. Haaland") stands for a first name only, never for the last word typed
+    else if (i === tokens.length - 1 || !words.some(w => w.length === 1 && t.startsWith(w))) return 0;
+  }
+  if (!real) return 0;
+  if (norm === needle) return 100;
+  if (norm.startsWith(needle)) return 85;
+  if (words.includes(tokens[tokens.length - 1])) return 80;
+  return 50;
+}
+
 export function searchPlayers(q: string, limit = 6) {
   const needle = normalizeName(q);
   if (needle.length < 2) return [];
-  const tokens = needle.split(' ');
   const teams = new Map(teamIndex().map(t => [t.id, t]));
   const scored: { p: IndexPlayer; s: number }[] = [];
   for (const p of playerIndex()) {
-    // every word typed must start one of the player's name words (an initial like "e" also matches "erling")
-    let real = 0;
-    let ok = true;
-    for (const t of tokens) {
-      if (p.words.some(w => w.length > 1 && w.startsWith(t))) real++;
-      else if (!p.words.some(w => w.length === 1 && t.startsWith(w))) { ok = false; break; }
-    }
-    if (!ok || !real) continue;
-    let s = 50;
-    if (p.norm === needle) s = 100;
-    else if (p.words.includes(tokens[tokens.length - 1])) s = 80;
-    else if (p.norm.startsWith(needle)) s = 70;
-    scored.push({ p, s: s + Math.min(20, p.minutes / 150) });
+    const s = playerMatch(p.words, p.norm, needle);
+    if (s) scored.push({ p, s: s + Math.min(20, p.minutes / 150) });
   }
   return scored
     .sort((a, b) => b.s - a.s)
     .slice(0, limit)
-    .map(({ p }) => ({ id: p.id, name: p.name, position: p.position, team: teams.get(p.teamId)?.name || null, teamLogo: logo(p.teamId) }));
+    .map(({ p }) => ({ id: p.id, name: p.name, position: p.position, team: teams.get(p.teamId)?.name || null, teamLogo: logo(p.teamId), country: null as string | null }));
+}
+
+/*
+ * Players outside the club data we store (Israeli league, Saudi league, other extra competitions) are found with
+ * the provider's profile search. Only when the local search finds little, cached for a day per word, and capped
+ * per hour so typing can never eat the daily API budget.
+ */
+const remoteCache = new Map<string, { at: number; hits: any[] }>();
+let remoteHour = { at: 0, n: 0 };
+const REMOTE_PER_HOUR = parseInt(process.env.PLAYER_SEARCHES_PER_HOUR || '200', 10);
+
+export async function searchPlayersRemote(q: string, limit = 6) {
+  const needle = normalizeName(q);
+  const last = needle.split(' ').pop() || '';
+  if (last.length < 4 || !afConfigured()) return [];
+  let c = remoteCache.get(last);
+  if (!c || Date.now() - c.at > 86400000) {
+    if (Date.now() - remoteHour.at > 3600000) remoteHour = { at: Date.now(), n: 0 };
+    if (remoteHour.n >= REMOTE_PER_HOUR || afRemaining() < 1000) return [];
+    remoteHour.n++;
+    try {
+      const j: any = await afGet('/players/profiles', { search: last });
+      c = { at: Date.now(), hits: (j.response || []).map((it: any) => it.player).filter(Boolean) };
+    } catch (e: any) {
+      logger.warn(`player search (profiles) ${last}: ${e.message}`);
+      return [];
+    }
+    remoteCache.set(last, c);
+    if (remoteCache.size > 5000) remoteCache.delete(remoteCache.keys().next().value as string);
+  }
+  const out: { p: any; s: number }[] = [];
+  for (const p of c.hits) {
+    const short = String(p.name || '');
+    const words = [...new Set(normalizeName(`${short} ${p.firstname || ''} ${p.lastname || ''}`).split(' '))];
+    const s = playerMatch(words, normalizeName(short), needle);
+    if (s) out.push({ p, s });
+  }
+  return out
+    .sort((a, b) => b.s - a.s)
+    .slice(0, limit)
+    .map(({ p }) => {
+      const display = /^[A-Z]\.\s/.test(p.name || '') && p.firstname && p.lastname ? `${String(p.firstname).split(' ')[0]} ${p.lastname}` : p.name;
+      return { id: p.id, name: display, position: p.position || null, team: null as string | null, teamLogo: '', country: p.nationality || null };
+    });
 }
 
 /** Site team id (+ competition code / name for Football-Data.org teams) → API-Football team id. */

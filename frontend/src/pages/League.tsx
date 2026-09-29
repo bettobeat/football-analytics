@@ -169,7 +169,7 @@ function League() {
   }, [scorers, leaders])
 
   const hasForm = totals.some(t => t.table.some(r => r.form))
-  const upcoming = (matches || []).filter(m => !LIVE.has(m.status)).slice(0, 12)
+  const upcoming = (matches || []).filter(m => !LIVE.has(m.status) && !['FINISHED', 'AWARDED', 'CANCELLED'].includes(m.status)).slice(0, 12)
   const live = (matches || []).filter(m => LIVE.has(m.status))
 
   return (

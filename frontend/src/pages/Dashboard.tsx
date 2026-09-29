@@ -49,6 +49,7 @@ interface APIMatch {
 type Pick = 'H' | 'D' | 'A'
 
 const LIVE = new Set(['IN_PLAY', 'PAUSED'])
+const ENDED = new Set(['FINISHED', 'AWARDED', 'CANCELLED'])
 const DAY_OPTIONS = [3, 7, 14, 30]
 const PICK_COLOR: Record<Pick, string> = { H: 'text-home', D: 'text-draw', A: 'text-away' }
 const PICK_BG: Record<Pick, string> = { H: 'bg-home', D: 'bg-draw', A: 'bg-away' }
@@ -238,7 +239,8 @@ function Dashboard() {
   }, [matches, league, days])
 
   const live = matches.filter(m => LIVE.has(m.status)) // all leagues, always
-  const upcoming = visible.filter(m => !LIVE.has(m.status))
+  // finished / cancelled games leave the list (they are in Latest results); live ones have their own row
+  const upcoming = visible.filter(m => !LIVE.has(m.status) && !ENDED.has(m.status))
 
   // Spotlight: the three biggest games of the coming days — big clubs first, then model strength
   const spotlight = useMemo(() => {

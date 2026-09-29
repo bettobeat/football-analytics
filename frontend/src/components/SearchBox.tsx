@@ -5,7 +5,7 @@ import { API_URL } from '../lib/socket'
 
 interface TeamHit { id: number; name: string; logo: string; national: boolean }
 interface CompHit { code: string; name: string; emblem: string | null; country: string | null }
-interface PlayerHit { id: number; name: string; position: string | null; team: string | null; teamLogo: string }
+interface PlayerHit { id: number; name: string; position: string | null; team: string | null; teamLogo: string; country?: string | null }
 interface MatchHit { id: number; utcDate: string; status: string; competition: string; home: string; away: string; homeCrest?: string; awayCrest?: string }
 
 /** Search leagues, teams (every club and national team we track), players and upcoming / live matches. "/" focuses it. */
@@ -124,7 +124,7 @@ export default function SearchBox({ compact = false, onDone }: { compact?: boole
                   <span className="text-sm font-semibold text-ink truncate">{p.name}</span>
                   <span className="ml-auto flex items-center gap-1.5 text-[11px] text-faint min-w-0">
                     {p.team && <img src={p.teamLogo} alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain flex-shrink-0" />}
-                    <span className="truncate">{[p.team, p.position].filter(Boolean).join(' · ')}</span>
+                    <span className="truncate">{[p.team || p.country, p.position].filter(Boolean).join(' · ')}</span>
                   </span>
                 </Link>
               ))}

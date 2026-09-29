@@ -36,7 +36,7 @@ import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNational
 import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler, clubValueReport } from './services/clubElo';
 import { nationalValueSearch, historyMatchReport } from './services/squadValues';
 import { drawAlertsReport, drawFactorTest } from './services/drawAlerts';
-import { teamPage, searchTeams, searchPlayers, resolveAfTeamId, setTeamOverride, teamOverrides } from './services/teamPage';
+import { teamPage, searchTeams, searchPlayers, searchPlayersRemote, resolveAfTeamId, setTeamOverride, teamOverrides } from './services/teamPage';
 import { playerPage, findPlayer } from './services/playerPage';
 import { unlockStatus, unlockMatch, unlockedIds, isFinished, testCheckout, PLANS, billingTestMode, unlockStats, REFUND_DAYS, FREE_DAILY_UNLOCKS } from './services/billing';
 import { goalsCalibration } from './services/goalsCalibration';
@@ -699,7 +699,11 @@ app.get('/api/search', async (req, res) => {
     const q = String(req.query.q || '').trim().slice(0, 60);
     if (q.length < 2) return res.json({ data: { teams: [], matches: [], competitions: [], players: [] } });
     const teams = searchTeams(q, 8);
-    const players = searchPlayers(q, 6);
+    let players = searchPlayers(q, 6);
+    if (players.length < 2) {
+      const seen = new Set(players.map(p => p.id));
+      players = [...players, ...(await searchPlayersRemote(q, 6)).filter(p => !seen.has(p.id))].slice(0, 6);
+    }
     const norm = normalizeName(q);
     // competitions: every league / cup / national-team competition on the site (name, code or country)
     const leagues: any[] = [...(await footballDataAPI.getLeagues().catch(() => [] as any[])), ...afCompetitions()];
