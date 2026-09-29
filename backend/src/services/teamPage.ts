@@ -99,6 +99,74 @@ export function searchTeams(q: string, limit = 8) {
     .map(({ t }) => ({ id: AF_OFFSET + t.id, name: t.name, logo: logo(t.id), national: t.national }));
 }
 
+/* ---------------- player index (search) ---------------- */
+
+type IndexPlayer = { id: number; name: string; words: string[]; norm: string; teamId: number; position: string | null; minutes: number };
+let pIndex: { at: number; players: IndexPlayer[] } | null = null;
+
+/**
+ * Every player in the club data we store (af_player_season, this season and last): his current club = the latest
+ * season, most minutes. API-Football's short names ("E. Haaland") are joined with the full name when the player's
+ * page has been built, so "erling haaland", "haaland" and "e haaland" all find him.
+ */
+function playerIndex(): IndexPlayer[] {
+  if (pIndex && Date.now() - pIndex.at < TTL) return pIndex.players;
+  const best = new Map<number, { name: string; team: number; season: number; minutes: number; position: string | null }>();
+  try {
+    const rows = db.prepare(`
+      SELECT player_id, name, team_id, season, SUM(COALESCE(minutes, 0)) AS minutes, MAX(position) AS position
+      FROM af_player_season WHERE season >= (SELECT MAX(season) - 1 FROM af_player_season)
+      GROUP BY player_id, team_id, season`).all() as any[];
+    for (const r of rows) {
+      if (!r.name) continue;
+      const b = best.get(r.player_id);
+      if (!b || r.season > b.season || (r.season === b.season && r.minutes > b.minutes))
+        best.set(r.player_id, { name: r.name, team: r.team_id, season: r.season, minutes: r.minutes, position: r.position || null });
+    }
+  } catch { /* table missing */ }
+  const full = new Map<number, { name: string; all: string }>();
+  try {
+    const rows = db.prepare(`SELECT player_id, json_extract(json, '$.player.name') AS name, json_extract(json, '$.player.firstname') AS f, json_extract(json, '$.player.lastname') AS l FROM player_page_store`).all() as any[];
+    for (const r of rows) if (r.name) full.set(r.player_id, { name: String(r.name), all: [r.name, r.f, r.l].filter(Boolean).join(' ') });
+  } catch { /* no pages yet */ }
+  const players: IndexPlayer[] = [];
+  for (const [id, b] of best) {
+    const f = full.get(id);
+    const norm = normalizeName(`${b.name} ${f?.all || ''}`);
+    const display = f ? f.name : b.name;
+    players.push({ id, name: display, words: [...new Set(norm.split(' '))], norm: normalizeName(b.name), teamId: b.team, position: b.position, minutes: b.minutes });
+  }
+  pIndex = { at: Date.now(), players };
+  return players;
+}
+
+export function searchPlayers(q: string, limit = 6) {
+  const needle = normalizeName(q);
+  if (needle.length < 2) return [];
+  const tokens = needle.split(' ');
+  const teams = new Map(teamIndex().map(t => [t.id, t]));
+  const scored: { p: IndexPlayer; s: number }[] = [];
+  for (const p of playerIndex()) {
+    // every word typed must start one of the player's name words (an initial like "e" also matches "erling")
+    let real = 0;
+    let ok = true;
+    for (const t of tokens) {
+      if (p.words.some(w => w.length > 1 && w.startsWith(t))) real++;
+      else if (!p.words.some(w => w.length === 1 && t.startsWith(w))) { ok = false; break; }
+    }
+    if (!ok || !real) continue;
+    let s = 50;
+    if (p.norm === needle) s = 100;
+    else if (p.words.includes(tokens[tokens.length - 1])) s = 80;
+    else if (p.norm.startsWith(needle)) s = 70;
+    scored.push({ p, s: s + Math.min(20, p.minutes / 150) });
+  }
+  return scored
+    .sort((a, b) => b.s - a.s)
+    .slice(0, limit)
+    .map(({ p }) => ({ id: p.id, name: p.name, position: p.position, team: teams.get(p.teamId)?.name || null, teamLogo: logo(p.teamId) }));
+}
+
 /** Site team id (+ competition code / name for Football-Data.org teams) → API-Football team id. */
 export function resolveAfTeamId(rawId: number, code?: string, name?: string): number | null {
   if (rawId >= AF_OFFSET) return rawId - AF_OFFSET;

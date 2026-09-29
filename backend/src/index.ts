@@ -36,7 +36,7 @@ import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNational
 import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler, clubValueReport } from './services/clubElo';
 import { nationalValueSearch, historyMatchReport } from './services/squadValues';
 import { drawAlertsReport, drawFactorTest } from './services/drawAlerts';
-import { teamPage, searchTeams, resolveAfTeamId, setTeamOverride, teamOverrides } from './services/teamPage';
+import { teamPage, searchTeams, searchPlayers, resolveAfTeamId, setTeamOverride, teamOverrides } from './services/teamPage';
 import { playerPage, findPlayer } from './services/playerPage';
 import { unlockStatus, unlockMatch, unlockedIds, isFinished, testCheckout, PLANS, billingTestMode, unlockStats, REFUND_DAYS, FREE_DAILY_UNLOCKS } from './services/billing';
 import { goalsCalibration } from './services/goalsCalibration';
@@ -697,8 +697,9 @@ app.post('/api/team-overrides', teamOverrideHandler);
 app.get('/api/search', async (req, res) => {
   try {
     const q = String(req.query.q || '').trim().slice(0, 60);
-    if (q.length < 2) return res.json({ data: { teams: [], matches: [], competitions: [] } });
+    if (q.length < 2) return res.json({ data: { teams: [], matches: [], competitions: [], players: [] } });
     const teams = searchTeams(q, 8);
+    const players = searchPlayers(q, 6);
     const norm = normalizeName(q);
     // competitions: every league / cup / national-team competition on the site (name, code or country)
     const leagues: any[] = [...(await footballDataAPI.getLeagues().catch(() => [] as any[])), ...afCompetitions()];
@@ -718,7 +719,7 @@ app.get('/api/search', async (req, res) => {
       .sort((a: any, b: any) => a.utcDate.localeCompare(b.utcDate))
       .slice(0, 6)
       .map((m: any) => ({ id: m.id, utcDate: m.utcDate, status: m.status, competition: m.competition?.name, home: m.homeTeam?.shortName || m.homeTeam?.name, away: m.awayTeam?.shortName || m.awayTeam?.name, homeCrest: m.homeTeam?.crest, awayCrest: m.awayTeam?.crest }));
-    res.json({ data: { teams, matches, competitions }, timestamp: new Date().toISOString() });
+    res.json({ data: { teams, players, matches, competitions }, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Search failed');
   }

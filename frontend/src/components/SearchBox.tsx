@@ -5,15 +5,17 @@ import { API_URL } from '../lib/socket'
 
 interface TeamHit { id: number; name: string; logo: string; national: boolean }
 interface CompHit { code: string; name: string; emblem: string | null; country: string | null }
+interface PlayerHit { id: number; name: string; position: string | null; team: string | null; teamLogo: string }
 interface MatchHit { id: number; utcDate: string; status: string; competition: string; home: string; away: string; homeCrest?: string; awayCrest?: string }
 
-/** Search teams (every club and national team we track) and their upcoming / live matches. "/" focuses it. */
+/** Search leagues, teams (every club and national team we track), players and upcoming / live matches. "/" focuses it. */
 export default function SearchBox({ compact = false, onDone }: { compact?: boolean; onDone?: () => void }) {
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
   const [teams, setTeams] = useState<TeamHit[]>([])
   const [matches, setMatches] = useState<MatchHit[]>([])
   const [comps, setComps] = useState<CompHit[]>([])
+  const [players, setPlayers] = useState<PlayerHit[]>([])
   const [loading, setLoading] = useState(false)
   const input = useRef<HTMLInputElement>(null)
   const box = useRef<HTMLDivElement>(null)
@@ -35,12 +37,12 @@ export default function SearchBox({ compact = false, onDone }: { compact?: boole
 
   useEffect(() => {
     const term = q.trim()
-    if (term.length < 2) { setTeams([]); setMatches([]); setComps([]); return }
+    if (term.length < 2) { setTeams([]); setMatches([]); setComps([]); setPlayers([]); return }
     setLoading(true)
     const t = setTimeout(() => {
       axios.get(`${API_URL}/search`, { params: { q: term } })
-        .then(r => { setTeams(r.data.data.teams || []); setMatches(r.data.data.matches || []); setComps(r.data.data.competitions || []) })
-        .catch(() => { setTeams([]); setMatches([]); setComps([]) })
+        .then(r => { setTeams(r.data.data.teams || []); setMatches(r.data.data.matches || []); setComps(r.data.data.competitions || []); setPlayers(r.data.data.players || []) })
+        .catch(() => { setTeams([]); setMatches([]); setComps([]); setPlayers([]) })
         .finally(() => setLoading(false))
     }, 250)
     return () => clearTimeout(t)
@@ -68,9 +70,10 @@ export default function SearchBox({ compact = false, onDone }: { compact?: boole
             if (e.key === 'Enter') {
               if (comps[0] && !teams[0]) { nav(`/league/${comps[0].code}`); done() }
               else if (teams[0]) { nav(`/team/${teams[0].id}`); done() }
+              else if (players[0]) { nav(`/player/${players[0].id}`); done() }
             }
           }}
-          placeholder="Search leagues, teams, matches"
+          placeholder="Search leagues, teams, players"
           className="flex-1 min-w-0 bg-transparent outline-none text-sm text-ink placeholder:text-faint"
         />
         {!compact && <kbd className="hidden md:inline text-[11px] text-faint border border-line rounded-md px-1.5 py-0.5">/</kbd>}
@@ -78,8 +81,8 @@ export default function SearchBox({ compact = false, onDone }: { compact?: boole
 
       {show && (
         <div className="absolute left-0 right-0 mt-2 z-50 card p-2 max-h-[70vh] overflow-y-auto">
-          {loading && !teams.length && !matches.length && !comps.length && <div className="px-3 py-3 text-sm text-faint">Searching…</div>}
-          {!loading && !teams.length && !matches.length && !comps.length && <div className="px-3 py-3 text-sm text-faint">Nothing found for "{q.trim()}".</div>}
+          {loading && !teams.length && !matches.length && !comps.length && !players.length && <div className="px-3 py-3 text-sm text-faint">Searching…</div>}
+          {!loading && !teams.length && !matches.length && !comps.length && !players.length && <div className="px-3 py-3 text-sm text-faint">Nothing found for "{q.trim()}".</div>}
           {comps.length > 0 && (
             <div className="py-1">
               <div className="label px-3 pb-1">Leagues and competitions</div>
@@ -100,6 +103,29 @@ export default function SearchBox({ compact = false, onDone }: { compact?: boole
                   <img src={t.logo} alt="" width={24} height={24} className="w-6 h-6 object-contain" />
                   <span className="text-sm font-semibold text-ink">{t.name}</span>
                   {t.national && <span className="ml-auto text-[11px] text-faint">National team</span>}
+                </Link>
+              ))}
+            </div>
+          )}
+          {players.length > 0 && (
+            <div className={`py-1 ${comps.length || teams.length ? 'border-t border-line/60 mt-1' : ''}`}>
+              <div className="label px-3 pb-1">Players</div>
+              {players.map(p => (
+                <Link key={p.id} to={`/player/${p.id}`} onClick={done} className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-surface2">
+                  <img
+                    src={`https://media.api-sports.io/football/players/${p.id}.png`}
+                    alt=""
+                    width={24}
+                    height={24}
+                    loading="lazy"
+                    className="w-6 h-6 rounded-full object-cover bg-surface2"
+                    onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
+                  />
+                  <span className="text-sm font-semibold text-ink truncate">{p.name}</span>
+                  <span className="ml-auto flex items-center gap-1.5 text-[11px] text-faint min-w-0">
+                    {p.team && <img src={p.teamLogo} alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain flex-shrink-0" />}
+                    <span className="truncate">{[p.team, p.position].filter(Boolean).join(' · ')}</span>
+                  </span>
                 </Link>
               ))}
             </div>
