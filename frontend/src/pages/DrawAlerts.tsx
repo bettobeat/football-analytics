@@ -14,8 +14,10 @@ interface Pick {
   homeCrest?: string | null; awayCrest?: string | null
   marketDraw: number; ourDraw: number; price: number; edge: number
 }
-interface PicksRecord { n: number; wins: number; hitRate: number | null; roi: number | null; since: string | null }
-interface Report { picks: Pick[]; picksRecord: PicksRecord }
+interface Likely { matchId: number; league: string; date: string; home: string; away: string; homeCrest?: string | null; awayCrest?: string | null; draw: number; marketDraw: number | null; price: number | null }
+interface LeagueDraw { division: string; league: string; now: number | null; n: number; last: number | null }
+interface TeamDraw { team: string; league: string; n: number; d: number; rate: number }
+interface Report { picks: Pick[]; likely?: Likely[]; leagues?: LeagueDraw[]; teams?: TeamDraw[] }
 
 const when = (iso: string) =>
   new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
@@ -104,7 +106,6 @@ export default function DrawAlerts() {
 
   if (error) return <div className="max-w-5xl mx-auto px-4 py-10 text-loss">{error}</div>
 
-  const rec = data?.picksRecord
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-6">
       <div>
@@ -120,9 +121,10 @@ export default function DrawAlerts() {
         </div>
       ) : data.picks.length === 0 ? (
         <div className="card p-8 text-center space-y-2">
-          <div className="font-display text-lg font-bold text-ink">No draw pick this week yet</div>
+          <div className="font-display text-lg font-bold text-ink">Our 2 draw picks are coming</div>
           <p className="text-sm text-muted max-w-md mx-auto">
-            We only pick a draw when our chance is clearly above what the odds say. New games and odds come in every day, so check back.
+            We pick a draw only when our chance is clearly above what the bookmakers' odds say, and odds for most games open a few days
+            before kick-off. Meanwhile, here are the games most likely to end level.
           </p>
         </div>
       ) : (
@@ -131,24 +133,88 @@ export default function DrawAlerts() {
         </div>
       )}
 
-      {rec && (
-        <p className="text-sm text-muted">
-          {rec.n > 0 ? (
-            <>
-              <span className="font-semibold text-ink">Our draw picks so far:</span>{' '}
-              <span className="num">{rec.wins} of {rec.n}</span> ended in a draw
-              {rec.roi !== null && (
-                <>
-                  {' · '}
-                  <span className={`num font-semibold ${rec.roi >= 0 ? 'text-win' : 'text-loss'}`}>{sign(rec.roi)}</span> at the odds
-                </>
-              )}
-              {rec.since && <span className="text-faint"> · since {new Date(rec.since).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>}
-            </>
-          ) : (
-            'The record starts with this week’s picks.'
+      {/* the games most likely to end level this week, value or not */}
+      {data?.likely && data.likely.length > 0 && (
+        <section className="card overflow-hidden">
+          <div className="px-4 sm:px-5 py-3 border-b border-line/60 flex items-baseline justify-between gap-3">
+            <h2 className="font-display text-lg font-bold text-ink">Most likely draws this week</h2>
+            <span className="text-[11px] text-faint">by our draw chance</span>
+          </div>
+          <ul className="divide-y divide-line/50">
+            {data.likely.map(m => (
+              <li key={m.matchId}>
+                <Link to={`/match/${m.matchId}`} className="flex items-center gap-3 px-4 sm:px-5 py-2.5 hover:bg-surface2/50">
+                  <span className="w-16 flex-shrink-0 text-[11px] text-faint leading-tight">
+                    {new Date(m.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })}
+                    <span className="block num">{new Date(m.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="flex items-center gap-1.5 min-w-0 text-sm text-ink">
+                      {m.homeCrest && <img src={m.homeCrest} alt="" className="w-4 h-4 object-contain" />}
+                      <span className="truncate">{m.home}</span>
+                      <span className="text-faint">–</span>
+                      {m.awayCrest && <img src={m.awayCrest} alt="" className="w-4 h-4 object-contain" />}
+                      <span className="truncate">{m.away}</span>
+                    </span>
+                    <span className="block text-[11px] text-faint truncate">{m.league}</span>
+                  </span>
+                  <span className="hidden sm:block w-28 text-right text-[11px] text-faint">
+                    {m.marketDraw !== null ? <>bookmakers {Math.round(m.marketDraw)}%</> : ''}
+                    {m.price ? <span className="block num">odds {m.price.toFixed(2)}</span> : null}
+                  </span>
+                  <span className="w-14 text-right font-display font-extrabold text-draw num">{Math.round(m.draw)}%</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {((data?.leagues && data.leagues.length > 0) || (data?.teams && data.teams.length > 0)) && (
+        <div className="grid gap-5 md:grid-cols-2 items-start">
+          {data?.leagues && data.leagues.length > 0 && (
+            <section className="card p-4 sm:p-5">
+              <div className="flex items-baseline justify-between gap-3 mb-3">
+                <h2 className="font-display text-lg font-bold text-ink">Draws by league</h2>
+                <span className="text-[11px] text-faint">this season · last season</span>
+              </div>
+              <ul className="space-y-2">
+                {data.leagues.map(l => (
+                  <li key={l.division} className="flex items-center gap-3 text-sm" title={`${l.n} games this season`}>
+                    <span className="w-36 truncate text-ink">{l.league}</span>
+                    <span className="flex-1 h-2 rounded-full bg-surface2 overflow-hidden">
+                      <span className="block h-full rounded-full bg-draw" style={{ width: `${Math.min(100, ((l.now ?? 0) / 40) * 100)}%` }} />
+                    </span>
+                    <span className="w-11 text-right num font-bold text-ink">{l.now !== null ? `${Math.round(l.now)}%` : '–'}</span>
+                    <span className="w-9 text-right num text-[11px] text-faint">{l.last !== null ? `${Math.round(l.last)}%` : ''}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[11px] text-faint mt-3">Share of league games that ended in a draw.</p>
+            </section>
           )}
-        </p>
+          {data?.teams && data.teams.length > 0 && (
+            <section className="card p-4 sm:p-5">
+              <div className="flex items-baseline justify-between gap-3 mb-3">
+                <h2 className="font-display text-lg font-bold text-ink">Teams that draw the most</h2>
+                <span className="text-[11px] text-faint">this season</span>
+              </div>
+              <ul className="divide-y divide-line/50">
+                {data.teams.map((t, i) => (
+                  <li key={t.team} className="flex items-center gap-3 py-2 text-sm">
+                    <span className="w-5 text-faint num text-xs">{i + 1}</span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block truncate text-ink font-semibold">{t.team}</span>
+                      <span className="block truncate text-[11px] text-faint">{t.league}</span>
+                    </span>
+                    <span className="text-[11px] text-muted num whitespace-nowrap">{t.d} of {t.n}</span>
+                    <span className="w-11 text-right num font-bold text-draw">{Math.round(t.rate)}%</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </div>
       )}
 
       <p className="text-xs text-faint max-w-2xl leading-relaxed">

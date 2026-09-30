@@ -12,7 +12,7 @@
  */
 import { db } from '../db';
 import { DIVISION_NAMES } from './pastView';
-import { GROUPS, loadGroupMatches } from './history';
+import { GROUPS, loadGroupMatches, seasonCodes } from './history';
 
 const K = 0.75, MIN_EDGE = 0.02, MAX_EDGE = 0.2, MIN_V3 = 30, MAX_STREAK = 0.32;
 // MAX_STREAK: no alert when BOTH teams drew 32%+ of their last 20 games — bookmakers already over-price those draws
@@ -244,10 +244,74 @@ function picksRecord(alerts: any[]) {
     last: picked.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6).map(a => ({ matchId: a.matchId, date: a.date, home: a.home, away: a.away, score: a.score, won: a.won, price: a.price })) };
 }
 
+/*
+ * More about draws for the page (no record here):
+ *  likely  – the games of the coming 7 days with the highest draw chance by our model (value rule or not)
+ *  leagues – share of games ending in a draw per league, this season and last
+ *  teams   – teams that draw the most this season (5+ league games)
+ */
+function likelyDraws(limit = 8) {
+  const now = new Date().toISOString();
+  const soon = new Date(Date.now() + 7 * 86400000).toISOString();
+  const rows = db.prepare(`
+    SELECT match_id, model, competition_name, competition_code, utc_date, home_team, away_team, home_team_id, away_team_id, p_draw, odds_home, odds_draw, odds_away
+    FROM predictions
+    WHERE settled = 0 AND locked = 0 AND utc_date > ? AND utc_date < ? AND model IN ('grid-v3', 'elo-intl', 'elo-euro')
+  `).all(now, soon) as any[];
+  const rank = (m: string) => ['grid-v3', 'elo-euro', 'elo-intl'].indexOf(m);
+  const best = new Map<number, any>();
+  for (const r of rows) { const c = best.get(r.match_id); if (!c || rank(r.model) < rank(c.model)) best.set(r.match_id, r); }
+  return [...best.values()]
+    .sort((a, b) => b.p_draw - a.p_draw)
+    .slice(0, limit)
+    .map(r => {
+      const f = fair([r.odds_home, r.odds_draw, r.odds_away]);
+      return {
+        matchId: r.match_id, league: r.competition_name || r.competition_code, date: r.utc_date, home: r.home_team, away: r.away_team,
+        homeCrest: crestOf(r.home_team_id), awayCrest: crestOf(r.away_team_id),
+        draw: r1(r.p_draw), marketDraw: f ? r1(f[1] * 100) : null, price: r.odds_draw || null
+      };
+    });
+}
+
+function leagueDraws() {
+  const [cur, prev] = seasonCodes(2);
+  let rows: any[] = [];
+  try {
+    rows = db.prepare(`SELECT division, season, COUNT(*) AS n, SUM(CASE WHEN hg = ag THEN 1 ELSE 0 END) AS d FROM history_matches WHERE season IN (?, ?) GROUP BY division, season`).all(cur, prev) as any[];
+  } catch { return []; }
+  const by = new Map<string, { division: string; league: string; now: number | null; n: number; last: number | null }>();
+  for (const r of rows) {
+    const x = by.get(r.division) || { division: r.division, league: DIVISION_NAMES[r.division] || r.division, now: null, n: 0, last: null };
+    if (r.season === cur) { x.now = r.n ? r1((r.d / r.n) * 100) : null; x.n = r.n; }
+    else x.last = r.n ? r1((r.d / r.n) * 100) : null;
+    by.set(r.division, x);
+  }
+  return [...by.values()].filter(x => x.n >= 20).sort((a, b) => (b.now ?? 0) - (a.now ?? 0));
+}
+
+function teamDraws(limit = 10) {
+  const [cur] = seasonCodes(1);
+  let rows: any[] = [];
+  try {
+    rows = db.prepare(`SELECT division, home, away, hg, ag FROM history_matches WHERE season = ?`).all(cur) as any[];
+  } catch { return []; }
+  const t = new Map<string, { team: string; league: string; n: number; d: number }>();
+  for (const r of rows) {
+    for (const name of [r.home, r.away]) {
+      const x = t.get(name) || { team: name, league: DIVISION_NAMES[r.division] || r.division, n: 0, d: 0 };
+      x.n++; if (r.hg === r.ag) x.d++;
+      t.set(name, x);
+    }
+  }
+  return [...t.values()].filter(x => x.n >= 5).map(x => ({ ...x, rate: r1((x.d / x.n) * 100) }))
+    .sort((a, b) => b.rate - a.rate || b.n - a.n).slice(0, limit);
+}
+
 export function drawAlertsReport() {
   const up = upcoming();
   const lv = live();
-  return { picks: picksOf(up), picksRecord: picksRecord(lv.alerts), rule: { k: K, minEdge: MIN_EDGE * 100, maxEdge: MAX_EDGE * 100, maxStreak: MAX_STREAK * 100, minV3Draw: MIN_V3, excluded: [...EXCLUDED] }, upcoming: up, ...lv, history: history() };
+  return { picks: picksOf(up), picksRecord: picksRecord(lv.alerts), likely: likelyDraws(), leagues: leagueDraws(), teams: teamDraws(), rule: { k: K, minEdge: MIN_EDGE * 100, maxEdge: MAX_EDGE * 100, maxStreak: MAX_STREAK * 100, minV3Draw: MIN_V3, excluded: [...EXCLUDED] }, upcoming: up, ...lv, history: history() };
 }
 
 /* ------------------------------------------------------------------ */
