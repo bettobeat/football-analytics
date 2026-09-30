@@ -482,13 +482,65 @@ export async function getAfStandings(code: string) {
   });
 }
 
+/*
+ * Any API-Football competition, even one outside our fixture window (a super cup, a past tournament): its name,
+ * the latest edition that has been played (results, winner of the final) — so a competition page is never empty.
+ */
+async function leagueSeasons(leagueId: number): Promise<number[]> {
+  return cached(`seasons:${leagueId}`, 24 * 3600 * 1000, async () => {
+    const j = await afGet('/leagues', { id: leagueId });
+    const l = j.response?.[0];
+    if (!l) return [];
+    const years = (l.seasons || []).map((x: any) => x.year).filter(Boolean).sort((a: number, b: number) => b - a);
+    if (!leagueMeta.has(leagueId)) {
+      const kind: Kind = EXTRA_COMPETITIONS.find(c => c.id === leagueId)?.kind || (String(l.league?.type).toLowerCase() === 'cup' ? 'cup' : 'league');
+      leagueMeta.set(leagueId, { name: l.league?.name, logo: l.league?.logo, country: l.country?.name, flag: l.country?.flag, season: years[0], kind });
+    }
+    return years;
+  });
+}
+
+export async function getAfRecent(code: string) {
+  const id = parseInt(code.replace(/^AF/i, ''), 10);
+  return cached(`recent:${id}`, 30 * 60 * 1000, async () => {
+    const years = await leagueSeasons(id);
+    const meta = leagueMeta.get(id) || null;
+    const competition = meta ? { code: `AF${id}`, name: meta.name, emblem: meta.logo, area: { name: meta.country, flag: meta.flag } } : null;
+    for (const y of years.slice(0, 3)) {
+      const j = await afGet('/fixtures', { league: id, season: y });
+      const done = ((j.response || []) as any[]).filter(f => senior(f) && ['FT', 'AET', 'PEN', 'AWD', 'WO'].includes(f.fixture?.status?.short));
+      if (!done.length) continue;
+      done.sort((a, b) => String(b.fixture.date).localeCompare(String(a.fixture.date)));
+      // the final (a single match named "Final"), and who won it, penalties included
+      const fin = done.find(f => /^final$/i.test(String(f.league?.round || '').trim()));
+      let winner: any = null;
+      if (fin) {
+        const w = fin.teams?.home?.winner ? fin.teams.home : fin.teams?.away?.winner ? fin.teams.away : null;
+        if (w) winner = afTeam(w);
+      }
+      return {
+        competition, season: y, winner,
+        matches: done.slice(0, 60).map(f => ({ ...toFdMatch(f), round: f.league?.round || null, penalties: f.score?.penalty?.home != null ? { home: f.score.penalty.home, away: f.score.penalty.away } : null }))
+      };
+    }
+    return { competition, season: null, winner: null, matches: [] };
+  });
+}
+
 export async function getAfScorers(code: string, limit = 40) {
   const id = parseInt(code.replace(/^AF/i, ''), 10);
   return cached(`scorers:${id}`, 60 * 60 * 1000, async () => {
     const season = await currentSeason(id);
     if (!season) return { scorers: [] };
-    const j = await afGet('/players/topscorers', { league: id, season });
+    let j = await afGet('/players/topscorers', { league: id, season });
+    let usedSeason = season;
+    if (!(j.response || []).length) {
+      // nothing played yet this season (a cup between editions): the latest edition that has been played
+      const recent: any = await getAfRecent(code).catch(() => null);
+      if (recent?.season && recent.season !== season) { j = await afGet('/players/topscorers', { league: id, season: recent.season }); usedSeason = recent.season; }
+    }
     return {
+      season: usedSeason,
       scorers: (j.response || []).slice(0, limit).map((r: any) => {
         const s = r.statistics?.[0] || {};
         return {

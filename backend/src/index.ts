@@ -29,7 +29,7 @@ import { pastSeasons, pastPredictions, dataInventory, leaguePatterns } from './s
 import { marketTest, drawTest, anchoredDrawTest } from './services/marketTest';
 import { clvTick, clvReport, startClvScheduler, clvProbe } from './services/clv';
 import {
-  isAfMatchId, isAfCode, afUpcoming, afLive, afWithPredictions, getAfMatchDetails, getAfStandings, getAfScorers,
+  isAfMatchId, isAfCode, afUpcoming, afLive, afWithPredictions, getAfMatchDetails, getAfStandings, getAfScorers, getAfRecent,
   afCompetitions, pollAfLive, startAfMatchesScheduler, afWindowStatus, refreshAfWindow, onAfWindow, isKnownAfFixture, afExtrasForFd, withAfOdds, backfillAfOdds
 } from './services/afMatches';
 import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNationalEloScheduler, nationalGoalsSensitivity } from './services/nationalElo';
@@ -600,6 +600,17 @@ app.get('/api/leagues/:code/standings', async (req, res) => {
     res.json({ data: standings, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Failed to fetch standings');
+  }
+});
+
+// Latest played edition of any API-Football competition (results + winner), for competitions outside our window
+app.get('/api/leagues/:code/results', async (req, res) => {
+  try {
+    const code = req.params.code.toUpperCase();
+    if (!isAfCode(code)) return res.json({ data: null, timestamp: new Date().toISOString() });
+    res.json({ data: await getAfRecent(code), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Failed to fetch results');
   }
 });
 

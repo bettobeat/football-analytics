@@ -44,6 +44,9 @@ interface PlayerData {
   seasons: Season[]
   sidelined: { type: string; start: string; end: string | null }[]
   international?: (Row & { from: string | null; to: string | null })[]
+  internationalTotals?: { team: SiteTeam | null; apps: number; goals: number; assists?: number }[]
+  career?: { apps: number; goals: number; assists?: number; minutes?: number; seasons: number; from: string | null } | null
+  careerPartial?: boolean
   transfers: { date: string; type: string; from: SiteTeam; to: SiteTeam }[]
   premium: boolean
   locked?: string[]
@@ -187,9 +190,9 @@ export default function Player() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="font-display text-xl font-bold text-ink">Season {season.label}</h2>
             {data.seasons.length > 1 && (
-              <div className="seg">
+              <div className="seg max-w-full overflow-x-auto">
                 {data.seasons.map((s, i) => (
-                  <button key={s.season} onClick={() => setSi(i)} className={`seg-btn ${si === i ? 'seg-btn-active' : ''}`}>
+                  <button key={s.season} onClick={() => setSi(i)} className={`seg-btn whitespace-nowrap ${si === i ? 'seg-btn-active' : ''}`}>
                     {s.label}
                   </button>
                 ))}
@@ -285,8 +288,78 @@ export default function Player() {
         <div className="card p-6 text-sm text-muted">No season data for this player yet.</div>
       )}
 
+      {data.seasons.length > 0 && (
+        <Card
+          title="Club career"
+          action={data.career ? <span className="text-[11px] text-faint">{data.career.seasons} season{data.career.seasons === 1 ? '' : 's'}{data.career.from ? ` since ${data.career.from}` : ''}</span> : undefined}
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[520px]">
+              <thead>
+                <tr className="text-[11px] text-faint">
+                  <th className="text-left font-medium py-1.5 pl-2 w-20">Season</th>
+                  <th className="text-left font-medium py-1.5">Club</th>
+                  <th className="text-right font-medium py-1.5 num w-12">Apps</th>
+                  <th className="text-right font-medium py-1.5 num w-12">Goals</th>
+                  {full && <th className="text-right font-medium py-1.5 num w-12">Ast</th>}
+                  {full && <th className="text-right font-medium py-1.5 num w-16 pr-2">Min</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {data.seasons.map((s, i) => {
+                  const clubs = [...new Map(s.rows.filter(r => r.team).map(r => [r.team!.id, r.team!])).values()]
+                  return (
+                    <tr
+                      key={s.season}
+                      onClick={() => { setSi(i); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+                      className={`border-t border-line/50 cursor-pointer hover:bg-surface2/40 ${si === i ? 'bg-accent/5' : ''}`}
+                    >
+                      <td className="py-2 pl-2 num text-muted">{s.label}</td>
+                      <td className="py-2">
+                        <span className="flex items-center gap-2 min-w-0">
+                          {clubs.map(c => <img key={c.id} src={c.logo} alt="" className="w-4 h-4 object-contain" />)}
+                          <span className="truncate text-ink">{clubs.map(c => c.name).join(' · ')}</span>
+                        </span>
+                      </td>
+                      <td className="py-2 text-right num text-muted">{s.totals.apps}</td>
+                      <td className="py-2 text-right num font-bold text-ink">{s.totals.goals}</td>
+                      {full && <td className="py-2 text-right num text-muted">{s.totals.assists ?? 0}</td>}
+                      {full && <td className="py-2 pr-2 text-right num text-muted">{(s.totals.minutes ?? 0).toLocaleString('en-GB')}</td>}
+                    </tr>
+                  )
+                })}
+                {data.career && (
+                  <tr className="border-t-2 border-line">
+                    <td className="py-2 pl-2 font-bold text-ink" colSpan={2}>Total</td>
+                    <td className="py-2 text-right num font-bold text-ink">{data.career.apps}</td>
+                    <td className="py-2 text-right num font-extrabold text-accent">{data.career.goals}</td>
+                    {full && <td className="py-2 text-right num font-bold text-ink">{data.career.assists ?? 0}</td>}
+                    {full && <td className="py-2 pr-2 text-right num font-bold text-ink">{(data.career.minutes ?? 0).toLocaleString('en-GB')}</td>}
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-[11px] text-faint">
+            Official club games in every competition (friendlies left out). Tap a season to see it in detail.
+            {data.careerPartial ? ' Some older seasons are still loading: they appear within a day.' : ''}
+          </p>
+        </Card>
+      )}
+
       {data.international && data.international.length > 0 && (
         <Card title="National team">
+          {data.internationalTotals && data.internationalTotals.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {data.internationalTotals.map((t, i) => (
+                <span key={i} className="inline-flex items-center gap-2 rounded-xl bg-surface2/60 border border-line/60 px-3 py-2 text-sm">
+                  {t.team && <img src={t.team.logo} alt="" className="w-5 h-5 object-contain" />}
+                  <span className="font-semibold text-ink">{t.team?.name || 'National team'}</span>
+                  <span className="text-muted num">{t.apps} caps · <b className="text-ink">{t.goals}</b> goals{full && t.assists !== undefined ? ` · ${t.assists} assists` : ''}</span>
+                </span>
+              ))}
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[520px]">
               <thead>
@@ -317,7 +390,7 @@ export default function Player() {
               </tbody>
             </table>
           </div>
-          <p className="mt-2 text-[11px] text-faint">National-team games are listed by tournament, not counted in the club season above.</p>
+          <p className="mt-2 text-[11px] text-faint">His whole international career by tournament, friendlies included. Not counted in the club seasons.</p>
         </Card>
       )}
 

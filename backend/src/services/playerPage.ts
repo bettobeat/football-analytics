@@ -16,7 +16,7 @@ import { resolveAfTeamId } from './teamPage';
 
 const AF_OFFSET = 1_000_000_000;
 const PAGE_TTL = 12 * 3600 * 1000;
-const PAGE_VERSION = 4; // bump when the page shape changes: older stored copies are rebuilt
+const PAGE_VERSION = 5; // bump when the page shape changes: older stored copies are rebuilt
 const cache = new Map<number, { at: number; data: any }>();
 
 db.exec(`CREATE TABLE IF NOT EXISTS player_page_store (player_id INTEGER PRIMARY KEY, json TEXT NOT NULL, built_at TEXT NOT NULL)`);
@@ -74,15 +74,51 @@ function totalsOf(rows: ReturnType<typeof statRow>[]) {
   };
 }
 
-async function seasonStats(pid: number, season: number) {
-  const j: any = await afGet('/players', { id: pid, season });
-  const it = j.response?.[0];
-  if (!it) return null;
-  const rows = (it.statistics || []).map((x: any) => ({ ...statRow(x), afSeason: season }))
-    .filter((r: any) => r.apps > 0 || r.minutes > 0)
-    // friendlies add noise
-    .filter((r: any) => !/friendl/i.test(r.league.name || ''));
-  return { player: it.player, rows };
+/*
+ * A player's season as the provider has it, stored for good: past seasons never change, so each is fetched once
+ * (the current seasons are fetched again whenever the page is rebuilt). null = the provider has nothing that season.
+ */
+db.exec(`CREATE TABLE IF NOT EXISTS player_season_raw (player_id INTEGER NOT NULL, season INTEGER NOT NULL, json TEXT, fetched_at TEXT NOT NULL, PRIMARY KEY (player_id, season))`);
+db.exec(`CREATE TABLE IF NOT EXISTS player_seasons_list (player_id INTEGER PRIMARY KEY, years TEXT NOT NULL, fetched_at TEXT NOT NULL)`);
+
+async function rawSeason(pid: number, season: number, refresh: boolean): Promise<{ player: any; statistics: any[] } | null> {
+  const row: any = db.prepare(`SELECT json FROM player_season_raw WHERE player_id = ? AND season = ?`).get(pid, season);
+  if (row && !refresh) return row.json ? JSON.parse(row.json) : null;
+  try {
+    const j: any = await afGet('/players', { id: pid, season });
+    const it = j.response?.[0];
+    const data = it ? { player: it.player, statistics: it.statistics || [] } : null;
+    db.prepare(`INSERT OR REPLACE INTO player_season_raw (player_id, season, json, fetched_at) VALUES (?, ?, ?, ?)`)
+      .run(pid, season, data ? JSON.stringify(data) : null, new Date().toISOString());
+    return data;
+  } catch (e) {
+    if (row) return row.json ? JSON.parse(row.json) : null; // provider down: the stored copy
+    throw e;
+  }
+}
+
+/** Every season the provider has for this player (his whole career), refreshed monthly. */
+async function careerYears(pid: number): Promise<number[]> {
+  const row: any = db.prepare(`SELECT years, fetched_at FROM player_seasons_list WHERE player_id = ?`).get(pid);
+  if (row && Date.now() - new Date(row.fetched_at).getTime() < 30 * 86400000) return JSON.parse(row.years);
+  try {
+    const j: any = await afGet('/players/seasons', { player: pid });
+    const years = ((j.response || []) as any[]).map(Number).filter(y => y > 1990).sort((a, b) => a - b);
+    db.prepare(`INSERT OR REPLACE INTO player_seasons_list (player_id, years, fetched_at) VALUES (?, ?, ?)`).run(pid, JSON.stringify(years), new Date().toISOString());
+    return years;
+  } catch {
+    return row ? JSON.parse(row.years) : [];
+  }
+}
+
+/** Run jobs a few at a time (the provider limits requests per minute). */
+async function pool<T, R>(items: T[], size: number, fn: (x: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(size, items.length) }, async () => {
+    while (i < items.length) { const k = i++; out[k] = await fn(items[k]); }
+  }));
+  return out;
 }
 
 /*
@@ -104,6 +140,28 @@ async function leagueDates(leagueId: number, season: number): Promise<{ start: s
     return se?.start && se?.end ? { start: se.start, end: se.end } : null;
   } catch {
     return row?.start && row?.end ? { start: row.start, end: row.end } : null;
+  }
+}
+
+/*
+ * When THIS team played THIS competition-season (its own games' dates), for competitions whose season dates are
+ * missing or misleading (one-match super cups filed under the calendar year, tournaments spread over two years).
+ * Stored for good once the games are in the past.
+ */
+db.exec(`CREATE TABLE IF NOT EXISTS af_team_comp_dates (league_id INTEGER NOT NULL, season INTEGER NOT NULL, team_id INTEGER NOT NULL, first TEXT, last TEXT, mid TEXT, fetched_at TEXT NOT NULL, PRIMARY KEY (league_id, season, team_id))`);
+async function teamCompDates(leagueId: number, season: number, teamId: number): Promise<{ start: string; end: string; mid: string } | null> {
+  const row: any = db.prepare(`SELECT first, last, mid, fetched_at FROM af_team_comp_dates WHERE league_id = ? AND season = ? AND team_id = ?`).get(leagueId, season, teamId);
+  const done = row?.last && row.last < new Date(Date.now() - 7 * 86400000).toISOString();
+  if (row && (done || Date.now() - new Date(row.fetched_at).getTime() < 86400000)) return row.mid ? { start: row.first, end: row.last, mid: row.mid } : null;
+  try {
+    const j: any = await afGet('/fixtures', { league: leagueId, season, team: teamId });
+    const dates = ((j.response || []) as any[]).filter(f => ['FT', 'AET', 'PEN'].includes(f.fixture?.status?.short)).map(f => String(f.fixture.date)).sort();
+    const res = dates.length ? { start: dates[0], end: dates[dates.length - 1], mid: dates[Math.floor(dates.length / 2)] } : null;
+    db.prepare(`INSERT OR REPLACE INTO af_team_comp_dates (league_id, season, team_id, first, last, mid, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(leagueId, season, teamId, res?.start || null, res?.end || null, res?.mid || null, new Date().toISOString());
+    return res;
+  } catch {
+    return row?.mid ? { start: row.first, end: row.last, mid: row.mid } : null;
   }
 }
 
@@ -149,48 +207,74 @@ async function build(pid: number) {
   if (!buildAllowed()) throw Object.assign(new Error('Busy right now, try again in a few minutes'), { response: { status: 503 } });
   if (afRemaining() < 200) throw new Error('Daily data budget reached, try again later');
   const S = seasonNow();
-  // three provider seasons: S+1 catches this summer's tournaments and calendar-year leagues filed ahead
-  const [nx, cur, prev] = await Promise.all([seasonStats(pid, S + 1), seasonStats(pid, S), seasonStats(pid, S - 1)]);
-  const src = [cur, prev, nx].filter(Boolean) as NonNullable<Awaited<ReturnType<typeof seasonStats>>>[];
+  // The whole career: every season the provider has. The three current provider seasons are fetched fresh
+  // (S+1 catches this summer's tournaments and calendar-year leagues filed ahead); older ones come from our store
+  // and are fetched only the first time.
+  const years = new Set(await careerYears(pid));
+  for (const y of [S - 1, S, S + 1]) years.add(y);
+  const fresh = new Set([S - 1, S, S + 1]);
+  const lowBudget = afRemaining() < 2000;
+  const list = [...years].sort((a, b) => b - a);
+  const raws = await pool(list, 4, async y => {
+    const stored = !fresh.has(y) && lowBudget ? db.prepare(`SELECT json FROM player_season_raw WHERE player_id = ? AND season = ?`).get(pid, y) as any : undefined;
+    if (lowBudget && !fresh.has(y)) return stored?.json ? { season: y, data: JSON.parse(stored.json) } : { season: y, data: null, missing: !stored };
+    try { return { season: y, data: await rawSeason(pid, y, fresh.has(y)) }; } catch { return { season: y, data: null, missing: true }; }
+  });
+  const src = raws.filter(r => r.data);
   if (!src.length) throw Object.assign(new Error('Player not found'), { response: { status: 404 } });
+  const careerPartial = raws.some((r: any) => r.missing);
   const [sideRes, trRes] = await Promise.all([
     afGet('/sidelined', { player: pid }).catch(() => null),
     afGet('/transfers', { player: pid }).catch(() => null)
   ]);
-  const p = src[0].player;
+  // the newest season's profile (current club, photo, name)
+  const p = (src.find(r => r.season === S) || src[0]).data.player;
   const nationality: string = p.nationality || '';
-  const all: any[] = src.flatMap(x => x.rows);
+  const all: any[] = src.flatMap(r =>
+    (r.data.statistics || [])
+      .map((x: any) => ({ ...statRow(x), afSeason: r.season, friendly: /friendl/i.test(x.league?.name || '') }))
+      .filter((x: any) => x.apps > 0 || x.minutes > 0)
+  );
   const isNational = (r: any) =>
     (!!r.team && !!nationality && (r.team.name === nationality || r.team.name.startsWith(`${nationality} U`))) || /\bU-?\d{2}\b/.test(r.team?.name || '') || INTL.test(r.league.name || '');
 
-  // dates of every competition-season involved
-  await Promise.all(all.map(async r => {
-    const d = r.league.id ? await leagueDates(r.league.id, r.afSeason) : null;
+  // When was each row played? The competition's dates; for one-off cups and competitions without usable dates,
+  // the dates of this team's own games in it.
+  await pool(all, 6, async (r: any) => {
+    if (!r.league.id) return;
+    const d = await leagueDates(r.league.id, r.afSeason);
     r.from = d?.start || null;
     r.to = d?.end || null;
-  }));
+    const span = d ? (new Date(d.end).getTime() - new Date(d.start).getTime()) / 86400000 : 0;
+    const mid = d ? new Date((new Date(d.start).getTime() + new Date(d.end).getTime()) / 2).toISOString() : null;
+    const suspicious = !d || span > 400 || span < 1 || (mid && clubSeasonOf(mid) > S) || (mid && mid > new Date().toISOString());
+    if (suspicious && r.team?.id) {
+      const t = await teamCompDates(r.league.id, r.afSeason, r.team.id - AF_OFFSET);
+      if (t) { r.from = t.start.slice(0, 10); r.to = t.end.slice(0, 10); r.mid = t.mid; }
+    }
+  });
 
-  // club rows → club season by the competition's midpoint (a normal league: August–May → that season;
-  // the Club World Cup of June–July 2025 → 2024-25)
-  const clubRows = all.filter(r => !isNational(r));
+  // club rows (friendlies left out) → club season by when they were played
+  const clubRows = all.filter(r => !isNational(r) && !r.friendly);
   const bySeason = new Map<number, any[]>();
   for (const r of clubRows) {
     let cs: number;
-    if (r.from && r.to) {
-      const mid = new Date((new Date(r.from).getTime() + new Date(r.to).getTime()) / 2).toISOString();
-      cs = clubSeasonOf(mid);
-    } else cs = r.afSeason;
+    if (r.mid) cs = clubSeasonOf(r.mid);
+    else if (r.from && r.to) cs = clubSeasonOf(new Date((new Date(r.from).getTime() + new Date(r.to).getTime()) / 2).toISOString());
+    else cs = r.afSeason;
+    if (cs > S) cs = S; // nothing can belong to a season that hasn't started
     if (!bySeason.has(cs)) bySeason.set(cs, []);
     bySeason.get(cs)!.push(r);
   }
-  const seasons = [S, S - 1]
-    .filter(y => bySeason.has(y))
+  const seasons = [...bySeason.keys()]
+    .sort((a, b) => b - a)
     .map(y => {
       const rows = bySeason.get(y)!.sort((a, b) => b.minutes - a.minutes);
       return { season: y, label: `${y}-${String(y + 1).slice(2)}`, rows, totals: totalsOf(rows) };
     });
+  const career = { ...totalsOf(clubRows), seasons: seasons.length, from: seasons.length ? seasons[seasons.length - 1].label : null };
 
-  // national-team rows: shown on their own, with the competition's real dates (no guessing which club season)
+  // national-team rows: the whole international career (friendlies included: they are caps), newest first
   const seen = new Set<string>();
   const international = all
     .filter(isNational)
@@ -200,9 +284,15 @@ async function build(pid: number) {
       seen.add(k);
       return true;
     })
-    // only what was played in the last two club seasons
-    .filter(r => !r.to || r.to >= `${S - 1}-07-01`)
-    .sort((a, b) => String(b.to || '').localeCompare(String(a.to || '')));
+    .sort((a, b) => String(b.to || b.afSeason).localeCompare(String(a.to || a.afSeason)));
+  const intlByTeam = new Map<string, { team: any; apps: number; goals: number; assists: number }>();
+  for (const r of international) {
+    const k = r.team?.name || 'National team';
+    const t = intlByTeam.get(k) || { team: r.team, apps: 0, goals: 0, assists: 0 };
+    t.apps += r.apps; t.goals += r.goals; t.assists += r.assists;
+    intlByTeam.set(k, t);
+  }
+  const internationalTotals = [...intlByTeam.values()].sort((a, b) => b.apps - a.apps);
 
   // his club (not the national team) for the header: the most recent club rows
   const main = seasons[0]?.rows[0] || seasons[1]?.rows[0] || null;
@@ -240,7 +330,10 @@ async function build(pid: number) {
     number: main?.number ?? null,
     status: out ? { out: true, type: out.type, since: out.start, until: out.end } : { out: false },
     seasons,
+    career,
+    careerPartial,
     international,
+    internationalTotals,
     sidelined,
     transfers,
     v: PAGE_VERSION,
@@ -248,12 +341,34 @@ async function build(pid: number) {
   };
 }
 
+/*
+ * A page is rebuilt as soon as the player's club has finished a game since it was built (plus 2 hours for the
+ * provider to update the player stats), instead of waiting for the 12-hour refresh. Only the current seasons are
+ * fetched again; the rest of the career comes from our store.
+ */
+const playedCache = new Map<string, { at: number; v: boolean }>();
+function playedSince(data: any): boolean {
+  const teamId = data?.team?.id ? data.team.id - AF_OFFSET : null;
+  if (!teamId || !data.builtAt) return false;
+  const key = `${teamId}|${data.builtAt}`;
+  const c = playedCache.get(key);
+  if (c && Date.now() - c.at < 5 * 60 * 1000) return c.v;
+  let v = false;
+  try {
+    const cutoff = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+    v = !!db.prepare(`SELECT 1 FROM af_fixtures WHERE (home_id = ? OR away_id = ?) AND status IN ('FT','AET','PEN') AND kickoff > ? AND kickoff < ? LIMIT 1`).get(teamId, teamId, data.builtAt, cutoff);
+  } catch { /* table missing */ }
+  playedCache.set(key, { at: Date.now(), v });
+  if (playedCache.size > 5000) playedCache.delete(playedCache.keys().next().value as string);
+  return v;
+}
+
 async function pageData(pid: number) {
   const mem = cache.get(pid);
-  if (mem && Date.now() - mem.at < PAGE_TTL && mem.data.v === PAGE_VERSION) return mem.data;
+  if (mem && Date.now() - mem.at < PAGE_TTL && mem.data.v === PAGE_VERSION && !playedSince(mem.data)) return mem.data;
   const stored: any = db.prepare(`SELECT json, built_at FROM player_page_store WHERE player_id = ?`).get(pid);
   const storedData = stored ? JSON.parse(stored.json) : null;
-  if (stored && storedData.v === PAGE_VERSION && Date.now() - new Date(stored.built_at).getTime() < PAGE_TTL) {
+  if (stored && storedData.v === PAGE_VERSION && Date.now() - new Date(stored.built_at).getTime() < PAGE_TTL && !playedSince(storedData)) {
     const data = storedData;
     cache.set(pid, { at: new Date(stored.built_at).getTime(), data });
     return data;
@@ -283,6 +398,8 @@ export async function playerPage(rawId: number, full: boolean) {
     premium: false,
     seasons: data.seasons.map((s: any) => ({ ...s, rows: s.rows.map(lite), totals: { apps: s.totals.apps, goals: s.totals.goals } })),
     international: (data.international || []).map((r: any) => ({ ...lite(r), from: r.from, to: r.to })),
+    career: data.career ? { apps: data.career.apps, goals: data.career.goals, seasons: data.career.seasons, from: data.career.from } : null,
+    internationalTotals: (data.internationalTotals || []).map((t: any) => ({ team: t.team, apps: t.apps, goals: t.goals })),
     sidelined: [],
     locked: ['Minutes, assists, rating, cards, shots, passes and duels for every competition', 'Injury history']
   };

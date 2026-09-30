@@ -45,6 +45,12 @@ interface Scorer {
   penalties: number | null
   playedMatches?: number | null
 }
+interface Edition {
+  competition: Comp | null
+  season: number | null
+  winner: Team | null
+  matches: (Match & { round?: string | null; score?: { fullTime: { home: number | null; away: number | null } }; penalties?: { home: number; away: number } | null })[]
+}
 interface Record_ { n: number; hitRate: number | null; market: { n: number; hitRate: number | null } | null }
 
 const MAIN = ['grid-v3', 'elo-intl', 'elo-euro']
@@ -101,6 +107,7 @@ function League() {
   const [scorers, setScorers] = useState<Scorer[] | null>(null)
   const [matches, setMatches] = useState<Match[] | null>(null)
   const [record, setRecord] = useState<Record_ | null>(null)
+  const [edition, setEdition] = useState<Edition | null>(null)
   const [leaders, setLeaders] = useState<'goals' | 'assists'>('goals')
   useRevealState()
 
@@ -111,6 +118,20 @@ function League() {
     setScorers(null)
     setMatches(null)
     setRecord(null)
+    setEdition(null)
+    // competitions from our second data source: the latest played edition (a cup between editions is never empty)
+    if (/^AF\d+$/.test(code)) {
+      axios
+        .get(`${API_URL}/leagues/${code}/results`)
+        .then(r => {
+          if (cancelled) return
+          const d: Edition | null = r.data.data
+          setEdition(d)
+          const c = d?.competition
+          if (c?.name) setComp(prev => (prev ? { ...prev, area: prev.area || c.area } : { ...c, code }))
+        })
+        .catch(() => undefined)
+    }
     axios
       .get(`${API_URL}/leagues/${code}/standings`)
       .then(r => {
@@ -352,6 +373,38 @@ function League() {
               </ul>
             )}
           </Card>
+
+          {edition && edition.matches.length > 0 && (
+            <Card
+              title={`Latest edition${edition.season ? ` · ${edition.season}` : ''}`}
+              action={edition.winner ? (
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-ink">
+                  <span aria-hidden>🏆</span>
+                  {edition.winner.crest && <img src={edition.winner.crest} alt="" className="w-4 h-4 object-contain" />}
+                  {tn(edition.winner)}
+                </span>
+              ) : undefined}
+            >
+              <ul className="max-h-[430px] overflow-y-auto overscroll-contain pr-1 divide-y divide-line/50">
+                {edition.matches.map(m => {
+                  const ft = m.score?.fullTime
+                  return (
+                    <li key={m.id}>
+                      <Link to={`/match/${m.id}`} className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-surface2/60 text-sm">
+                        <span className="w-14 text-[11px] text-faint">{new Date(m.utcDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block truncate">
+                            <span className="text-ink font-semibold">{tn(m.homeTeam)}</span> <span className="num font-bold text-ink">{ft?.home ?? '–'}–{ft?.away ?? '–'}</span> <span className="text-ink font-semibold">{tn(m.awayTeam)}</span>
+                          </span>
+                          <span className="block text-[11px] text-faint truncate">{m.round}{m.penalties ? ` · pens ${m.penalties.home}–${m.penalties.away}` : ''}</span>
+                        </span>
+                      </Link>
+                    </li>
+                  )
+                })}
+              </ul>
+            </Card>
+          )}
 
           <section className="card p-3">
             <RecentResults code={code} limit={50} days={120} compact large listClass="max-h-[430px] overflow-y-auto overscroll-contain pr-1" />

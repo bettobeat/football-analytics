@@ -21,6 +21,7 @@ import { afUpcoming, afWithPredictions, afOverdue } from './afMatches';
 import { afConfigured } from './apiFootball';
 import { feedState, bootedAt } from './freshness';
 import { emailEnabled, sendEmail } from './email';
+import { lastDataAudit } from './dataAudit';
 
 type Level = 'ok' | 'warn' | 'fail';
 export interface Check { id: string; label: string; level: Level; detail: string; items?: string[] }
@@ -166,6 +167,21 @@ export async function dataHealth(): Promise<{ level: Level; at: string; checks: 
       items: behind.map(r => `${r.division}: last result ${r.last}`)
     });
   } catch { /* table missing */ }
+
+  // daily player check: top scorers of 13 leagues, their pages vs the official lists + sanity checks
+  try {
+    const a = lastDataAudit();
+    if (a) {
+      const age = now - new Date(a.at).getTime();
+      const mism = (a.issues || []).filter((i: any) => i.kind === 'mismatch' || i.kind === 'not-found').length;
+      checks.push({
+        id: 'players', label: 'Player pages match the official stats',
+        level: age > 48 * 3600 * 1000 ? 'warn' : a.checked && mism > a.checked * 0.15 ? 'warn' : 'ok',
+        detail: `${a.matched} of ${a.checked} top scorers match (${a.leagues}) · checked ${ago(age)} ago · ${(a.issues || []).length} note(s)`,
+        items: (a.issues || []).slice(0, 25).map((i: any) => `${i.league || ''} ${i.player || ''}: ${i.detail}`)
+      });
+    }
+  } catch { /* no report yet */ }
 
   const level: Level = checks.some(c => c.level === 'fail') ? 'fail' : checks.some(c => c.level === 'warn') ? 'warn' : 'ok';
   return { level, at: new Date(now).toISOString(), checks };
