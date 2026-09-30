@@ -156,14 +156,24 @@ let gridW: GridW = { ...GRID0 };
 let engine: 'grid' | 'elo' = 'elo';
 
 const MU = Math.log(1.3); // average international goals per team per game (log)
-const HOME_G = 0.18; // goal-rating home effect (non-neutral games)
+/*
+ * Settings of the rating engine itself (not fitted by the ordered logit): how fast goal ratings learn in competitive
+ * games / friendlies, the home effect on goals, and a multiplier on Elo K. Defaults below; /api/model/elo/tune tries
+ * variants and keeps a set only when it scores better on the last-2-years test (saved in nat_params).
+ */
+const NP_DEFAULT = { etaComp: 0.045, etaFriendly: 0.025, homeG: 0.18, kScale: 1 };
+type NatParams = typeof NP_DEFAULT;
+db.exec(`CREATE TABLE IF NOT EXISTS nat_params (id INTEGER PRIMARY KEY CHECK (id = 1), json TEXT NOT NULL, at TEXT NOT NULL)`);
+let NP: NatParams = (() => {
+  try { const r: any = db.prepare(`SELECT json FROM nat_params WHERE id = 1`).get(); return r ? { ...NP_DEFAULT, ...JSON.parse(r.json) } : { ...NP_DEFAULT }; } catch { return { ...NP_DEFAULT }; }
+})();
 function poissonDraw(lh: number, la: number) {
   let d = 0, ph = Math.exp(-lh), pa = Math.exp(-la);
   for (let k = 0; k <= 10; k++) { d += ph * pa; ph *= lh / (k + 1); pa *= la / (k + 1); }
   return d;
 }
 function lambdas(H: TeamState, A: TeamState, neutral: boolean) {
-  const h = neutral ? 0 : HOME_G;
+  const h = neutral ? 0 : NP.homeG;
   return { lamH: Math.exp(MU + H.att - A.def + h), lamA: Math.exp(MU + A.att - H.def) };
 }
 function featOf(H: TeamState, A: TeamState, leagueId: number, date: string, vh: number | null, va: number | null): Feat {
@@ -245,6 +255,33 @@ let lastSplit: { trainOld: any[]; test: any[]; gridOld: GridW; eloOld: { c: numb
  */
 export let NAT_GOAL_SCALE = parseFloat(process.env.NAT_GOAL_SCALE || '1') || 1;
 export function setNatGoalScale(k: number) { NAT_GOAL_SCALE = k; }
+/*
+ * Goal scale per match type, fitted on the last two years every rebuild (friendlies, qualifiers / Nations League,
+ * tournament finals score differently: finals were predicted ~13% too low). Only used when NAT_GOAL_SCALE is not set,
+ * and only for a type with 150+ test matches. Affects goal markets and likely scores, not the 1-X-2.
+ */
+let natGoalByKind: Record<Kind, number> = { friendly: 1, competitive: 1, finals: 1 };
+function fitGoalScales(test: { f: Feat; hg: number; ag: number }[]) {
+  const out: Record<Kind, number> = { friendly: 1, competitive: 1, finals: 1 };
+  const ll = (p: number, y: boolean) => -Math.log(Math.max(1e-6, y ? p : 1 - p));
+  for (const kind of ['friendly', 'competitive', 'finals'] as Kind[]) {
+    const xs = test.filter(x => x.f.kind === kind);
+    if (xs.length < 150) continue;
+    let best = { k: 1, l: Infinity };
+    for (let k = 0.8; k <= 1.401; k += 0.05) {
+      let l = 0;
+      for (const x of xs) {
+        const lh = Math.min(4, Math.max(0.2, x.f.lamH)) * k, la = Math.min(4, Math.max(0.2, x.f.lamA)) * k, lam = lh + la, e = Math.exp(-lam);
+        const t = x.hg + x.ag;
+        l += ll(1 - e * (1 + lam + lam * lam / 2), t > 2.5) + ll(1 - e * (1 + lam), t > 1.5) + ll((1 - Math.exp(-lh)) * (1 - Math.exp(-la)), x.hg > 0 && x.ag > 0);
+      }
+      if (l < best.l) best = { k: Math.round(k * 100) / 100, l };
+    }
+    out[kind] = best.k;
+  }
+  return out;
+}
+const goalScaleFor = (kind: Kind) => (process.env.NAT_GOAL_SCALE ? NAT_GOAL_SCALE : natGoalByKind[kind] || 1);
 
 /** The last two years of national-team matches with the goal rates the model had before each one (for calibration). */
 export function nationalGoalsTestSet() {
@@ -288,7 +325,7 @@ export function buildNationalElo() {
     // Elo
     const we = 1 / (1 + Math.pow(10, -d / 400));
     const w = o === 'H' ? 1 : o === 'D' ? 0.5 : 0;
-    const delta = cfg.k * gdMult(r.hg - r.ag) * (w - we);
+    const delta = cfg.k * NP.kScale * gdMult(r.hg - r.ag) * (w - we);
     H.elo += delta; A.elo -= delta;
     // form: result above / below the rating's expectation
     H.recent.push(w - we); A.recent.push(we - w);
@@ -296,7 +333,7 @@ export function buildNationalElo() {
     if (A.recent.length > 6) A.recent.shift();
     // goal ratings (online Poisson), smaller steps for friendlies
     const { lamH, lamA } = lambdas(H, A, cfg.ha === 0);
-    const eta = kindOf(r.league_id) === 'friendly' ? 0.025 : 0.045;
+    const eta = kindOf(r.league_id) === 'friendly' ? NP.etaFriendly : NP.etaComp;
     const eh = Math.max(-3, Math.min(3, r.hg - lamH)), ea = Math.max(-3, Math.min(3, r.ag - lamA));
     H.att += eta * eh; A.def -= eta * eh;
     A.att += eta * ea; H.def -= eta * ea;
@@ -326,17 +363,23 @@ export function buildNationalElo() {
   const r3 = (v: number) => Math.round(v * 1000) / 1000;
   const score = (pf: (x: (typeof pre)[number]) => { h: number; d: number; a: number }) => {
     let brier = 0, ll = 0, hits = 0, pd = 0, rd = 0;
+    const part = new Map<string, { n: number; hits: number; ll: number }>();
+    const add = (k: string, hit: boolean, l: number) => { const g = part.get(k) || { n: 0, hits: 0, ll: 0 }; g.n++; if (hit) g.hits++; g.ll += l; part.set(k, g); };
     for (const x of test) {
       const p = pf(x);
       brier += (p.h - (x.o === 'H' ? 1 : 0)) ** 2 + (p.d - (x.o === 'D' ? 1 : 0)) ** 2 + (p.a - (x.o === 'A' ? 1 : 0)) ** 2;
       ll -= Math.log(Math.max(1e-6, x.o === 'H' ? p.h : x.o === 'D' ? p.d : p.a));
       const pick = p.h >= p.d && p.h >= p.a ? 'H' : p.a >= p.d ? 'A' : 'D';
       if (pick === x.o) hits++;
+      const l1 = -Math.log(Math.max(1e-6, x.o === 'H' ? p.h : x.o === 'D' ? p.d : p.a));
+      add(x.f.kind, pick === x.o, l1);
+      if (x.league === 5) add('nationsLeague', pick === x.o, l1);
       pd += p.d;
       if (x.o === 'D') rd++;
     }
     const n = Math.max(1, test.length);
-    return { brier: r3(brier / n), logLoss: r3(ll / n), hitRate: Math.round((hits / n) * 1000) / 10, predDraw: Math.round((pd / n) * 1000) / 10, realDraw: Math.round((rd / n) * 1000) / 10 };
+    const byKind = Object.fromEntries([...part.entries()].map(([k, g]) => [k, { n: g.n, hitRate: Math.round((g.hits / g.n) * 1000) / 10, logLoss: r3(g.ll / g.n) }]));
+    return { brier: r3(brier / n), logLoss: r3(ll / n), hitRate: Math.round((hits / n) * 1000) / 10, predDraw: Math.round((pd / n) * 1000) / 10, realDraw: Math.round((rd / n) * 1000) / 10, byKind };
   };
   // honest comparison: both engines fitted on 2018 → two years ago, scored on the last two years
   const eloOld = fitElo(trainOld, BETAS);
@@ -362,9 +405,96 @@ export function buildNationalElo() {
         note: 'both engines fitted before the test period and scored on the last 2 years; squad values are a July 2026 snapshot (mild look-ahead on older matches, same for both)'
       }
     : null;
+  natGoalByKind = fitGoalScales(test);
+  if (evalStats) { evalStats.goalScaleByKind = natGoalByKind; evalStats.params = NP; }
   lastBuilt = new Date().toISOString();
   logger.info(`National model: ${rows.length} matches, ${ratings.size} teams, engine ${engine} (test log loss grid ${gridTest.logLoss} vs elo ${eloTest.logLoss})`);
   return { matches: rows.length, teams: ratings.size, engine };
+}
+
+/* ------------------------------------------------------------------ */
+/* Tuning the engine settings                                           */
+/* ------------------------------------------------------------------ */
+
+type TuneRow = { params: NatParams; grid: any; elo: any };
+let tuneState: { running: boolean; startedAt: string; done: number; total: number; baseline?: TuneRow; results: TuneRow[]; chosen?: NatParams; adopted?: boolean; note?: string; error?: string } | null = null;
+export const nationalTuneStatus = () => tuneState;
+
+function snapshot() {
+  return {
+    ratings: new Map([...ratings.entries()].map(([k, v]) => [k, { ...v, recent: [...v.recent] }])),
+    fit: { ...fit }, gridW: { ...gridW }, engine, evalStats, lastSplit, lastBuilt, popStats, natGoalByKind: { ...natGoalByKind }
+  };
+}
+function restore(x: ReturnType<typeof snapshot>) {
+  ratings.clear(); x.ratings.forEach((v, k) => ratings.set(k, v));
+  fit = x.fit; gridW = x.gridW; engine = x.engine; evalStats = x.evalStats; lastSplit = x.lastSplit; lastBuilt = x.lastBuilt; popStats = x.popStats; natGoalByKind = x.natGoalByKind;
+}
+/** One variant: build with these settings, read the test scores, put the live model back exactly as it was. */
+function trial(params: NatParams): TuneRow {
+  const keep = snapshot(), keepNP = NP;
+  try {
+    NP = params;
+    buildNationalElo();
+    return { params, grid: evalStats?.grid, elo: evalStats?.eloPlusSquadValue };
+  } finally {
+    NP = keepNP;
+    restore(keep);
+  }
+}
+const pause = () => new Promise(r => setImmediate(r));
+
+/**
+ * Try the engine settings one at a time around the current ones, then the best of each together. A set is adopted
+ * (saved, model rebuilt) only when it lowers the test log loss by 0.002+ — otherwise the model stays as it is.
+ */
+export async function tuneNational() {
+  if (tuneState?.running) throw new Error('Already running');
+  const base = { ...NP };
+  const grid: [keyof NatParams, number[]][] = [
+    ['etaComp', [0.03, 0.06, 0.08]],
+    ['etaFriendly', [0.015, 0.04]],
+    ['homeG', [0.1, 0.26]],
+    ['kScale', [0.7, 1.3]]
+  ];
+  tuneState = { running: true, startedAt: new Date().toISOString(), done: 0, total: 2 + grid.reduce((s, [, v]) => s + v.length, 0), results: [] };
+  try {
+    const baseline = trial(base);
+    tuneState.baseline = baseline; tuneState.done++;
+    const bestOf: Partial<NatParams> = {};
+    for (const [k, vals] of grid) {
+      let bestV = base[k], bestL = baseline.grid?.logLoss ?? Infinity;
+      for (const v of vals) {
+        await pause();
+        const r = trial({ ...base, [k]: v });
+        tuneState.results.push(r); tuneState.done++;
+        if (r.grid && r.grid.logLoss < bestL) { bestL = r.grid.logLoss; bestV = v; }
+      }
+      bestOf[k] = bestV;
+    }
+    await pause();
+    const combo = trial({ ...base, ...bestOf });
+    tuneState.results.push(combo); tuneState.done++;
+    const all = [baseline, ...tuneState.results].filter(r => r.grid);
+    const best = all.sort((a, b) => a.grid.logLoss - b.grid.logLoss)[0];
+    tuneState.chosen = best.params;
+    if (best !== baseline && best.grid.logLoss < baseline.grid.logLoss - 0.002) {
+      NP = { ...best.params };
+      db.prepare(`INSERT OR REPLACE INTO nat_params (id, json, at) VALUES (1, ?, ?)`).run(JSON.stringify(NP), new Date().toISOString());
+      buildNationalElo();
+      tuneState.adopted = true;
+      tuneState.note = `adopted: test log loss ${baseline.grid.logLoss} → ${best.grid.logLoss}, hit rate ${baseline.grid.hitRate}% → ${best.grid.hitRate}%`;
+    } else {
+      tuneState.adopted = false;
+      tuneState.note = 'kept the current settings (no variant was clearly better on the test years)';
+    }
+  } catch (e: any) {
+    tuneState.error = e.message;
+    logger.warn(`national tune: ${e.message}`);
+  } finally {
+    tuneState.running = false;
+  }
+  return tuneState;
 }
 
 /* ------------------------------------------------------------------ */
@@ -411,8 +541,9 @@ export function predictNational(match: any, leagueId: number): Prediction | null
   const d = H.elo - A.elo + cfg.ha + valueTerm;
   const p = engine === 'grid' ? gridProbs(f) : probs(d);
   // goals: from the goal ratings (grid) or the rating gap (elo)
-  const lamH = (engine === 'grid' ? Math.min(4, Math.max(0.2, f.lamH)) : Math.max(0.2, 1.3 * Math.exp(d / 650))) * NAT_GOAL_SCALE;
-  const lamA = (engine === 'grid' ? Math.min(4, Math.max(0.2, f.lamA)) : Math.max(0.2, 1.3 * Math.exp(-d / 650))) * NAT_GOAL_SCALE;
+  const gs = goalScaleFor(f.kind);
+  const lamH = (engine === 'grid' ? Math.min(4, Math.max(0.2, f.lamH)) : Math.max(0.2, 1.3 * Math.exp(d / 650))) * gs;
+  const lamA = (engine === 'grid' ? Math.min(4, Math.max(0.2, f.lamA)) : Math.max(0.2, 1.3 * Math.exp(-d / 650))) * gs;
   let over25 = 0, btts = 0;
   const scores: { home: number; away: number; prob: number }[] = [];
   for (let i = 0; i <= 8; i++) for (let j = 0; j <= 8; j++) {

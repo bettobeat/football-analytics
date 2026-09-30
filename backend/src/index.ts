@@ -32,7 +32,7 @@ import {
   isAfMatchId, isAfCode, afUpcoming, afLive, afWithPredictions, getAfMatchDetails, getAfStandings, getAfScorers, getAfRecent,
   afCompetitions, pollAfLive, startAfMatchesScheduler, afWindowStatus, refreshAfWindow, onAfWindow, isKnownAfFixture, afExtrasForFd, withAfOdds, backfillAfOdds
 } from './services/afMatches';
-import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNationalEloScheduler, nationalGoalsSensitivity } from './services/nationalElo';
+import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNationalEloScheduler, nationalGoalsSensitivity, tuneNational, nationalTuneStatus } from './services/nationalElo';
 import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler, clubValueReport } from './services/clubElo';
 import { nationalValueSearch, historyMatchReport } from './services/squadValues';
 import { drawAlertsReport, drawFactorTest } from './services/drawAlerts';
@@ -79,7 +79,7 @@ const tokenKind = (t: unknown): 'read' | 'job' | null =>
 
 // GET endpoints that DO something (start a job, spend API calls, change data). The read token may not call them,
 // and a browser may not call them from another website (see the cross-site guard below).
-const ACTION_GET = /^\/api\/(model\/v3\/player-quality\/rebuild|data-audit\/run|history\/(sync-season|refit)|af\/(odds-backfill|sync|raw)|clv\/(tick|probe)|model\/v3\/(backfill|squad\/sync|league-tune|league-conv)|backtest\/(run|sweep))$/;
+const ACTION_GET = /^\/api\/(model\/v3\/player-quality\/rebuild|data-audit\/run|history\/(sync-season|refit)|af\/(odds-backfill|sync|raw)|clv\/(tick|probe)|model\/v3\/(backfill|squad\/sync|league-tune|league-conv)|backtest\/(run|sweep)|model\/elo\/tune)$/;
 const isActionGet = (req: express.Request) =>
   req.method === 'GET' && (ACTION_GET.test(req.path) || (req.path === '/api/team-overrides' && !!req.query.field));
 
@@ -955,6 +955,14 @@ app.get('/api/model/elo', async (req, res) => {
 app.get('/api/model/euro/values', (req, res) => {
   res.json({ data: clubValueReport(req.query.q ? String(req.query.q) : undefined), timestamp: new Date().toISOString() });
 });
+// National-team engine settings: /tune starts the search in the background (job token), /tune/status shows it
+app.get('/api/model/elo/tune', (_req, res) => {
+  if (nationalTuneStatus()?.running) return res.json({ data: nationalTuneStatus(), timestamp: new Date().toISOString() });
+  tuneNational().catch(e => logger.warn(`national tune: ${e.message}`));
+  res.json({ data: { started: true }, timestamp: new Date().toISOString() });
+});
+app.get('/api/model/elo/tune/status', (_req, res) => res.json({ data: nationalTuneStatus(), timestamp: new Date().toISOString() }));
+
 app.get('/api/model/elo/values', (req, res) => {
   res.json({ data: nationalValueSearch(String(req.query.q || '')), timestamp: new Date().toISOString() });
 });
