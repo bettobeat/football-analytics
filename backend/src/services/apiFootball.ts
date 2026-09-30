@@ -17,6 +17,7 @@
  */
 import { db } from '../db';
 import logger from '../utils/logger';
+import { markFresh, markFailed } from './freshness';
 import { GROUPS, ALIASES, similarity, seasonCodes } from './history';
 import { playerValue } from './squadValues';
 import { syncPlayerData } from './playerData';
@@ -600,8 +601,10 @@ export async function afTick(force = false) {
 
     rebuildAfFeatures();
     lastError = null;
+    markFresh('injuries-lineups');
   } catch (e: any) {
     lastError = e.message;
+    markFailed('injuries-lineups', e);
     logger.warn(`API-Football tick failed: ${e.message}`);
   } finally {
     running = false;

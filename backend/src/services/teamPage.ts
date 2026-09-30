@@ -15,6 +15,7 @@ import logger from '../utils/logger';
 import { afGet, afRemaining, afConfigured } from './apiFootball';
 import { groupForCompetition, fdNameFor, normalizeName } from './history';
 import { isKnownAfFixture, fdTwinOf } from './afMatches';
+import { teamAnalysis, teamAnalysisTeaser } from './teamAnalysis';
 
 const AF_OFFSET = 1_000_000_000;
 const TTL = 6 * 3600 * 1000; // search index
@@ -456,9 +457,12 @@ async function pageData(afId: number): Promise<any> {
 
 export async function teamPage(afId: number, full: boolean) {
   const data: any = await pageData(afId);
-  if (full) return { ...data, premium: true };
+  let analysis: any = null;
+  try { analysis = teamAnalysis(afId, data); } catch (e: any) { logger.warn(`team analysis ${afId}: ${e.message}`); }
+  if (full) return { ...data, analysis, premium: true };
   return {
     ...data,
+    analysis: analysis ? teamAnalysisTeaser(analysis) : null,
     premium: false,
     squad: data.squad.map((p: any) => ({ id: p.id, name: p.name, number: p.number, pos: p.pos, age: p.age, photo: p.photo, goals: p.goals })),
     scorers: data.scorers.slice(0, 3),

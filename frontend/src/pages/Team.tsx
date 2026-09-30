@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { errorText, useAuth } from '../lib/auth'
+import { TeamAnalysisCard, TeamRecordCard, type Analysis } from '../components/TeamAnalysis'
 
 interface Side { id: number; name: string; logo: string }
 interface Fixture { matchId: number | null; date: string; status: string; comp: string; home: Side; away: Side; hg: number | null; ag: number | null }
@@ -26,6 +27,7 @@ interface TeamData {
   locked?: string[]
   builtAt?: string
   stale?: boolean
+  analysis?: Analysis | null
 }
 
 const FORM_BG = { W: 'bg-win', D: 'bg-draw', L: 'bg-loss' }
@@ -179,19 +181,8 @@ export default function Team() {
 
       <div className="grid gap-5 lg:grid-cols-[1.55fr_1fr]">
         <div className="space-y-5 min-w-0">
-          {/* AI analysis */}
-          <section className="rounded-3xl p-6 border border-accent/30 bg-[linear-gradient(160deg,rgb(var(--accent)/0.09),rgb(var(--surface)/0.6))] space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="font-display text-lg font-bold">AI analysis: where the team stands</h2>
-              <span className="text-[11px] font-extrabold text-bg bg-accent px-2.5 py-1 rounded-full">Premium</span>
-            </div>
-            <p className="text-sm text-muted leading-relaxed">
-              {full
-                ? 'Coming soon: a daily written analysis of the team: form and why, attack and defence, injuries, and what v3 expects next.'
-                : 'Premium members will get a daily written analysis of the team: form and why, attack and defence, injuries, and what v3 expects next.'}
-            </p>
-            {!full && <Link to="/premium" className="inline-block text-sm font-bold text-accent">See Premium →</Link>}
-          </section>
+          {/* Team analysis: model's view, form & trends, strengths & weaknesses (paid); locked preview for free */}
+          <TeamAnalysisCard a={data.analysis} full={full} />
 
           {nextMatch && (
             <Card title="Next match" action={<span className="text-xs text-faint">{nextMatch.comp}</span>}>
@@ -278,6 +269,8 @@ export default function Team() {
               </div>
             </Card>
           )}
+
+          <TeamRecordCard rec={data.analysis?.record} teamName={team.name} />
 
           <Card title="Top scorers" action={!full ? <span className="text-[11px] text-faint">Top 3 · <Link to="/premium" className="text-accent font-bold">all</Link></span> : undefined}>
             <Leaders items={data.scorers} label="goals" />

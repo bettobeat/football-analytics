@@ -8,6 +8,7 @@
  * these matches is in play, match details / tables / scorers / odds on demand with caching.
  */
 import logger from '../utils/logger';
+import { markFresh } from './freshness';
 import { freezePredictions } from './tracking';
 import { db } from '../db';
 import { afGet, afConfigured, afRemaining } from './apiFootball';
@@ -338,6 +339,7 @@ export async function refreshAfWindow() {
   if (failed && windowMatches.length && all.length < windowMatches.length * 0.5) return windowMatches.length; // keep a healthy window
   windowMatches = all.sort((a, b) => a.utcDate.localeCompare(b.utcDate));
   windowAt = Date.now();
+  markFresh('extra-fixtures', `${windowMatches.length} matches`);
   try {
     windowListener?.(windowMatches);
   } catch (e: any) {
@@ -351,14 +353,52 @@ export async function refreshAfWindow() {
 }
 
 /** Live scores for our extra competitions — one request, only while one of them can be in play. */
+/*
+ * Games that need their true state from the provider: ones that just dropped out of the live list (the last live
+ * poll can miss a stoppage-time goal) and ones still shown as live or not started long after kick-off (a provider
+ * hiccup). Checked by fixture id, up to 20 per request, each at most every 10 minutes.
+ */
+const lastChecked = new Map<number, number>();
+async function confirmStates(ids: number[]) {
+  const now = Date.now();
+  const todo = ids.filter(id => (lastChecked.get(id) || 0) < now - 10 * 60 * 1000).slice(0, 20);
+  if (!todo.length || afRemaining() < 100) return 0;
+  todo.forEach(id => lastChecked.set(id, now));
+  if (lastChecked.size > 5000) for (const [k, t] of lastChecked) if (t < now - 86400000) lastChecked.delete(k);
+  try {
+    const j = await afGet('/fixtures', { ids: todo.map(id => id - AF_OFFSET).join('-') });
+    const fresh = new Map<number, any>((j.response || []).map((f: any) => { const m = toFdMatch(f); return [m.id, m]; }));
+    windowMatches = windowMatches.map(m => {
+      const f = fresh.get(m.id);
+      return f ? { ...m, status: f.status, minute: f.minute, injuryTime: f.injuryTime, score: f.score } : m;
+    });
+    return fresh.size;
+  } catch (e: any) {
+    logger.warn(`AF confirm states: ${e.message}`);
+    return 0;
+  }
+}
+
+const FINAL = ['FINISHED', 'CANCELLED', 'POSTPONED', 'AWARDED'];
+/** In-window games that should have a result by now but don't (kick-off more than 2 h 30 min ago). */
+function overdue(now: number) {
+  return windowMatches.filter(m => !FINAL.includes(m.status) && new Date(m.utcDate).getTime() < now - 150 * 60 * 1000 && new Date(m.utcDate).getTime() > now - 3 * 86400000);
+}
+
+/** Live scores for our extra competitions — one request, only while one of them can be in play. */
 export async function pollAfLive() {
   if (!afConfigured()) return [];
   const now = Date.now();
   const maybeLive = windowMatches.some(m => {
     const t = new Date(m.utcDate).getTime();
-    return t <= now + 5 * 60 * 1000 && t >= now - 3 * 3600 * 1000 && !['FINISHED', 'CANCELLED', 'POSTPONED', 'AWARDED'].includes(m.status);
+    return t <= now + 5 * 60 * 1000 && t >= now - 3 * 3600 * 1000 && !FINAL.includes(m.status);
   });
-  if (!maybeLive) { liveById = new Map(); return []; }
+  if (!maybeLive) {
+    liveById = new Map();
+    const late = overdue(now);
+    if (late.length) await confirmStates(late.map(m => m.id));
+    return [];
+  }
   try {
     // all live fixtures in one request, kept when they belong to our window (fixed list + every national competition)
     const inWindow = new Set(windowMatches.map(m => m.id));
@@ -368,19 +408,32 @@ export async function pollAfLive() {
       .filter((f: any) => senior(f) && (inWindow.has(AF_OFFSET + f.fixture.id) || fixed.has(f.league?.id) || isNationalLeague(f.league)))
       .map(toFdMatch);
     liveById = new Map(live.map((m: any) => [m.id, m]));
-    // fold live status/score into the window; matches that just finished get their final state
+    // fold live status/score into the window
     const liveIds = new Set(liveById.keys());
+    const dropped: number[] = [];
     windowMatches = windowMatches.map(m => {
       const l = liveById.get(m.id);
       if (l) return { ...m, status: l.status, minute: l.minute, injuryTime: l.injuryTime, score: l.score };
-      if (['IN_PLAY', 'PAUSED'].includes(m.status) && !liveIds.has(m.id)) return { ...m, status: 'FINISHED' };
+      if (['IN_PLAY', 'PAUSED'].includes(m.status)) {
+        // gone from the live list: finished (or suspended). Shown as finished now, confirmed right below.
+        dropped.push(m.id);
+        return { ...m, status: 'FINISHED' };
+      }
       return m;
     });
+    // confirm the final score of games that just ended, and fix any stuck game
+    const late = overdue(now).filter(m => !liveIds.has(m.id)).map(m => m.id);
+    if (dropped.length || late.length) await confirmStates([...dropped, ...late]);
     return live;
   } catch (e: any) {
     logger.warn(`AF live poll: ${e.message}`);
     return [...liveById.values()];
   }
+}
+
+/** Data health: games in our extra-competition window that are overdue a result (for the health check). */
+export function afOverdue() {
+  return overdue(Date.now()).map(m => ({ id: m.id, home: m.homeTeam?.name, away: m.awayTeam?.name, utcDate: m.utcDate, status: m.status, minute: m.minute ?? null, competition: m.competition?.name }));
 }
 
 export function startAfMatchesScheduler() {

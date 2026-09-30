@@ -275,7 +275,7 @@ export async function settlePending(
 
 /* ---------------- metrics ---------------- */
 
-interface SettledRow {
+export interface SettledRow {
   match_id: number;
   model: string;
   competition_code: string | null;
@@ -333,6 +333,11 @@ function settledRows(days: number, competition?: string, model?: string): Settle
     });
   }
   return rows.sort((a, b) => (a.utc_date < b.utc_date ? 1 : -1));
+}
+
+/** Every settled match once (best model), newest first — for per-team records (team analysis). */
+export function mainSettledRows(days: number): SettledRow[] {
+  return settledRows(days, undefined, 'main');
 }
 
 function settledRowsRaw(days: number, competition?: string, model?: string): SettledRow[] {

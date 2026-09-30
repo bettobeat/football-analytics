@@ -491,3 +491,12 @@ export function startNationalEloScheduler() {
   setTimeout(run, 3 * 60 * 1000);
   setInterval(run, 12 * 3600 * 1000);
 }
+
+/** Team analysis for a national team: Elo and world rank among active national teams. */
+export function nationalTeamView(afId: number) {
+  const me = ratings.get(afId);
+  if (!me) return null;
+  const since = new Date(Date.now() - 3 * 365 * 86400000).toISOString().slice(0, 10);
+  const active = [...ratings.values()].filter(r => r.n >= 15 && r.last >= since);
+  return { elo: Math.round(me.elo), rank: active.filter(r => r.elo > me.elo).length + 1, teams: active.length, matches: me.n };
+}

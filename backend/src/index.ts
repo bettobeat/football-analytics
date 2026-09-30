@@ -46,6 +46,8 @@ import { highlightsFor, highlightsStatus, lastCandidates } from './services/high
 import { rebuildPlayerQuality, playerQualityTable } from './services/playerQuality';
 import { db } from './db';
 import { normalizeName } from './services/history';
+import { markFresh, markFailed } from './services/freshness';
+import { dataHealth, startDataHealthScheduler } from './services/dataHealth';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures, afGet, afRemaining, xgCoverage } from './services/apiFootball';
 import {
   signup, login, changePassword, setPlan, adminResetPassword, listUsers, userStats, createSession, destroySession, userForToken,
@@ -662,6 +664,15 @@ app.get('/api/model/goals-calibration', (req, res) => {
     res.json({ data: goalsCalibration(seasons.length ? seasons : ['2526', '2627'], req.query.groups === '1'), timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Goals calibration failed');
+  }
+});
+
+// Admin: data health — every feed's age and the validity checks (see services/dataHealth.ts). Runs the checks now.
+app.get('/api/data-health', async (_req, res) => {
+  try {
+    res.json({ data: await dataHealth(), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Data health failed');
   }
 });
 
@@ -1382,8 +1393,10 @@ setInterval(async () => {
       io.to(`match:${m.id}:full`).emit('match:live', m);
       io.to(`match:${m.id}:teaser`).emit('match:live', teaseDeep({ m }).m);
     }
+    markFresh('live', `${live.length} live`);
   } catch (error: any) {
     logger.warn('Live poll failed', { message: error.message });
+    markFailed('live', error);
   } finally {
     livePolling = false;
   }
@@ -1435,8 +1448,8 @@ server.listen(PORT, () => {
       (from, to) => footballDataAPI.getMatchesInRange(from, to),
       async ids => (afRemaining() > 50 ? ((await afGet('/fixtures', { ids: ids.join('-') })).response || []) : [])
     )
-      .then(() => backfillAfOdds())
-      .catch(err => logger.warn('Settle job failed', { message: err.message }));
+      .then(r => { markFresh('results', r ? `${r.settled} settled, ${r.pending} pending` : undefined); return backfillAfOdds(); })
+      .catch(err => { markFailed('results', err); logger.warn('Settle job failed', { message: err.message }); });
   setTimeout(settle, 60 * 1000);
   setInterval(settle, parseInt(process.env.SETTLE_INTERVAL_MS || '600000', 10));
   // Market odds: decide every 10 minutes which competitions deserve a fetch (budget-aware)
@@ -1444,7 +1457,8 @@ server.listen(PORT, () => {
     footballDataAPI
       .getUpcomingMatches(30)
       .then(ms => oddsTick(ms))
-      .catch(err => logger.warn('Odds job failed', { message: err.message }));
+      .then(() => markFresh('odds'))
+      .catch(err => { markFailed('odds', err); logger.warn('Odds job failed', { message: err.message }); });
   setTimeout(odds, 90 * 1000);
   setInterval(odds, parseInt(process.env.ODDS_TICK_MS || '600000', 10));
   // Squad market values for model v3 (weekly; first attempt after the history sync has team names)
@@ -1452,6 +1466,7 @@ server.listen(PORT, () => {
   // Injuries / suspensions / confirmed lineups (API-Football) for model v3 rows #12 and #13
   startApiFootballScheduler();
   startDataAuditScheduler();
+  startDataHealthScheduler();
   // Live closing-line value tracking (open price + v3 at 48 h, closing price in the last 35 min)
   startClvScheduler();
   // Extra competitions (national teams, Europa/Conference League, Israel, Saudi, more European leagues)

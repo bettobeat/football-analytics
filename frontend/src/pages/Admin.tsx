@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { errorText, useAuth, type User } from '../lib/auth'
+import DataHealth from '../components/DataHealth'
 
 type Row = User & { lastLoginAt: string | null }
 
@@ -66,6 +67,7 @@ export default function Admin() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
+      <DataHealth />
       <div className="flex flex-wrap items-end justify-between gap-3 mb-5">
         <div>
           <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink">Users</h1>

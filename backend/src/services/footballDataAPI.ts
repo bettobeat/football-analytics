@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { freezePredictions } from './tracking';
 import logger from '../utils/logger';
+import { markFresh, markFailed } from './freshness';
 import { predictFromStandings, Prediction, StandingsResponse } from './predictionModel';
 import { predictV2, prepareModelV2 } from './historyModel';
 import { predictV3, prepareModelV3 } from './gridModel';
@@ -179,6 +180,7 @@ class FootballDataAPI {
         }
         this.window = matches;
         this.windowLoadedAt = Date.now();
+        markFresh('fixtures', `${matches.length} matches`);
         await this.refreshStandings();
         if (this.onWindowRefreshed) {
           try {
@@ -190,6 +192,7 @@ class FootballDataAPI {
       })
       .catch(err => {
         logger.error('Window refresh failed, keeping previous data', { message: err.message });
+        markFailed('fixtures', err);
         if (!this.window) throw err;
       })
       .finally(() => {
@@ -252,6 +255,14 @@ class FootballDataAPI {
   /** Load/refresh standings for every competition in the window (cached 30 min). */
   private async refreshStandings() {
     const codes = Array.from(new Set((this.window || []).map(m => m.competition?.code).filter(Boolean)));
+    // Tables change when a game ends: for competitions with a game in the last 3 hours the cached table is kept only
+    // 5 minutes (instead of 30), so the table is current a few minutes after the final whistle.
+    const now = Date.now();
+    for (const code of codes) {
+      const busy = (this.window || []).some(m => m.competition?.code === code && new Date(m.utcDate).getTime() < now && new Date(m.utcDate).getTime() > now - 3 * 3600 * 1000);
+      const entry = this.cache.get(`standings:${code}`);
+      if (busy && entry && entry.expires - 25 * 60 * 1000 < now) this.cache.delete(`standings:${code}`);
+    }
     const results = await Promise.allSettled(codes.map(code => this.getStandings(code)));
     let ok = 0;
     results.forEach((r, i) => {
@@ -264,6 +275,7 @@ class FootballDataAPI {
       }
     });
     console.log(`📊 Standings loaded for ${ok}/${codes.length} competitions`);
+    if (ok) markFresh('standings', `${ok}/${codes.length} competitions`); else if (codes.length) markFailed('standings', 'no standings loaded');
   }
 
   /** v1: standings-based Poisson model (always available once standings are loaded). */

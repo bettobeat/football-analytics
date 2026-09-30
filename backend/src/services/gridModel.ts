@@ -20,6 +20,7 @@
  */
 import { db } from '../db';
 import logger from '../utils/logger';
+import { markFresh } from './freshness';
 import { GROUPS, groupForCompetition, loadGroupMatches, fdNameFor, HistoryMatch } from './history';
 import { Prediction } from './predictionModel';
 import { squadValueFor, squadValueAt } from './squadValues';
@@ -775,6 +776,8 @@ export function prepareModelV3() {
     built++;
   }
   lastBuiltAt = new Date().toISOString();
+  trendCache.clear();
+  markFresh('model', `${built} groups`);
   logger.info(`model v3 state built for ${built} groups`);
   return built;
 }
@@ -797,6 +800,61 @@ export function predictV3ByNames(group: string, home: string, away: string, date
   const live = liveState.get(group);
   if (!live) return null;
   return withLiveConfig(() => scoreMatch(live.state, live.all, home, away, live.state.asOf, date.slice(0, 10)));
+}
+
+/*
+ * Team analysis: how v3 sees one team now, and how that changed over the last months (state rebuilt at a few past
+ * dates; the snapshots are shared by every team of the group and kept for 12 hours).
+ */
+const trendCache = new Map<string, { at: number; snaps: { date: string; state: GroupState }[] }>();
+function trendSnaps(group: string) {
+  const live = liveState.get(group);
+  if (!live) return [];
+  const c = trendCache.get(group);
+  if (c && Date.now() - c.at < 12 * 3600 * 1000) return c.snaps;
+  const snaps: { date: string; state: GroupState }[] = [];
+  for (let back = 6; back >= 1; back--) {
+    const date = new Date(Date.now() - back * 30 * DAY).toISOString().slice(0, 10);
+    try { snaps.push({ date, state: withLiveConfig(() => buildState(group, live.all, date)) }); } catch { /* skip */ }
+  }
+  trendCache.set(group, { at: Date.now(), snaps });
+  return snaps;
+}
+
+export function teamModelView(group: string, name: string) {
+  const live = liveState.get(group);
+  const t = live?.state.teams.get(name);
+  if (!live || !t) return null;
+  const peers = [...live.state.teams.values()].filter(x => x.division === t.division && x.played > 0);
+  const r2 = (x: number) => Math.round(x * 100) / 100;
+  // strength rank among the teams actually playing in that division that season (by Elo)
+  const rankIn = (st: GroupState, x: TeamFeat) =>
+    [...st.teams.values()].filter(y => y.division === x.division && y.played > 0 && y.elo > x.elo).length + 1;
+  const point = (st: GroupState, date: string) => {
+    const x = st.teams.get(name);
+    if (!x || x.division !== t.division || x.played === 0) return null;
+    return { date, elo: Math.round(x.elo), rank: rankIn(st, x), attack: r2(x.attack), defence: r2(x.defence) };
+  };
+  const trend = [...trendSnaps(group).map(s => point(s.state, s.date)), point(live.state, live.state.asOf)].filter(Boolean);
+  return {
+    division: t.division,
+    teams: peers.length,
+    played: t.played,
+    rank: rankIn(live.state, t),
+    elo: Math.round(t.elo),
+    attack: r2(t.attack),
+    defence: r2(t.defence),
+    leagueGoals: r2(live.state.leagueAvgGoals[t.division] || 0),
+    ppg: r2(t.ppgSeason),
+    homePpg: r2(t.homePpg),
+    awayPpg: r2(t.awayPpg),
+    formPts: t.formPts,
+    drawRate: Math.round(t.drawRate * 100),
+    squadEur: t.squadEur,
+    scores: t.v,
+    asOf: live.state.asOf,
+    trend
+  };
 }
 
 export function modelV3Status() {
