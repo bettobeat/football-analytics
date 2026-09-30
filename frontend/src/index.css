@@ -194,3 +194,7 @@ html.dark {
   mix-blend-mode: multiply;
   pointer-events: none;
 }
+
+/* horizontal rows that scroll without showing a scrollbar (season tabs) */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
