@@ -37,6 +37,8 @@ export interface StandingsResponse {
 
 export interface Prediction {
   model: string;
+  /** v3, once the confirmed lineups are in: the numbers from before them (to show what changed) */
+  beforeLineups?: { home: number; draw: number; away: number; over25: number; btts: number };
   home: number; // %
   draw: number; // %
   away: number; // %

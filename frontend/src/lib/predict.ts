@@ -4,6 +4,8 @@ export interface Prediction {
   /** Free / signed-out view: the server sends only { model, locked, pick, confidence } */
   locked?: boolean
   pick?: 'H' | 'D' | 'A'
+  /** once the confirmed lineups are in (v3): the numbers from before them */
+  beforeLineups?: { home: number; draw: number; away: number; over25: number; btts: number }
   home: number // %
   draw: number // %
   away: number // %

@@ -792,7 +792,18 @@ export function predictV3(match: any): Prediction | null {
   const home = fdNameFor(group, match.homeTeam?.id);
   const away = fdNameFor(group, match.awayTeam?.id);
   if (!home || !away) return null;
-  return withLiveConfig(() => scoreMatch(live.state, live.all, home, away, live.state.asOf, String(match.utcDate || '').slice(0, 10) || undefined));
+  const date = String(match.utcDate || '').slice(0, 10) || undefined;
+  const res = withLiveConfig(() => scoreMatch(live.state, live.all, home, away, live.state.asOf, date));
+  // Confirmed lineups are in and counted: also send the numbers from before them, so the page can show what changed
+  if (res?.grid?.rows.some(r => r.id === '#12' && /^usual starters out/.test(r.note || ''))) {
+    const pre = withLiveConfig(() => {
+      const keep = CONV.useLineups;
+      CONV.useLineups = 0;
+      try { return scoreMatch(live.state, live.all, home, away, live.state.asOf, date); } finally { CONV.useLineups = keep; }
+    });
+    if (pre) res.beforeLineups = { home: pre.home, draw: pre.draw, away: pre.away, over25: pre.over25, btts: pre.btts };
+  }
+  return res;
 }
 
 /** v3 prediction by football-data.co.uk names (used by CLV tracking, which works from API-Football fixtures). */

@@ -344,6 +344,11 @@ function MatchDetail() {
   const { hidden, reveal } = useReveal(matchId, details?.match.status, true)
   // just unlocked ($15 Premium): play the "v3 is analysing" reveal automatically, then roll the numbers in
   const [unlockAnim, setUnlockAnim] = useState(false)
+  // confirmed lineups in: the updated analysis waits behind its own "reveal" button (remembered per match)
+  const xiKey = `b2b-xi-seen-${matchId}`
+  const [xiSeen, setXiSeen] = useState(() => { try { return localStorage.getItem(xiKey) === '1' } catch { return false } })
+  const [xiAnim, setXiAnim] = useState(false)
+  const markXiSeen = () => { setXiSeen(true); try { localStorage.setItem(xiKey, '1') } catch { /* private mode */ } }
 
   const load = (initial = false) => {
     if (initial) setLoading(true)
@@ -601,6 +606,10 @@ function MatchDetail() {
                     reveal()
                   }}
                 />
+              ) : xiAnim ? (
+                <RevealCover key="xi" autoStart onReveal={() => { setXiAnim(false); markXiSeen() }} />
+              ) : p.beforeLineups && !xiSeen && ['SCHEDULED', 'TIMED'].includes(m.status) ? (
+                <LineupUpdateCover before={p.beforeLineups} home={home} away={away} onReveal={() => setXiAnim(true)} />
               ) : (
               <>
                 {models.length > 1 && (
@@ -674,6 +683,8 @@ function MatchDetail() {
                     <span>This is exactly what we predicted before the game — it is never recalculated after the result.{p.frozen.full ? '' : ' The detailed breakdown was only stored from 26 Sept 2026.'}</span>
                   </div>
                 )}
+
+                {p.beforeLineups && <LineupChange p={p} home={home} away={away} />}
 
                 <PredictionStory
                   p={p}
@@ -860,6 +871,63 @@ function MatchDetail() {
 }
 
 /* ---------- pieces ---------- */
+
+/** Lineups are in: the earlier numbers, and a button to reveal the analysis updated with the confirmed XI. */
+function LineupUpdateCover({ before, home, away, onReveal }: { before: NonNullable<Prediction['beforeLineups']>; home: Team; away: Team; onReveal: () => void }) {
+  const hn = home.shortName || home.name, an = away.shortName || away.name
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-accent/40 bg-[linear-gradient(150deg,rgb(var(--accent)/0.12),rgb(var(--surface)/0.6))] p-5 sm:p-6 text-center space-y-4">
+      <div className="inline-flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-wider text-accent">
+        <span className="w-2 h-2 rounded-full bg-accent animate-pulseDot" /> Lineups are out
+      </div>
+      <div className="font-display text-xl sm:text-2xl font-extrabold text-ink">Our analysis is updated with the starting 11</div>
+      <p className="text-sm text-muted max-w-md mx-auto">
+        The teams have published their lineups and we have recalculated the prediction with the players who actually start.
+      </p>
+      <div className="text-xs text-faint num">
+        Before the lineups: {hn} {Math.round(before.home)}% · Draw {Math.round(before.draw)}% · {an} {Math.round(before.away)}%
+      </div>
+      <button
+        type="button"
+        onClick={onReveal}
+        className="inline-flex items-center gap-2 h-12 px-6 rounded-2xl bg-accent text-bg font-extrabold shadow-lift hover:brightness-105"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+        Reveal the updated analysis
+      </button>
+    </div>
+  )
+}
+
+/** After the reveal: how the lineups moved the numbers. */
+function LineupChange({ p, home, away }: { p: Prediction; home: Team; away: Team }) {
+  const b = p.beforeLineups!
+  const hn = home.shortName || home.name, an = away.shortName || away.name
+  const items: [string, number, number][] = [[hn, b.home, p.home], ['Draw', b.draw, p.draw], [an, b.away, p.away]]
+  const moved = items.some(([, x, y]) => Math.abs(y - x) >= 1)
+  const d = (x: number, y: number) => { const v = Math.round((y - x) * 10) / 10; return v === 0 ? '±0' : `${v > 0 ? '+' : ''}${v}` }
+  return (
+    <div className="mt-4 rounded-xl border border-accent/30 bg-accent/5 p-3 sm:p-4">
+      <div className="text-[11px] font-extrabold uppercase tracking-wide text-accent">Updated with the confirmed lineups</div>
+      {moved ? (
+        <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+          {items.map(([label, x, y]) => (
+            <div key={label} className="rounded-lg bg-surface2/60 py-2">
+              <div className="text-[11px] text-faint truncate px-1">{label}</div>
+              <div className="num text-sm text-ink"><span className="text-faint">{Math.round(x)}%</span> → <b>{Math.round(y)}%</b></div>
+              <div className={`num text-[11px] font-bold ${y - x >= 1 ? 'text-win' : y - x <= -1 ? 'text-loss' : 'text-faint'}`}>{d(x, y)}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-1 text-sm text-muted">The starting 11s are as expected: the prediction hardly moved.</p>
+      )}
+    </div>
+  )
+}
 
 /**
  * Upcoming matches: lineups come out about 1 hour before kick-off, and for league matches (v3) the prediction is
