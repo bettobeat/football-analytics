@@ -249,6 +249,37 @@ export default function Home() {
   return (
     <div className="max-w-7xl 2xl:max-w-[1760px] mx-auto px-4 sm:px-6 py-6 sm:py-8 2xl:grid 2xl:grid-cols-[minmax(0,1fr)_360px] 2xl:gap-8 2xl:items-start">
     <div className="space-y-10 min-w-0">
+      {/* ---------- first visit: what this is and why trust it, in five seconds (signed-out visitors only) ---------- */}
+      {access === 'anon' && (
+        <section className="rounded-3xl border border-accent/30 bg-[linear-gradient(135deg,rgb(var(--accent)/0.10),rgb(var(--surface)/0.6)_60%)] p-5 sm:p-7 flex flex-col lg:flex-row lg:items-center gap-5">
+          <div className="flex-1 min-w-0 space-y-2">
+            <h1 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-ink">Football predictions, tested in public against the bookmakers</h1>
+            <p className="text-sm sm:text-base text-muted max-w-2xl">
+              Win, draw or loss chances, goals and the reasons behind every pick, for the top leagues, cups and national teams. Every prediction is saved before
+              kick-off and scored after the game, so you can check us.
+            </p>
+          </div>
+          {summary?.v3?.hitRate != null && (
+            <div className="flex gap-3">
+              <div className="rounded-2xl bg-surface/70 border border-line px-4 py-3 text-center">
+                <div className="font-display text-2xl font-extrabold text-accent num">{summary.v3.hitRate}%</div>
+                <div className="text-[11px] text-muted">our picks right</div>
+              </div>
+              {summary.bookmakers?.hitRate != null && (
+                <div className="rounded-2xl bg-surface/70 border border-line px-4 py-3 text-center">
+                  <div className="font-display text-2xl font-extrabold text-ink num">{summary.bookmakers.hitRate}%</div>
+                  <div className="text-[11px] text-muted">bookmakers' favourite</div>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex flex-col sm:flex-row lg:flex-col gap-2 lg:w-52">
+            <Link to="/signup" className="h-11 px-5 rounded-2xl bg-accent text-bg font-extrabold grid place-items-center">Get 2 free picks a day</Link>
+            <Link to="/accuracy" className="h-11 px-5 rounded-2xl border border-line text-ink font-semibold grid place-items-center hover:border-faint">See our record</Link>
+          </div>
+        </section>
+      )}
+
       {/* ---------- hero: featured match (team colours from the crests) + live / next kick-offs ---------- */}
       <div className="grid gap-5 lg:grid-cols-[1.75fr_1fr]">
         <FeaturedHero m={featured} p={fp} />

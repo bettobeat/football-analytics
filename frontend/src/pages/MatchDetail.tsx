@@ -1270,6 +1270,27 @@ function GoalsPanel({ p, home, away, roll }: { p: Prediction; home: Team; away: 
           <div className="mt-3 text-[11px] text-faint">{hn} first · {an} second</div>
         </div>
       </div>
+      {(() => {
+        // who scores first: the first goal goes to each side in proportion to its expected goals
+        const lh = Math.max(0.01, p.expectedGoals.home), la = Math.max(0.01, p.expectedGoals.away), lam = lh + la
+        const none = Math.exp(-lam) * 100
+        const fh = (lh / lam) * (100 - none), fa = (la / lam) * (100 - none)
+        return (
+          <div className="rounded-xl border border-line/70 bg-surface2/40 p-4">
+            <div className="label mb-3">Who scores first</div>
+            <div className="flex h-2.5 gap-[3px] rounded-full overflow-hidden" aria-hidden>
+              <div className="bg-home" style={{ width: `${fh}%` }} />
+              <div className="bg-faint/50" style={{ width: `${none}%` }} />
+              <div className="bg-away" style={{ width: `${fa}%` }} />
+            </div>
+            <div className="mt-2 grid grid-cols-3 text-sm">
+              <span><span className="text-muted">{hn}</span> <b className="num text-ink">{Math.round(fh)}%</b></span>
+              <span className="text-center"><span className="text-muted">No goal</span> <b className="num text-ink">{Math.round(none)}%</b></span>
+              <span className="text-right"><span className="text-muted">{an}</span> <b className="num text-ink">{Math.round(fa)}%</b></span>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

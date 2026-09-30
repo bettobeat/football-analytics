@@ -40,6 +40,7 @@ interface Record_ {
   over15?: { n: number; hitRate: number | null; hits: number; overShare: number | null }
   safest?: { n: number; hitRate: number | null; hits: number; byMarket: { market: string; n: number; hitRate: number | null }[] }
   byCompetition: { code: string; name: string; n: number; v3: number | null; market: number | null }[]
+  byConfidence?: { id: string; label: string; n: number; hitRate: number | null; said: number | null; market: number | null; marketN: number }[]
   recent: Recent[]
 }
 
@@ -220,6 +221,34 @@ export default function AccuracySimple() {
               )}
             </Card>
           </div>
+
+          {rec.byConfidence && rec.byConfidence.some(b => b.n > 0) && (
+            <Card>
+              <h2 className="font-display text-xl font-bold text-ink">How sure we were, and how often we were right</h2>
+              <p className="text-sm text-muted mt-1 mb-4">
+                Every match result pick, grouped by the chance we gave it. When our numbers are honest, the games we call at 70% should come in about 7 times in 10.
+              </p>
+              <div className="space-y-3">
+                {rec.byConfidence.filter(b => b.n > 0).map(b => (
+                  <div key={b.id} className="grid grid-cols-[110px_1fr_auto] sm:grid-cols-[140px_1fr_auto] items-center gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-ink">We said {b.label}</div>
+                      <div className="text-[11px] text-faint num">{b.n} games · average {b.said}%</div>
+                    </div>
+                    <div className="relative h-3 rounded-full bg-surface2 overflow-hidden">
+                      <div className="h-full rounded-full bg-accent" style={{ width: `${Math.min(100, b.hitRate ?? 0)}%` }} />
+                      {b.said !== null && <div className="absolute top-[-2px] bottom-[-2px] w-0.5 bg-ink/70" style={{ left: `${b.said}%` }} title={`We said ${b.said}%`} />}
+                    </div>
+                    <div className="text-right min-w-[92px]">
+                      <div className="num text-sm font-extrabold text-ink">{pct(b.hitRate)} right</div>
+                      {b.market !== null && <div className="num text-[11px] text-faint">bookmakers {pct(b.market)}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-faint mt-3">The thin line on each bar is the chance we gave; the bar is how often it happened. Bookmakers: their favourite on the same games.</p>
+            </Card>
+          )}
 
           {rec.byCompetition.length > 0 && (
             <Card>

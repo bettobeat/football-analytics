@@ -16,6 +16,7 @@ import { afGet, afRemaining, afConfigured } from './apiFootball';
 import { groupForCompetition, fdNameFor, normalizeName } from './history';
 import { isKnownAfFixture, fdTwinOf } from './afMatches';
 import { teamAnalysis, teamAnalysisTeaser } from './teamAnalysis';
+import { twinDupIds, warmPlayers } from './playerPage';
 
 const AF_OFFSET = 1_000_000_000;
 const TTL = 6 * 3600 * 1000; // search index
@@ -164,7 +165,9 @@ export function searchPlayers(q: string, limit = 6) {
   if (needle.length < 2) return [];
   const teams = new Map(teamIndex().map(t => [t.id, t]));
   const scored: { p: IndexPlayer; s: number }[] = [];
+  const dups = twinDupIds();
   for (const p of playerIndex()) {
+    if (dups.has(p.id)) continue;
     const s = playerMatch(p.words, p.norm, needle);
     if (s) scored.push({ p, s: s + Math.min(20, p.minutes / 150) });
   }
@@ -458,6 +461,7 @@ async function pageData(afId: number): Promise<any> {
 
 export async function teamPage(afId: number, full: boolean) {
   const data: any = await pageData(afId);
+  try { warmPlayers((data.squad || []).map((p: any) => p.id).filter(Boolean)); } catch { /* optional */ }
   let analysis: any = null;
   try { analysis = teamAnalysis(afId, data); } catch (e: any) { logger.warn(`team analysis ${afId}: ${e.message}`); }
   if (full) return { ...data, analysis, premium: true };

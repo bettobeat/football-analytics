@@ -16,7 +16,7 @@ import { predictFromStandings, Prediction } from './predictionModel';
 import { groupForCompetition, buildTeamMap, fdNameFor } from './history';
 import { predictV2 } from './historyModel';
 import { predictV3 } from './gridModel';
-import { predictNational } from './nationalElo';
+import { predictNational, isNationalTeam } from './nationalElo';
 import { predictClubEuro } from './clubElo';
 
 export const AF_OFFSET = 1_000_000_000;
@@ -347,6 +347,12 @@ export async function refreshAfWindow() {
   const national = await nationalByDate(from, to);
   const seen = new Set(all.map(m => m.id));
   for (const m of national) if (!seen.has(m.id)) all.push(m);
+  // international friendlies (AF10) sometimes list club vs national-team games (Konyaspor – Palestine): keep only
+  // games between two national teams we have a rating for
+  for (let i = all.length - 1; i >= 0; i--) {
+    const m = all[i];
+    if (m.competition?.code === 'AF10' && !(isNationalTeam(m.homeTeam?.id - AF_OFFSET) && isNationalTeam(m.awayTeam?.id - AF_OFFSET))) all.splice(i, 1);
+  }
   if (failed && windowMatches.length && all.length < windowMatches.length * 0.5) return windowMatches.length; // keep a healthy window
   windowMatches = all.sort((a, b) => a.utcDate.localeCompare(b.utcDate));
   windowAt = Date.now();

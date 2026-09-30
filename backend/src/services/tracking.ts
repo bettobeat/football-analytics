@@ -654,6 +654,9 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
   const dc = { n: 0, v3: 0, market: 0 };
   const ou15 = { n: 0, hits: 0, overPicks: 0 };
   const safest = { n: 0, hits: 0, byMarket: {} as Record<string, { n: number; hits: number }> };
+  // how often we are right at each confidence level (the pick's own %), with the bookmakers on the same games
+  const BANDS = [{ id: '70+', lo: 70, hi: 101, label: '70% or more' }, { id: '60-70', lo: 60, hi: 70, label: '60–70%' }, { id: '50-60', lo: 50, hi: 60, label: '50–60%' }, { id: '<50', lo: 0, hi: 50, label: 'under 50%' }];
+  const bands = BANDS.map(b => ({ ...b, n: 0, hits: 0, sumP: 0, mN: 0, mHits: 0 }));
   type DC = '1X' | 'X2' | '12';
   const dcOf = (h: number, d: number, a: number): { k: DC; p: number } => {
     const c: { k: DC; p: number }[] = [{ k: '1X', p: h + d }, { k: 'X2', p: d + a }, { k: '12', p: h + a }];
@@ -664,6 +667,16 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
     const hg = Number(r.home_goals), ag = Number(r.away_goals);
     const v3pick = pick(r);
     const v3hit = v3pick === r.outcome;
+    const topP = Math.max(Number(r.p_home), Number(r.p_draw), Number(r.p_away));
+    const band = bands.find(b => topP >= b.lo && topP < b.hi);
+    if (band) {
+      band.n++; band.sumP += topP; if (v3hit) band.hits++;
+      if (r.odds_home && r.odds_draw && r.odds_away) {
+        band.mN++;
+        const mk = r.odds_home <= r.odds_draw && r.odds_home <= r.odds_away ? 'H' : r.odds_away <= r.odds_draw ? 'A' : 'D';
+        if (mk === r.outcome) band.mHits++;
+      }
+    }
     let mkPick: Outcome | null = null;
     if (r.odds_home && r.odds_draw && r.odds_away) {
       mkPick = r.odds_home <= r.odds_draw && r.odds_home <= r.odds_away ? 'H' : r.odds_away <= r.odds_draw ? 'A' : 'D';
@@ -757,6 +770,7 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
       hits: safest.hits,
       byMarket: Object.entries(safest.byMarket).map(([market, v]) => ({ market, n: v.n, hitRate: pc(v.hits, v.n) })).sort((a, b) => b.n - a.n)
     },
+    byConfidence: bands.map(b => ({ id: b.id, label: b.label, n: b.n, hitRate: pc(b.hits, b.n), said: b.n ? Math.round(b.sumP / b.n) : null, market: b.mN ? pc(b.mHits, b.mN) : null, marketN: b.mN })),
     byCompetition: [...byComp.values()]
       .filter(c => c.n >= 5)
       .map(c => ({ ...c, v3: pc(c.v3, c.n), market: pc(c.market, c.n) }))

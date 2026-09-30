@@ -229,13 +229,25 @@ async function findTwins(pid: number, p: any, S: number, src: any[]): Promise<nu
     cands = db.prepare(`SELECT DISTINCT player_id, name FROM af_player_season WHERE season = ? AND team_id IN (${teams.map(() => '?').join(',')}) AND player_id != ?`).all(S, ...teams, pid) as any[];
   } catch { return []; }
   const out: number[] = [];
+  const mins = (d: any) => ((d?.statistics || []) as any[]).reduce((t, x) => t + (Number(x.games?.minutes) || 0), 0);
+  const mine = mins(cur);
   for (const c of cands.filter(c => plain(c.name).split(' ').pop() === last).slice(0, 3)) {
     try {
       const d = await rawSeason(c.player_id, S, false);
-      if (d?.player?.birth?.date === birth) out.push(c.player_id);
+      if (d?.player?.birth?.date === birth) {
+        out.push(c.player_id);
+        // remember which id is the main one (more minutes): search shows only that one
+        const [main, dup] = mins(d) > mine ? [c.player_id, pid] : [pid, c.player_id];
+        db.prepare(`INSERT OR REPLACE INTO player_twins (dup_id, main_id) VALUES (?, ?)`).run(dup, main);
+      }
     } catch { /* skip */ }
   }
   return out;
+}
+db.exec(`CREATE TABLE IF NOT EXISTS player_twins (dup_id INTEGER PRIMARY KEY, main_id INTEGER NOT NULL)`);
+/** Provider ids that are a second record of another player (hidden from search). */
+export function twinDupIds(): Set<number> {
+  try { return new Set((db.prepare(`SELECT dup_id FROM player_twins`).all() as any[]).map(r => r.dup_id)); } catch { return new Set(); }
 }
 
 /** Rows of the same competition, club and provider season added together (twin ids of one player). */
@@ -462,6 +474,34 @@ async function pageData(pid: number) {
       return { ...JSON.parse(stored.json), stale: true };
     }
     throw e;
+  }
+}
+
+/*
+ * Warm-up: when a team page is opened, its players' pages are built in the background (a couple every 90 seconds,
+ * only while the daily data budget is comfortable), so the first visit to a player page is instant instead of ~15 s.
+ */
+const warmQueue = new Set<number>();
+let warmTimer: NodeJS.Timeout | null = null;
+export function warmPlayers(ids: number[]) {
+  for (const id of ids) {
+    const pid = id >= AF_OFFSET ? id - AF_OFFSET : id;
+    if (!pid || cache.has(pid)) continue;
+    const row: any = db.prepare(`SELECT json FROM player_page_store WHERE player_id = ?`).get(pid);
+    if (row) { try { if (JSON.parse(row.json).v === PAGE_VERSION) continue; } catch { /* rebuild */ } }
+    warmQueue.add(pid);
+  }
+  while (warmQueue.size > 2000) warmQueue.delete(warmQueue.values().next().value as number);
+  if (!warmTimer && warmQueue.size) {
+    warmTimer = setInterval(async () => {
+      if (!warmQueue.size) { clearInterval(warmTimer!); warmTimer = null; return; }
+      if (afRemaining() < 20000) return;
+      for (const pid of [...warmQueue].slice(0, 2)) {
+        warmQueue.delete(pid);
+        try { await pageData(pid); } catch { /* skipped */ }
+      }
+    }, 90 * 1000);
+    warmTimer.unref?.();
   }
 }
 

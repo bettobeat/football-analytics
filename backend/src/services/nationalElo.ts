@@ -631,3 +631,9 @@ export function nationalTeamView(afId: number) {
   const active = [...ratings.values()].filter(r => r.n >= 15 && r.last >= since);
   return { elo: Math.round(me.elo), rank: active.filter(r => r.elo > me.elo).length + 1, teams: active.length, matches: me.n };
 }
+
+/** Is this API-Football team a national team we rate (5+ internationals)? */
+export function isNationalTeam(afId: number) {
+  const r = ratings.get(afId);
+  return !!r && r.n >= 5;
+}

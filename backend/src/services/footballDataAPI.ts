@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { freezePredictions } from './tracking';
 import logger from '../utils/logger';
+import { db } from '../db';
 import { markFresh, markFailed } from './freshness';
 import { predictFromStandings, Prediction, StandingsResponse } from './predictionModel';
 import { predictV2, prepareModelV2 } from './historyModel';
@@ -71,6 +72,17 @@ class FootballDataAPI {
         Accept: 'application/json'
       }
     });
+
+    // Display names: Football-Data.org calls La Liga "Primera Division"
+    const NICE: Record<string, string> = { PD: 'La Liga' };
+    const rename = (x: any, depth = 0): void => {
+      if (!x || typeof x !== 'object' || depth > 6) return;
+      if (Array.isArray(x)) { for (const y of x) rename(y, depth + 1); return; }
+      if (typeof x.code === 'string' && NICE[x.code] && typeof x.name === 'string') x.name = NICE[x.code];
+      for (const k of Object.keys(x)) { const v = x[k]; if (v && typeof v === 'object') rename(v, depth + 1); }
+    };
+    this.client.interceptors.response.use(res => { try { rename(res.data); } catch { /* leave as is */ } return res; });
+    try { db.prepare(`UPDATE predictions SET competition_name = 'La Liga' WHERE competition_code = 'PD' AND competition_name != 'La Liga'`).run(); } catch { /* table not ready */ }
 
     // --- Per-minute quota management ---------------------------------------------------
     // Football-Data.org tells us what's left in every response:
