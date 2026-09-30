@@ -199,7 +199,7 @@ export default function Player() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="font-display text-xl font-bold text-ink">Season {season.label}</h2>
             {data.seasons.length > 1 && (
-              <div className="seg max-w-full overflow-x-auto">
+              <div className="seg max-w-full overflow-x-auto no-scrollbar">
                 {data.seasons.map((s, i) => (
                   <button key={s.season} onClick={() => setSi(i)} className={`seg-btn whitespace-nowrap ${si === i ? 'seg-btn-active' : ''}`}>
                     {s.label}

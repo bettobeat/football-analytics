@@ -152,9 +152,10 @@ function playerMatch(words: string[], norm: string, needle: string): number {
     else if (i === tokens.length - 1 || !words.some(w => w.length === 1 && t.startsWith(w))) return 0;
   }
   if (!real) return 0;
-  if (norm === needle) return 100;
-  if (norm.startsWith(needle)) return 85;
-  if (words.includes(tokens[tokens.length - 1])) return 80;
+  // tiers far enough apart that playing time (up to +20) only orders players within a tier
+  if (norm === needle) return 200;
+  if (norm.startsWith(needle)) return 150;
+  if (words.includes(tokens[tokens.length - 1])) return 120;
   return 50;
 }
 
