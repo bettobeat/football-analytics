@@ -691,6 +691,11 @@ app.get('/api/data-health', async (_req, res) => {
 app.get('/api/data-audit', (_req, res) => res.json({ data: lastDataAudit(), timestamp: new Date().toISOString() }));
 app.get('/api/data-audit/run', async (req, res) => {
   try {
+    // ?bg=1: start it and answer straight away (the full check takes several minutes); the result shows in Data health
+    if (req.query.bg === '1') {
+      runDataAudit(req.query.email !== '0').catch(e => logger.warn(`data check: ${e.message}`));
+      return res.json({ data: { started: true }, timestamp: new Date().toISOString() });
+    }
     res.json({ data: await runDataAudit(req.query.email !== '0'), timestamp: new Date().toISOString() });
   } catch (error: any) {
     res.status(409).json({ error: error.message });

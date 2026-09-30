@@ -10,7 +10,7 @@
  *       · predictions past kick-off + 4 h that were never settled · upcoming games (48 h) without a prediction
  *       · probabilities that don't add up to 100% · the same game listed twice · league tables that don't add up
  *       (played = W+D+L, goal difference = GF−GA) · stored results whose outcome doesn't match the score
- *       · model history (results feed) more than 10 days behind during the season
+ *       · model history (results feed) missing games that were played
  *
  * A problem that stays for 3 runs in a row (30 minutes) is emailed to ADMIN_EMAILS, at most once every 6 hours.
  */
@@ -155,16 +155,26 @@ export async function dataHealth(): Promise<{ level: Level; at: string; checks: 
   }
   checks.push({ id: 'tables', label: 'League tables add up', level: tableIssues.length ? 'fail' : 'ok', detail: tableIssues.length ? `${tableIssues.length} table row(s) don't add up` : `${footballDataAPI.standings.size} tables checked`, items: tableIssues.slice(0, 15) });
 
-  // model history (results used for ratings) not falling behind
+  // model history (results used for ratings) not falling behind: a division is behind only when games were
+  // actually played after its last stored result (international breaks are not a problem)
   try {
     const rows = db.prepare(`SELECT division, MAX(date) AS last FROM history_matches GROUP BY division`).all() as any[];
-    const month = new Date().getUTCMonth(); // Jun–Jul: summer break
-    const inSeason = month < 5 || month > 6;
-    const behind = rows.filter(r => r.last && now - new Date(r.last).getTime() > 10 * 86400000);
+    const behind: string[] = [];
+    for (const r of rows) {
+      if (!r.last) continue;
+      // games finished more than 3 days after the last stored result (the results files update a few times a week)
+      const after = new Date(new Date(r.last).getTime() + 3 * 86400000).toISOString().slice(0, 10);
+      let missed = 0;
+      try {
+        missed = (db.prepare(`SELECT COUNT(*) AS n FROM af_fixtures WHERE division = ? AND status IN ('FT','AET','PEN') AND date > ? AND kickoff < ?`)
+          .get(r.division, after, new Date(now - 86400000).toISOString()) as any).n;
+      } catch { /* no fixture store */ }
+      if (missed > 0) behind.push(`${r.division}: last result ${r.last}, ${missed} game(s) played since are not in yet`);
+    }
     checks.push({
-      id: 'history', label: 'Results used by the model are current', level: inSeason && behind.length ? 'warn' : 'ok',
-      detail: behind.length ? `${behind.length} division(s) with no result in the last 10 days` : `${rows.length} divisions up to date`,
-      items: behind.map(r => `${r.division}: last result ${r.last}`)
+      id: 'history', label: 'Results used by the model are current', level: behind.length ? 'warn' : 'ok',
+      detail: behind.length ? `${behind.length} division(s) missing recent results` : `${rows.length} divisions up to date (no games missed; breaks are fine)`,
+      items: behind
     });
   } catch { /* table missing */ }
 

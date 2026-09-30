@@ -15,6 +15,13 @@ export default function DataHealth() {
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState<string | null>(null)
 
+  const [running, setRunning] = useState<string | null>(null)
+  const runPlayers = () =>
+    axios
+      .get(`${API_URL}/data-audit/run`, { params: { bg: 1, email: 0 } })
+      .then(() => setRunning('Player check started: it takes a few minutes. Press "Check now" later to see the result.'))
+      .catch(e => setRunning(errorText(e)))
+
   const load = () =>
     axios
       .get(`${API_URL}/data-health`)
@@ -41,10 +48,12 @@ export default function DataHealth() {
         </div>
         <div className="flex items-center gap-3 text-xs text-faint">
           {r && <span>Checked {new Date(r.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>}
+          <button onClick={runPlayers} className="font-bold text-muted hover:text-ink">Run player check</button>
           <button onClick={load} className="font-bold text-accent">Check now</button>
         </div>
       </div>
       {error && <p className="text-sm text-loss">{error}</p>}
+      {running && <p className="text-xs text-muted mb-3">{running}</p>}
       {!r && !error && <p className="text-sm text-faint">Checking…</p>}
       {r && (
         <ul className="divide-y divide-line/50">

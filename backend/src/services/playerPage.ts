@@ -16,7 +16,7 @@ import { resolveAfTeamId } from './teamPage';
 
 const AF_OFFSET = 1_000_000_000;
 const PAGE_TTL = 12 * 3600 * 1000;
-const PAGE_VERSION = 6; // bump when the page shape changes: older stored copies are rebuilt
+const PAGE_VERSION = 7; // bump when the page shape changes: older stored copies are rebuilt
 const cache = new Map<number, { at: number; data: any }>();
 
 db.exec(`CREATE TABLE IF NOT EXISTS player_page_store (player_id INTEGER PRIMARY KEY, json TEXT NOT NULL, built_at TEXT NOT NULL)`);
@@ -216,6 +216,45 @@ function buildAllowed() {
   return ++builds.n <= BUILD_CAP;
 }
 
+/** Other provider ids of the same person: same club this season, same surname, same birth date. */
+async function findTwins(pid: number, p: any, S: number, src: any[]): Promise<number[]> {
+  const birth = p?.birth?.date;
+  const last = plain(p?.lastname || p?.name || '').split(' ').pop() || '';
+  if (!birth || last.length < 3) return [];
+  const cur = src.find(r => r.season === S)?.data;
+  const teams = [...new Set(((cur?.statistics || []) as any[]).map(x => x.team?.id).filter(Boolean))];
+  if (!teams.length) return [];
+  let cands: any[] = [];
+  try {
+    cands = db.prepare(`SELECT DISTINCT player_id, name FROM af_player_season WHERE season = ? AND team_id IN (${teams.map(() => '?').join(',')}) AND player_id != ?`).all(S, ...teams, pid) as any[];
+  } catch { return []; }
+  const out: number[] = [];
+  for (const c of cands.filter(c => plain(c.name).split(' ').pop() === last).slice(0, 3)) {
+    try {
+      const d = await rawSeason(c.player_id, S, false);
+      if (d?.player?.birth?.date === birth) out.push(c.player_id);
+    } catch { /* skip */ }
+  }
+  return out;
+}
+
+/** Rows of the same competition, club and provider season added together (twin ids of one player). */
+function mergeRows(rows: any[]): any[] {
+  const SUM = ['apps', 'starts', 'minutes', 'goals', 'assists', 'yellow', 'red', 'shots', 'shotsOn', 'keyPasses', 'tackles', 'interceptions', 'dribbles', 'duelsWon', 'duels', 'saves', 'conceded', 'penScored', 'penMissed'];
+  const by = new Map<string, any>();
+  for (const r of rows) {
+    const k = `${r.league.id}|${r.team?.id}|${r.afSeason}`;
+    const cur = by.get(k);
+    if (!cur) { by.set(k, { ...r, _rw: r.rating && r.minutes ? r.rating * r.minutes : 0, _rm: r.rating && r.minutes ? r.minutes : 0 }); continue; }
+    for (const f of SUM) if (r[f] !== null && r[f] !== undefined) cur[f] = (cur[f] || 0) + r[f];
+    if (r.rating && r.minutes) { cur._rw += r.rating * r.minutes; cur._rm += r.minutes; }
+  }
+  return [...by.values()].map(r => {
+    const { _rw, _rm, ...rest } = r;
+    return { ...rest, rating: _rm >= 30 ? Math.round((_rw / _rm) * 100) / 100 : null };
+  });
+}
+
 async function build(pid: number) {
   if (!afConfigured()) throw new Error('API-Football is not configured');
   if (!buildAllowed()) throw Object.assign(new Error('Busy right now, try again in a few minutes'), { response: { status: 503 } });
@@ -244,11 +283,20 @@ async function build(pid: number) {
   // the newest season's profile (current club, photo, name)
   const p = (src.find(r => r.season === S) || src[0]).data.player;
   const nationality: string = p.nationality || '';
-  const all: any[] = src.flatMap(r =>
-    (r.data.statistics || [])
-      .map((x: any) => ({ ...statRow(x), afSeason: r.season, friendly: /friendl/i.test(x.league?.name || '') }))
-      .filter((x: any) => x.apps > 0 || x.minutes > 0)
-  );
+  const toRows = (data: any, season: number) =>
+    (data?.statistics || [])
+      .map((x: any) => ({ ...statRow(x), afSeason: season, friendly: /friendl/i.test(x.league?.name || '') }))
+      .filter((x: any) => x.apps > 0 || x.minutes > 0);
+  let all: any[] = src.flatMap(r => toRows(r.data, r.season));
+  // The provider sometimes keeps one player under two ids (same club, same surname, same birth date), each with part
+  // of his games. Their rows are merged so the page shows everything he played.
+  const twins = await findTwins(pid, p, S, src);
+  if (twins.length) {
+    for (const t of twins) for (const y of [S - 1, S, S + 1]) {
+      try { const d = await rawSeason(t, y, y === S); if (d) all.push(...toRows(d, y)); } catch { /* skip */ }
+    }
+    all = mergeRows(all);
+  }
   const isNational = (r: any) =>
     (!!r.team && !!nationality && (r.team.name === nationality || r.team.name.startsWith(`${nationality} U`))) || /\bU-?\d{2}\b/.test(r.team?.name || '') || INTL.test(r.league.name || '');
 
@@ -449,7 +497,13 @@ function sameName(a: string, b: string) {
     return one.length >= 4 && (other[other.length - 1] === one || other[0] === one);
   }
   // "E. Haaland" vs "Erling Haaland"; "Vinícius Júnior" vs "Vinicius Junior"
-  return lx === ly && x[0][0] === y[0][0];
+  if (lx === ly && x[0][0] === y[0][0]) return true;
+  // a middle name used as the first name: "Yassir Zabiri" vs "Mohamed Yassir Zabiri"
+  if (lx === ly) {
+    const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+    return short.slice(0, -1).every(w => w.length >= 3 && long.includes(w));
+  }
+  return false;
 }
 
 const findCache = new Map<string, number | null>();
