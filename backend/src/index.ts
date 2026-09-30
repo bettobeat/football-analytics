@@ -745,8 +745,21 @@ app.get('/api/search', async (req, res) => {
       .slice(0, 6)
       .map(({ l }) => ({ code: l.code, name: l.name, emblem: l.emblem || null, country: l.area?.name || l.country || null }));
     const upcoming = [...(await footballDataAPI.getUpcomingMatches(14)), ...afUpcoming(14)];
-    const matches = upcoming
-      .filter((m: any) => [m.homeTeam?.name, m.homeTeam?.shortName, m.awayTeam?.name, m.awayTeam?.shortName].some(n => n && normalizeName(n).includes(norm)))
+    // "barcelona" → FC Barcelona's games first; "RCD Espanyol de Barcelona" only matches on a later word, so it ranks lower
+    const CLUB_WORDS = new Set(['fc', 'cf', 'afc', 'rcd', 'cd', 'ud', 'sd', 'sc', 'ac', 'as', 'ss', 'ssc', 'us', 'fk', 'sk', 'bk', 'if', 'club', 'de', 'real']);
+    const teamHit = (n?: string) => {
+      if (!n) return 0;
+      const x = normalizeName(n);
+      if (!x.includes(norm)) return 0;
+      const core = x.split(' ').filter(w => !CLUB_WORDS.has(w)).join(' ');
+      return x === norm || x.startsWith(norm) || core.startsWith(norm) ? 2 : 1;
+    };
+    const hit = (m: any) => Math.max(...[m.homeTeam?.name, m.homeTeam?.shortName, m.awayTeam?.name, m.awayTeam?.shortName].map(teamHit));
+    const scored = upcoming.map((m: any) => ({ m, h: hit(m) })).filter(x => x.h > 0);
+    const best = Math.max(0, ...scored.map(x => x.h));
+    const matches = scored
+      .filter(x => x.h === best)
+      .map(x => x.m)
       .sort((a: any, b: any) => a.utcDate.localeCompare(b.utcDate))
       .slice(0, 6)
       .map((m: any) => ({ id: m.id, utcDate: m.utcDate, status: m.status, competition: m.competition?.name, home: m.homeTeam?.shortName || m.homeTeam?.name, away: m.awayTeam?.shortName || m.awayTeam?.name, homeCrest: m.homeTeam?.crest, awayCrest: m.awayTeam?.crest }));

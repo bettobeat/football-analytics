@@ -42,8 +42,8 @@ export function Terms() {
       <Section title="Not betting advice">
         <p>
           Everything on the site is information and analysis. It is not financial or betting advice, and we do not take bets or pass bets
-          to anyone. If you choose to bet, you do so at your own risk and under the laws where you live. Past accuracy, backtests and
-          "profit per 100" figures describe the past and do not guarantee future results.
+          to anyone. If you choose to bet, you do so at your own risk and under the laws where you live. Our accuracy record, tests on
+          past seasons and any return figures describe the past and do not guarantee future results.
         </p>
       </Section>
       <Section title="18+ only">
@@ -160,7 +160,7 @@ export function NotFound() {
   return (
     <div className="max-w-xl mx-auto px-4 py-20 text-center">
       <div className="font-display text-6xl font-extrabold text-accent">404</div>
-      <p className="text-ink font-semibold mt-3">This page doesn't exist.</p>
+      <h1 className="text-ink font-semibold mt-3">This page doesn't exist.</h1>
       <p className="text-sm text-muted mt-1">The link may be old, or the match may have been removed.</p>
       <Link to="/" className="inline-block mt-6 px-4 py-2 rounded-xl bg-accent text-bg font-semibold text-sm">
         Back to home

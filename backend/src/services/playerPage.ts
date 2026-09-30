@@ -462,6 +462,16 @@ async function pageData(pid: number) {
     cache.set(pid, { at: new Date(stored.built_at).getTime(), data });
     return data;
   }
+  // several visitors (or the warm-up) asking for the same player share one build
+  const running = inflight.get(pid);
+  if (running) return running;
+  const job = buildAndStore(pid, stored).finally(() => inflight.delete(pid));
+  inflight.set(pid, job);
+  return job;
+}
+
+const inflight = new Map<number, Promise<any>>();
+async function buildAndStore(pid: number, stored: any) {
   try {
     const data = await build(pid);
     cache.set(pid, { at: Date.now(), data });
@@ -478,7 +488,7 @@ async function pageData(pid: number) {
 }
 
 /*
- * Warm-up: when a team page is opened, its players' pages are built in the background (a couple every 90 seconds,
+ * Warm-up: when a team page is opened, its players' pages are built in the background (three a minute,
  * only while the daily data budget is comfortable), so the first visit to a player page is instant instead of ~15 s.
  */
 const warmQueue = new Set<number>();
@@ -496,11 +506,11 @@ export function warmPlayers(ids: number[]) {
     warmTimer = setInterval(async () => {
       if (!warmQueue.size) { clearInterval(warmTimer!); warmTimer = null; return; }
       if (afRemaining() < 20000) return;
-      for (const pid of [...warmQueue].slice(0, 2)) {
+      for (const pid of [...warmQueue].slice(0, 3)) {
         warmQueue.delete(pid);
         try { await pageData(pid); } catch { /* skipped */ }
       }
-    }, 90 * 1000);
+    }, 60 * 1000);
     warmTimer.unref?.();
   }
 }

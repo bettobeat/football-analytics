@@ -97,12 +97,15 @@ export default function Player() {
   const [data, setData] = useState<PlayerData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [si, setSi] = useState(0)
+  const [slow, setSlow] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     setData(null)
     setError(null)
     setSi(0)
+    setSlow(false)
+    const slowTimer = setTimeout(() => !cancelled && setSlow(true), 3500)
     if (id === 'find') {
       axios
         .get(`${API_URL}/player-page/find`, { params: Object.fromEntries(params.entries()) })
@@ -116,6 +119,7 @@ export default function Player() {
     }
     return () => {
       cancelled = true
+      clearTimeout(slowTimer)
     }
   }, [id, params, nav])
 
@@ -133,6 +137,12 @@ export default function Player() {
   if (!data)
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+        {slow && (
+          <div className="card p-4 text-sm text-muted flex items-center gap-3" role="status">
+            <span className="w-4 h-4 rounded-full border-2 border-accent border-t-transparent animate-spin flex-shrink-0" aria-hidden />
+            <span>Putting together his full career, every season and every competition. The first time takes up to a minute; after that it opens instantly.</span>
+          </div>
+        )}
         <div className="card h-44 animate-pulse bg-surface2/60" />
         <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="card h-20 animate-pulse bg-surface2/60" />)}</div>
       </div>
@@ -413,20 +423,20 @@ export default function Player() {
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2 items-start">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 items-start">
         {data.transfers.length > 0 && (
           <Card title="Career moves">
             <ul className="space-y-1">
               {data.transfers.map((tr, i) => (
                 <li key={i} className="flex items-center gap-3 py-2 border-b border-line/50 last:border-0 text-sm">
-                  <span className="w-20 text-[11px] text-faint">{fmt(tr.date)}</span>
+                  <span className="w-16 sm:w-20 flex-shrink-0 text-[11px] text-faint">{fmt(tr.date)}</span>
                   <Link to={teamHref(tr.from)} className="flex items-center gap-1.5 min-w-0 text-muted hover:text-ink">
-                    <img src={tr.from.logo} alt="" className="w-4 h-4 object-contain" />
+                    <img src={tr.from.logo} alt="" className="w-4 h-4 object-contain flex-shrink-0" />
                     <span className="truncate">{tr.from.name}</span>
                   </Link>
-                  <span className="text-faint">→</span>
+                  <span className="text-faint flex-shrink-0">→</span>
                   <Link to={teamHref(tr.to)} className="flex items-center gap-1.5 min-w-0 font-semibold text-ink hover:text-accent">
-                    <img src={tr.to.logo} alt="" className="w-4 h-4 object-contain" />
+                    <img src={tr.to.logo} alt="" className="w-4 h-4 object-contain flex-shrink-0" />
                     <span className="truncate">{tr.to.name}</span>
                   </Link>
                   <span className="ml-auto text-[11px] text-faint whitespace-nowrap">{tr.type}</span>

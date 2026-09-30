@@ -57,6 +57,13 @@ const MAIN = ['grid-v3', 'elo-intl', 'elo-euro']
 const LIVE = new Set(['IN_PLAY', 'PAUSED', 'LIVE'])
 const tn = (t: Team) => t.shortName || t.name
 const mainPred = (m: Match) => m.predictions?.find(p => MAIN.includes(p.model)) || m.prediction || null
+// the years the games were played in ("2026", or "2024–25"), not the provider's season number
+const editionYears = (e: Edition) => {
+  const ys = e.matches.map(m => new Date(m.utcDate).getFullYear()).filter(Boolean)
+  if (!ys.length) return e.season ? String(e.season) : ''
+  const a = Math.min(...ys), b = Math.max(...ys)
+  return a === b ? String(a) : `${a}–${String(b).slice(2)}`
+}
 const hasPct = (p: Prediction | null): p is Prediction => !!p && !p.locked && typeof p.home === 'number'
 const playerHref = (s: Scorer, code: string) =>
   code.startsWith('AF') || s.player.id >= 1_000_000_000
@@ -235,7 +242,7 @@ function League() {
             {!tables ? (
               <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-7 rounded-lg bg-surface2/60 animate-pulse" />)}</div>
             ) : totals.length === 0 ? (
-              <p className="text-sm text-faint">No table for this competition (cup or friendlies).</p>
+              <p className="text-sm text-faint">No league table here: it's a knockout cup, friendlies, or a tournament that isn't on right now.</p>
             ) : (
               <div className="space-y-5">
                 {totals.map((t, i) => (
@@ -376,7 +383,7 @@ function League() {
 
           {edition && edition.matches.length > 0 && (
             <Card
-              title={`Latest edition${edition.season ? ` · ${edition.season}` : ''}`}
+              title={`Latest edition${editionYears(edition) ? ` · ${editionYears(edition)}` : ''}`}
               action={edition.winner ? (
                 <span className="inline-flex items-center gap-1.5 text-xs font-bold text-ink">
                   <span aria-hidden>🏆</span>

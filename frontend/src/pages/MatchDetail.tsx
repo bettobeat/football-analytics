@@ -482,7 +482,8 @@ function MatchDetail() {
   // v1 (standings) is a fallback only: shown when no other model covers the match
   const allModels = details.predictions && details.predictions.length ? details.predictions : details.prediction ? [details.prediction] : []
   const models = allModels.some(m => m.model !== 'poisson-dc-v1') ? allModels.filter(m => m.model !== 'poisson-dc-v1') : allModels
-  const p = (modelId && models.find(m => m.model === modelId)) || details.prediction || models[0] || null
+  // our main model first (v3 for leagues, national teams, European cups); older models only on request
+  const p = (modelId && models.find(m => m.model === modelId)) || models.find(m => ['grid-v3', 'elo-intl', 'elo-euro'].includes(m.model)) || details.prediction || models[0] || null
   const ft = m.score.fullTime
   const ht = m.score.halfTime
   const referee = (m.referees || []).find(r => !r.type || r.type === 'REFEREE') || (m.referees || [])[0]
@@ -507,6 +508,7 @@ function MatchDetail() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+      {tabTitle && <h1 className="sr-only">{tabTitle}{m.competition?.name ? ` · ${m.competition.name}` : ''} prediction</h1>}
       <Link to="/matches" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink transition-colors">
         <span aria-hidden>←</span> All matches
       </Link>
@@ -526,7 +528,7 @@ function MatchDetail() {
               <span className="font-medium text-ink/90 hover:underline">{m.competition.name}</span>
             </Link>
             {m.matchday && <span className="text-faint">· Matchday {m.matchday}</span>}
-            {m.stage && m.stage !== 'REGULAR_SEASON' && <span className="text-faint">· {m.stage.replace(/_/g, ' ').toLowerCase()}</span>}
+            {m.stage && m.stage !== 'REGULAR_SEASON' && <span className="text-faint">· {m.stage.replace(/_/g, ' ').toLowerCase().replace(/\b([a-z])/g, c => c.toUpperCase()).replace(/ - /g, ' · ')}</span>}
             {m.group && <span className="text-faint">· {m.group.replace(/_/g, ' ')}</span>}
           </div>
           <div className="text-faint">{fmtDate(m.utcDate)}</div>
@@ -592,7 +594,7 @@ function MatchDetail() {
           {/* Prediction */}
           <Section
             title="Prediction"
-            note={p ? `${modelInfo(p.model).tag} · ${modelInfo(p.model).name} · ${CONFIDENCE_LABEL[p.confidence]}` : undefined}
+            note={p ? [modelInfo(p.model).tag, modelInfo(p.model).name, p.confidence ? CONFIDENCE_LABEL[p.confidence] : null].filter(Boolean).join(' · ') : undefined}
           >
             {p && p.locked ? (
               <LockedPrediction p={p} pick={pick} home={home} away={away} market={details.market || null} matchId={m.id} status={m.status} onUnlocked={() => { setUnlockAnim(true); load(false) }} />
