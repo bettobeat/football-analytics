@@ -249,6 +249,17 @@ function toFdStandings(resp: any) {
 
 let windowMatches: any[] = [];
 let windowAt: number | null = null;
+// The last window is kept in the database so the match list is complete right after a restart / deploy
+// (a fresh refresh takes a minute or two); replaced by the live one as soon as that is ready.
+db.exec(`CREATE TABLE IF NOT EXISTS af_window_store (id INTEGER PRIMARY KEY CHECK (id = 1), json TEXT NOT NULL, at TEXT NOT NULL)`);
+try {
+  const row: any = db.prepare(`SELECT json, at FROM af_window_store WHERE id = 1`).get();
+  if (row) {
+    const since = new Date(Date.now() - 86400000).toISOString();
+    windowMatches = (JSON.parse(row.json) as any[]).filter(m => m.utcDate >= since);
+    windowAt = new Date(row.at).getTime();
+  }
+} catch { /* first run */ }
 let liveById = new Map<number, any>();
 const standingsByCode = new Map<string, any>();
 
@@ -340,6 +351,7 @@ export async function refreshAfWindow() {
   windowMatches = all.sort((a, b) => a.utcDate.localeCompare(b.utcDate));
   windowAt = Date.now();
   markFresh('extra-fixtures', `${windowMatches.length} matches`);
+  try { db.prepare(`INSERT OR REPLACE INTO af_window_store (id, json, at) VALUES (1, ?, ?)`).run(JSON.stringify(windowMatches), new Date(windowAt).toISOString()); } catch (e: any) { logger.warn(`AF window store: ${e.message}`); }
   try {
     windowListener?.(windowMatches);
   } catch (e: any) {
