@@ -1508,7 +1508,7 @@ function PlayerDot({ p, side, of, href }: { p: PitchPlayer; side: 'home' | 'away
       <div className="relative">
         <div className={`relative w-9 h-9 rounded-full bg-surface ring-2 ${ring} shadow-card overflow-hidden grid place-items-center ${showStarts && p.starts! < (of || 0) ? 'opacity-90' : ''}`}>
           {p.photo ? (
-            <img src={p.photo} alt="" className="w-full h-full object-cover" />
+            <span className="photo-duo block w-full h-full"><img src={p.photo} alt="" className="w-full h-full object-cover" /></span>
           ) : (
             <span className="num text-sm font-bold text-ink">{p.shirtNumber ?? ''}</span>
           )}

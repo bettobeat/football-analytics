@@ -112,15 +112,17 @@ export default function SearchBox({ compact = false, onDone }: { compact?: boole
               <div className="label px-3 pb-1">Players</div>
               {players.map(p => (
                 <Link key={p.id} to={`/player/${p.id}`} onClick={done} className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-surface2">
+                  <span className="photo-duo w-6 h-6 rounded-full overflow-hidden flex-shrink-0">
                   <img
                     src={`https://media.api-sports.io/football/players/${p.id}.png`}
                     alt=""
                     width={24}
                     height={24}
                     loading="lazy"
-                    className="w-6 h-6 rounded-full object-cover bg-surface2"
+                    className="w-full h-full object-cover"
                     onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
                   />
+                  </span>
                   <span className="text-sm font-semibold text-ink truncate">{p.name}</span>
                   <span className="ml-auto flex items-center gap-1.5 text-[11px] text-faint min-w-0">
                     {p.team && <img src={p.teamLogo} alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain flex-shrink-0" />}

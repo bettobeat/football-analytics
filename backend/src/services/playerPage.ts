@@ -16,7 +16,7 @@ import { resolveAfTeamId } from './teamPage';
 
 const AF_OFFSET = 1_000_000_000;
 const PAGE_TTL = 12 * 3600 * 1000;
-const PAGE_VERSION = 5; // bump when the page shape changes: older stored copies are rebuilt
+const PAGE_VERSION = 6; // bump when the page shape changes: older stored copies are rebuilt
 const cache = new Map<number, { at: number; data: any }>();
 
 db.exec(`CREATE TABLE IF NOT EXISTS player_page_store (player_id INTEGER PRIMARY KEY, json TEXT NOT NULL, built_at TEXT NOT NULL)`);
@@ -148,22 +148,36 @@ async function leagueDates(leagueId: number, season: number): Promise<{ start: s
  * missing or misleading (one-match super cups filed under the calendar year, tournaments spread over two years).
  * Stored for good once the games are in the past.
  */
-db.exec(`CREATE TABLE IF NOT EXISTS af_team_comp_dates (league_id INTEGER NOT NULL, season INTEGER NOT NULL, team_id INTEGER NOT NULL, first TEXT, last TEXT, mid TEXT, fetched_at TEXT NOT NULL, PRIMARY KEY (league_id, season, team_id))`);
-async function teamCompDates(leagueId: number, season: number, teamId: number): Promise<{ start: string; end: string; mid: string } | null> {
-  const row: any = db.prepare(`SELECT first, last, mid, fetched_at FROM af_team_comp_dates WHERE league_id = ? AND season = ? AND team_id = ?`).get(leagueId, season, teamId);
-  const done = row?.last && row.last < new Date(Date.now() - 7 * 86400000).toISOString();
-  if (row && (done || Date.now() - new Date(row.fetched_at).getTime() < 86400000)) return row.mid ? { start: row.first, end: row.last, mid: row.mid } : null;
+db.exec(`CREATE TABLE IF NOT EXISTS af_team_comp_games (league_id INTEGER NOT NULL, season INTEGER NOT NULL, team_id INTEGER NOT NULL, dates TEXT NOT NULL, fetched_at TEXT NOT NULL, PRIMARY KEY (league_id, season, team_id))`);
+/** Dates of this team's finished games in a competition-season (stored; refreshed daily while it may still change). */
+async function teamCompGames(leagueId: number, season: number, teamId: number): Promise<string[]> {
+  const row: any = db.prepare(`SELECT dates, fetched_at FROM af_team_comp_games WHERE league_id = ? AND season = ? AND team_id = ?`).get(leagueId, season, teamId);
+  const dates: string[] = row ? JSON.parse(row.dates) : [];
+  const done = dates.length && dates[dates.length - 1] < new Date(Date.now() - 30 * 86400000).toISOString();
+  if (row && (done || Date.now() - new Date(row.fetched_at).getTime() < 86400000)) return dates;
   try {
     const j: any = await afGet('/fixtures', { league: leagueId, season, team: teamId });
-    const dates = ((j.response || []) as any[]).filter(f => ['FT', 'AET', 'PEN'].includes(f.fixture?.status?.short)).map(f => String(f.fixture.date)).sort();
-    const res = dates.length ? { start: dates[0], end: dates[dates.length - 1], mid: dates[Math.floor(dates.length / 2)] } : null;
-    db.prepare(`INSERT OR REPLACE INTO af_team_comp_dates (league_id, season, team_id, first, last, mid, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-      .run(leagueId, season, teamId, res?.start || null, res?.end || null, res?.mid || null, new Date().toISOString());
-    return res;
+    const fresh = ((j.response || []) as any[]).filter(f => ['FT', 'AET', 'PEN'].includes(f.fixture?.status?.short)).map(f => String(f.fixture.date)).sort();
+    db.prepare(`INSERT OR REPLACE INTO af_team_comp_games (league_id, season, team_id, dates, fetched_at) VALUES (?, ?, ?, ?, ?)`)
+      .run(leagueId, season, teamId, JSON.stringify(fresh), new Date().toISOString());
+    return fresh;
   } catch {
-    return row?.mid ? { start: row.first, end: row.last, mid: row.mid } : null;
+    return dates;
   }
 }
+async function teamCompDates(leagueId: number, season: number, teamId: number): Promise<{ start: string; end: string; mid: string } | null> {
+  const dates = await teamCompGames(leagueId, season, teamId);
+  return dates.length ? { start: dates[0], end: dates[dates.length - 1], mid: dates[Math.floor(dates.length / 2)] } : null;
+}
+
+/*
+ * Competitions where the provider files a PLAYER's stats under the calendar year of the edition (the Spanish Super
+ * Cup of January 2026 = "2026") while the competition's own season is numbered differently. Found automatically:
+ * stats for a season in which the team has no finished game in that competition. Remembered for good.
+ */
+db.exec(`CREATE TABLE IF NOT EXISTS af_calendar_leagues (league_id INTEGER PRIMARY KEY, found_at TEXT NOT NULL)`);
+db.prepare(`INSERT OR IGNORE INTO af_calendar_leagues (league_id, found_at) VALUES (556, ?)`).run(new Date().toISOString());
+const isCalendarLeague = (id: number) => !!db.prepare(`SELECT 1 FROM af_calendar_leagues WHERE league_id = ?`).get(id);
 
 /** Club season (2025 = 2025-26, July to June) that a date falls in. */
 const clubSeasonOf = (iso: string) => {
@@ -242,15 +256,30 @@ async function build(pid: number) {
   // the dates of this team's own games in it.
   await pool(all, 6, async (r: any) => {
     if (!r.league.id) return;
+    const teamAf = r.team?.id ? r.team.id - AF_OFFSET : null;
+    // stats filed under the edition's calendar year: the team's games in that competition played in that year
+    if (teamAf && isCalendarLeague(r.league.id)) {
+      const games = [...(await teamCompGames(r.league.id, r.afSeason - 1, teamAf)), ...(await teamCompGames(r.league.id, r.afSeason, teamAf))]
+        .filter(d => d.startsWith(String(r.afSeason)) && d <= new Date().toISOString())
+        .sort();
+      if (games.length) { r.from = games[0].slice(0, 10); r.to = games[games.length - 1].slice(0, 10); r.mid = games[Math.floor(games.length / 2)]; return; }
+    }
     const d = await leagueDates(r.league.id, r.afSeason);
     r.from = d?.start || null;
     r.to = d?.end || null;
     const span = d ? (new Date(d.end).getTime() - new Date(d.start).getTime()) / 86400000 : 0;
     const mid = d ? new Date((new Date(d.start).getTime() + new Date(d.end).getTime()) / 2).toISOString() : null;
     const suspicious = !d || span > 400 || span < 1 || (mid && clubSeasonOf(mid) > S) || (mid && mid > new Date().toISOString());
-    if (suspicious && r.team?.id) {
-      const t = await teamCompDates(r.league.id, r.afSeason, r.team.id - AF_OFFSET);
+    if (suspicious && teamAf) {
+      const t = await teamCompDates(r.league.id, r.afSeason, teamAf);
       if (t) { r.from = t.start.slice(0, 10); r.to = t.end.slice(0, 10); r.mid = t.mid; }
+      else if (r.apps > 0 && (!d || span < 60)) {
+        // he played, but the team has no finished game in this competition-season: the provider numbers this
+        // competition by calendar year. Remember it, and place the row by the games played in that year.
+        db.prepare(`INSERT OR IGNORE INTO af_calendar_leagues (league_id, found_at) VALUES (?, ?)`).run(r.league.id, new Date().toISOString());
+        const games = (await teamCompGames(r.league.id, r.afSeason - 1, teamAf)).filter(x => x.startsWith(String(r.afSeason)) && x <= new Date().toISOString());
+        if (games.length) { r.from = games[0].slice(0, 10); r.to = games[games.length - 1].slice(0, 10); r.mid = games[Math.floor(games.length / 2)]; }
+      }
     }
   });
 

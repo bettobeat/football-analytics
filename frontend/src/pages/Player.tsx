@@ -151,7 +151,16 @@ export default function Player() {
       <section className="card relative overflow-hidden p-5 sm:p-7">
         <div className="pointer-events-none absolute inset-0 opacity-[0.12]" style={{ background: 'radial-gradient(600px 240px at 12% 0%, rgb(var(--accent)), transparent 70%)' }} />
         <div className="relative flex flex-wrap items-center gap-5 sm:gap-7">
-          <img src={p.photo} alt="" className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl object-cover bg-surface2 ring-2 ring-line" />
+          <div className="relative flex-shrink-0">
+            <div className="photo-duo w-24 h-24 sm:w-28 sm:h-28 rounded-3xl overflow-hidden ring-2 ring-line">
+              <img src={p.photo} alt={p.name} className="w-full h-full object-cover" />
+            </div>
+            {data.team && (
+              <span className="absolute -bottom-2 -right-2 w-10 h-10 rounded-full bg-white grid place-items-center ring-2 ring-surface shadow-card" title={data.team.name}>
+                <img src={data.team.logo} alt={data.team.name} className="w-7 h-7 object-contain" />
+              </span>
+            )}
+          </div>
           <div className="min-w-0 flex-1 space-y-2">
             <div className="flex flex-wrap items-center gap-2 text-xs text-faint">
               {data.position && <span className="px-2 py-0.5 rounded-full bg-surface2/80 text-muted font-semibold">{data.position}</span>}
