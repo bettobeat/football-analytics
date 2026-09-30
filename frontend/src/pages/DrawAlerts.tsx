@@ -1,76 +1,101 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { errorText } from '../lib/auth'
 
-interface Alert {
-  matchId: number; league: string; date: string; home: string; away: string
-  marketDraw: number; ourDraw: number; price: number; edge: number
-  v3?: { H: number; D: number; A: number }
-  score?: string | null; won?: boolean; backfilled?: boolean
-}
-interface Rec { n: number; wins: number; hitRate: number | null; roi: number | null }
-interface Season {
-  season: string; label: string; matches: number; drawRate: number | null
-  alerts: number; wins: number; hitRate: number; roi: number; lineMovedOurWay: number | null
-  byLeague: { division: string; league: string; n: number; hitRate: number; roi: number }[]
-}
-interface Report {
-  rule: { k: number; minEdge: number; maxEdge?: number; maxStreak?: number; minV3Draw: number; excluded: string[] }
-  upcoming: Alert[]
-  live: Rec; backfilled: Rec; total: Rec
-  baseline: { matches: number; drawRate: number | null }
-  alerts: Alert[]
-  history: Season[]
-}
+/*
+ * Draw picks (Pro): the 2 games of the coming 7 days where a draw is most likely by our estimate, among games where
+ * the draw odds are worth it. One short record line underneath (the same choice made week by week on past games).
+ */
 
-const sign = (x: number | null | undefined) => (x === null || x === undefined ? '–' : `${x > 0 ? '+' : ''}${x}%`)
+interface Pick {
+  matchId: number; league: string; date: string; home: string; away: string
+  homeCrest?: string | null; awayCrest?: string | null
+  marketDraw: number; ourDraw: number; price: number; edge: number
+}
+interface PicksRecord { n: number; wins: number; hitRate: number | null; roi: number | null; since: string | null }
+interface Report { picks: Pick[]; picksRecord: PicksRecord }
+
 const when = (iso: string) =>
   new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-const day = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })
+const sign = (x: number | null | undefined) => (x === null || x === undefined ? '–' : `${x > 0 ? '+' : ''}${x}%`)
 
-function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <div className={`card p-5 sm:p-6 ${className}`}>{children}</div>
-}
-
-function Fact({ value, label, tone }: { value: string; label: string; tone?: 'win' | 'loss' }) {
-  return (
-    <div className="rounded-xl border border-line/70 bg-surface2/40 p-3.5">
-      <div className={`num text-xl sm:text-2xl font-extrabold ${tone === 'win' ? 'text-win' : tone === 'loss' ? 'text-loss' : 'text-ink'}`}>{value}</div>
-      <div className="text-xs text-muted mt-0.5 leading-snug">{label}</div>
-    </div>
+function Crest({ src, name }: { src?: string | null; name: string }) {
+  return src ? (
+    <img src={src} alt="" className="w-14 h-14 sm:w-16 sm:h-16 object-contain drop-shadow" />
+  ) : (
+    <span className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-surface2 grid place-items-center font-display font-bold text-muted">{name.slice(0, 2).toUpperCase()}</span>
   )
 }
 
-function DrawBar({ market, ours }: { market: number; ours: number }) {
+function PickCard({ p, n }: { p: Pick; n: number }) {
   const max = 50
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center gap-2 text-xs">
-        <span className="w-24 text-muted shrink-0">Bookmakers</span>
-        <div className="flex-1 h-2 rounded-full bg-surface2 overflow-hidden">
-          <div className="h-full bg-muted/60" style={{ width: `${Math.min(100, (market / max) * 100)}%` }} />
-        </div>
-        <span className="num w-12 text-right text-muted">{market}%</span>
+    <Link to={`/match/${p.matchId}`} className="card card-hover relative overflow-hidden p-5 sm:p-6 flex flex-col gap-5 border-draw/40">
+      <div className="pointer-events-none absolute -top-24 -right-24 w-64 h-64 rounded-full bg-draw/15 blur-3xl" />
+      <div className="relative flex items-center justify-between gap-3 text-xs">
+        <span className="inline-flex items-center gap-2 min-w-0">
+          <span className="px-2 py-0.5 rounded-full bg-draw/20 text-draw font-extrabold uppercase tracking-wider text-[10px] whitespace-nowrap">Draw pick {n}</span>
+          <span className="text-muted truncate">{p.league}</span>
+        </span>
+        <span className="text-muted whitespace-nowrap">{when(p.date)}</span>
       </div>
-      <div className="flex items-center gap-2 text-xs">
-        <span className="w-24 text-ink font-semibold shrink-0">Our estimate</span>
-        <div className="flex-1 h-2 rounded-full bg-surface2 overflow-hidden">
-          <div className="h-full bg-accent" style={{ width: `${Math.min(100, (ours / max) * 100)}%` }} />
+
+      <div className="relative grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+        <div className="flex flex-col items-center gap-2 text-center min-w-0">
+          <Crest src={p.homeCrest} name={p.home} />
+          <span className="font-display font-bold text-ink leading-tight truncate max-w-full">{p.home}</span>
         </div>
-        <span className="num w-12 text-right font-bold text-ink">{ours}%</span>
+        <div className="text-center">
+          <div className="font-display text-4xl sm:text-5xl font-extrabold text-draw num leading-none">{Math.round(p.ourDraw)}%</div>
+          <div className="text-[11px] text-muted mt-1">draw chance</div>
+        </div>
+        <div className="flex flex-col items-center gap-2 text-center min-w-0">
+          <Crest src={p.awayCrest} name={p.away} />
+          <span className="font-display font-bold text-ink leading-tight truncate max-w-full">{p.away}</span>
+        </div>
       </div>
-    </div>
+
+      <div className="relative space-y-1.5">
+        <div className="flex items-center gap-2 text-xs">
+          <span className="w-24 text-muted shrink-0">Bookmakers</span>
+          <div className="flex-1 h-2 rounded-full bg-surface2 overflow-hidden">
+            <div className="h-full bg-muted/60 rounded-full" style={{ width: `${Math.min(100, (p.marketDraw / max) * 100)}%` }} />
+          </div>
+          <span className="num w-12 text-right text-muted">{Math.round(p.marketDraw)}%</span>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <span className="w-24 text-ink font-semibold shrink-0">Our estimate</span>
+          <div className="flex-1 h-2 rounded-full bg-surface2 overflow-hidden">
+            <div className="h-full bg-draw rounded-full" style={{ width: `${Math.min(100, (p.ourDraw / max) * 100)}%` }} />
+          </div>
+          <span className="num w-12 text-right font-bold text-ink">{Math.round(p.ourDraw)}%</span>
+        </div>
+      </div>
+
+      <div className="relative grid grid-cols-2 gap-3">
+        <div className="rounded-xl bg-surface2/60 p-3">
+          <div className="text-[11px] text-faint">Draw odds</div>
+          <div className="font-display text-xl font-extrabold text-ink num">{p.price.toFixed(2)}</div>
+        </div>
+        <div className="rounded-xl bg-surface2/60 p-3">
+          <div className="text-[11px] text-faint">Value at these odds</div>
+          <div className="font-display text-xl font-extrabold text-win num">{sign(p.edge)}</div>
+        </div>
+      </div>
+
+      <span className="relative text-sm font-bold text-accent">Full match analysis →</span>
+    </Link>
   )
 }
 
 export default function DrawAlerts() {
   const [data, setData] = useState<Report | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [showAll, setShowAll] = useState(false)
 
   useEffect(() => {
+    document.title = 'Draw picks · Bet To Beat'
     axios
       .get(`${API_URL}/draw-alerts`)
       .then(r => setData(r.data.data))
@@ -78,196 +103,58 @@ export default function DrawAlerts() {
   }, [])
 
   if (error) return <div className="max-w-5xl mx-auto px-4 py-10 text-loss">{error}</div>
-  if (!data) return <div className="max-w-5xl mx-auto px-4 py-10 text-muted">Loading draw alerts…</div>
 
-  const t = data.total
-  const past = showAll ? data.alerts : data.alerts.slice(0, 20)
-  const h = data.history
-
+  const rec = data?.picksRecord
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6 sm:py-8 space-y-6">
-      <header className="space-y-2">
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-ink">Draw alerts</h1>
-        <p className="text-muted max-w-3xl leading-relaxed">
-          Bookmakers tend to price draws a little too low. A draw alert means our model sees a clearly better chance of a draw than the
-          bookmakers do, enough to beat their price. It is the one signal that held up in two separate seasons of testing.
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-6">
+      <div>
+        <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">Draw picks</h1>
+        <p className="text-muted mt-2 max-w-2xl">
+          The 2 games of the coming week where a draw is most likely, and the draw odds are worth it. Updated as the odds move.
         </p>
-      </header>
+      </div>
 
-      {/* ---------- upcoming ---------- */}
-      <Card>
-        <div className="flex items-baseline justify-between gap-3 mb-4">
-          <h2 className="text-lg font-bold text-ink">Upcoming alerts</h2>
-          <span className="text-xs text-muted">{data.upcoming.length} match{data.upcoming.length === 1 ? '' : 'es'}</span>
+      {!data ? (
+        <div className="grid gap-5 md:grid-cols-2">
+          {[0, 1].map(i => <div key={i} className="card h-[420px] animate-pulse" />)}
         </div>
-        {data.upcoming.length === 0 ? (
-          <p className="text-sm text-muted">
-            No alerts right now. They appear when a match meets the rule, usually a few per week, and change as the odds move.
+      ) : data.picks.length === 0 ? (
+        <div className="card p-8 text-center space-y-2">
+          <div className="font-display text-lg font-bold text-ink">No draw pick this week yet</div>
+          <p className="text-sm text-muted max-w-md mx-auto">
+            We only pick a draw when our chance is clearly above what the odds say. New games and odds come in every day, so check back.
           </p>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {data.upcoming.map(a => (
-              <Link key={a.matchId} to={`/match/${a.matchId}`} className="block rounded-xl border border-line/70 bg-surface2/30 p-4 hover:bg-surface2 transition-colors">
-                <div className="flex justify-between gap-2 text-xs text-muted">
-                  <span className="truncate">{a.league}</span>
-                  <span className="shrink-0">{when(a.date)}</span>
-                </div>
-                <div className="mt-1.5 font-bold text-ink leading-snug">
-                  {a.home} <span className="text-muted font-normal">vs</span> {a.away}
-                </div>
-                <div className="mt-3">
-                  <DrawBar market={a.marketDraw} ours={a.ourDraw} />
-                </div>
-                <div className="mt-3 flex justify-between text-xs">
-                  <span className="text-muted">
-                    Draw odds <span className="num text-ink font-semibold">{a.price.toFixed(2)}</span>
-                  </span>
-                  <span className="text-win font-semibold num">Value {sign(a.edge)}</span>
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
-      </Card>
-
-      {/* ---------- live record ---------- */}
-      <Card>
-        <h2 className="text-lg font-bold text-ink mb-1">Record so far (live)</h2>
-        <p className="text-sm text-muted mb-4">
-          Every settled alert since tracking started, priced at the odds recorded before kick-off.
-        </p>
-        {t.n === 0 ? (
-          <p className="text-sm text-muted">No settled alerts yet.</p>
-        ) : (
-          <>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <Fact value={`${t.wins} of ${t.n}`} label="alerts that ended in a draw" />
-              <Fact value={`${t.hitRate ?? '–'}%`} label="draw rate on alerts" />
-              <Fact value={`${data.baseline.drawRate ?? '–'}%`} label={`draw rate in all ${data.baseline.matches.toLocaleString('en-GB')} tracked matches`} />
-              <Fact value={sign(t.roi)} label="profit per 100 staked at the recorded odds" tone={(t.roi ?? 0) >= 0 ? 'win' : 'loss'} />
-            </div>
-            {data.backfilled.n > 0 && (
-              <p className="text-xs text-muted mt-3">
-                {data.live.n} made live before kick-off, {data.backfilled.n} added later for matches tracked before v3 existed (those use data from
-                after the match date, so read them with care).
-              </p>
-            )}
-            <p className="text-xs text-muted mt-2">Still a small sample. A few results either way move these numbers a lot.</p>
-
-            <div className="mt-5 overflow-x-auto -mx-1">
-              <table className="w-full text-sm min-w-[560px]">
-                <thead>
-                  <tr className="text-xs text-muted text-left border-b border-line/60">
-                    <th className="py-2 px-1 font-medium">Date</th>
-                    <th className="py-2 px-1 font-medium">Match</th>
-                    <th className="py-2 px-1 font-medium text-right">Bookmakers</th>
-                    <th className="py-2 px-1 font-medium text-right">Ours</th>
-                    <th className="py-2 px-1 font-medium text-right">Odds</th>
-                    <th className="py-2 px-1 font-medium text-right">Result</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {past.map(a => (
-                    <tr key={a.matchId} className="border-b border-line/30">
-                      <td className="py-2 px-1 text-muted whitespace-nowrap">{day(a.date)}</td>
-                      <td className="py-2 px-1">
-                        <Link to={`/match/${a.matchId}`} className="text-ink hover:underline">
-                          {a.home} – {a.away}
-                        </Link>
-                        <div className="text-xs text-muted">
-                          {a.league}
-                          {a.backfilled ? ' · added later' : ''}
-                        </div>
-                      </td>
-                      <td className="py-2 px-1 text-right num text-muted">{a.marketDraw}%</td>
-                      <td className="py-2 px-1 text-right num font-semibold text-ink">{a.ourDraw}%</td>
-                      <td className="py-2 px-1 text-right num">{a.price.toFixed(2)}</td>
-                      <td className={`py-2 px-1 text-right num font-bold ${a.won ? 'text-win' : 'text-loss'}`}>
-                        {a.score ?? '–'} {a.won ? '✓' : '✗'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {data.alerts.length > 20 && (
-              <button className="mt-3 text-sm text-accent font-semibold" onClick={() => setShowAll(!showAll)}>
-                {showAll ? 'Show fewer' : `Show all ${data.alerts.length}`}
-              </button>
-            )}
-          </>
-        )}
-      </Card>
-
-      {/* ---------- history ---------- */}
-      {h.length > 0 && (
-        <Card>
-          <h2 className="text-lg font-bold text-ink mb-1">How the rule did on past seasons</h2>
-          <p className="text-sm text-muted mb-4">
-            The same rule replayed week by week, using only information from before each match, at the best draw price available early in
-            the week.
-          </p>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {h.map(s => (
-              <div key={s.season} className="rounded-xl border border-line/70 p-4">
-                <div className="font-bold text-ink mb-3">{s.label}</div>
-                <div className="grid grid-cols-2 gap-2.5">
-                  <Fact value={`${s.hitRate}%`} label={`draws on ${s.alerts} alerts (all matches: ${s.drawRate}%)`} />
-                  <Fact value={sign(s.roi)} label="profit per 100 staked" tone={s.roi >= 0 ? 'win' : 'loss'} />
-                  <Fact value={s.lineMovedOurWay === null ? '–' : `${s.lineMovedOurWay}%`} label="times the draw price then shortened toward us" />
-                  <Fact value={s.matches.toLocaleString('en-GB')} label="matches checked" />
-                </div>
-                {s.byLeague.length > 0 && (
-                  <details className="mt-3">
-                    <summary className="text-xs text-muted cursor-pointer">By league</summary>
-                    <table className="w-full text-xs mt-2">
-                      <tbody>
-                        {s.byLeague.map(l => (
-                          <tr key={l.division} className="border-b border-line/30">
-                            <td className="py-1 text-ink">{l.league}</td>
-                            <td className="py-1 text-right num text-muted">{l.n} alerts</td>
-                            <td className="py-1 text-right num">{l.hitRate}% draws</td>
-                            <td className={`py-1 text-right num ${l.roi >= 0 ? 'text-win' : 'text-loss'}`}>{sign(l.roi)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </details>
-                )}
-              </div>
-            ))}
-          </div>
-        </Card>
+        </div>
+      ) : (
+        <div className={`grid gap-5 ${data.picks.length > 1 ? 'md:grid-cols-2' : 'max-w-xl'}`}>
+          {data.picks.map((p, i) => <PickCard key={p.matchId} p={p} n={i + 1} />)}
+        </div>
       )}
 
-      {/* ---------- how it works ---------- */}
-      <Card>
-        <h2 className="text-lg font-bold text-ink mb-3">How an alert is made</h2>
-        <div className="space-y-2 text-sm text-muted leading-relaxed max-w-3xl">
-          <p>
-            <span className="text-ink font-semibold">1.</span> Our model (v3) gives the draw at least {data.rule.minV3Draw}%.
-          </p>
-          <p>
-            <span className="text-ink font-semibold">2.</span> We don't trust the model alone. Our estimate starts from the bookmakers' draw chance and
-            moves {Math.round(data.rule.k * 100)}% of the way toward the model.
-          </p>
-          <p>
-            <span className="text-ink font-semibold">3.</span> The alert shows only if that estimate beats the draw odds by at least {data.rule.minEdge}%
-            {data.rule.maxEdge ? ` and at most ${data.rule.maxEdge}%. A bigger gap usually means the model is wrong about a one-sided match, not that the bookmakers are` : ''}.
-          </p>
-          <p>
-            <span className="text-ink font-semibold">4.</span> La Liga is left out: the signal did not hold there.
-          </p>
-          <p>
-            <span className="text-ink font-semibold">5.</span> No alert when both teams drew {data.rule.maxStreak ?? 32}%+ of their last 20 games: the
-            bookmakers already overrate the draw after a run of draws.
-          </p>
-          <p className="pt-2">
-            The best sign that the signal is real: after an alert, the draw price usually shortens before kick-off, meaning the market moves toward
-            our view. Profit is small and not guaranteed. This is information, not betting advice.
-          </p>
-        </div>
-      </Card>
+      {rec && (
+        <p className="text-sm text-muted">
+          {rec.n > 0 ? (
+            <>
+              <span className="font-semibold text-ink">Our draw picks so far:</span>{' '}
+              <span className="num">{rec.wins} of {rec.n}</span> ended in a draw
+              {rec.roi !== null && (
+                <>
+                  {' · '}
+                  <span className={`num font-semibold ${rec.roi >= 0 ? 'text-win' : 'text-loss'}`}>{sign(rec.roi)}</span> at the odds
+                </>
+              )}
+              {rec.since && <span className="text-faint"> · since {new Date(rec.since).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>}
+            </>
+          ) : (
+            'The record starts with this week’s picks.'
+          )}
+        </p>
+      )}
+
+      <p className="text-xs text-faint max-w-2xl leading-relaxed">
+        A draw is never a sure thing: even our strongest draw calls come in about 1 time in 3. The odds pay about 3 to 4 times
+        the stake, so the value is over many picks, not in any single game. Probabilities, not promises.
+      </p>
     </div>
   )
 }

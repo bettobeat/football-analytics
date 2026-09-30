@@ -49,7 +49,7 @@ function backfilledCol() {
 function upcoming() {
   const now = new Date().toISOString();
   const rows = db.prepare(`
-    SELECT match_id, competition_code, competition_name, utc_date, home_team, away_team, p_home, p_draw, p_away, odds_home, odds_draw, odds_away, draw_streak
+    SELECT match_id, competition_code, competition_name, utc_date, home_team, away_team, home_team_id, away_team_id, p_home, p_draw, p_away, odds_home, odds_draw, odds_away, draw_streak
     FROM predictions
     WHERE model = 'grid-v3' AND settled = 0 AND locked = 0 AND utc_date > ? AND odds_draw IS NOT NULL
     ORDER BY utc_date
@@ -60,7 +60,7 @@ function upcoming() {
     if (r.draw_streak != null && r.draw_streak >= MAX_STREAK) continue;
     const a = alertOf(r.p_draw, [r.odds_home, r.odds_draw, r.odds_away], r.odds_draw);
     if (!a) continue;
-    out.push({ matchId: r.match_id, league: r.competition_name || r.competition_code, date: r.utc_date, home: r.home_team, away: r.away_team, v3: { H: r.p_home, D: r.p_draw, A: r.p_away }, ...a });
+    out.push({ matchId: r.match_id, league: r.competition_name || r.competition_code, date: r.utc_date, home: r.home_team, away: r.away_team, homeCrest: crestOf(r.home_team_id), awayCrest: crestOf(r.away_team_id), v3: { H: r.p_home, D: r.p_draw, A: r.p_away }, ...a });
   }
   return out;
 }
@@ -214,8 +214,40 @@ function history() {
   return out;
 }
 
+const crestOf = (id?: number | null) =>
+  !id ? null : id >= 1_000_000_000 ? `https://media.api-sports.io/football/teams/${id - 1_000_000_000}.png` : `https://crests.football-data.org/${id}.png`;
+
+/*
+ * The page's "draw picks": the 2 alerts of the coming 7 days with the highest draw chance (our estimate, after
+ * anchoring to the bookmakers). Every alert already passed the value rule, so the odds are worth it.
+ * Their record: the same choice made week by week on settled games (top 2 alerts of each week, price at lock).
+ */
+const PICKS = 2;
+const weekOf = (iso: string) => {
+  const d = new Date(iso);
+  const day = (d.getUTCDay() + 6) % 7; // Monday = 0
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - day)).toISOString().slice(0, 10);
+};
+function picksOf(up: any[]) {
+  const soon = Date.now() + 7 * 86400000;
+  return up.filter(a => new Date(a.date).getTime() <= soon).sort((a, b) => b.ourDraw - a.ourDraw).slice(0, PICKS)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+function picksRecord(alerts: any[]) {
+  const byWeek = new Map<string, any[]>();
+  for (const a of alerts) byWeek.set(weekOf(a.date), [...(byWeek.get(weekOf(a.date)) || []), a]);
+  const picked = [...byWeek.values()].flatMap(list => list.sort((a, b) => b.ourDraw - a.ourDraw).slice(0, PICKS));
+  const wins = picked.filter(a => a.won).length;
+  const profit = picked.reduce((t, a) => t + (a.won ? a.price - 1 : -1), 0);
+  const since = picked.length ? picked.map(a => a.date).sort()[0] : null;
+  return { n: picked.length, wins, hitRate: picked.length ? r1((wins / picked.length) * 100) : null, roi: picked.length ? r1((profit / picked.length) * 100) : null, since,
+    last: picked.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6).map(a => ({ matchId: a.matchId, date: a.date, home: a.home, away: a.away, score: a.score, won: a.won, price: a.price })) };
+}
+
 export function drawAlertsReport() {
-  return { rule: { k: K, minEdge: MIN_EDGE * 100, maxEdge: MAX_EDGE * 100, maxStreak: MAX_STREAK * 100, minV3Draw: MIN_V3, excluded: [...EXCLUDED] }, upcoming: upcoming(), ...live(), history: history() };
+  const up = upcoming();
+  const lv = live();
+  return { picks: picksOf(up), picksRecord: picksRecord(lv.alerts), rule: { k: K, minEdge: MIN_EDGE * 100, maxEdge: MAX_EDGE * 100, maxStreak: MAX_STREAK * 100, minV3Draw: MIN_V3, excluded: [...EXCLUDED] }, upcoming: up, ...lv, history: history() };
 }
 
 /* ------------------------------------------------------------------ */

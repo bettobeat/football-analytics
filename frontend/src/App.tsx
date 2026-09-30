@@ -144,7 +144,7 @@ function NavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
         Matches
       </NavLink>
       <NavLink to="/draw-alerts" className={cls}>
-        Draw alerts
+        Draw picks
       </NavLink>
       <NavLink to="/accuracy" className={cls}>
         Accuracy
@@ -206,7 +206,7 @@ function BottomTabs() {
       <nav aria-label="Tabs" className="lg:hidden fixed left-3 right-3 bottom-3 z-40 grid grid-cols-5 gap-1 p-1.5 rounded-3xl bg-surface/85 backdrop-blur-xl border border-line/80 shadow-lift sm:max-w-lg sm:mx-auto">
         {tab('/', 'Home', true)}
         {tab('/matches', 'Matches')}
-        {tab('/draw-alerts', 'Alerts')}
+        {tab('/draw-alerts', 'Draws')}
         {tab('/accuracy', 'Accuracy')}
         <button onClick={() => setSearching(true)} className="h-14 flex flex-col items-center justify-center gap-1 rounded-2xl text-muted" aria-label="Search">
           <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -227,7 +227,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/player\//, 'Player'],
   [/^\/match\//, 'Match'],
   [/^\/accuracy/, 'Accuracy'],
-  [/^\/draw-alerts/, 'Draw alerts'],
+  [/^\/draw-alerts/, 'Draw picks'],
   [/^\/past/, 'Past seasons'],
   [/^\/premium/, 'Premium'],
   [/^\/login/, 'Sign in'],
@@ -323,7 +323,7 @@ function Shell() {
             <Route
               path="/draw-alerts"
               element={
-                <PremiumGate title="Draw alerts" pro>
+                <PremiumGate title="Draw picks" pro>
                   <DrawAlerts />
                 </PremiumGate>
               }
