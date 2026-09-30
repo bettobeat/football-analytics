@@ -189,13 +189,18 @@ export default function Home() {
   useRevealState()
 
   useEffect(() => {
-    axios.get(`${API_URL}/matches/upcoming`, { params: { days: 14 } }).then(r => setUpcoming(r.data.data || [])).catch(() => undefined)
-    axios.get(`${API_URL}/matches/live`).then(r => setLive(r.data.data || [])).catch(() => undefined)
+    const loadMatches = () => {
+      axios.get(`${API_URL}/matches/upcoming`, { params: { days: 14 } }).then(r => setUpcoming(r.data.data || [])).catch(() => undefined)
+      axios.get(`${API_URL}/matches/live`).then(r => setLive(r.data.data || [])).catch(() => undefined)
+    }
+    loadMatches()
+    // the live box must match the Matches page even if the live socket drops: re-check every minute
+    const timer = setInterval(loadMatches, 60 * 1000)
     axios.get(`${API_URL}/public/summary`).then(r => setSummary(r.data.data)).catch(() => undefined)
     axios.get(`${API_URL}/news`, { params: { limit: 10 } }).then(r => setNews(r.data.data || [])).catch(() => undefined)
     const onLive = (msg: { data: Match[] }) => setLive(msg.data || [])
     socket.on('matches:live', onLive)
-    return () => { socket.off('matches:live', onLive) }
+    return () => { socket.off('matches:live', onLive); clearInterval(timer) }
   }, [access])
 
   useEffect(() => {
@@ -223,8 +228,14 @@ export default function Home() {
     )[0]
   }, [notStarted, full])
 
-  const soonest = useMemo(() => notStarted.filter(m => m.id !== featured?.id).sort((a, b) => priority(a) - priority(b) || a.utcDate.localeCompare(b.utcDate)).slice(0, 5)
-    .sort((a, b) => a.utcDate.localeCompare(b.utcDate)), [notStarted, featured])
+  // next kick-offs: the biggest games of the next 48 hours (then the next ones by time), in kick-off order
+  const soonest = useMemo(() => {
+    const rest = notStarted.filter(m => m.id !== featured?.id)
+    const near = rest.filter(m => new Date(m.utcDate).getTime() < Date.now() + 48 * 3600 * 1000)
+      .sort((a, b) => priority(a) - priority(b) || a.utcDate.localeCompare(b.utcDate)).slice(0, 5)
+    const fill = rest.filter(m => !near.includes(m)).sort((a, b) => a.utcDate.localeCompare(b.utcDate)).slice(0, 5 - near.length)
+    return [...near, ...fill].sort((a, b) => a.utcDate.localeCompare(b.utcDate))
+  }, [notStarted, featured])
 
   const next = useMemo(() => {
     const ranked = [...notStarted].sort((a, b) => ((a.competition.rank ?? 9) <= 1 ? 0 : 1) - ((b.competition.rank ?? 9) <= 1 ? 0 : 1) || a.utcDate.localeCompare(b.utcDate))
