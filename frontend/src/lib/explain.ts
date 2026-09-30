@@ -22,7 +22,7 @@ type Side = 'H' | 'A'
 
 const pctR = (x: number) => `${Math.round(x)}%`
 
-function rowSentence(r: Row, side: Side, names: { H: string; A: string }): string {
+export function rowSentence(r: Row, side: Side, names: { H: string; A: string }): string {
   const t = names[side], o = names[side === 'H' ? 'A' : 'H']
   // only notes that carry this match's numbers (not the row's general description)
   const note = r.note && /\d/.test(r.note) && !/^(n\/a|no |XI not|covered by|stands in|market value of|Elo over)/i.test(r.note) ? r.note : null

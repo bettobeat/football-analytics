@@ -4,12 +4,12 @@ import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
 import { fairOdds, bookLabel, modelInfo, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, drawAlert, pickOfPrediction, type Market, type Prediction } from '../lib/predict'
 import { useAuth } from '../lib/auth'
-import { explainPrediction } from '../lib/explain'
 import WinProbability from '../components/WinProbability'
 import { useReveal, justRevealed, hideMatch, guessFirstOn } from '../lib/reveal'
 import { useUnlocks, unlockMatch, resetDay } from '../lib/unlocks'
 import CountUp from '../components/CountUp'
 import { RevealCover } from '../components/Reveal'
+import PredictionStory from '../components/PredictionStory'
 
 /* ---------- types (Football-Data.org v4 shapes, loosely) ---------- */
 
@@ -675,7 +675,14 @@ function MatchDetail() {
                   </div>
                 )}
 
-                <WhyThisPick p={p} home={home} away={away} market={details.market || null} upcoming={['SCHEDULED', 'TIMED'].includes(m.status)} />
+                <PredictionStory
+                  p={p}
+                  home={home.shortName || home.name}
+                  away={away.shortName || away.name}
+                  market={details.market || null}
+                  upcoming={['SCHEDULED', 'TIMED'].includes(m.status)}
+                  friendly={/friendl/i.test(m.competition.name || '')}
+                />
                 {guessFirstOn() && ['SCHEDULED', 'TIMED'].includes(m.status) && (
                   <div className="mt-2 text-right">
                     <button type="button" onClick={() => hideMatch(matchId)} className="text-xs text-faint hover:text-ink underline underline-offset-4">Hide prediction again</button>
@@ -706,7 +713,12 @@ function MatchDetail() {
 
                 <GoalsPanel p={p} home={home} away={away} roll={justRevealed(matchId)} />
 
-                {p.grid && <GridBreakdown p={p} home={home} away={away} />}
+                {p.grid && (
+                  <details className="mt-4 group">
+                    <summary className="cursor-pointer text-xs text-muted hover:text-ink select-none">For experts: the full model table</summary>
+                    <GridBreakdown p={p} home={home} away={away} />
+                  </details>
+                )}
 
                 <details className="mt-4 group">
                   <summary className="cursor-pointer text-xs text-muted hover:text-ink select-none">{p.grid ? 'Goal model behind the extras' : 'How this was calculated'}</summary>
@@ -951,32 +963,6 @@ function Highlights({ matchId }: { matchId: number }) {
       </div>
       <p className="mt-2 text-[11px] text-faint">Played by YouTube from the official channel. Some videos are only available in certain countries.</p>
     </Section>
-  )
-}
-
-function WhyThisPick({ p, home, away, market, upcoming }: { p: Prediction; home: Team; away: Team; market: Market | null; upcoming: boolean }) {
-  const ex = explainPrediction(p, home.shortName || home.name, away.shortName || away.name, market, upcoming)
-  if (!ex) return null
-  return (
-    <div className="mt-4 rounded-xl border border-line bg-surface2/50 p-4">
-      <div className="text-[11px] font-extrabold uppercase tracking-wide text-accent">Why this pick</div>
-      <p className="mt-1.5 font-semibold text-ink leading-snug">{ex.headline}</p>
-      {ex.forPick.length > 0 && (
-        <ul className="mt-2 space-y-1 text-sm text-muted">
-          {ex.forPick.map((t, i) => (
-            <li key={i} className="flex gap-2"><span className="text-win mt-[1px]">+</span><span>{t}</span></li>
-          ))}
-        </ul>
-      )}
-      {ex.against && (
-        <div className="mt-1 flex gap-2 text-sm text-muted"><span className="text-loss mt-[1px]">−</span><span>On the other side: {ex.against}</span></div>
-      )}
-      {ex.draw.length > 0 && (
-        <div className="mt-2 text-sm text-muted"><span className="text-draw font-semibold">Draw: </span>{ex.draw.join(' ')}</div>
-      )}
-      {ex.market && <div className="mt-2 text-sm text-muted">{ex.market}</div>}
-      {ex.caution && <div className="mt-2 text-xs text-faint">{ex.caution}</div>}
-    </div>
   )
 }
 
