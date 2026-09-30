@@ -6,6 +6,7 @@ import { API_URL, socket } from '../lib/socket'
 import { drawAlert, type Market, type Prediction } from '../lib/predict'
 import { useAuth } from '../lib/auth'
 import { isCovered, revealMatch, useRevealState, justRevealed } from '../lib/reveal'
+import { matchFame } from '../lib/fame'
 import CountUp from '../components/CountUp'
 import { RevealChip } from '../components/Reveal'
 
@@ -80,7 +81,7 @@ function FeaturedHero({ m, p }: { m: Match | null; p: Prediction | null }) {
   const pill = (o: 'H' | 'D' | 'A', label: string, v: number) => (
     <div className={`glass px-3 py-2.5 sm:px-4 text-center ${k === o ? 'ring-2 ring-[#C8FF3D]/70' : ''} ${roll && k === o ? 'animate-pop' : ''}`}>
       <div className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.08em] text-[#9AA3B2] truncate">{label}</div>
-      <div className={`font-display font-extrabold text-xl sm:text-2xl ${k === o ? 'text-[#C8FF3D]' : 'text-white'}`}><CountUp value={v} suffix="%" animate={roll} delay={o === 'H' ? 0 : o === 'D' ? 120 : 240} /></div>
+      <div className={`font-display font-extrabold text-xl sm:text-2xl ${k === o ? 'text-[#C8FF3D]' : 'text-white'}`}>{v < 0.5 ? '<1%' : <CountUp value={v} suffix="%" animate={roll} delay={o === 'H' ? 0 : o === 'D' ? 120 : 240} />}</div>
     </div>
   )
   return (
@@ -205,14 +206,21 @@ export default function Home() {
   const notStarted = useMemo(() => upcoming.filter(m => !LIVE.has(m.status) && new Date(m.utcDate).getTime() > Date.now()), [upcoming])
 
   // featured: the biggest competition playing in the next week (Champions League > top leagues > major national-team
-  // competitions > the rest); premium = v3's most confident pick there, free = the next one
+  // competitions > the rest); within it the biggest teams (lib/fame)
   const featured = useMemo(() => {
     const week = notStarted.filter(m => new Date(m.utcDate).getTime() < Date.now() + 7 * 86400000 && mainPred(m))
     if (!week.length) return null
     const best = Math.min(...week.map(priority))
     const pool = week.filter(m => priority(m) === best)
-    if (full) return [...pool].filter(m => hasPct(mainPred(m))).sort((a, b) => topPct(mainPred(b)!) - topPct(mainPred(a)!))[0] || pool[0]
-    return pool[0]
+    // the biggest teams first (a one-sided game like Albania–San Marino is never featured when a bigger one is on),
+    // then the closer game, then the earlier one
+    const lopsided = (m: Match) => { const p = mainPred(m); return hasPct(p) && topPct(p) >= 85 ? 1 : 0 }
+    return [...pool].sort((a, b) =>
+      lopsided(a) - lopsided(b) ||
+      matchFame(b.homeTeam, b.awayTeam) - matchFame(a.homeTeam, a.awayTeam) ||
+      (hasPct(mainPred(a)) && hasPct(mainPred(b)) ? topPct(mainPred(a)!) - topPct(mainPred(b)!) : 0) ||
+      a.utcDate.localeCompare(b.utcDate)
+    )[0]
   }, [notStarted, full])
 
   const soonest = useMemo(() => notStarted.filter(m => m.id !== featured?.id).sort((a, b) => priority(a) - priority(b) || a.utcDate.localeCompare(b.utcDate)).slice(0, 5)

@@ -71,6 +71,29 @@ async function fetchFeed(f: { source: string; url: string }): Promise<NewsItem[]
   return items;
 }
 
+/*
+ * Some feeds (ESPN) ship no picture with their items. The article page's own preview image (og:image — the one
+ * the outlet provides for link previews) is used instead. Looked up once per article and remembered.
+ */
+const ogCache = new Map<string, string | null>();
+async function previewImage(link: string): Promise<string | null> {
+  if (ogCache.has(link)) return ogCache.get(link)!;
+  let img: string | null = null;
+  try {
+    const res = await fetch(link, { signal: AbortSignal.timeout(6000), headers: { 'User-Agent': 'BetToBeat/1.0 (+https://bettobeat.com)' } });
+    if (res.ok) {
+      const html = (await res.text()).slice(0, 300_000);
+      const m = html.match(/<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["'][^>]*content=["']([^"']+)["']/i)
+        || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["'](?:og:image|twitter:image)["']/i);
+      const url = m?.[1]?.replace(/&amp;/g, '&') || null;
+      img = url && /^https:\/\//.test(url) ? url : null;
+    }
+  } catch { /* no picture */ }
+  ogCache.set(link, img);
+  if (ogCache.size > 2000) ogCache.delete(ogCache.keys().next().value as string);
+  return img;
+}
+
 async function load(): Promise<NewsItem[]> {
   const all: NewsItem[] = [];
   const results = await Promise.allSettled(FEEDS.map(fetchFeed));
@@ -101,7 +124,13 @@ async function load(): Promise<NewsItem[]> {
       out.push(it);
     }
   }
-  return out.slice(0, 30);
+  const final = out.slice(0, 30);
+  // pictures for stories whose feed has none (a few at a time)
+  const missing = final.filter(it => !it.image).slice(0, 15);
+  for (let i = 0; i < missing.length; i += 5) {
+    await Promise.all(missing.slice(i, i + 5).map(async it => { it.image = await previewImage(it.link); }));
+  }
+  return final;
 }
 
 export async function footballNews(limit = 12): Promise<NewsItem[]> {
