@@ -515,9 +515,53 @@ export function warmPlayers(ids: number[]) {
   }
 }
 
+/*
+ * The provider sometimes files the same cup twice for one club season: an exact copy (same provider season) or
+ * two editions that both fall in that season (calendar-year cups such as Copa Argentina). Copies are dropped
+ * (the fuller one is kept); two real editions stay, named by year so they don't look like a duplicate.
+ * Done when the page is served, so stored pages are fixed without rebuilding them.
+ */
+function tidySeasons(data: any) {
+  if (!data?.seasons?.length) return data;
+  const yearsOf = (r: any) => {
+    const a = String(r.from || '').slice(0, 4), b = String(r.to || '').slice(0, 4);
+    if (a && b) return a === b ? a : `${a}-${b.slice(2)}`;
+    return String(r.afSeason ?? '');
+  };
+  const seasons = data.seasons.map((se: any) => {
+    const groups = new Map<string, any[]>();
+    for (const r of se.rows || []) {
+      const k = `${r.league?.id}|${r.team?.id}`;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k)!.push(r);
+    }
+    let changed = false;
+    const rows: any[] = [];
+    for (const g of groups.values()) {
+      if (g.length === 1) { rows.push(g[0]); continue; }
+      changed = true;
+      const bySeason = new Map<string, any>();
+      for (const r of g) {
+        const k = String(r.afSeason);
+        const cur = bySeason.get(k);
+        if (!cur || r.apps > cur.apps || (r.apps === cur.apps && r.minutes > cur.minutes)) bySeason.set(k, r);
+      }
+      const kept = [...bySeason.values()];
+      if (kept.length === 1) rows.push(kept[0]);
+      else for (const r of kept) rows.push({ ...r, league: { ...r.league, name: `${r.league?.name} ${yearsOf(r)}` } });
+    }
+    if (!changed) return se;
+    rows.sort((a, b) => (b.minutes || 0) - (a.minutes || 0));
+    return { ...se, rows, totals: totalsOf(rows) };
+  });
+  const all = seasons.flatMap((se: any) => se.rows);
+  const career = data.career ? { ...data.career, ...totalsOf(all), seasons: data.career.seasons, from: data.career.from } : data.career;
+  return { ...data, seasons, career };
+}
+
 export async function playerPage(rawId: number, full: boolean) {
   const pid = rawId >= AF_OFFSET ? rawId - AF_OFFSET : rawId;
-  const data: any = await pageData(pid);
+  const data: any = tidySeasons(await pageData(pid));
   if (full) return { ...data, premium: true };
   const lite = (r: any) => ({ league: r.league, team: r.team, position: r.position, apps: r.apps, goals: r.goals });
   return {

@@ -37,6 +37,39 @@ export async function sendEmail(to: string, subject: string, html: string, text:
   logger.info(`Email sent (${emailProvider}): ${subject}`);
 }
 
+/* ---------- shared look for every email we send ---------- */
+
+export const SITE = `https://${process.env.CANONICAL_HOST || 'bettobeat.com'}`;
+export const C = { ink: '#111419', muted: '#646c78', faint: '#969da8', line: '#e2e5ea', soft: '#f4f5f7', chip: '#f0f2f5', green: '#10a35a', amber: '#d98a06', red: '#d64545' };
+export const esc = (x: unknown) => String(x ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/** Card layout: brand header, optional label on the right, the body, a button, a footer note. Works in Gmail, Outlook and phones. */
+export function layout(o: { preheader: string; label?: string; body: string; cta?: { text: string; href: string }; footer?: string }) {
+  const btn = o.cta
+    ? `<tr><td style="padding:8px 28px 28px"><a href="${esc(o.cta.href)}" style="display:inline-block;background:${C.green};color:#ffffff;font-weight:700;font-size:14px;text-decoration:none;padding:12px 20px;border-radius:10px">${esc(o.cta.text)}</a></td></tr>`
+    : '';
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light only"></head>
+<body style="margin:0;background:${C.soft};font-family:Inter,Segoe UI,Helvetica,Arial,sans-serif;color:${C.ink};-webkit-text-size-adjust:100%">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0">${esc(o.preheader)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border:1px solid ${C.line};border-radius:16px">
+    <tr><td style="padding:22px 28px 0">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+        <td style="font-weight:800;font-size:18px">Bet<span style="color:${C.green}">To</span>Beat</td>
+        ${o.label ? `<td align="right" style="font-size:12px;color:${C.faint};font-weight:600">${esc(o.label)}</td>` : ''}
+      </tr></table>
+    </td></tr>
+    ${o.body}
+    ${btn}
+  </table>
+  <p style="max-width:560px;font-size:11px;line-height:1.5;color:${C.faint};margin:16px auto 0">${o.footer ? `${o.footer}<br>` : ''}Bet To Beat · <a href="${SITE}" style="color:${C.faint}">bettobeat.com</a></p>
+</td></tr></table></body></html>`;
+}
+
+/** A section heading inside the card. */
+export const section = (title: string, note?: string) =>
+  `<tr><td style="padding:22px 28px 6px"><div style="font-size:13px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:${C.muted}">${esc(title)}</div>${note ? `<div style="font-size:12px;color:${C.faint};margin-top:3px">${esc(note)}</div>` : ''}</td></tr>`;
+
 function codeEmail(title: string, intro: string, code: string, outro: string) {
   const html = `<!doctype html><html><body style="margin:0;background:#f4f5f7;font-family:Inter,Segoe UI,Arial,sans-serif;color:#111419">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px">

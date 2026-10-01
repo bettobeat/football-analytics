@@ -594,7 +594,7 @@ function MatchDetail() {
           {/* Prediction */}
           <Section
             title="Prediction"
-            note={p ? [modelInfo(p.model).tag, modelInfo(p.model).name, p.confidence ? CONFIDENCE_LABEL[p.confidence] : null].filter(Boolean).join(' · ') : undefined}
+            note={p ? [modelInfo(p.model).tag, modelInfo(p.model).name.replace(new RegExp(`^${modelInfo(p.model).tag} · `), ''), p.confidence ? CONFIDENCE_LABEL[p.confidence] : null].filter(Boolean).join(' · ') : undefined}
           >
             {p && p.locked ? (
               <LockedPrediction p={p} pick={pick} home={home} away={away} market={details.market || null} matchId={m.id} status={m.status} onUnlocked={() => { setUnlockAnim(true); load(false) }} />

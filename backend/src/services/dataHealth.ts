@@ -20,7 +20,7 @@ import footballDataAPI from './footballDataAPI';
 import { afUpcoming, afWithPredictions, afOverdue } from './afMatches';
 import { afConfigured } from './apiFootball';
 import { feedState, bootedAt } from './freshness';
-import { emailEnabled, sendEmail } from './email';
+import { emailEnabled, sendEmail, layout, section, esc, C, SITE } from './email';
 import { lastDataAudit } from './dataAudit';
 
 type Level = 'ok' | 'warn' | 'fail';
@@ -205,6 +205,49 @@ let lastEmailAt = 0;
 
 export const lastDataHealth = () => last;
 
+/** Alert email: what has been failing for 30+ minutes, then what still works. */
+export function healthEmail(failing: Check[], all: Check[]) {
+  const when = new Date().toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC';
+  const okCount = all.filter(c => c.level === 'ok').length;
+  let body = `<tr><td style="padding:18px 28px 4px">
+    <div style="font-size:13px;color:${C.muted};font-weight:600">Data alert</div>
+    <div style="font-size:22px;line-height:1.25;font-weight:800;color:${C.red};margin-top:6px">${failing.length === 1 ? esc(failing[0].label) + ' has a problem' : `${failing.length} data feeds have a problem`}</div>
+    <div style="font-size:14px;color:${C.muted};margin-top:6px">Failing for 30 minutes or more. ${okCount} of ${all.length} checks are still fine.</div>
+  </td></tr>`;
+  body += section('What’s wrong');
+  body += `<tr><td style="padding:0 28px">${failing
+    .map(c => `<div style="border:1px solid ${C.line};border-left:4px solid ${C.red};border-radius:10px;padding:10px 12px;margin:8px 0">
+      <div style="font-size:14px;font-weight:700">${esc(c.label)}</div>
+      <div style="font-size:13px;color:${C.muted};margin-top:3px">${esc(c.detail)}</div>
+      ${c.items?.length ? `<div style="font-size:12px;color:${C.muted};margin-top:6px">${c.items.slice(0, 6).map(i => '· ' + esc(i)).join('<br>')}${c.items.length > 6 ? `<br><span style="color:${C.faint}">+${c.items.length - 6} more</span>` : ''}</div>` : ''}
+    </div>`)
+    .join('')}</td></tr>`;
+  const others = all.filter(c => !failing.includes(c));
+  if (others.length) {
+    body += section('Everything else');
+    body += `<tr><td style="padding:0 28px;font-size:13px;line-height:1.9">${others
+      .map(c => `<span style="color:${c.level === 'ok' ? C.green : c.level === 'warn' ? C.amber : C.red}">●</span>&nbsp; ${esc(c.label)}`)
+      .join('<br>')}</td></tr>`;
+  }
+  body += `<tr><td style="height:12px"></td></tr>`;
+  const subject = `Data alert: ${failing.map(c => c.label).slice(0, 2).join(', ')}${failing.length > 2 ? ` +${failing.length - 2}` : ''}`;
+  const html = layout({
+    preheader: `${failing.map(c => c.label).join(', ')}: failing for 30+ minutes.`,
+    label: when,
+    body,
+    cta: { text: 'Open Data health', href: `${SITE}/admin` },
+    footer: 'You get at most one alert every 6 hours. It stops by itself once the feed recovers.'
+  });
+  const text = [
+    `Bet To Beat · data alert · ${when}`,
+    'Failing for 30+ minutes:',
+    ...failing.map(c => `- ${c.label}: ${c.detail}${c.items?.length ? '\n    ' + c.items.slice(0, 6).join('\n    ') : ''}`),
+    '',
+    `Data health: ${SITE}/admin`
+  ].join('\n');
+  return { subject, html, text };
+}
+
 async function run() {
   try {
     last = await dataHealth();
@@ -215,9 +258,8 @@ async function run() {
     const to = (process.env.ADMIN_EMAILS || '').split(',').map(x => x.trim()).filter(Boolean);
     if (persistent.length && emailEnabled && to.length && Date.now() - lastEmailAt > 6 * 3600 * 1000) {
       lastEmailAt = Date.now();
-      const text = persistent.map(c => `${c.label}: ${c.detail}${c.items?.length ? '\n  - ' + c.items.slice(0, 8).join('\n  - ') : ''}`).join('\n\n');
-      const html = `<h2>Bet To Beat: data problem</h2>${persistent.map(c => `<p><b>${c.label}</b><br>${c.detail}</p>${c.items?.length ? `<ul>${c.items.slice(0, 8).map(i => `<li>${i}</li>`).join('')}</ul>` : ''}`).join('')}<p>Full report: /api/data-health (admin)</p>`;
-      for (const addr of to) await sendEmail(addr, 'Bet To Beat: data problem for 30+ minutes', html, text).catch(() => undefined);
+      const { subject, html, text } = healthEmail(persistent, last.checks);
+      for (const addr of to) await sendEmail(addr, subject, html, text).catch(() => undefined);
     }
   } catch (e: any) {
     logger.warn(`Data health run failed: ${e.message}`);
