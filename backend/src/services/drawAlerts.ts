@@ -311,7 +311,11 @@ function teamDraws(limit = 10) {
 export function drawAlertsReport() {
   const up = upcoming();
   const lv = live();
-  return { picks: picksOf(up), picksRecord: picksRecord(lv.alerts), likely: likelyDraws(), leagues: leagueDraws(), teams: teamDraws(), rule: { k: K, minEdge: MIN_EDGE * 100, maxEdge: MAX_EDGE * 100, maxStreak: MAX_STREAK * 100, minV3Draw: MIN_V3, excluded: [...EXCLUDED] }, upcoming: up, ...lv, history: history() };
+  // Draw picks (Oct 2026, no bookmakers on the site): the 2 games of the next 7 days with the highest draw chance by
+  // our own model. The value-alert list (vs the bookmakers' price) is kept for admins as \`upcoming\` / \`alerts\`.
+  const likely = likelyDraws();
+  const picks = likely.slice(0, PICKS).map(x => ({ ...x, ourDraw: x.draw })).sort((a, b) => a.date.localeCompare(b.date));
+  return { picks, valuePicks: picksOf(up), picksRecord: picksRecord(lv.alerts), likely, leagues: leagueDraws(), teams: teamDraws(), rule: { k: K, minEdge: MIN_EDGE * 100, maxEdge: MAX_EDGE * 100, maxStreak: MAX_STREAK * 100, minV3Draw: MIN_V3, excluded: [...EXCLUDED] }, upcoming: up, ...lv, history: history() };
 }
 
 /* ------------------------------------------------------------------ */

@@ -22,7 +22,7 @@ const stop = (fn: () => void) => (e: { preventDefault(): void; stopPropagation()
   fn()
 }
 
-const STEPS = ['Loading both squads', 'Reading form and strength', 'Checking injuries and lineups', 'Comparing with the bookmakers', 'Scoring the match']
+const STEPS = ['Loading both squads', 'Reading form and strength', 'Checking injuries and lineups', 'Weighing home and away', 'Scoring the match']
 
 /**
  * Big cover for the match page. Tap Reveal → a short "v3 is analysing" sequence (steps tick by, a bar fills,

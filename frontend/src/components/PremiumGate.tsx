@@ -19,8 +19,8 @@ export default function PremiumGate({ title, children, pro = false }: { title: s
         <h1 className="font-display text-2xl font-extrabold text-ink">{title} is a {pro ? 'Pro' : 'Premium'} page</h1>
         <p className="text-sm text-muted mt-2">
           {pro
-            ? 'Draw alerts flag the draws the bookmakers underrate, before kick-off. They are part of Pro, together with unlimited predictions.'
-            : 'Premium shows how every model has performed on real matches: hit rate, calibration, strong picks and results against the bookmakers.'}
+            ? 'Draw picks: the 2 games of the week most likely to end in a draw, by our model. They are part of Pro, together with unlimited predictions.'
+            : 'Premium shows how every model has performed on real matches: hit rate, how sure we were, strong picks and every result.'}
         </p>
         <div className="mt-6 flex justify-center gap-2">
           <Link to="/premium" className="px-4 py-2 rounded-xl bg-accent text-bg text-sm font-semibold">

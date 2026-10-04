@@ -11,10 +11,10 @@ import { refreshUnlocks, useUnlocks, resetDay } from '../lib/unlocks'
  * switch the plan straight away (test checkout); otherwise they say payments open soon.
  */
 
-const FREE = ['2 full picks a day with a free account', 'Live scores, lineups and events', 'League tables, team and player pages', 'Latest results and our public record']
+const FREE = ['2 full picks a week with a free account', 'Live scores, lineups and events', 'League tables, team and player pages', 'Latest results and our public record']
 const PREMIUM = [
   '60 match unlocks a month',
-  'Win / draw / loss %, fair odds, why this pick',
+  'Win / draw / loss %, and why this pick',
   'Goals: over/under, both teams score, likely scores',
   'Every finished match in full',
   'Full team and player stats'
@@ -22,8 +22,8 @@ const PREMIUM = [
 const PRO = [
   'Unlimited predictions, no counting',
   'Everything in Premium',
-  'Draw alerts: draws the bookmakers underrate',
-  'Model vs market on every outcome',
+  'Draw picks: the 2 likeliest draws every week',
+  'Basketball, tennis and UFC as they launch',
   'Early access to new models and features'
 ]
 
@@ -92,7 +92,7 @@ export default function Premium() {
       <div className="text-center max-w-2xl mx-auto">
         <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">See the numbers behind every pick</h1>
         <p className="text-muted mt-3">
-          Our models are measured on every match against the bookmakers, in public. Pick the plan that fits how much you use it.
+          Every prediction is saved before kick-off and scored in public. Pick the plan that fits how much you use it.
         </p>
         <p className="mt-4 inline-flex items-center gap-2 rounded-full border border-win/40 bg-win/10 px-3 py-1 text-xs font-semibold text-win">
           3-day money-back guarantee · cancel any time

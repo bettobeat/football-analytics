@@ -5,7 +5,7 @@ import RecentResults from '../components/RecentResults'
 import { Link, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
-import { pickOfPrediction, type Market, type Prediction } from '../lib/predict'
+import { pickOfPrediction, type Prediction } from '../lib/predict'
 
 interface Team {
   id: number
@@ -41,7 +41,6 @@ interface APIMatch {
     halfTime?: { home: number | null; away: number | null }
   }
   prediction?: Prediction | null
-  market?: Market | null
 }
 
 type Pick = 'H' | 'D' | 'A'
@@ -161,7 +160,7 @@ function Dashboard() {
         prev.map(m => {
           const n = live.get(m.id)
           if (!n) return m
-          return n.prediction?.locked && m.prediction && !m.prediction.locked ? { ...n, prediction: m.prediction, market: m.market ?? n.market } : n
+          return n.prediction?.locked && m.prediction && !m.prediction.locked ? { ...n, prediction: m.prediction } : n
         })
       )
     }

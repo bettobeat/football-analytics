@@ -5,23 +5,22 @@ import { API_URL } from '../lib/socket'
 import { errorText } from '../lib/auth'
 
 /*
- * Draw picks (Pro): the 2 games of the coming 7 days where a draw is most likely by our estimate, among games where
- * the draw odds are worth it. One short record line underneath (the same choice made week by week on past games).
+ * Draw picks (Pro): the 2 games of the coming 7 days where a draw is most likely by our own model, then more
+ * likely draws, draws by league and the teams that draw most. No bookmakers.
  */
 
 interface Pick {
   matchId: number; league: string; date: string; home: string; away: string
   homeCrest?: string | null; awayCrest?: string | null
-  marketDraw: number; ourDraw: number; price: number; edge: number
+  ourDraw: number
 }
-interface Likely { matchId: number; league: string; date: string; home: string; away: string; homeCrest?: string | null; awayCrest?: string | null; draw: number; marketDraw: number | null; price: number | null }
+interface Likely { matchId: number; league: string; date: string; home: string; away: string; homeCrest?: string | null; awayCrest?: string | null; draw: number }
 interface LeagueDraw { division: string; league: string; now: number | null; n: number; last: number | null }
 interface TeamDraw { team: string; league: string; n: number; d: number; rate: number }
 interface Report { picks: Pick[]; likely?: Likely[]; leagues?: LeagueDraw[]; teams?: TeamDraw[] }
 
 const when = (iso: string) =>
   new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-const sign = (x: number | null | undefined) => (x === null || x === undefined ? '–' : `${x > 0 ? '+' : ''}${x}%`)
 
 function Crest({ src, name }: { src?: string | null; name: string }) {
   return src ? (
@@ -61,30 +60,13 @@ function PickCard({ p, n }: { p: Pick; n: number }) {
 
       <div className="relative space-y-1.5">
         <div className="flex items-center gap-2 text-xs">
-          <span className="w-24 text-muted shrink-0">Bookmakers</span>
-          <div className="flex-1 h-2 rounded-full bg-surface2 overflow-hidden">
-            <div className="h-full bg-muted/60 rounded-full" style={{ width: `${Math.min(100, (p.marketDraw / max) * 100)}%` }} />
-          </div>
-          <span className="num w-12 text-right text-muted">{Math.round(p.marketDraw)}%</span>
-        </div>
-        <div className="flex items-center gap-2 text-xs">
-          <span className="w-24 text-ink font-semibold shrink-0">Our estimate</span>
+          <span className="w-24 text-muted shrink-0">Draw chance</span>
           <div className="flex-1 h-2 rounded-full bg-surface2 overflow-hidden">
             <div className="h-full bg-draw rounded-full" style={{ width: `${Math.min(100, (p.ourDraw / max) * 100)}%` }} />
           </div>
           <span className="num w-12 text-right font-bold text-ink">{Math.round(p.ourDraw)}%</span>
         </div>
-      </div>
-
-      <div className="relative grid grid-cols-2 gap-3">
-        <div className="rounded-xl bg-surface2/60 p-3">
-          <div className="text-[11px] text-faint">Draw odds</div>
-          <div className="font-display text-xl font-extrabold text-ink num">{p.price.toFixed(2)}</div>
-        </div>
-        <div className="rounded-xl bg-surface2/60 p-3">
-          <div className="text-[11px] text-faint">Value at these odds</div>
-          <div className="font-display text-xl font-extrabold text-win num">{sign(p.edge)}</div>
-        </div>
+        <p className="text-[11px] text-faint">A typical game ends level about 1 time in 4. This one is among the most likely draws of the week.</p>
       </div>
 
       <span className="relative text-sm font-bold text-accent">Full match analysis →</span>
@@ -111,7 +93,7 @@ export default function DrawAlerts() {
       <div>
         <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">Draw picks</h1>
         <p className="text-muted mt-2 max-w-2xl">
-          The 2 games of the coming week where a draw is most likely, and the draw odds are worth it. Updated as the odds move.
+          The 2 games of the coming week where a draw is most likely, picked by our model. Updated as new information comes in.
         </p>
       </div>
 
@@ -123,8 +105,7 @@ export default function DrawAlerts() {
         <div className="card p-8 text-center space-y-2">
           <div className="font-display text-lg font-bold text-ink">Our 2 draw picks are coming</div>
           <p className="text-sm text-muted max-w-md mx-auto">
-            We pick a draw only when our chance is clearly above what the bookmakers' odds say, and odds for most games open a few days
-            before kick-off. Meanwhile, here are the games most likely to end level.
+            They appear once the coming week's games are scheduled and our model has rated them.
           </p>
         </div>
       ) : (
@@ -133,15 +114,15 @@ export default function DrawAlerts() {
         </div>
       )}
 
-      {/* the games most likely to end level this week, value or not */}
-      {data?.likely && data.likely.length > 0 && (
+      {/* more games likely to end level this week (after the 2 picks) */}
+      {data?.likely && data.likely.filter(m => !data.picks.some(p => p.matchId === m.matchId)).length > 0 && (
         <section className="card overflow-hidden">
           <div className="px-4 sm:px-5 py-3 border-b border-line/60 flex items-baseline justify-between gap-3">
-            <h2 className="font-display text-lg font-bold text-ink">Most likely draws this week</h2>
+            <h2 className="font-display text-lg font-bold text-ink">More likely draws this week</h2>
             <span className="text-[11px] text-faint">by our draw chance</span>
           </div>
           <ul className="divide-y divide-line/50">
-            {data.likely.map(m => (
+            {data.likely.filter(m => !data.picks.some(p => p.matchId === m.matchId)).map(m => (
               <li key={m.matchId}>
                 <Link to={`/match/${m.matchId}`} className="flex items-center gap-3 px-4 sm:px-5 py-2.5 hover:bg-surface2/50">
                   <span className="w-16 flex-shrink-0 text-[11px] text-faint leading-tight">
@@ -157,10 +138,6 @@ export default function DrawAlerts() {
                       <span className="truncate">{m.away}</span>
                     </span>
                     <span className="block text-[11px] text-faint truncate">{m.league}</span>
-                  </span>
-                  <span className="hidden sm:block w-28 text-right text-[11px] text-faint">
-                    {m.marketDraw !== null ? <>bookmakers {Math.round(m.marketDraw)}%</> : ''}
-                    {m.price ? <span className="block num">odds {m.price.toFixed(2)}</span> : null}
                   </span>
                   <span className="w-14 text-right font-display font-extrabold text-draw num">{Math.round(m.draw)}%</span>
                 </Link>
@@ -218,8 +195,7 @@ export default function DrawAlerts() {
       )}
 
       <p className="text-xs text-faint max-w-2xl leading-relaxed">
-        A draw is never a sure thing: even our strongest draw calls come in about 1 time in 3. The odds pay about 3 to 4 times
-        the stake, so the value is over many picks, not in any single game. Probabilities, not promises.
+        A draw is never a sure thing: even our strongest draw calls come in about 1 time in 3. Probabilities, not promises.
       </p>
     </div>
   )

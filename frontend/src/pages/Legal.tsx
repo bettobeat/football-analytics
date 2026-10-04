@@ -34,8 +34,8 @@ export function Terms() {
     <Page title="Terms of use">
       <Section title="What Bet To Beat is">
         <p>
-          Bet To Beat publishes football statistics and match predictions made by our own models, together with live scores, match
-          statistics and bookmaker odds from third-party data providers. Predictions are probabilities, not promises: any match can end in
+          Bet To Beat publishes football statistics and match predictions made by our own models, together with live scores and match
+          statistics from third-party data providers. Predictions are probabilities, not promises: any match can end in
           any result.
         </p>
       </Section>
@@ -64,7 +64,7 @@ export function Terms() {
       </Section>
       <Section title="Premium">
         <p>
-          Paid plans (Premium, Pro) open extra features: full probabilities, the model breakdown, draw alerts and the track record.
+          Paid plans (Premium, Pro) open extra features: full probabilities, the model breakdown, draw picks and the track record.
           Premium includes a monthly number of match unlocks; Pro is unlimited. Every paid plan has a 3-day money-back guarantee: ask
           within 3 days of a payment and we refund it in full. Plans renew automatically until you cancel; cancelling stops the next
           renewal. Payments are handled by a payment provider; we never see or store your card details.
@@ -78,7 +78,7 @@ export function Terms() {
       </Section>
       <Section title="Data from others">
         <p>
-          Fixtures, scores, statistics, lineups and odds come from third-party providers and can be late or wrong. Team names and crests
+          Fixtures, scores, statistics and lineups come from third-party providers and can be late or wrong. Team names and crests
           belong to their owners and are shown only to identify the teams.
         </p>
       </Section>

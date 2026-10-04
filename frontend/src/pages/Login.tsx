@@ -48,7 +48,7 @@ export default function Login({ mode: initial }: { mode: 'login' | 'signup' }) {
       <div className="card p-6 sm:p-8">
         <h1 className="font-display text-2xl font-extrabold text-ink">{mode === 'login' ? 'Sign in' : 'Create your account'}</h1>
         <p className="text-sm text-muted mt-1">
-          {mode === 'login' ? 'Welcome back.' : 'Free account: every match, live scores, market odds and the model’s pick.'}
+          {mode === 'login' ? 'Welcome back.' : 'Free account: every match, live scores, the model’s pick and 2 full predictions a week.'}
         </p>
 
         <form onSubmit={submit} className="mt-6 space-y-3">

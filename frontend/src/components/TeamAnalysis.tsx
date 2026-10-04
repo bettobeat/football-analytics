@@ -22,7 +22,6 @@ interface Model {
 interface RecordGame { matchId: number; date: string; comp: string | null; home: boolean; opp: string; score: string; pick: string; hit: boolean }
 interface TeamRecord {
   n: number; hits?: number; hitRate?: number | null
-  market?: { n: number; hitRate: number | null } | null
   btts?: { n: number; hitRate: number | null } | null
   over25?: { n: number; hitRate: number | null } | null
   games?: RecordGame[]
@@ -293,7 +292,7 @@ export function TeamRecordCard({ rec, teamName }: { rec: TeamRecord | undefined;
       ) : (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-2.5">
-            <Tile k={`Result, ${rec.n} games`} v={`${rec.hitRate}%`} sub={rec.market && rec.market.hitRate !== null ? `bookmakers ${rec.market.hitRate}% (${rec.market.n} games)` : `${rec.hits} right`} />
+            <Tile k={`Result, ${rec.n} games`} v={`${rec.hitRate}%`} sub={`${rec.hits} right`} />
             {rec.btts && <Tile k="Both teams score" v={`${rec.btts.hitRate}%`} sub={`${rec.btts.n} games`} />}
             {rec.over25 && <Tile k="Over / under 2.5" v={`${rec.over25.hitRate}%`} sub={`${rec.over25.n} games`} />}
           </div>

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
-import { fairOdds, bookLabel, modelInfo, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, drawAlert, pickOfPrediction, type Market, type Prediction } from '../lib/predict'
+import { modelInfo, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, pickOfPrediction, type Prediction } from '../lib/predict'
 import { useAuth } from '../lib/auth'
 import WinProbability from '../components/WinProbability'
 import { useReveal, justRevealed, hideMatch, guessFirstOn } from '../lib/reveal'
@@ -115,7 +115,6 @@ interface Details {
   standings: { home: StandingRow | null; away: StandingRow | null }
   form: { home: Match[]; away: Match[] }
   probableLineups?: { home: Probable | null; away: Probable | null } | null
-  market?: Market | null
 }
 
 /** A team's usual XI, built by the backend from its last few matches. */
@@ -597,7 +596,7 @@ function MatchDetail() {
             note={p ? [modelInfo(p.model).tag, modelInfo(p.model).name.replace(new RegExp(`^${modelInfo(p.model).tag} · `), ''), p.confidence ? CONFIDENCE_LABEL[p.confidence] : null].filter(Boolean).join(' · ') : undefined}
           >
             {p && p.locked ? (
-              <LockedPrediction p={p} pick={pick} home={home} away={away} market={details.market || null} matchId={m.id} status={m.status} onUnlocked={() => { setUnlockAnim(true); load(false) }} />
+              <LockedPrediction pick={pick} home={home} away={away} matchId={m.id} status={m.status} onUnlocked={() => { setUnlockAnim(true); load(false) }} />
             ) : p && pick ? (
               hidden || unlockAnim ? (
                 <RevealCover
@@ -692,7 +691,6 @@ function MatchDetail() {
                   p={p}
                   home={home.shortName || home.name}
                   away={away.shortName || away.name}
-                  market={details.market || null}
                   upcoming={['SCHEDULED', 'TIMED'].includes(m.status)}
                   friendly={/friendl/i.test(m.competition.name || '')}
                 />
@@ -701,28 +699,6 @@ function MatchDetail() {
                     <button type="button" onClick={() => hideMatch(matchId)} className="text-xs text-faint hover:text-ink underline underline-offset-4">Hide prediction again</button>
                   </div>
                 )}
-
-                {(() => {
-                  const da = drawAlert(p, details.market, m.competition.code)
-                  if (!da) return null
-                  return (
-                    <div className="mt-4 rounded-xl border border-draw/50 bg-draw/10 p-3 text-sm">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="px-2.5 py-1 rounded-full text-xs font-bold border bg-draw/20 text-draw border-draw/50">Draw alert</span>
-                        <span className="text-ink">
-                          The market prices the draw at <span className="num font-semibold">{da.market.toFixed(1)}%</span>; v3 rates it higher
-                          (<span className="num font-semibold">{da.anchored}%</span> after anchoring to the market).
-                        </span>
-                      </div>
-                      <div className="text-xs text-muted mt-1.5">
-                        Best draw price <span className="num text-ink">{da.price.toFixed(2)}</span> · edge <span className="num text-ink">+{da.edge}%</span>.
-                        In 2024-25 and 2025-26, the draw price moved toward v3 by kick-off in about 2 of 3 such matches.
-                      </div>
-                    </div>
-                  )
-                })()}
-
-                {details.market && <MarketStrip p={p} m={details.market} home={home} away={away} />}
 
                 <GoalsPanel p={p} home={home} away={away} roll={justRevealed(matchId)} />
 
@@ -1036,14 +1012,14 @@ function Highlights({ matchId }: { matchId: number }) {
   )
 }
 
-function LockedPrediction({ p, pick, home, away, market, matchId, status, onUnlocked }: {
-  p: Prediction; pick: 'H' | 'D' | 'A' | null; home: Team; away: Team; market: Market | null; matchId: number; status: string; onUnlocked: () => void
+function LockedPrediction({ pick, home, away, matchId, status, onUnlocked }: {
+  pick: 'H' | 'D' | 'A' | null; home: Team; away: Team; matchId: number; status: string; onUnlocked: () => void
 }) {
   const { user, access } = useAuth()
-  // signed-in Free (2 picks a day) and $15 Premium (60 a month) unlock match by match
+  // signed-in Free (2 picks a week) and $15 Premium (60 a month) unlock match by match
   const canUnlock = !!user && (access === 'premium' || access === 'free')
   const u = useUnlocks(canUnlock)
-  const daily = u?.period === 'day'
+  const weekly = u?.period === 'week'
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [needPro, setNeedPro] = useState(false)
@@ -1089,15 +1065,15 @@ function LockedPrediction({ p, pick, home, away, market, matchId, status, onUnlo
           <div className="rounded-2xl border border-line bg-surface/95 shadow-lift px-5 py-4 text-center max-w-sm">
             {out ? (
               <>
-                <div className="font-display font-bold text-ink">{daily ? "You've used today's free picks" : "You've used all your unlocks this month"}</div>
+                <div className="font-display font-bold text-ink">{weekly ? "You've used this week's free picks" : "You've used all your unlocks this month"}</div>
                 <div className="text-xs text-muted mt-1">
-                  {daily
-                    ? `Your ${u?.allowance ?? 2} free picks come back tomorrow. Premium opens 60 matches a month; Pro opens every match.`
-                    : `${u ? `Your ${u.allowance} unlocks renew on ${resetDay(u.resetsAt)}. ` : ''}Pro is unlimited, and adds draw alerts.`}
+                  {weekly
+                    ? `Your ${u?.allowance ?? 2} free picks come back on Monday. Premium opens 60 matches a month; Pro opens every match.`
+                    : `${u ? `Your ${u.allowance} unlocks renew on ${resetDay(u.resetsAt)}. ` : ''}Pro is unlimited, and adds draw picks.`}
                 </div>
                 <div className="mt-3 flex justify-center">
                   <Link to="/premium" className="px-4 py-2 rounded-xl bg-accent text-bg text-sm font-extrabold">
-                    {daily ? 'See plans' : 'Upgrade to Pro'}
+                    {weekly ? 'See plans' : 'Upgrade to Pro'}
                   </Link>
                 </div>
               </>
@@ -1106,13 +1082,13 @@ function LockedPrediction({ p, pick, home, away, market, matchId, status, onUnlo
                 <div className="font-display font-bold text-ink">Unlock this match</div>
                 <div className="text-xs text-muted mt-1">
                   The full prediction, why this pick, goals and the v3 breakdown.{' '}
-                  {daily ? `Uses 1 of your ${u?.allowance ?? 2} free picks today` : 'Uses 1 of your monthly unlocks'}; it stays open after that.
+                  {weekly ? `Uses 1 of your ${u?.allowance ?? 2} free picks this week` : 'Uses 1 of your monthly unlocks'}; it stays open after that.
                 </div>
                 <div className="mt-3 flex flex-col items-center gap-1.5">
                   <button onClick={doUnlock} disabled={busy} className="px-4 py-2 rounded-xl bg-accent text-bg text-sm font-extrabold disabled:opacity-60">
                     {busy ? 'Unlocking…' : 'Unlock prediction'}
                   </button>
-                  {u && u.left !== null && <span className="text-[11px] text-faint num">{u.left} of {u.allowance} {daily ? 'free picks left today' : 'unlocks left this month'}</span>}
+                  {u && u.left !== null && <span className="text-[11px] text-faint num">{u.left} of {u.allowance} {weekly ? 'free picks left this week' : 'unlocks left this month'}</span>}
                   {err && <span className="text-[11px] text-loss">{err}</span>}
                 </div>
               </>
@@ -1120,11 +1096,11 @@ function LockedPrediction({ p, pick, home, away, market, matchId, status, onUnlo
           </div>
           ) : (
           <div className="rounded-2xl border border-line bg-surface/95 shadow-lift px-5 py-4 text-center max-w-sm">
-            <div className="font-display font-bold text-ink">{user ? 'Full prediction with Premium' : 'Get 2 free picks every day'}</div>
+            <div className="font-display font-bold text-ink">{user ? 'Full prediction with Premium' : 'Get 2 free picks every week'}</div>
             <div className="text-xs text-muted mt-1">
               {user
-                ? 'The pick, win / draw / loss %, why this pick in plain words, model vs market, draw alerts and the full v3 breakdown.'
-                : 'Create a free account and open the full prediction of any 2 matches a day. No card needed.'}
+                ? 'The pick, win / draw / loss %, why this pick in plain words, goals, draw picks and the full v3 breakdown.'
+                : 'Create a free account and open the full prediction of any 2 matches a week. No card needed.'}
             </div>
             <div className="mt-3 flex justify-center gap-2">
               {user ? (
@@ -1146,7 +1122,6 @@ function LockedPrediction({ p, pick, home, away, market, matchId, status, onUnlo
           )}
         </div>
       </div>
-      {market && <MarketStrip p={p} m={market} home={home} away={away} />}
     </div>
   )
 }
@@ -1161,54 +1136,6 @@ function OutcomeTile({ k, label, v, active, roll = false, delay = 0 }: { k: 'H' 
         {label}
       </div>
       <div className={`num text-2xl sm:text-3xl font-extrabold ${active ? color : 'text-ink/70'}`}><CountUp value={v} decimals={1} suffix="%" animate={roll} delay={delay} /></div>
-      <div className="num text-[11px] text-faint mt-0.5">fair odds {fairOdds(v)}</div>
-    </div>
-  )
-}
-
-/** Bookmaker line vs the model: odds, margin-free probabilities and the gap on each outcome. */
-function MarketStrip({ p, m, home, away }: { p: Prediction; m: Market; home: Team; away: Team }) {
-  const rows: { k: 'H' | 'D' | 'A'; label: string; odds: number; mkt: number; model: number }[] = [
-    { k: 'H', label: home.shortName || home.name, odds: m.msw.homeWin, mkt: m.probs.home, model: p.home },
-    { k: 'D', label: 'Draw', odds: m.msw.draw, mkt: m.probs.draw, model: p.draw },
-    { k: 'A', label: away.shortName || away.name, odds: m.msw.awayWin, mkt: m.probs.away, model: p.away }
-  ]
-  const showModel = !p.locked
-  const age = Math.max(0, Math.round((Date.now() - new Date(m.fetchedAt).getTime()) / 60000))
-  const ageText = age < 60 ? `${age} min ago` : age < 60 * 48 ? `${Math.round(age / 60)} h ago` : `${Math.round(age / 1440)} d ago`
-  return (
-    <div className="mt-4 rounded-xl border border-line/60 bg-surface2/40 p-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
-        <span className="label">Market</span>
-        <span className="text-[11px] text-faint num">
-          {bookLabel(m)} · {m.books} book{m.books === 1 ? '' : 's'} · margin {m.overround}% · {ageText}
-        </span>
-      </div>
-      <div className="flex h-1.5 gap-[3px] mb-3">
-        <div className="rounded-full bg-home/40" style={{ width: `calc(${m.probs.home}% - 3px)` }} />
-        <div className="rounded-full bg-draw/40" style={{ width: `calc(${m.probs.draw}% - 3px)` }} />
-        <div className="rounded-full bg-away/40" style={{ width: `calc(${m.probs.away}% - 3px)` }} />
-      </div>
-      <div className="grid grid-cols-3 gap-3 text-xs">
-        {rows.map(r => {
-          const delta = r.model - r.mkt
-          return (
-            <div key={r.k} className="min-w-0">
-              <div className="truncate text-faint">{r.label}</div>
-              <div className="num text-ink">
-                <span className="font-semibold">{r.odds.toFixed(2)}</span>
-                <span className="text-muted"> · {r.mkt.toFixed(1)}%</span>
-              </div>
-              {showModel && (
-                <div className={`num text-[11px] ${Math.abs(delta) >= 5 ? 'text-ink font-semibold' : 'text-faint'}`} title="Model minus market">
-                  model {delta >= 0 ? '+' : ''}
-                  {delta.toFixed(1)} pp
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
     </div>
   )
 }

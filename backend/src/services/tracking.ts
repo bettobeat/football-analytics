@@ -645,18 +645,19 @@ export function trackingStatus() {
  */
 export function publicRecord(days = 30, competition?: string, recentLimit = 60) {
   const rows = settledRows(days, competition, 'main');
-  const res = { n: 0, v3: 0, market: 0 };
+  // Oct 2026: no bookmakers on the site. Every pick is counted on every finished game (not only games with odds).
+  const res = { n: 0, v3: 0 };
   const btts = { n: 0, hits: 0, yesPicks: 0 };
   const ou = { n: 0, hits: 0, overPicks: 0 };
-  const byComp = new Map<string, { code: string; name: string; n: number; v3: number; market: number }>();
+  const byComp = new Map<string, { code: string; name: string; n: number; v3: number }>();
   const recent: any[] = [];
-  // "safer" bets: double chance (vs the bookmakers), over/under 1.5, and the most confident pick of each match
-  const dc = { n: 0, v3: 0, market: 0 };
+  // "safer" calls: double chance, over/under 1.5, and the most confident pick of each match
+  const dc = { n: 0, v3: 0 };
   const ou15 = { n: 0, hits: 0, overPicks: 0 };
   const safest = { n: 0, hits: 0, byMarket: {} as Record<string, { n: number; hits: number }> };
-  // how often we are right at each confidence level (the pick's own %), with the bookmakers on the same games
+  // how often we are right at each confidence level (the pick's own %)
   const BANDS = [{ id: '70+', lo: 70, hi: 101, label: '70% or more' }, { id: '60-70', lo: 60, hi: 70, label: '60–70%' }, { id: '50-60', lo: 50, hi: 60, label: '50–60%' }, { id: '<50', lo: 0, hi: 50, label: 'under 50%' }];
-  const bands = BANDS.map(b => ({ ...b, n: 0, hits: 0, sumP: 0, mN: 0, mHits: 0 }));
+  const bands = BANDS.map(b => ({ ...b, n: 0, hits: 0, sumP: 0 }));
   type DC = '1X' | 'X2' | '12';
   const dcOf = (h: number, d: number, a: number): { k: DC; p: number } => {
     const c: { k: DC; p: number }[] = [{ k: '1X', p: h + d }, { k: 'X2', p: d + a }, { k: '12', p: h + a }];
@@ -671,23 +672,14 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
     const band = bands.find(b => topP >= b.lo && topP < b.hi);
     if (band) {
       band.n++; band.sumP += topP; if (v3hit) band.hits++;
-      if (r.odds_home && r.odds_draw && r.odds_away) {
-        band.mN++;
-        const mk = r.odds_home <= r.odds_draw && r.odds_home <= r.odds_away ? 'H' : r.odds_away <= r.odds_draw ? 'A' : 'D';
-        if (mk === r.outcome) band.mHits++;
-      }
     }
-    let mkPick: Outcome | null = null;
-    if (r.odds_home && r.odds_draw && r.odds_away) {
-      mkPick = r.odds_home <= r.odds_draw && r.odds_home <= r.odds_away ? 'H' : r.odds_away <= r.odds_draw ? 'A' : 'D';
-      res.n++;
-      if (v3hit) res.v3++;
-      if (mkPick === r.outcome) res.market++;
+    res.n++;
+    if (v3hit) res.v3++;
+    {
       const key = r.competition_code || r.competition_name || '?';
-      const c = byComp.get(key) || { code: r.competition_code || '', name: r.competition_name || key, n: 0, v3: 0, market: 0 };
+      const c = byComp.get(key) || { code: r.competition_code || '', name: r.competition_name || key, n: 0, v3: 0 };
       c.n++;
       if (v3hit) c.v3++;
-      if (mkPick === r.outcome) c.market++;
       byComp.set(key, c);
     }
     let bttsPick: boolean | null = null, bttsHit: boolean | null = null;
@@ -706,16 +698,11 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
       if (ouHit) ou.hits++;
       if (ouPick) ou.overPicks++;
     }
-    // double chance: the two results we rate highest together; the bookmakers' the same from their odds
+    // double chance: the two results we rate highest together
     const myDc = dcOf(Number(r.p_home), Number(r.p_draw), Number(r.p_away));
     const myDcHit = dcHit(myDc.k, r.outcome);
-    let mkDc: DC | null = null;
-    if (r.odds_home && r.odds_draw && r.odds_away) {
-      mkDc = dcOf(1 / r.odds_home, 1 / r.odds_draw, 1 / r.odds_away).k;
-      dc.n++;
-      if (myDcHit) dc.v3++;
-      if (dcHit(mkDc, r.outcome)) dc.market++;
-    }
+    dc.n++;
+    if (myDcHit) dc.v3++;
     // over/under 1.5 from the expected goals (Poisson): P(2+ goals) = 1 − e^−λ (1 + λ)
     let o15: { pick: boolean; hit: boolean; p: number } | null = null;
     if (r.xg_home != null && r.xg_away != null) {
@@ -744,13 +731,13 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
 
     if (recent.length < recentLimit)
       recent.push({
-        dc: { pick: myDc.k, hit: myDcHit, market: mkDc, marketHit: mkDc ? dcHit(mkDc, r.outcome) : null },
+        dc: { pick: myDc.k, hit: myDcHit },
         over15: o15 ? { pick: o15.pick, hit: o15.hit } : null,
         safest: { market: best.market, label: best.label, p: Math.round(best.p), hit: best.hit },
         matchId: r.match_id, date: r.utc_date, competition: r.competition_name, code: r.competition_code,
         home: r.home_team, away: r.away_team, homeCrest: crestOf(r.home_team_id), awayCrest: crestOf(r.away_team_id),
         score: `${hg}–${ag}`, outcome: r.outcome,
-        result: { pick: v3pick, hit: v3hit, market: mkPick, marketHit: mkPick ? mkPick === r.outcome : null },
+        result: { pick: v3pick, hit: v3hit },
         btts: bttsPick === null ? null : { pick: bttsPick, hit: bttsHit },
         over25: ouPick === null ? null : { pick: ouPick, hit: ouHit }
       });
@@ -759,10 +746,10 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
   return {
     days,
     competition: competition || null,
-    result: { n: res.n, v3: pc(res.v3, res.n), market: pc(res.market, res.n), v3Hits: res.v3, marketHits: res.market },
+    result: { n: res.n, v3: pc(res.v3, res.n), v3Hits: res.v3 },
     btts: { n: btts.n, hitRate: pc(btts.hits, btts.n), hits: btts.hits, yesShare: pc(btts.yesPicks, btts.n) },
     over25: { n: ou.n, hitRate: pc(ou.hits, ou.n), hits: ou.hits, overShare: pc(ou.overPicks, ou.n) },
-    doubleChance: { n: dc.n, v3: pc(dc.v3, dc.n), market: pc(dc.market, dc.n), v3Hits: dc.v3, marketHits: dc.market },
+    doubleChance: { n: dc.n, v3: pc(dc.v3, dc.n), v3Hits: dc.v3 },
     over15: { n: ou15.n, hitRate: pc(ou15.hits, ou15.n), hits: ou15.hits, overShare: pc(ou15.overPicks, ou15.n) },
     safest: {
       n: safest.n,
@@ -770,10 +757,10 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
       hits: safest.hits,
       byMarket: Object.entries(safest.byMarket).map(([market, v]) => ({ market, n: v.n, hitRate: pc(v.hits, v.n) })).sort((a, b) => b.n - a.n)
     },
-    byConfidence: bands.map(b => ({ id: b.id, label: b.label, n: b.n, hitRate: pc(b.hits, b.n), said: b.n ? Math.round(b.sumP / b.n) : null, market: b.mN ? pc(b.mHits, b.mN) : null, marketN: b.mN })),
+    byConfidence: bands.map(b => ({ id: b.id, label: b.label, n: b.n, hitRate: pc(b.hits, b.n), said: b.n ? Math.round(b.sumP / b.n) : null })),
     byCompetition: [...byComp.values()]
       .filter(c => c.n >= 5)
-      .map(c => ({ ...c, v3: pc(c.v3, c.n), market: pc(c.market, c.n) }))
+      .map(c => ({ ...c, v3: pc(c.v3, c.n) }))
       .sort((a, b) => b.n - a.n),
     recent
   };

@@ -3,7 +3,7 @@ import RecentResults from '../components/RecentResults'
 import { Link } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
-import { drawAlert, type Market, type Prediction } from '../lib/predict'
+import { type Prediction } from '../lib/predict'
 import { useAuth } from '../lib/auth'
 import { isCovered, revealMatch, useRevealState, justRevealed } from '../lib/reveal'
 import { matchFame } from '../lib/fame'
@@ -22,16 +22,14 @@ interface Match {
   score?: { fullTime?: { home: number | null; away: number | null } }
   prediction?: Prediction | null
   predictions?: Prediction[]
-  market?: Market | null
 }
 interface Summary {
   days: number
   v3: { games: number; hitRate: number | null; strong60: { n: number; hitRate: number | null } | null }
-  bookmakers: { games: number; hitRate: number | null }
-  drawAlerts: { seasons: { label: string; alerts: number; hitRate: number; roi: number; drawRate: number }[]; upcoming: number } | null
+  drawAlerts: { picks: number } | null
 }
 interface News { title: string; link: string; source: string; published: string | null; summary: string; image?: string | null }
-interface Alert { matchId: number; league: string; date: string; home: string; away: string; marketDraw: number; ourDraw: number; price: number; edge: number }
+interface Alert { matchId: number; league: string; date: string; home: string; away: string; ourDraw: number }
 
 const LIVE = new Set(['IN_PLAY', 'PAUSED', 'LIVE'])
 const MAIN = ['grid-v3', 'elo-intl', 'elo-euro']
@@ -64,7 +62,7 @@ function FeaturedHero({ m, p }: { m: Match | null; p: Prediction | null }) {
   if (!m)
     return (
       <div className="relative overflow-hidden rounded-[32px] border border-white/10 min-h-[360px] sm:min-h-[460px] bg-[linear-gradient(160deg,#0F1A2B_0%,#0A0F17_60%,#07090D_100%)] p-10 flex flex-col justify-center gap-3 text-[#EEF1F6]">
-        <div className="font-display text-3xl sm:text-5xl font-extrabold tracking-tight leading-[1.05]">Football predictions,<br />tested against the bookmakers.</div>
+        <div className="font-display text-3xl sm:text-5xl font-extrabold tracking-tight leading-[1.05]">Football predictions,<br />tested in public.</div>
         <p className="text-[#C9D0DB] max-w-lg">The next fixtures appear here as soon as they are scheduled.</p>
       </div>
     )
@@ -205,7 +203,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!full) { setAlerts([]); return }
-    axios.get(`${API_URL}/draw-alerts`).then(r => setAlerts(r.data.data.upcoming || [])).catch(() => undefined)
+    axios.get(`${API_URL}/draw-alerts`).then(r => setAlerts(r.data.data.picks || [])).catch(() => undefined)
   }, [full])
 
   const notStarted = useMemo(() => upcoming.filter(m => !LIVE.has(m.status) && new Date(m.utcDate).getTime() > Date.now()), [upcoming])
@@ -253,7 +251,7 @@ export default function Home() {
       {access === 'anon' && (
         <section className="rounded-3xl border border-accent/30 bg-[linear-gradient(135deg,rgb(var(--accent)/0.10),rgb(var(--surface)/0.6)_60%)] p-5 sm:p-7 flex flex-col lg:flex-row lg:items-center gap-5">
           <div className="flex-1 min-w-0 space-y-2">
-            <h1 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-ink">Football predictions, tested in public against the bookmakers</h1>
+            <h1 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-ink">Football predictions, tested in public</h1>
             <p className="text-sm sm:text-base text-muted max-w-2xl">
               Win, draw or loss chances, goals and the reasons behind every pick, for the top leagues, cups and national teams. Every prediction is saved before
               kick-off and scored after the game, so you can check us.
@@ -265,16 +263,16 @@ export default function Home() {
                 <div className="font-display text-2xl font-extrabold text-accent num">{summary.v3.hitRate}%</div>
                 <div className="text-[11px] text-muted">our picks right</div>
               </div>
-              {summary.bookmakers?.hitRate != null && (
+              {summary.v3.strong60?.hitRate != null && (
                 <div className="rounded-2xl bg-surface/70 border border-line px-4 py-3 text-center">
-                  <div className="font-display text-2xl font-extrabold text-ink num">{summary.bookmakers.hitRate}%</div>
-                  <div className="text-[11px] text-muted">bookmakers' favourite</div>
+                  <div className="font-display text-2xl font-extrabold text-ink num">{summary.v3.strong60.hitRate}%</div>
+                  <div className="text-[11px] text-muted">strong picks right</div>
                 </div>
               )}
             </div>
           )}
           <div className="flex flex-col sm:flex-row lg:flex-col gap-2 lg:w-52">
-            <Link to="/signup" className="h-11 px-5 rounded-2xl bg-accent text-bg font-extrabold grid place-items-center">Get 2 free picks a day</Link>
+            <Link to="/signup" className="h-11 px-5 rounded-2xl bg-accent text-bg font-extrabold grid place-items-center">Get 2 free picks a week</Link>
             <Link to="/accuracy" className="h-11 px-5 rounded-2xl border border-line text-ink font-semibold grid place-items-center hover:border-faint">See our record</Link>
           </div>
         </section>
@@ -350,7 +348,6 @@ export default function Home() {
             {next.map(m => {
               const p = mainPred(m)
               const pct = hasPct(p)
-              const da = pct && m.market ? drawAlert(p, m.market, m.competition.code) : null
               const strongPick = pct && topPct(p) >= 60
               const k = p ? (p.pick || (pct ? (p.home >= p.draw && p.home >= p.away ? 'H' : p.away >= p.draw ? 'A' : 'D') : null)) : null
               return (
@@ -380,8 +377,7 @@ export default function Home() {
                           </span>
                         ))}
                       </div>
-                      {da ? <span className="inline-block text-[11px] font-extrabold text-bg bg-draw px-2 py-0.5 rounded-full">Draw alert</span>
-                        : strongPick ? <span className="inline-block text-[11px] font-extrabold text-bg bg-accent px-2 py-0.5 rounded-full">Strong pick</span> : null}
+                      {strongPick ? <span className="inline-block text-[11px] font-extrabold text-bg bg-accent px-2 py-0.5 rounded-full">Strong pick</span> : null}
                     </div>
                   ) : p ? (
                     <div className="flex items-center justify-between text-xs rounded-xl bg-surface2/70 px-3 py-2">
@@ -402,19 +398,21 @@ export default function Home() {
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="rounded-3xl p-6 border border-accent/30 bg-[linear-gradient(160deg,rgb(var(--accent)/0.10),rgb(var(--surface)/0.6))] flex flex-col gap-4">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="font-display text-lg font-bold">v3 vs the bookmakers</h2>
+            <h2 className="font-display text-lg font-bold">Our record</h2>
             {summary && <span className="text-xs text-muted">{summary.v3.games} games · {summary.days} days</span>}
           </div>
           {summary && summary.v3.hitRate !== null ? (
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <div className="flex justify-between font-bold"><span>v3</span><span className="font-display text-accent">{summary.v3.hitRate}%</span></div>
+                <div className="flex justify-between font-bold"><span>All our picks</span><span className="font-display text-accent">{summary.v3.hitRate}%</span></div>
                 <div className="h-2.5 rounded-full bg-surface2"><div className="h-full rounded-full bg-accent" style={{ width: `${summary.v3.hitRate}%` }} /></div>
               </div>
-              <div className="space-y-1.5">
-                <div className="flex justify-between font-bold text-muted"><span>Bookmakers' favourite</span><span className="font-display">{summary.bookmakers.hitRate ?? '–'}%</span></div>
-                <div className="h-2.5 rounded-full bg-surface2"><div className="h-full rounded-full bg-faint" style={{ width: `${summary.bookmakers.hitRate ?? 0}%` }} /></div>
-              </div>
+              {summary.v3.strong60?.hitRate != null && (
+                <div className="space-y-1.5">
+                  <div className="flex justify-between font-bold text-muted"><span>Strong picks (60%+)</span><span className="font-display">{summary.v3.strong60.hitRate}%</span></div>
+                  <div className="h-2.5 rounded-full bg-surface2"><div className="h-full rounded-full bg-win" style={{ width: `${summary.v3.strong60.hitRate}%` }} /></div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-sm text-muted">Loading the record…</div>
@@ -425,12 +423,7 @@ export default function Home() {
 
         <div className="card p-6 flex flex-col gap-4">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="font-display text-lg font-bold">Draw alerts</h2>
-            {summary?.drawAlerts?.seasons?.[0] && (
-              <span className="text-[11px] font-extrabold text-bg bg-draw px-2.5 py-1 rounded-full">
-                {summary.drawAlerts.seasons[0].roi > 0 ? '+' : ''}{summary.drawAlerts.seasons[0].roi} per 100 in {summary.drawAlerts.seasons[0].label}
-              </span>
-            )}
+            <h2 className="font-display text-lg font-bold">Draw picks</h2>
           </div>
           {full ? (
             alerts.length ? (
@@ -438,19 +431,19 @@ export default function Home() {
                 <Link key={a.matchId} to={`/match/${a.matchId}`} className="rounded-2xl p-4 bg-draw/10 border border-draw/25 space-y-2 hover:bg-draw/15 transition-colors">
                   <div className="flex justify-between text-[11px] text-faint"><span>{a.league}</span><span>{when(a.date)}</span></div>
                   <div className="font-extrabold">{a.home} – {a.away}</div>
-                  <div className="flex flex-wrap gap-x-4 text-xs text-muted"><span>Bookmakers <b className="text-ink">{a.marketDraw}%</b></span><span>Ours <b className="text-draw">{a.ourDraw}%</b></span><span>Value <b className="text-win">+{a.edge}%</b></span></div>
+                  <div className="text-xs text-muted">Draw chance <b className="text-draw">{Math.round(a.ourDraw)}%</b></div>
                 </Link>
               ))
             ) : (
-              <p className="text-sm text-muted">No alerts right now. They appear when v3 sees a draw the bookmakers underrate.</p>
+              <p className="text-sm text-muted">No draw picks this week yet. They appear when the coming games are scheduled.</p>
             )
           ) : (
             <div className="rounded-2xl p-4 bg-surface2/60 space-y-2">
-              <div className="flex items-center gap-2 font-bold"><Lock /> {summary?.drawAlerts ? `${summary.drawAlerts.upcoming} alert${summary.drawAlerts.upcoming === 1 ? '' : 's'} right now` : 'Draw alerts'}</div>
-              <p className="text-sm text-muted">Draws the bookmakers underrate, flagged before kick-off. Draws on alerts: {summary?.drawAlerts?.seasons?.map(s => `${s.hitRate}% (${s.label})`).join(', ') || '–'}.</p>
+              <div className="flex items-center gap-2 font-bold"><Lock /> {summary?.drawAlerts?.picks ? `${summary.drawAlerts.picks} draw pick${summary.drawAlerts.picks === 1 ? '' : 's'} this week` : 'Draw picks'}</div>
+              <p className="text-sm text-muted">The 2 games of the week most likely to end in a draw, picked by our model. Part of Pro.</p>
             </div>
           )}
-          <Link to={full ? '/draw-alerts' : '/premium'} className="mt-auto text-sm font-bold text-accent">{full ? 'All draw alerts →' : 'Unlock draw alerts →'}</Link>
+          <Link to={full ? '/draw-alerts' : '/premium'} className="mt-auto text-sm font-bold text-accent">{full ? 'All draw picks →' : 'Unlock draw picks →'}</Link>
         </div>
 
         <div className="card p-3 flex flex-col">
@@ -514,7 +507,7 @@ export default function Home() {
           <div className="rounded-3xl p-7 border border-home/40 bg-[linear-gradient(150deg,#1B2A55_0%,#101624_70%)] text-[#EEF1F6] flex flex-col gap-4 self-start">
             <span className="self-start text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#07090D] bg-[#C8FF3D] px-3 py-1 rounded-full">Premium</span>
             <h2 className="font-display text-2xl font-bold leading-tight">See the numbers behind every pick</h2>
-            <p className="text-sm text-[#C9D0DB] leading-relaxed">Full percentages, the v3 breakdown, draw alerts, strong picks, team analysis and the complete track record.</p>
+            <p className="text-sm text-[#C9D0DB] leading-relaxed">Full percentages, the v3 breakdown, draw picks, strong picks, team analysis and the complete track record.</p>
             <Link to="/premium" className="h-12 rounded-2xl bg-[#C8FF3D] text-[#07090D] font-extrabold grid place-items-center">Go Premium</Link>
           </div>
         )}

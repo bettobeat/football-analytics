@@ -47,3 +47,6 @@ Thumbs.db
 
 # Local SQLite database
 backend/data/
+
+# investor presentation (kept out of the repo)
+presentation/

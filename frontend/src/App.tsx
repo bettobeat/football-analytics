@@ -242,7 +242,7 @@ function PageTitle() {
   const loc = useLocation()
   useEffect(() => {
     const t = TITLES.find(([re]) => re.test(loc.pathname))?.[1]
-    document.title = t && t !== 'Home' ? `${t} · Bet To Beat` : 'Bet To Beat · Football predictions tested against the bookmakers'
+    document.title = t && t !== 'Home' ? `${t} · Bet To Beat` : 'Bet To Beat · Football predictions, tested in public'
   }, [loc.pathname])
   return null
 }
@@ -360,7 +360,7 @@ function Shell() {
             stop and{' '}
             <a href="https://www.begambleaware.org" target="_blank" rel="noreferrer" className="underline hover:text-ink">get help</a>.
           </p>
-          <p>Data: Football-Data.org, API-Football, football-data.co.uk, Transfermarkt (squad values), bookmaker odds via The Odds API.</p>
+          <p>Data: Football-Data.org, API-Football, football-data.co.uk, Transfermarkt (squad values).</p>
         </footer>
         <BottomTabs />
       </div>

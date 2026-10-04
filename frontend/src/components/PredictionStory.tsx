@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import type { Market, Prediction } from '../lib/predict'
+import type { Prediction } from '../lib/predict'
 import { explainPrediction } from '../lib/explain'
 
 /*
@@ -7,8 +7,8 @@ import { explainPrediction } from '../lib/explain'
  *   1. the verdict in one sentence
  *   2. every factor the model weighs, as a tug of war between the two teams (who it favours and how much)
  *   3. how that adds up to the percentages (out of 1000 points, and where the draw chance comes from)
- *   4. what could still change it (lineups, missing players, friendlies, thin data, bookmakers disagreeing)
- * Everything comes from the prediction itself (the grid rows every engine sends) and the bookmakers' prices.
+ *   4. what could still change it (lineups, missing players, friendlies, thin data)
+ * Everything comes from the prediction itself (the grid rows every engine sends).
  */
 
 type Row = NonNullable<Prediction['grid']>['rows'][number]
@@ -111,13 +111,12 @@ function safestBet(p: Prediction, home: string, away: string): { label: string; 
   return { label: best.label, p: Math.round(best.p) }
 }
 
-export default function PredictionStory({ p, home, away, market, upcoming, friendly }: {
-  p: Prediction; home: string; away: string; market: Market | null; upcoming: boolean; friendly?: boolean
+export default function PredictionStory({ p, home, away, upcoming, friendly }: {
+  p: Prediction; home: string; away: string; upcoming: boolean; friendly?: boolean
 }) {
   const g = p.grid
-  const ex = explainPrediction(p, home, away, market, upcoming)
+  const ex = explainPrediction(p, home, away, upcoming)
   if (!g || !ex) return null
-  const names = { H: home, A: away }
 
   const team = g.rows.filter(r => !DRAW_ROWS.has(r.id))
   const moving = team.filter(r => r.edge !== 0).sort((a, b) => Math.abs(b.edge) - Math.abs(a.edge))
@@ -144,14 +143,7 @@ export default function PredictionStory({ p, home, away, market, upcoming, frien
   }
   if (friendly || g.rows.some(r => /friendly/i.test(r.name))) risks.push('It is a friendly: coaches rotate their squads, so results are harder to predict.')
   if (p.confidence === 'low') risks.push('One of the teams has played few games, so there is less to go on.')
-  if (market?.probs) {
-    const top = p.home >= p.away ? 'H' : 'A'
-    const ours = top === 'H' ? p.home : p.away
-    const theirs = top === 'H' ? market.probs.home : market.probs.away
-    if (theirs - ours >= 8) risks.push(`The bookmakers rate ${names[top]} even higher (${Math.round(theirs)}%): they may know about news we don't have yet.`)
-    else if (ours - theirs >= 10) risks.push(`We are well above the bookmakers on ${names[top]} (${Math.round(ours)}% vs ${Math.round(theirs)}%). That is where the value is, and also where we can be wrong.`)
-  }
-  if (!risks.length) risks.push('Nothing unusual: the teams, the data and the bookmakers all point the same way.')
+  if (!risks.length) risks.push('Nothing unusual: the teams, the form and the data all point the same way.')
 
   return (
     <div className="mt-4 rounded-2xl border border-line bg-surface2/40 p-4 sm:p-5 space-y-6">
@@ -221,7 +213,6 @@ export default function PredictionStory({ p, home, away, market, upcoming, frien
             The rest is split by the edge: <span className="num text-home font-semibold">{Math.round(p.home)}%</span> {home},{' '}
             <span className="num text-away font-semibold">{Math.round(p.away)}%</span> {away}.
           </p>
-          {ex.market && <p>{ex.market}</p>}
         </div>
       </Block>
 

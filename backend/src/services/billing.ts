@@ -1,7 +1,7 @@
 /**
  * Plans and the monthly unlock allowance.
  *
- *   Free     — signed-in: FREE_DAILY_UNLOCKS (default 2) full match unlocks a day (UTC); signed out: nothing.
+ *   Free     — signed-in: FREE_WEEKLY_UNLOCKS (default 2) full match unlocks a week (Monday–Sunday, UTC); signed out: nothing.
  *   Premium  — $15 / month: PREMIUM_UNLOCKS (default 60) match unlocks per calendar month (UTC). An unlocked match
  *              stays open for good (reopening is free); finished matches are always open; team / player stats and
  *              the track record in full.
@@ -15,7 +15,7 @@ import { db } from '../db';
 import { AuthError, setPlan, verificationRequired, type User, type Plan } from './auth';
 
 export const PREMIUM_UNLOCKS = parseInt(process.env.PREMIUM_UNLOCKS || '60', 10);
-export const FREE_DAILY_UNLOCKS = parseInt(process.env.FREE_DAILY_UNLOCKS || '2', 10);
+export const FREE_WEEKLY_UNLOCKS = parseInt(process.env.FREE_WEEKLY_UNLOCKS || '2', 10);
 /** Money-back window shown on the plans page (the payment provider does the refund). */
 export const REFUND_DAYS = 3;
 export const billingTestMode = process.env.BILLING_TEST_MODE === '1';
@@ -36,7 +36,7 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_unlocks_user_at ON match_unlocks(user_id, at);
 `);
-// which allowance an unlock came from: 'premium' (monthly) or 'free' (daily); older rows were all Premium
+// which allowance an unlock came from: 'premium' (monthly) or 'free' (weekly); older rows were all Premium
 if (!(db.prepare(`PRAGMA table_info(match_unlocks)`).all() as any[]).some(c => c.name === 'kind'))
   db.exec(`ALTER TABLE match_unlocks ADD COLUMN kind TEXT NOT NULL DEFAULT 'premium'`);
 
@@ -46,11 +46,14 @@ export const isFinished = (status: string) => DONE.has(String(status || ''));
 function monthStart(d = new Date()) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString();
 }
-function dayStart(d = new Date()) {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString();
+/** Monday 00:00 UTC of this week (free picks reset every Monday). */
+function weekStart(d = new Date()) {
+  const back = (d.getUTCDay() + 6) % 7; // Mon = 0 … Sun = 6
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - back)).toISOString();
 }
-function nextDayStart(d = new Date()) {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1)).toISOString();
+function nextWeekStart(d = new Date()) {
+  const back = (d.getUTCDay() + 6) % 7;
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - back + 7)).toISOString();
 }
 function nextMonthStart(d = new Date()) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)).toISOString();
@@ -72,20 +75,20 @@ export function unlockedIds(userId: number): Set<number> {
 
 export function unlockStatus(user: User | null, access: string) {
   const unlimited = access === 'pro' || access === 'admin';
-  if (!user) return { plan: 'anon', unlimited: false, allowance: FREE_DAILY_UNLOCKS, period: 'day', used: 0, left: 0, resetsAt: nextDayStart(), testMode: billingTestMode };
-  const daily = access === 'free';
-  const since = daily ? dayStart() : monthStart();
-  const kind = daily ? 'free' : 'premium';
+  if (!user) return { plan: 'anon', unlimited: false, allowance: FREE_WEEKLY_UNLOCKS, period: 'week', used: 0, left: 0, resetsAt: nextWeekStart(), testMode: billingTestMode };
+  const weekly = access === 'free';
+  const since = weekly ? weekStart() : monthStart();
+  const kind = weekly ? 'free' : 'premium';
   const used = (db.prepare('SELECT COUNT(*) n FROM match_unlocks WHERE user_id = ? AND at >= ? AND kind = ?').get(user.id, since, kind) as any).n;
-  const allowance = access === 'premium' ? PREMIUM_UNLOCKS : daily ? FREE_DAILY_UNLOCKS : 0;
+  const allowance = access === 'premium' ? PREMIUM_UNLOCKS : weekly ? FREE_WEEKLY_UNLOCKS : 0;
   return {
     plan: access === 'admin' ? 'admin' : user.plan,
     unlimited,
     allowance,
-    period: daily ? 'day' : 'month',
+    period: weekly ? 'week' : 'month',
     used,
     left: unlimited ? null : Math.max(0, allowance - used),
-    resetsAt: daily ? nextDayStart() : nextMonthStart(),
+    resetsAt: weekly ? nextWeekStart() : nextMonthStart(),
     testMode: billingTestMode
   };
 }
@@ -104,7 +107,7 @@ export function unlockMatch(user: User, access: string, matchId: number, status:
   const st = unlockStatus(user, access);
   if ((st.left ?? 0) <= 0)
     throw Object.assign(
-      new AuthError(402, access === 'free' ? `You've used your ${FREE_DAILY_UNLOCKS} free picks today. Premium opens 60 matches a month, Pro all of them.` : `You've used all ${PREMIUM_UNLOCKS} unlocks this month. Pro is unlimited.`),
+      new AuthError(402, access === 'free' ? `You've used your ${FREE_WEEKLY_UNLOCKS} free picks this week. They come back on Monday. Premium opens 60 matches a month, Pro all of them.` : `You've used all ${PREMIUM_UNLOCKS} unlocks this month. Pro is unlimited.`),
       { upgrade: true }
     );
   db.prepare('INSERT OR IGNORE INTO match_unlocks (user_id, match_id, at, kind) VALUES (?, ?, ?, ?)').run(user.id, matchId, new Date().toISOString(), access === 'free' ? 'free' : 'premium');
@@ -128,5 +131,5 @@ export function unlockStats() {
   const r: any = db.prepare(`SELECT COUNT(*) n, COUNT(DISTINCT user_id) users FROM match_unlocks WHERE at >= ? AND kind = 'premium'`).get(since);
   const out = db.prepare(`SELECT COUNT(*) n FROM (SELECT user_id, COUNT(*) c FROM match_unlocks WHERE at >= ? AND kind = 'premium' GROUP BY user_id HAVING c >= ?)`).get(since, PREMIUM_UNLOCKS) as any;
   const free: any = db.prepare(`SELECT COUNT(*) n, COUNT(DISTINCT user_id) users FROM match_unlocks WHERE at >= ? AND kind = 'free'`).get(since);
-  return { month: since.slice(0, 7), unlocks: r.n, users: r.users, usersAtLimit: out.n, allowance: PREMIUM_UNLOCKS, freeUnlocks: free.n, freeUsers: free.users, freeDaily: FREE_DAILY_UNLOCKS };
+  return { month: since.slice(0, 7), unlocks: r.n, users: r.users, usersAtLimit: out.n, allowance: PREMIUM_UNLOCKS, freeUnlocks: free.n, freeUsers: free.users, freeWeekly: FREE_WEEKLY_UNLOCKS };
 }

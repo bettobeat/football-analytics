@@ -38,7 +38,7 @@ import { nationalValueSearch, historyMatchReport } from './services/squadValues'
 import { drawAlertsReport, drawFactorTest } from './services/drawAlerts';
 import { teamPage, searchTeams, searchPlayers, searchPlayersRemote, resolveAfTeamId, setTeamOverride, teamOverrides } from './services/teamPage';
 import { playerPage, findPlayer } from './services/playerPage';
-import { unlockStatus, unlockMatch, unlockedIds, isFinished, testCheckout, PLANS, billingTestMode, unlockStats, REFUND_DAYS, FREE_DAILY_UNLOCKS } from './services/billing';
+import { unlockStatus, unlockMatch, unlockedIds, isFinished, testCheckout, PLANS, billingTestMode, unlockStats, REFUND_DAYS, FREE_WEEKLY_UNLOCKS } from './services/billing';
 import { goalsCalibration } from './services/goalsCalibration';
 import { runDataAudit, lastDataAudit, startDataAuditScheduler } from './services/dataAudit';
 import { footballNews } from './services/news';
@@ -189,6 +189,29 @@ app.use((req, _res, next) => {
     if (kind === 'read' && isActionGet(req)) return _res.status(403).json({ error: 'The read token is read-only' });
     req.access = 'admin';
   }
+  next();
+});
+
+// No bookmakers on the site (Oct 2026): odds, bookmaker names and market comparisons are internal data only.
+// For everyone except admins, every API response is cleaned of them before it leaves the server.
+const MARKET_KEYS = new Set(['odds', 'bookmaker', 'books', 'clv', 'price', 'bestPrice', 'marketDraw', 'marketHit', 'marketHits', 'marketN', 'marketHitRate', 'bookmakers', 'roi', 'msw', 'overround']);
+function stripMarket(x: any, depth = 0): any {
+  if (depth > 12 || x === null || typeof x !== 'object') return x;
+  if (Array.isArray(x)) return x.map(v => stripMarket(v, depth + 1));
+  if (x instanceof Date) return x;
+  const out: any = {};
+  for (const [k, v] of Object.entries(x)) {
+    if (MARKET_KEYS.has(k)) continue;
+    // "market" as an object / number / null is bookmaker data; as a string it is a bet type ("double chance")
+    if (k === 'market' && typeof v !== 'string') continue;
+    out[k] = stripMarket(v, depth + 1);
+  }
+  return out;
+}
+app.use('/api', (req, res, next) => {
+  if (req.access === 'admin') return next();
+  const json = res.json.bind(res);
+  res.json = (body: any) => json(stripMarket(body));
   next();
 });
 
@@ -415,7 +438,7 @@ app.post('/api/unlocks/:id(\\d+)', jsonOnly, (req, res) => {
     authFail(res, e);
   }
 });
-app.get('/api/billing/plans', (_req, res) => res.json({ data: { plans: PLANS, testMode: billingTestMode, refundDays: REFUND_DAYS, freeDaily: FREE_DAILY_UNLOCKS } }));
+app.get('/api/billing/plans', (_req, res) => res.json({ data: { plans: PLANS, testMode: billingTestMode, refundDays: REFUND_DAYS, freeWeekly: FREE_WEEKLY_UNLOCKS } }));
 // Test checkout (only while BILLING_TEST_MODE=1): switch your own plan
 app.post('/api/billing/test-checkout', jsonOnly, (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Sign in required' });
@@ -814,8 +837,7 @@ app.get('/api/public/results', (req, res) => {
         return rest;
       });
       const main: any = accuracy(days, competition, 'main');
-      const mkt: any = accuracy(days, competition, 'market');
-      c = { at: Date.now(), data: { rows, record: { days, n: main.settled, hitRate: main.model?.hitRate ?? null, market: mkt.settled ? { n: mkt.settled, hitRate: mkt.model?.hitRate ?? null } : null } } };
+      c = { at: Date.now(), data: { rows, record: { days, n: main.settled, hitRate: main.model?.hitRate ?? null } } };
       resultsCache.set(ck, c);
       if (resultsCache.size > 500) resultsCache.delete(resultsCache.keys().next().value as string);
     }
@@ -826,24 +848,22 @@ app.get('/api/public/results', (req, res) => {
   }
 });
 
-// Home page proof block: v3 (all games) vs bookmakers over 30 days, strong-pick and draw-alert records (cached 10 min)
+// Home page proof block: our record over 30 days (all games) and the strong-pick record (cached 10 min)
 let summaryCache: { at: number; data: any } | null = null;
 app.get('/api/public/summary', (_req, res) => {
   try {
     if (!summaryCache || Date.now() - summaryCache.at > 10 * 60 * 1000) {
       const main: any = accuracy(30, undefined, 'main');
-      const mkt: any = accuracy(30, undefined, 'market');
       let draws: any = null;
       try {
         const d: any = drawAlertsReport();
-        draws = { seasons: (d.history || []).map((h: any) => ({ label: h.label, alerts: h.alerts, hitRate: h.hitRate, roi: h.roi, drawRate: h.drawRate })), upcoming: (d.upcoming || []).length };
+        draws = { picks: (d.picks || []).length };
       } catch { /* backtests not loaded */ }
       summaryCache = {
         at: Date.now(),
         data: {
           days: 30,
           v3: { games: main.settled, hitRate: main.model?.hitRate ?? null, strong60: (main.strongPicks || []).find((t: any) => t.min === 60) || null },
-          bookmakers: { games: mkt.settled, hitRate: mkt.model?.hitRate ?? null },
           drawAlerts: draws
         }
       };
@@ -1257,9 +1277,12 @@ app.get('/api/backtest/draw-factors', (req, res) => {
 });
 
 // Draw alerts page (premium): upcoming alerts, live record, backtest seasons
-app.get('/api/draw-alerts', (_req, res) => {
+app.get('/api/draw-alerts', (req, res) => {
   try {
-    res.json({ data: drawAlertsReport(), timestamp: new Date().toISOString() });
+    const r: any = drawAlertsReport();
+    // visitors: our own draw picks and draw facts only (the value-alert machinery stays for admins)
+    const data = req.access === 'admin' ? r : { picks: r.picks, likely: r.likely, leagues: r.leagues, teams: r.teams };
+    res.json({ data, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Draw alerts failed');
   }

@@ -114,7 +114,6 @@ export default function Past() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Fact value={fmt(inv.leagueMatches)} label={`league matches · ${inv.leagues} leagues`} />
             <Fact value={fmt(inv.leagueTeams)} label="clubs" />
-            <Fact value={fmt(inv.withOdds)} label="matches with bookmaker odds" />
             <Fact value={fmt(inv.withShots)} label="matches with shots & corners" />
             <Fact value={fmt(inv.withXg)} label="matches with expected goals (xG) — still downloading" />
             <Fact value={fmt(inv.lineups)} label="official lineups" />
@@ -153,7 +152,6 @@ export default function Past() {
                 <div className="text-xs text-faint mt-0.5">{fmt(v3?.n ?? v2?.n)} matches{v3 ? ` · ${v3.leagues} leagues` : ''}</div>
                 <div className="mt-3 space-y-1.5 text-sm">
                   <div className="flex justify-between"><span className="text-muted">Our model (v3)</span><span className="num font-bold text-ink">{pct(v3?.hitRate)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted">Bookmakers</span><span className="num font-semibold text-ink">{pct(v3?.marketHitRate ?? v2?.marketHitRate)}</span></div>
                   <div className="flex justify-between"><span className="text-muted">Older model (v2)</span><span className="num font-semibold text-ink">{pct(v2?.hitRate)}</span></div>
                   {v3 && v3.strong60.n > 0 && (
                     <div className="pt-1.5 mt-1.5 border-t border-line/60 text-xs text-muted">
@@ -198,13 +196,12 @@ export default function Past() {
                 {fmt(data.total)} matches · numbers are Home / Draw / Away % · our pick is highlighted, the real result is outlined
               </div>
               <div className="overflow-x-auto -mx-2">
-                <table className="w-full text-sm min-w-[640px]">
+                <table className="w-full text-sm min-w-[480px]">
                   <thead>
                     <tr className="text-left text-xs text-faint border-b border-line">
                       <th className="px-2 py-2 font-medium w-8"></th>
                       <th className="px-2 py-2 font-medium">Match</th>
                       <th className="px-2 py-2 font-medium">Our %</th>
-                      <th className="px-2 py-2 font-medium">Bookmakers %</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -222,12 +219,11 @@ export default function Past() {
                           </div>
                         </td>
                         <td className="px-2 py-2"><Probs p={r.p} pick={r.pick} outcome={r.outcome} /></td>
-                        <td className="px-2 py-2">{r.market ? <Probs p={r.market} outcome={r.outcome} /> : <span className="text-faint text-xs">–</span>}</td>
                       </tr>
                     ))}
                     {!data.rows.length && (
                       <tr>
-                        <td colSpan={4} className="px-2 py-8 text-center text-faint">No matches for this filter.</td>
+                        <td colSpan={3} className="px-2 py-8 text-center text-faint">No matches for this filter.</td>
                       </tr>
                     )}
                   </tbody>

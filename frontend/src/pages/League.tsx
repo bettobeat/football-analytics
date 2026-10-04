@@ -51,7 +51,7 @@ interface Edition {
   winner: Team | null
   matches: (Match & { round?: string | null; score?: { fullTime: { home: number | null; away: number | null } }; penalties?: { home: number; away: number } | null })[]
 }
-interface Record_ { n: number; hitRate: number | null; market: { n: number; hitRate: number | null } | null }
+interface Record_ { n: number; hitRate: number | null }
 
 const MAIN = ['grid-v3', 'elo-intl', 'elo-euro']
 const LIVE = new Set(['IN_PLAY', 'PAUSED', 'LIVE'])
@@ -219,17 +219,10 @@ function League() {
           {record && record.hitRate !== null && record.n > 0 && (
             <div className="flex gap-3">
               <div className="glass px-4 py-3 text-center">
-                <div className="text-[11px] text-faint">v3 picks right</div>
+                <div className="text-[11px] text-faint">Our picks right</div>
                 <div className="font-display text-2xl font-extrabold text-accent num">{Math.round(record.hitRate)}%</div>
                 <div className="text-[10px] text-faint num">{record.n} games · 12 months</div>
               </div>
-              {record.market && record.market.hitRate !== null && (
-                <div className="glass px-4 py-3 text-center">
-                  <div className="text-[11px] text-faint">Bookmakers' favourite</div>
-                  <div className="font-display text-2xl font-extrabold text-ink num">{Math.round(record.market.hitRate)}%</div>
-                  <div className="text-[10px] text-faint num">{record.market.n} games</div>
-                </div>
-              )}
             </div>
           )}
         </div>
