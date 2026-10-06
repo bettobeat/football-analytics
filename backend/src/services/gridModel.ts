@@ -724,7 +724,9 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   push(R('#14'), h.v.defence, a.v.defence);
   push(R('#10'), h.v.fresh, a.v.fresh, `${h.gamesLast8} vs ${a.gamesLast8} games in the last 8 days`);
   push(R('#23'), h.v.home, a.v.away, 'home record of the home side vs away record of the away side');
-  if (h2h) push(R('#7'), 1 + 9 * h2h.share, 1 + 9 * (1 - h2h.share), `${h2h.n} meetings, home side share ${Math.round(h2h.share * 100)}%`);
+  // fewer than 3 meetings say nothing (one win in two games would read as a 10-vs-1 edge): neutral
+  if (h2h && h2h.n >= 3) push(R('#7'), 1 + 9 * h2h.share, 1 + 9 * (1 - h2h.share), `${h2h.n} meetings, home side share ${Math.round(h2h.share * 100)}%`);
+  else if (h2h) push(R('#7'), 5, 5, `only ${h2h.n} meeting${h2h.n > 1 ? 's' : ''} in the data — not enough to count`);
   else push(R('#7'), 5, 5, 'no previous meetings in the data');
   push(R('#21'), h.v.form, a.v.form, `last 6: ${h.formPts} vs ${a.formPts} pts`);
   // draw rows: draw-prone = average of both teams' draw values; league = draw rate vs 25% norm; derby flag
