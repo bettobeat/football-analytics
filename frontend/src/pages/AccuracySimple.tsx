@@ -4,6 +4,7 @@ import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { errorText, useAuth } from '../lib/auth'
 import AccuracyDetailed from './Accuracy'
+import { t, LOCALE } from '../lib/i18n'
 
 /**
  * The public record: three numbers, every game our model predicted before kick-off.
@@ -45,10 +46,10 @@ interface Record_ {
 }
 
 const PERIODS = [
-  { days: 7, label: '7 days' },
-  { days: 30, label: '30 days' },
-  { days: 90, label: '3 months' },
-  { days: 365, label: '1 year' }
+  { days: 7, label: t("7 days") },
+  { days: 30, label: t("30 days") },
+  { days: 90, label: t("3 months") },
+  { days: 365, label: t("1 year") }
 ]
 
 const pct = (x: number | null | undefined) => (x === null || x === undefined ? '–' : `${Math.round(x * 10) / 10}%`)
@@ -67,7 +68,7 @@ function Bar({ v, cls }: { v: number | null; cls: string }) {
 
 function Tick({ hit }: { hit: boolean | null | undefined }) {
   if (hit === null || hit === undefined) return <span className="text-faint">–</span>
-  return hit ? <span className="text-win font-bold" aria-label="right">✓</span> : <span className="text-loss font-bold" aria-label="wrong">✗</span>
+  return hit ? <span className="text-win font-bold" aria-label={t("right")}>✓</span> : <span className="text-loss font-bold" aria-label={t("wrong")}>✗</span>
 }
 
 export default function AccuracySimple() {
@@ -97,8 +98,7 @@ export default function AccuracySimple() {
       <div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-6">
           <button onClick={() => setDetailed(false)} className="text-sm text-muted hover:text-ink">
-            ← Back to the public record
-          </button>
+            {t("← Back to the public record")}</button>
         </div>
         <AccuracyDetailed />
       </div>
@@ -111,10 +111,9 @@ export default function AccuracySimple() {
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">Our record</h1>
+          <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">{t("Our record")}</h1>
           <p className="text-sm text-muted mt-1 max-w-xl">
-            Every prediction is saved before kick-off and checked after the final whistle. Wins and losses stay here, nothing is edited.
-          </p>
+            {t("Every prediction is saved before kick-off and checked after the final whistle. Wins and losses stay here, nothing is edited.")}</p>
         </div>
         <div className="seg">
           {PERIODS.map(p => (
@@ -131,68 +130,68 @@ export default function AccuracySimple() {
       {rec && (
         <>
           <div>
-            <h2 className="font-display text-xl font-bold text-ink">The hard calls</h2>
-            <p className="text-sm text-muted">Close to a coin flip in most games. This is where a model shows what it is worth.</p>
+            <h2 className="font-display text-xl font-bold text-ink">{t("The hard calls")}</h2>
+            <p className="text-sm text-muted">{t("Close to a coin flip in most games. This is where a model shows what it is worth.")}</p>
           </div>
           <div className="grid gap-4 md:grid-cols-3">
             {/* 1. Match result */}
             <Card className="border-accent/40">
-              <div className="label text-accent">Match result</div>
+              <div className="label text-accent">{t("Match result")}</div>
               <div className="num text-5xl font-extrabold text-accent mt-4">{pct(r?.v3)}</div>
               <div className="mt-3"><Bar v={r?.v3 ?? null} cls="bg-accent" /></div>
               <p className="text-xs text-muted mt-4">
-                {r?.n ? `${r.v3Hits} of ${r.n} right. Our most likely result: home win, draw or away win.` : 'No finished games yet.'}
+                {r?.n ? t("{0} of {1} right. Our most likely result: home win, draw or away win.", { 0: r.v3Hits, 1: r.n }) : t("No finished games yet.")}
               </p>
             </Card>
 
             {/* 2. Both teams to score */}
             <Card>
-              <div className="label">Both teams to score</div>
+              <div className="label">{t("Both teams to score")}</div>
               <div className="num text-5xl font-extrabold text-ink mt-4">{pct(rec.btts.hitRate)}</div>
               <div className="mt-3"><Bar v={rec.btts.hitRate} cls="bg-home" /></div>
               <p className="text-xs text-muted mt-4">
-                {rec.btts.n ? `${rec.btts.hits} of ${rec.btts.n} right. Yes when we give it 50%+, else No.` : 'No finished games yet.'}
+                {rec.btts.n ? t("{0} of {1} right. Yes when we give it 50%+, else No.", { 0: rec.btts.hits, 1: rec.btts.n }) : t("No finished games yet.")}
               </p>
             </Card>
 
             {/* 3. Over / under 2.5 */}
             <Card>
-              <div className="label">Over / under 2.5 goals</div>
+              <div className="label">{t("Over / under 2.5 goals")}</div>
               <div className="num text-5xl font-extrabold text-ink mt-4">{pct(rec.over25.hitRate)}</div>
               <div className="mt-3"><Bar v={rec.over25.hitRate} cls="bg-draw" /></div>
               <p className="text-xs text-muted mt-4">
-                {rec.over25.n ? `${rec.over25.hits} of ${rec.over25.n} right. Over when we give it 50%+, else Under.` : 'No finished games yet.'}
+                {rec.over25.n ? t("{0} of {1} right. Over when we give it 50%+, else Under.", { 0: rec.over25.hits, 1: rec.over25.n }) : t("No finished games yet.")}
               </p>
             </Card>
           </div>
 
           <div className="pt-2">
-            <h2 className="font-display text-xl font-bold text-ink">The safer calls</h2>
-            <p className="text-sm text-muted">Calls that come in more often. Each one is counted and shown on its own.</p>
+            <h2 className="font-display text-xl font-bold text-ink">{t("The safer calls")}</h2>
+            <p className="text-sm text-muted">{t("Calls that come in more often. Each one is counted and shown on its own.")}</p>
           </div>
           <div className="grid gap-4 md:grid-cols-3">
             <Card>
-              <div className="label">Double chance</div>
+              <div className="label">{t("Double chance")}</div>
               <div className="num text-5xl font-extrabold text-ink mt-4">{pct(rec.doubleChance?.v3)}</div>
               <div className="mt-3"><Bar v={rec.doubleChance?.v3 ?? null} cls="bg-accent" /></div>
               <p className="text-xs text-muted mt-4">
-                {rec.doubleChance?.n ? `${rec.doubleChance.v3Hits} of ${rec.doubleChance.n} right. The two results we rate highest (1X, X2 or 12).` : 'No finished games yet.'}
+                {rec.doubleChance?.n ? t("{0} of {1} right. The two results we rate highest (1X, X2 or 12).", { 0: rec.doubleChance.v3Hits, 1: rec.doubleChance.n }) : t("No finished games yet.")}
               </p>
             </Card>
             <Card>
-              <div className="label">Over / under 1.5 goals</div>
+              <div className="label">{t("Over / under 1.5 goals")}</div>
               <div className="num text-5xl font-extrabold text-ink mt-4">{pct(rec.over15?.hitRate)}</div>
               <div className="mt-3"><Bar v={rec.over15?.hitRate ?? null} cls="bg-home" /></div>
               <p className="text-xs text-muted mt-4">
-                {rec.over15?.n ? `${rec.over15.hits} of ${rec.over15.n} right. Over when we give it 50%+, else Under.` : 'No finished games yet.'}
+                {rec.over15?.n ? t("{0} of {1} right. Over when we give it 50%+, else Under.", { 0: rec.over15.hits, 1: rec.over15.n }) : t("No finished games yet.")}
               </p>
             </Card>
             <Card>
-              <div className="label">Our safest pick of each match</div>
+              <div className="label">{t("Our safest pick of each match")}</div>
               <div className="num text-5xl font-extrabold text-ink mt-4">{pct(rec.safest?.hitRate)}</div>
               <div className="mt-3"><Bar v={rec.safest?.hitRate ?? null} cls="bg-draw" /></div>
               <p className="text-xs text-muted mt-4">
-                {rec.safest?.n ? `${rec.safest.hits} of ${rec.safest.n} right. For every match, the one bet we were most sure about.` : 'No finished games yet.'}
+                {rec.safest?.n ? t("{0} of {1} right. For every match, the one bet we were most sure about.", { 0: rec.safest.hits, 1: rec.safest.n }) : t("No finished games yet.")}
               </p>
               {rec.safest && rec.safest.byMarket.length > 0 && (
                 <p className="text-[11px] text-faint mt-2">
@@ -204,41 +203,40 @@ export default function AccuracySimple() {
 
           {rec.byConfidence && rec.byConfidence.some(b => b.n > 0) && (
             <Card>
-              <h2 className="font-display text-xl font-bold text-ink">How sure we were, and how often we were right</h2>
+              <h2 className="font-display text-xl font-bold text-ink">{t("How sure we were, and how often we were right")}</h2>
               <p className="text-sm text-muted mt-1 mb-4">
-                Every match result pick, grouped by the chance we gave it. When our numbers are honest, the games we call at 70% should come in about 7 times in 10.
-              </p>
+                {t("Every match result pick, grouped by the chance we gave it. When our numbers are honest, the games we call at 70% should come in about 7 times in 10.")}</p>
               <div className="space-y-3">
                 {rec.byConfidence.filter(b => b.n > 0).map(b => (
                   <div key={b.id} className="grid grid-cols-[110px_1fr_auto] sm:grid-cols-[140px_1fr_auto] items-center gap-3">
                     <div>
-                      <div className="text-sm font-semibold text-ink">We said {b.label}</div>
-                      <div className="text-[11px] text-faint num">{b.n} games · average {b.said}%</div>
+                      <div className="text-sm font-semibold text-ink">{t("We said")}{' '}{b.label}</div>
+                      <div className="text-[11px] text-faint num">{b.n} {t("games · average")}{' '}{b.said}%</div>
                     </div>
                     <div className="relative h-3 rounded-full bg-surface2 overflow-hidden">
                       <div className="h-full rounded-full bg-accent" style={{ width: `${Math.min(100, b.hitRate ?? 0)}%` }} />
-                      {b.said !== null && <div className="absolute top-[-2px] bottom-[-2px] w-0.5 bg-ink/70" style={{ left: `${b.said}%` }} title={`We said ${b.said}%`} />}
+                      {b.said !== null && <div className="absolute top-[-2px] bottom-[-2px] w-0.5 bg-ink/70" style={{ left: `${b.said}%` }} title={t("We said {0}%", { 0: b.said })} />}
                     </div>
                     <div className="text-right min-w-[92px]">
-                      <div className="num text-sm font-extrabold text-ink">{pct(b.hitRate)} right</div>
+                      <div className="num text-sm font-extrabold text-ink">{pct(b.hitRate)} {t("right")}</div>
                     </div>
                   </div>
                 ))}
               </div>
-              <p className="text-[11px] text-faint mt-3">The thin line on each bar is the chance we gave; the bar is how often it happened.</p>
+              <p className="text-[11px] text-faint mt-3">{t("The thin line on each bar is the chance we gave; the bar is how often it happened.")}</p>
             </Card>
           )}
 
           {rec.byCompetition.length > 0 && (
             <Card>
-              <h2 className="font-display text-xl font-bold text-ink mb-3">Match result by competition</h2>
+              <h2 className="font-display text-xl font-bold text-ink mb-3">{t("Match result by competition")}</h2>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm min-w-[360px]">
                   <thead>
                     <tr className="text-xs text-faint">
-                      <th className="text-left font-medium py-2">Competition</th>
-                      <th className="text-right font-medium py-2">Games</th>
-                      <th className="text-right font-medium py-2">Right</th>
+                      <th className="text-left font-medium py-2">{t("Competition")}</th>
+                      <th className="text-right font-medium py-2">{t("Games")}</th>
+                      <th className="text-right font-medium py-2">{t("Right")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -254,26 +252,26 @@ export default function AccuracySimple() {
                   </tbody>
                 </table>
               </div>
-              <p className="text-[11px] text-faint mt-2">Competitions with at least 5 finished games in this period.</p>
+              <p className="text-[11px] text-faint mt-2">{t("Competitions with at least 5 finished games in this period.")}</p>
             </Card>
           )}
 
           <Card>
-            <h2 className="font-display text-xl font-bold text-ink mb-3">Latest games</h2>
+            <h2 className="font-display text-xl font-bold text-ink mb-3">{t("Latest games")}</h2>
             {rec.recent.length === 0 ? (
-              <p className="text-sm text-muted">No finished games in this period yet.</p>
+              <p className="text-sm text-muted">{t("No finished games in this period yet.")}</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm min-w-[800px]">
                   <thead>
                     <tr className="text-xs text-faint">
-                      <th className="text-left font-medium py-2">Match</th>
-                      <th className="text-center font-medium py-2">Score</th>
-                      <th className="text-left font-medium py-2">Result: our pick</th>
-                      <th className="text-left font-medium py-2">BTTS</th>
-                      <th className="text-left font-medium py-2">Goals 2.5</th>
-                      <th className="text-left font-medium py-2">Double chance</th>
-                      <th className="text-left font-medium py-2">Goals 1.5</th>
+                      <th className="text-left font-medium py-2">{t("Match")}</th>
+                      <th className="text-center font-medium py-2">{t("Score")}</th>
+                      <th className="text-left font-medium py-2">{t("Result: our pick")}</th>
+                      <th className="text-left font-medium py-2">{t("BTTS")}</th>
+                      <th className="text-left font-medium py-2">{t("Goals 2.5")}</th>
+                      <th className="text-left font-medium py-2">{t("Double chance")}</th>
+                      <th className="text-left font-medium py-2">{t("Goals 1.5")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -284,7 +282,7 @@ export default function AccuracySimple() {
                             {x.home} – {x.away}
                           </Link>
                           <div className="text-[11px] text-faint">
-                            {new Date(x.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} · {x.competition}
+                            {new Date(x.date).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short' })} · {x.competition}
                           </div>
                         </td>
                         <td className="py-2 text-center num font-bold text-ink">{x.score}</td>
@@ -292,16 +290,16 @@ export default function AccuracySimple() {
                           <span className="inline-flex items-center gap-1.5"><Tick hit={x.result.hit} /> <span className="text-muted truncate">{name(x, x.result.pick)}</span></span>
                         </td>
                         <td className="py-2">
-                          {x.btts ? <span className="inline-flex items-center gap-1.5"><Tick hit={x.btts.hit} /> <span className="text-muted">{x.btts.pick ? 'Yes' : 'No'}</span></span> : <span className="text-faint">–</span>}
+                          {x.btts ? <span className="inline-flex items-center gap-1.5"><Tick hit={x.btts.hit} /> <span className="text-muted">{x.btts.pick ? t("Yes") : t("No")}</span></span> : <span className="text-faint">–</span>}
                         </td>
                         <td className="py-2">
-                          {x.over25 ? <span className="inline-flex items-center gap-1.5"><Tick hit={x.over25.hit} /> <span className="text-muted">{x.over25.pick ? 'Over' : 'Under'}</span></span> : <span className="text-faint">–</span>}
+                          {x.over25 ? <span className="inline-flex items-center gap-1.5"><Tick hit={x.over25.hit} /> <span className="text-muted">{x.over25.pick ? t("Over") : t("Under")}</span></span> : <span className="text-faint">–</span>}
                         </td>
                         <td className="py-2">
                           {x.dc ? <span className="inline-flex items-center gap-1.5"><Tick hit={x.dc.hit} /> <span className="text-muted">{x.dc.pick}</span></span> : <span className="text-faint">–</span>}
                         </td>
                         <td className="py-2">
-                          {x.over15 ? <span className="inline-flex items-center gap-1.5"><Tick hit={x.over15.hit} /> <span className="text-muted">{x.over15.pick ? 'Over' : 'Under'}</span></span> : <span className="text-faint">–</span>}
+                          {x.over15 ? <span className="inline-flex items-center gap-1.5"><Tick hit={x.over15.hit} /> <span className="text-muted">{x.over15.pick ? t("Over") : t("Under")}</span></span> : <span className="text-faint">–</span>}
                         </td>
                       </tr>
                     ))}
@@ -312,17 +310,14 @@ export default function AccuracySimple() {
           </Card>
 
           <p className="text-xs text-faint">
-            Match result: our most likely result, counted on every finished game.
-            Every tracked competition: leagues, national teams and European cups. Predictions are probabilities, not promises.
-          </p>
+            {t("Match result: our most likely result, counted on every finished game. Every tracked competition: leagues, national teams and European cups. Predictions are probabilities, not promises.")}</p>
         </>
       )}
 
       {access === 'admin' && (
         <div className="text-center">
           <button onClick={() => setDetailed(true)} className="text-sm text-muted hover:text-ink underline underline-offset-4">
-            Admin: detailed statistics (calibration, backtests, all models)
-          </button>
+            {t("Admin: detailed statistics (calibration, backtests, all models)")}</button>
         </div>
       )}
     </div>

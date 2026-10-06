@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { setGuessFirst } from '../lib/reveal'
+import { t as tt } from '../lib/i18n'
 
 const Eye = ({ size = 18 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -22,7 +23,7 @@ const stop = (fn: () => void) => (e: { preventDefault(): void; stopPropagation()
   fn()
 }
 
-const STEPS = ['Loading both squads', 'Reading form and strength', 'Checking injuries and lineups', 'Weighing home and away', 'Scoring the match']
+const STEPS = [tt("Loading both squads"), tt("Reading form and strength"), tt("Checking injuries and lineups"), tt("Weighing home and away"), tt("Scoring the match")]
 
 /**
  * Big cover for the match page. Tap Reveal → a short "v3 is analysing" sequence (steps tick by, a bar fills,
@@ -48,8 +49,7 @@ export function RevealCover({ onReveal, autoStart = false }: { onReveal: () => v
         <div aria-hidden className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-accent/15 to-transparent animate-[scan_1.1s_linear_infinite] motion-reduce:hidden" />
         <div className="relative flex flex-col items-center gap-4 text-center">
           <div className="flex items-center gap-2.5 text-accent font-display font-bold">
-            <Spinner size={18} /> v3 is analysing this match
-          </div>
+            <Spinner size={18} /> {tt("v3 is analysing this match")}</div>
           <div className="w-full max-w-md h-2 rounded-full bg-surface2 overflow-hidden">
             <div className="h-full rounded-full bg-accent transition-[width] ease-out" style={{ width: fill ? '100%' : '4%', transitionDuration: '1700ms' }} />
           </div>
@@ -69,14 +69,12 @@ export function RevealCover({ onReveal, autoStart = false }: { onReveal: () => v
 
   return (
     <div className="rounded-2xl border border-dashed border-accent/40 bg-accent/[0.06] p-6 sm:p-8 text-center flex flex-col items-center gap-3">
-      <div className="font-display text-lg font-bold text-ink">What's your call?</div>
-      <p className="text-sm text-muted max-w-sm">Make your own guess first, then see what v3 thinks — the percentages, why this pick, and the full breakdown.</p>
+      <div className="font-display text-lg font-bold text-ink">{tt("What's your call?")}</div>
+      <p className="text-sm text-muted max-w-sm">{tt("Make your own guess first, then see what v3 thinks — the percentages, why this pick, and the full breakdown.")}</p>
       <button type="button" onClick={stop(() => setPhase('loading'))} className="mt-1 h-12 px-6 inline-flex items-center gap-2 rounded-2xl bg-accent text-bg font-extrabold hover:brightness-105 active:scale-[0.98] transition">
-        <Eye /> Reveal prediction
-      </button>
+        <Eye /> {tt("Reveal prediction")}</button>
       <button type="button" onClick={stop(() => setGuessFirst(false))} className="text-xs text-faint hover:text-ink underline underline-offset-4">
-        Always show predictions
-      </button>
+        {tt("Always show predictions")}</button>
     </div>
   )
 }
@@ -99,7 +97,7 @@ export function RevealChip({ onReveal, dark = false }: { onReveal: () => void; d
       }`}
     >
       {busy && <span aria-hidden className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-current to-transparent opacity-20 animate-[scan_0.75s_linear_infinite] motion-reduce:hidden" />}
-      {busy ? <><Spinner size={15} /> Analysing…</> : <><Eye size={16} /> Reveal prediction</>}
+      {busy ? <><Spinner size={15} /> {tt("Analysing…")}</> : <><Eye size={16} /> {tt("Reveal prediction")}</>}
     </button>
   )
 }

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { errorText, useAuth } from '../lib/auth'
 import { safeNext } from '../lib/nav'
+import { t as tt } from '../lib/i18n'
 
 const RESEND_WAIT = 45
 
@@ -31,7 +32,7 @@ export default function Verify() {
 
   const submit = async (e?: FormEvent) => {
     e?.preventDefault()
-    if (code.length !== 6) return setError('Enter the 6-digit code.')
+    if (code.length !== 6) return setError(tt("Enter the 6-digit code."))
     setError(null)
     setBusy(true)
     try {
@@ -49,7 +50,7 @@ export default function Verify() {
     setInfo(null)
     try {
       await resendCode()
-      setInfo('A new code is on its way.')
+      setInfo(tt("A new code is on its way."))
       setWait(RESEND_WAIT)
     } catch (err) {
       setError(errorText(err))
@@ -67,10 +68,9 @@ export default function Verify() {
             <path d="M3 7l9 6 9-6" />
           </svg>
         </div>
-        <h1 className="font-display text-2xl font-extrabold text-ink">Confirm your email</h1>
+        <h1 className="font-display text-2xl font-extrabold text-ink">{tt("Confirm your email")}</h1>
         <p className="text-sm text-muted mt-1">
-          We sent a 6-digit code to <span className="text-ink font-medium">{user.email}</span>. It’s valid for 10 minutes. Check spam if you
-          don’t see it.
+          {tt("We sent a 6-digit code to {0}. It’s valid for 10 minutes. Check spam if you don’t see it.", { 0: user.email })}
         </p>
 
         <form onSubmit={submit} className="mt-6 space-y-3">
@@ -84,7 +84,7 @@ export default function Verify() {
             autoComplete="one-time-code"
             autoFocus
             placeholder="000000"
-            aria-label="Verification code"
+            aria-label={tt("Verification code")}
             className="w-full rounded-xl border border-line bg-surface2/60 px-4 py-3 text-center num text-3xl tracking-[0.5em] text-ink placeholder:text-faint/60 outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
           />
           {error && <div className="rounded-xl border border-loss/40 bg-loss/10 px-3 py-2 text-sm text-loss">{error}</div>}
@@ -94,13 +94,13 @@ export default function Verify() {
             disabled={busy || code.length !== 6}
             className="w-full rounded-xl bg-accent text-bg font-semibold py-2.5 text-sm disabled:opacity-60 transition-opacity"
           >
-            {busy ? 'Checking…' : 'Confirm'}
+            {busy ? tt("Checking…") : tt("Confirm")}
           </button>
         </form>
 
         <div className="mt-5 flex items-center justify-between text-sm">
           <button onClick={resend} disabled={wait > 0} className="text-accent font-medium disabled:text-faint">
-            {wait > 0 ? `Resend code in ${wait}s` : 'Resend code'}
+            {wait > 0 ? tt("Resend code in {0}s", { 0: wait }) : tt("Resend code")}
           </button>
           <button
             onClick={async () => {
@@ -109,8 +109,7 @@ export default function Verify() {
             }}
             className="text-muted hover:text-ink"
           >
-            Wrong email?
-          </button>
+            {tt("Wrong email?")}</button>
         </div>
       </div>
     </div>

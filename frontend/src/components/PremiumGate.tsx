@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
+import { t } from '../lib/i18n'
 
 /** Shows children to premium users and admins; everyone else gets a short explanation and a way in. */
 export default function PremiumGate({ title, children, pro = false }: { title: string; children: ReactNode; pro?: boolean }) {
   const { full, paid, user, loading } = useAuth()
-  if (loading) return <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 text-sm text-faint">Loading…</div>
+  if (loading) return <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 text-sm text-faint">{t("Loading…")}</div>
   if (pro ? full : paid) return <>{children}</>
   return (
     <div className="max-w-xl mx-auto px-4 sm:px-6 py-16">
@@ -16,20 +17,17 @@ export default function PremiumGate({ title, children, pro = false }: { title: s
             <path d="M8 11V7a4 4 0 0 1 8 0v4" />
           </svg>
         </div>
-        <h1 className="font-display text-2xl font-extrabold text-ink">{title} is a {pro ? 'Pro' : 'Premium'} page</h1>
+        <h1 className="font-display text-2xl font-extrabold text-ink">{t("{0} is a {1} page", { 0: title, 1: pro ? t("Pro") : t("Premium") })}</h1>
         <p className="text-sm text-muted mt-2">
-          {pro
-            ? 'Draw picks: the 2 games of the week most likely to end in a draw, by our model. They are part of Pro, together with unlimited predictions.'
-            : 'Premium shows how every model has performed on real matches: hit rate, how sure we were, strong picks and every result.'}
+          {pro ? t("Draw picks: the 2 games of the week most likely to end in a draw, by our model. They are part of Pro, together with unlimited predictions.") : t("Premium shows how every model has performed on real matches: hit rate, how sure we were, strong picks and every result.")}
         </p>
         <div className="mt-6 flex justify-center gap-2">
           <Link to="/premium" className="px-4 py-2 rounded-xl bg-accent text-bg text-sm font-semibold">
-            {pro ? 'See Pro' : 'See Premium'}
+            {pro ? t("See Pro") : t("See Premium")}
           </Link>
           {!user && (
-            <Link to={`/login?next=${encodeURIComponent(window.location.pathname)}`} className="px-4 py-2 rounded-xl border border-line text-sm font-medium text-ink hover:border-faint">
-              Sign in
-            </Link>
+            <Link to={`/login?next=${encodeURIComponent(window.location.pathname.replace(/^\/[a-z]{2}(?=\/|$)/, ''))}`} className="px-4 py-2 rounded-xl border border-line text-sm font-medium text-ink hover:border-faint">
+              {t("Sign in")}</Link>
           )}
         </div>
       </div>

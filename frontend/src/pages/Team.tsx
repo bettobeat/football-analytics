@@ -5,6 +5,7 @@ import { API_URL } from '../lib/socket'
 import { errorText, useAuth } from '../lib/auth'
 import { TeamAnalysisCard, TeamRecordCard, type Analysis } from '../components/TeamAnalysis'
 import { FavStar, nameKey } from '../lib/favorites'
+import { t, LOCALE } from '../lib/i18n'
 
 interface Side { id: number; name: string; logo: string }
 interface Fixture { matchId: number | null; date: string; status: string; comp: string; home: Side; away: Side; hg: number | null; ag: number | null }
@@ -32,7 +33,7 @@ interface TeamData {
 }
 
 const FORM_BG = { W: 'bg-win', D: 'bg-draw', L: 'bg-loss' }
-const POS_LABEL: Record<string, string> = { Goalkeeper: 'Goalkeepers', Defender: 'Defenders', Midfielder: 'Midfielders', Attacker: 'Forwards' }
+const POS_LABEL: Record<string, string> = { Goalkeeper: t('Goalkeepers'), Defender: t('Defenders'), Midfielder: t('Midfielders'), Attacker: t('Forwards') }
 const DONE = new Set(['FT', 'AET', 'PEN'])
 
 function Card({ title, action, children, className = '' }: { title?: string; action?: ReactNode; children: ReactNode; className?: string }) {
@@ -50,7 +51,7 @@ function Card({ title, action, children, className = '' }: { title?: string; act
 }
 
 function Pro() {
-  return <span className="text-[10px] font-extrabold text-bg bg-accent px-1.5 py-0.5 rounded-full">PRO</span>
+  return <span className="text-[10px] font-extrabold text-bg bg-accent px-1.5 py-0.5 rounded-full">{t("PRO")}</span>
 }
 
 function FixtureRow({ f, teamId }: { f: Fixture; teamId: number }) {
@@ -59,7 +60,7 @@ function FixtureRow({ f, teamId }: { f: Fixture; teamId: number }) {
   const res = !done ? null : mine > 0 ? 'W' : mine < 0 ? 'L' : 'D'
   const body = (
     <div className="flex items-center gap-3 py-2.5 border-b border-line/50 last:border-0">
-      <span className="w-14 text-[11px] text-faint">{new Date(f.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+      <span className="w-14 text-[11px] text-faint">{new Date(f.date).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short' })}</span>
       <span className="flex-1 min-w-0 flex flex-col gap-1">
         <span className="flex items-center gap-2 text-sm"><img src={f.home.logo} alt="" className="w-4 h-4 object-contain" /><span className={`truncate ${f.home.id === teamId ? 'font-bold text-ink' : 'text-muted'}`}>{f.home.name}</span></span>
         <span className="flex items-center gap-2 text-sm"><img src={f.away.logo} alt="" className="w-4 h-4 object-contain" /><span className={`truncate ${f.away.id === teamId ? 'font-bold text-ink' : 'text-muted'}`}>{f.away.name}</span></span>
@@ -71,7 +72,7 @@ function FixtureRow({ f, teamId }: { f: Fixture; teamId: number }) {
           <span className={`w-6 h-6 rounded-md grid place-items-center text-[11px] font-extrabold text-bg ${FORM_BG[res!]}`}>{res}</span>
         </span>
       ) : (
-        <span className="text-xs text-muted whitespace-nowrap">{new Date(f.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+        <span className="text-xs text-muted whitespace-nowrap">{new Date(f.date).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })}</span>
       )}
     </div>
   )
@@ -80,7 +81,7 @@ function FixtureRow({ f, teamId }: { f: Fixture; teamId: number }) {
 
 function Leaders({ items, label }: { items: { name: string; value: number; detail?: string }[]; label: string }) {
   const max = Math.max(1, ...items.map(i => i.value))
-  if (!items.length) return <p className="text-sm text-faint">No {label} yet this season.</p>
+  if (!items.length) return <p className="text-sm text-faint">{t("No")}{' '}{label} {t("yet this season.")}</p>
   return (
     <div className="space-y-2.5">
       {items.map((s, i) => (
@@ -112,13 +113,13 @@ export default function Team() {
       .get(`${API_URL}/team-page/${id}`, { params: { c: sp.get('c') || undefined, n: sp.get('n') || undefined } })
       .then(r => setData(r.data.data))
       .catch(e => setError(
-        e?.response?.status === 404 ? "We couldn't find this team yet."
-          : /budget/i.test(e?.response?.data?.message || '') ? "This team page isn't available right now — our data provider's daily limit has been reached. It comes back automatically after 03:00 (Israel time)."
+        e?.response?.status === 404 ? t("We couldn't find this team yet.")
+          : /budget/i.test(e?.response?.data?.message || '') ? t("This team page isn't available right now — our data provider's daily limit has been reached. It comes back automatically after 03:00 (Israel time).")
           : errorText(e)))
   }, [id, sp, access])
 
   useEffect(() => {
-    if (data) document.title = `${data.team.name} · Bet To Beat`
+    if (data) document.title = t("{0} · Bet To Beat", { 0: data.team.name })
   }, [data])
 
   const groups = useMemo(() => {
@@ -151,7 +152,7 @@ export default function Team() {
       <section className="relative overflow-hidden rounded-[28px] border border-line/70 p-6 sm:p-9 bg-[radial-gradient(640px_320px_at_90%_0%,rgb(var(--home)/0.25),transparent_65%),linear-gradient(150deg,#13203D,#0A0E16)] text-[#EEF1F6] flex flex-col sm:flex-row sm:items-center gap-6">
         <img src={team.logo} alt="" className="w-20 h-20 sm:w-28 sm:h-28 object-contain drop-shadow-lg" />
         <div className="flex-1 min-w-0 space-y-2">
-          <div className="text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#9AA3B2]">{team.national ? 'National team' : data.league ? `${data.league.name} · ${team.country}` : team.country}</div>
+          <div className="text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#9AA3B2]">{team.national ? t("National team") : data.league ? `${data.league.name} · ${team.country}` : team.country}</div>
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="font-display text-3xl sm:text-5xl font-extrabold tracking-tight">{team.name}</h1>
             <FavStar
@@ -161,9 +162,9 @@ export default function Team() {
             />
           </div>
           <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-[#C9D0DB]">
-            {standing && <span>{standing.rank}{['th', 'st', 'nd', 'rd'][standing.rank % 10 > 3 || [11, 12, 13].includes(standing.rank % 100) ? 0 : standing.rank % 10]} in the table · {standing.points} pts</span>}
-            {data.venue && <span>{data.venue.name}{data.venue.capacity ? ` · ${data.venue.capacity.toLocaleString('en-GB')}` : ''}</span>}
-            {team.founded && <span>Founded {team.founded}</span>}
+            {standing && <span>{t("#{0} in the table · {1} pts", { 0: standing.rank, 1: standing.points })}</span>}
+            {data.venue && <span>{data.venue.name}{data.venue.capacity ? ` · ${data.venue.capacity.toLocaleString(LOCALE)}` : ''}</span>}
+            {team.founded && <span>{t("Founded")}{' '}{team.founded}</span>}
           </div>
           {data.builtAt && (
             <div className="text-[11px] text-[#9AA3B2]">
@@ -171,13 +172,13 @@ export default function Team() {
                 const m = Math.max(1, Math.round((Date.now() - new Date(data.builtAt!).getTime()) / 60000))
                 return `Updated ${m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`} ago`
               })()}
-              {data.stale ? ' · live data paused (daily data limit reached), refreshes after 03:00' : ' · results and table refresh every 15 minutes'}
+              {data.stale ? t(" · live data paused (daily data limit reached), refreshes after 03:00") : t(" · results and table refresh every 15 minutes")}
             </div>
           )}
         </div>
         {data.form.length > 0 && (
           <div className="flex flex-col sm:items-end gap-2">
-            <span className="text-xs font-bold text-[#9AA3B2]">Form, last {data.form.length}</span>
+            <span className="text-xs font-bold text-[#9AA3B2]">{t("Form, last")}{' '}{data.form.length}</span>
             <div className="flex gap-1.5">
               {[...data.form].reverse().map((r, i) => (
                 <span key={i} className={`w-8 h-8 rounded-lg grid place-items-center font-display text-xs font-extrabold text-[#07090D] ${FORM_BG[r]}`}>{r}</span>
@@ -193,22 +194,22 @@ export default function Team() {
           <TeamAnalysisCard a={data.analysis} full={full} />
 
           {nextMatch && (
-            <Card title="Next match" action={<span className="text-xs text-faint">{nextMatch.comp}</span>}>
+            <Card title={t("Next match")} action={<span className="text-xs text-faint">{nextMatch.comp}</span>}>
               <div className="flex items-center gap-4">
                 <div className="flex-1 flex items-center gap-3 min-w-0"><img src={nextMatch.home.logo} alt="" className="w-9 h-9 object-contain" /><span className="font-bold truncate">{nextMatch.home.name}</span></div>
                 <div className="text-center">
-                  <div className="font-display font-bold text-sm">{new Date(nextMatch.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</div>
-                  <div className="text-xs text-faint">{new Date(nextMatch.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</div>
+                  <div className="font-display font-bold text-sm">{new Date(nextMatch.date).toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric', month: 'short' })}</div>
+                  <div className="text-xs text-faint">{new Date(nextMatch.date).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })}</div>
                 </div>
                 <div className="flex-1 flex items-center justify-end gap-3 min-w-0"><span className="font-bold truncate text-right">{nextMatch.away.name}</span><img src={nextMatch.away.logo} alt="" className="w-9 h-9 object-contain" /></div>
               </div>
-              {nextMatch.matchId && <Link to={`/match/${nextMatch.matchId}`} className="mt-4 inline-block text-sm font-bold text-accent">v3 prediction and analysis →</Link>}
+              {nextMatch.matchId && <Link to={`/match/${nextMatch.matchId}`} className="mt-4 inline-block text-sm font-bold text-accent">{t("v3 prediction and analysis →")}</Link>}
             </Card>
           )}
 
           {/* squad */}
-          <Card title="Squad" action={<span className="text-xs text-faint">{data.league ? `${data.league.season}-${String(data.league.season + 1).slice(2)} · official games, friendlies excluded` : ''}</span>}>
-            {groups.length === 0 && <p className="text-sm text-faint">No squad list available.</p>}
+          <Card title={t("Squad")} action={<span className="text-xs text-faint">{data.league ? `${data.league.season}-${String(data.league.season + 1).slice(2)} · official games, friendlies excluded` : ''}</span>}>
+            {groups.length === 0 && <p className="text-sm text-faint">{t("No squad list available.")}</p>}
             <div className="space-y-5">
               {groups.map(([pos, players]) => (
                 <div key={pos}>
@@ -218,12 +219,12 @@ export default function Team() {
                       <thead>
                         <tr className="text-[11px] text-faint text-left">
                           <th className="font-medium px-2 py-1 w-10">#</th>
-                          <th className="font-medium px-2 py-1">Player</th>
-                          <th className="font-medium px-2 py-1 text-right w-12">Age</th>
-                          <th className="font-medium px-2 py-1 text-right w-14">{full ? 'Apps' : <Pro />}</th>
-                          <th className="font-medium px-2 py-1 text-right w-14">Goals</th>
-                          <th className="font-medium px-2 py-1 text-right w-14">{full ? 'Assists' : <Pro />}</th>
-                          <th className="font-medium px-2 py-1 text-right w-14">{full ? 'Rating' : <Pro />}</th>
+                          <th className="font-medium px-2 py-1">{t("Player")}</th>
+                          <th className="font-medium px-2 py-1 text-right w-12">{t("Age")}</th>
+                          <th className="font-medium px-2 py-1 text-right w-14">{full ? t("Apps") : <Pro />}</th>
+                          <th className="font-medium px-2 py-1 text-right w-14">{t("Goals")}</th>
+                          <th className="font-medium px-2 py-1 text-right w-14">{full ? t("Assists") : <Pro />}</th>
+                          <th className="font-medium px-2 py-1 text-right w-14">{full ? t("Rating") : <Pro />}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -251,7 +252,7 @@ export default function Team() {
             </div>
             {!full && data.locked && (
               <div className="mt-5 rounded-2xl bg-surface2/60 p-4 text-sm text-muted">
-                <span className="font-semibold text-ink">Premium adds:</span> {data.locked.join(' · ')}. <Link to="/premium" className="font-bold text-accent">Go Premium →</Link>
+                <span className="font-semibold text-ink">{t("Premium adds:")}</span> {data.locked.join(' · ')}. <Link to="/premium" className="font-bold text-accent">{t("Go Premium →")}</Link>
               </div>
             )}
           </Card>
@@ -259,15 +260,15 @@ export default function Team() {
 
         <div className="space-y-5 min-w-0">
           {standing && (
-            <Card title="Season in numbers">
+            <Card title={t("Season in numbers")}>
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  ['Played', standing.played],
-                  ['Points per game', standing.played ? (standing.points / standing.played).toFixed(2) : '–'],
-                  ['Goals scored', standing.gf],
-                  ['Goals conceded', standing.ga],
-                  ['Won · drawn · lost', `${standing.won} · ${standing.drawn} · ${standing.lost}`],
-                  ['Goal difference', standing.gf - standing.ga > 0 ? `+${standing.gf - standing.ga}` : standing.gf - standing.ga]
+                  [t('Played'), standing.played],
+                  [t('Points per game'), standing.played ? (standing.points / standing.played).toFixed(2) : '–'],
+                  [t('Goals scored'), standing.gf],
+                  [t('Goals conceded'), standing.ga],
+                  [t('Won · drawn · lost'), `${standing.won} · ${standing.drawn} · ${standing.lost}`],
+                  [t('Goal difference'), standing.gf - standing.ga > 0 ? `+${standing.gf - standing.ga}` : standing.gf - standing.ga]
                 ].map(([k, v]) => (
                   <div key={String(k)} className="rounded-2xl bg-surface2/60 p-3.5">
                     <div className="text-[11px] text-faint">{k}</div>
@@ -280,18 +281,18 @@ export default function Team() {
 
           <TeamRecordCard rec={data.analysis?.record} teamName={team.name} />
 
-          <Card title="Top scorers" action={!full ? <span className="text-[11px] text-faint">Top 3 · <Link to="/premium" className="text-accent font-bold">all</Link></span> : undefined}>
-            <Leaders items={data.scorers} label="goals" />
+          <Card title={t("Top scorers")} action={!full ? <span className="text-[11px] text-faint">Top 3 · <Link to="/premium" className="text-accent font-bold">all</Link></span> : undefined}>
+            <Leaders items={data.scorers} label={t("goals")} />
           </Card>
 
-          <Card title="Top assists" action={!full ? <Pro /> : undefined}>
-            {full ? <Leaders items={data.assists} label="assists" /> : <p className="text-sm text-muted">Assists for every player are part of <Link to="/premium" className="font-bold text-accent">Premium</Link>.</p>}
+          <Card title={t("Top assists")} action={!full ? <Pro /> : undefined}>
+            {full ? <Leaders items={data.assists} label={t("assists")} /> : <p className="text-sm text-muted"><Link to="/premium" className="font-bold text-accent">{t("Assists for every player are part of Premium.")}</Link></p>}
           </Card>
 
           {rows.length > 0 && data.league && (
             <Card title={data.league.name} action={<img src={data.league.logo} alt="" className="w-6 h-6 object-contain" />}>
               <table className="w-full text-sm">
-                <thead><tr className="text-[11px] text-faint"><th className="text-left font-medium py-1 w-8">#</th><th className="text-left font-medium py-1">Team</th><th className="text-right font-medium py-1 w-10">P</th><th className="text-right font-medium py-1 w-12">GD</th><th className="text-right font-medium py-1 w-12">Pts</th></tr></thead>
+                <thead><tr className="text-[11px] text-faint"><th className="text-left font-medium py-1 w-8">#</th><th className="text-left font-medium py-1">{t("Team")}</th><th className="text-right font-medium py-1 w-10">P</th><th className="text-right font-medium py-1 w-12">{t("GD")}</th><th className="text-right font-medium py-1 w-12">{t("Pts")}</th></tr></thead>
                 <tbody>
                   {rows.map(r => (
                     <tr key={r.id} className={`border-t border-line/40 ${r.me ? 'bg-accent/10' : ''}`}>
@@ -307,7 +308,7 @@ export default function Team() {
             </Card>
           )}
 
-          <Card title="Results and fixtures">
+          <Card title={t("Results and fixtures")}>
             {data.next.slice(0, 3).map(f => <FixtureRow key={`n${f.date}`} f={f} teamId={team.id} />)}
             {data.last.slice(0, 8).map(f => <FixtureRow key={`l${f.date}`} f={f} teamId={team.id} />)}
           </Card>

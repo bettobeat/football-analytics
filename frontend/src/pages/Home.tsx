@@ -10,6 +10,7 @@ import { matchFame } from '../lib/fame'
 import CountUp from '../components/CountUp'
 import { RevealChip } from '../components/Reveal'
 import { useFavorites } from '../lib/favorites'
+import { t as tt, LOCALE } from '../lib/i18n'
 
 interface Team { id: number; name: string; shortName?: string; tla?: string; crest?: string }
 interface Match {
@@ -35,11 +36,11 @@ interface Alert { matchId: number; league: string; date: string; home: string; a
 const LIVE = new Set(['IN_PLAY', 'PAUSED', 'LIVE'])
 const MAIN = ['grid-v3', 'elo-intl', 'elo-euro']
 const tn = (t: Team) => t.shortName || t.name
-const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+const when = (iso: string) => new Date(iso).toLocaleString(LOCALE, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 const ago = (iso: string | null) => {
   if (!iso) return ''
   const m = Math.max(1, Math.round((Date.now() - new Date(iso).getTime()) / 60000))
-  return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`
+  return m < 60 ? tt("{0} min ago", { 0: m }) : m < 1440 ? tt("{0} h ago", { 0: Math.round(m / 60) }) : tt("{0} d ago", { 0: Math.round(m / 1440) })
 }
 
 /** Our main prediction for a match: v3 (leagues), v3 national-team engine, v3 European-cup engine, else what the match carries. */
@@ -63,8 +64,8 @@ function FeaturedHero({ m, p }: { m: Match | null; p: Prediction | null }) {
   if (!m)
     return (
       <div className="relative overflow-hidden rounded-[32px] border border-white/10 min-h-[360px] sm:min-h-[460px] bg-[linear-gradient(160deg,#0F1A2B_0%,#0A0F17_60%,#07090D_100%)] p-10 flex flex-col justify-center gap-3 text-[#EEF1F6]">
-        <div className="font-display text-3xl sm:text-5xl font-extrabold tracking-tight leading-[1.05]">Football predictions,<br />tested in public.</div>
-        <p className="text-[#C9D0DB] max-w-lg">The next fixtures appear here as soon as they are scheduled.</p>
+        <div className="font-display text-3xl sm:text-5xl font-extrabold tracking-tight leading-[1.05]">{tt("Football predictions,")}<br />{tt("tested in public.")}</div>
+        <p className="text-[#C9D0DB] max-w-lg">{tt("The next fixtures appear here as soon as they are scheduled.")}</p>
       </div>
     )
   const k = p ? (p.pick || (hasPct(p) ? (p.home >= p.draw && p.home >= p.away ? 'H' : p.away >= p.draw ? 'A' : 'D') : null)) : null
@@ -102,7 +103,7 @@ function FeaturedHero({ m, p }: { m: Match | null; p: Prediction | null }) {
 
       <div className="relative h-full p-5 sm:p-9 flex flex-col gap-6 sm:gap-8">
         <div className="flex flex-wrap items-center justify-center sm:justify-between gap-2">
-          <span className="text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#07090D] bg-[#C8FF3D] px-3 py-1.5 rounded-full">Featured match</span>
+          <span className="text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#07090D] bg-[#C8FF3D] px-3 py-1.5 rounded-full">{tt("Featured match")}</span>
           <span className="glass !rounded-full inline-flex items-center gap-2 px-3 py-1.5 text-xs sm:text-sm text-[#C9D0DB]">
             {m.competition.emblem && <img src={m.competition.emblem} alt="" width={16} height={16} className="w-4 h-4 object-contain" />}
             {m.competition.name}
@@ -112,34 +113,33 @@ function FeaturedHero({ m, p }: { m: Match | null; p: Prediction | null }) {
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-6 flex-1">
           {side(m.homeTeam)}
           <div className="flex flex-col items-center gap-2">
-            <span className="font-display font-extrabold text-3xl sm:text-6xl text-white/90 tracking-tight">VS</span>
-            <span className="text-xs sm:text-sm font-bold text-white">{new Date(m.utcDate).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
-            <span className="text-[11px] sm:text-xs text-[#9AA3B2]">{new Date(m.utcDate).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+            <span className="font-display font-extrabold text-3xl sm:text-6xl text-white/90 tracking-tight">{tt("VS")}</span>
+            <span className="text-xs sm:text-sm font-bold text-white">{new Date(m.utcDate).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })}</span>
+            <span className="text-[11px] sm:text-xs text-[#9AA3B2]">{new Date(m.utcDate).toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
           </div>
           {side(m.awayTeam)}
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-end gap-4 sm:gap-6">
           <div className="flex-1 space-y-2">
-            <div className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#9AA3B2] text-center sm:text-left">v3 prediction</div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#9AA3B2] text-center sm:text-left">{tt("v3 prediction")}</div>
             {hasPct(p) && isCovered(m.id, m.status, true) ? (
               <RevealChip dark onReveal={() => revealMatch(m.id)} />
             ) : hasPct(p) ? (
               <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 {pill('H', tn(m.homeTeam), p.home)}
-                {pill('D', 'Draw', p.draw)}
+                {pill('D', tt('Draw'), p.draw)}
                 {pill('A', tn(m.awayTeam), p.away)}
               </div>
             ) : (
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 text-sm">
-                <span className="glass !rounded-full px-4 py-2 font-semibold inline-flex items-center gap-2"><Lock /> Prediction locked</span>
-                <Link to={`/match/${m.id}`} className="inline-flex items-center gap-1.5 text-[#C8FF3D] font-semibold">Unlock it →</Link>
+                <span className="glass !rounded-full px-4 py-2 font-semibold inline-flex items-center gap-2"><Lock /> {tt("Prediction locked")}</span>
+                <Link to={`/match/${m.id}`} className="inline-flex items-center gap-1.5 text-[#C8FF3D] font-semibold">{tt("Unlock it →")}</Link>
               </div>
             )}
           </div>
           <Link to={`/match/${m.id}`} className="h-12 px-7 inline-flex items-center justify-center rounded-2xl bg-[#C8FF3D] text-[#07090D] font-extrabold shadow-[0_10px_30px_-10px_rgba(200,255,61,0.6)] hover:brightness-105">
-            Full analysis
-          </Link>
+            {tt("Full analysis")}</Link>
         </div>
       </div>
     </div>
@@ -261,7 +261,7 @@ export default function Home() {
               <span className="truncate">{m.competition.name}</span>
             </span>
             <span className="text-[11px] font-bold text-ink bg-surface2/80 px-2 py-0.5 rounded-full whitespace-nowrap">
-              {new Date(m.utcDate).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              {new Date(m.utcDate).toLocaleString(LOCALE, { weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
             </span>
           </div>
           <div className="space-y-2.5">
@@ -280,15 +280,15 @@ export default function Home() {
                   </span>
                 ))}
               </div>
-              {strongPick ? <span className="inline-block text-[11px] font-extrabold text-bg bg-accent px-2 py-0.5 rounded-full">Strong pick</span> : null}
+              {strongPick ? <span className="inline-block text-[11px] font-extrabold text-bg bg-accent px-2 py-0.5 rounded-full">{tt("Strong pick")}</span> : null}
             </div>
           ) : p ? (
             <div className="flex items-center justify-between text-xs rounded-xl bg-surface2/70 px-3 py-2">
-              <span className="text-muted inline-flex items-center gap-1.5"><Lock /> Prediction locked</span>
-              <span className="text-accent font-semibold">Unlock</span>
+              <span className="text-muted inline-flex items-center gap-1.5"><Lock /> {tt("Prediction locked")}</span>
+              <span className="text-accent font-semibold">{tt("Unlock")}</span>
             </div>
           ) : (
-            <div className="text-xs text-faint">No prediction yet</div>
+            <div className="text-xs text-faint">{tt("No prediction yet")}</div>
           )}
         </Link>
       )
@@ -304,29 +304,27 @@ export default function Home() {
       {access === 'anon' && (
         <section className="rounded-3xl border border-accent/30 bg-[linear-gradient(135deg,rgb(var(--accent)/0.10),rgb(var(--surface)/0.6)_60%)] p-5 sm:p-7 flex flex-col lg:flex-row lg:items-center gap-5">
           <div className="flex-1 min-w-0 space-y-2">
-            <h1 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-ink">Football predictions, tested in public</h1>
+            <h1 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-ink">{tt("Football predictions, tested in public")}</h1>
             <p className="text-sm sm:text-base text-muted max-w-2xl">
-              Win, draw or loss chances, goals and the reasons behind every pick, for the top leagues, cups and national teams. Every prediction is saved before
-              kick-off and scored after the game, so you can check us.
-            </p>
+              {tt("Win, draw or loss chances, goals and the reasons behind every pick, for the top leagues, cups and national teams. Every prediction is saved before kick-off and scored after the game, so you can check us.")}</p>
           </div>
           {summary?.v3?.hitRate != null && (
             <div className="flex gap-3">
               <div className="rounded-2xl bg-surface/70 border border-line px-4 py-3 text-center">
                 <div className="font-display text-2xl font-extrabold text-accent num">{summary.v3.hitRate}%</div>
-                <div className="text-[11px] text-muted">our picks right</div>
+                <div className="text-[11px] text-muted">{tt("our picks right")}</div>
               </div>
               {summary.v3.strong60?.hitRate != null && (
                 <div className="rounded-2xl bg-surface/70 border border-line px-4 py-3 text-center">
                   <div className="font-display text-2xl font-extrabold text-ink num">{summary.v3.strong60.hitRate}%</div>
-                  <div className="text-[11px] text-muted">strong picks right</div>
+                  <div className="text-[11px] text-muted">{tt("strong picks right")}</div>
                 </div>
               )}
             </div>
           )}
           <div className="flex flex-col sm:flex-row lg:flex-col gap-2 lg:w-52">
-            <Link to="/signup" className="h-11 px-5 rounded-2xl bg-accent text-bg font-extrabold grid place-items-center">Get 2 free picks a week</Link>
-            <Link to="/accuracy" className="h-11 px-5 rounded-2xl border border-line text-ink font-semibold grid place-items-center hover:border-faint">See our record</Link>
+            <Link to="/signup" className="h-11 px-5 rounded-2xl bg-accent text-bg font-extrabold grid place-items-center">{tt("Get 2 free picks a week")}</Link>
+            <Link to="/accuracy" className="h-11 px-5 rounded-2xl border border-line text-ink font-semibold grid place-items-center hover:border-faint">{tt("See our record")}</Link>
           </div>
         </section>
       )}
@@ -337,10 +335,10 @@ export default function Home() {
 
         <div className="card p-5 sm:p-6 flex flex-col gap-4">
           <div className="flex items-center justify-between">
-            <h2 className="font-display text-lg font-bold">{live.length ? 'Live now' : 'Next kick-offs'}</h2>
+            <h2 className="font-display text-lg font-bold">{live.length ? tt("Live now") : tt("Next kick-offs")}</h2>
             <span className={`inline-flex items-center gap-2 text-xs font-bold px-3 py-1 rounded-full ${live.length ? 'text-live bg-live/10' : 'text-faint bg-surface2/70'}`}>
               <span className={`w-1.5 h-1.5 rounded-full ${live.length ? 'bg-live animate-pulseDot' : 'bg-faint'}`} />
-              {live.length ? `${live.length} live` : 'No live games'}
+              {live.length ? tt("{0} live", { 0: live.length }) : tt("No live games")}
             </span>
           </div>
           {liveMain ? (
@@ -351,21 +349,21 @@ export default function Home() {
                   <div className="flex flex-col items-center gap-2 min-w-0"><Crest team={liveMain.homeTeam} size={52} /><span className="text-sm font-bold truncate max-w-full">{tn(liveMain.homeTeam)}</span></div>
                   <div className="flex flex-col items-center gap-1.5">
                     <span className="font-display font-extrabold text-4xl">{liveMain.score?.fullTime?.home ?? 0} – {liveMain.score?.fullTime?.away ?? 0}</span>
-                    <span className="text-xs font-extrabold text-bg bg-win px-2.5 py-0.5 rounded-full">{liveMain.minute ? `${liveMain.minute}'` : 'Live'}</span>
+                    <span className="text-xs font-extrabold text-bg bg-win px-2.5 py-0.5 rounded-full">{liveMain.minute ? `${liveMain.minute}'` : tt("Live")}</span>
                   </div>
                   <div className="flex flex-col items-center gap-2 min-w-0"><Crest team={liveMain.awayTeam} size={52} /><span className="text-sm font-bold truncate max-w-full">{tn(liveMain.awayTeam)}</span></div>
                 </div>
-                <div className="text-center text-xs text-muted">Live stats, lineups and events →</div>
+                <div className="text-center text-xs text-muted">{tt("Live stats, lineups and events →")}</div>
               </Link>
               <div className="space-y-1">
                 {live.slice(1, 6).map(m => (
                   <Link key={m.id} to={`/match/${m.id}`} className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-surface2/60 text-sm">
-                    <span className="text-[11px] font-bold text-win w-8">{m.minute ? `${m.minute}'` : 'Live'}</span>
+                    <span className="text-[11px] font-bold text-win w-8">{m.minute ? `${m.minute}'` : tt("Live")}</span>
                     <span className="truncate flex-1">{tn(m.homeTeam)} – {tn(m.awayTeam)}</span>
                     <b className="font-display">{m.score?.fullTime?.home ?? 0}–{m.score?.fullTime?.away ?? 0}</b>
                   </Link>
                 ))}
-                {live.length > 6 && <Link to="/matches" className="block px-2 pt-1 text-sm font-semibold text-accent">All {live.length} live games →</Link>}
+                {live.length > 6 && <Link to="/matches" className="block px-2 pt-1 text-sm font-semibold text-accent">{tt("All")}{' '}{live.length} {tt("live games →")}</Link>}
               </div>
             </>
           ) : soonest.length ? (
@@ -381,22 +379,22 @@ export default function Home() {
                     <span className="block text-[11px] text-faint truncate">{m.competition.name}</span>
                   </span>
                   <span className="text-right flex-shrink-0">
-                    <span className="block text-xs font-bold text-ink">{new Date(m.utcDate).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
-                    <span className="block text-[11px] text-faint">{new Date(m.utcDate).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                    <span className="block text-xs font-bold text-ink">{new Date(m.utcDate).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span className="block text-[11px] text-faint">{new Date(m.utcDate).toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
                   </span>
                 </Link>
               ))}
-              <Link to="/matches" className="mt-1 px-2 text-sm font-bold text-accent">All matches →</Link>
+              <Link to="/matches" className="mt-1 px-2 text-sm font-bold text-accent">{tt("All matches →")}</Link>
             </div>
           ) : (
-            <div className="flex-1 grid place-items-center text-center text-sm text-muted py-6">No games scheduled yet.</div>
+            <div className="flex-1 grid place-items-center text-center text-sm text-muted py-6">{tt("No games scheduled yet.")}</div>
           )}
         </div>
       </div>
 
       {/* ---------- your favorites (first) ---------- */}
       {favNext.length > 0 && (
-        <Section title="Your favorites" action={<Link to="/favorites" className="text-sm font-bold text-accent">All favorites →</Link>}>
+        <Section title={tt("Your favorites")} action={<Link to="/favorites" className="text-sm font-bold text-accent">All favorites →</Link>}>
           <div className="rail flex gap-3.5 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 snap-x">
             {favNext.map(m => nextCard(m))}
           </div>
@@ -405,7 +403,7 @@ export default function Home() {
 
       {/* ---------- next matches ---------- */}
       {next.length > 0 && (
-        <Section title="Next matches" action={<Link to="/matches" className="text-sm font-bold text-accent">All matches →</Link>}>
+        <Section title={tt("Next matches")} action={<Link to="/matches" className="text-sm font-bold text-accent">All matches →</Link>}>
           <div className="rail flex gap-3.5 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 snap-x">
             {next.map(m => nextCard(m))}
           </div>
@@ -416,32 +414,32 @@ export default function Home() {
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="rounded-3xl p-6 border border-accent/30 bg-[linear-gradient(160deg,rgb(var(--accent)/0.10),rgb(var(--surface)/0.6))] flex flex-col gap-4">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="font-display text-lg font-bold">Our record</h2>
-            {summary && <span className="text-xs text-muted">{summary.v3.games} games · {summary.days} days</span>}
+            <h2 className="font-display text-lg font-bold">{tt("Our record")}</h2>
+            {summary && <span className="text-xs text-muted">{tt("{0} games · {1} days", { 0: summary.v3.games, 1: summary.days })}</span>}
           </div>
           {summary && summary.v3.hitRate !== null ? (
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <div className="flex justify-between font-bold"><span>All our picks</span><span className="font-display text-accent">{summary.v3.hitRate}%</span></div>
+                <div className="flex justify-between font-bold"><span>{tt("All our picks")}</span><span className="font-display text-accent">{summary.v3.hitRate}%</span></div>
                 <div className="h-2.5 rounded-full bg-surface2"><div className="h-full rounded-full bg-accent" style={{ width: `${summary.v3.hitRate}%` }} /></div>
               </div>
               {summary.v3.strong60?.hitRate != null && (
                 <div className="space-y-1.5">
-                  <div className="flex justify-between font-bold text-muted"><span>Strong picks (60%+)</span><span className="font-display">{summary.v3.strong60.hitRate}%</span></div>
+                  <div className="flex justify-between font-bold text-muted"><span>{tt("Strong picks (60%+)")}</span><span className="font-display">{summary.v3.strong60.hitRate}%</span></div>
                   <div className="h-2.5 rounded-full bg-surface2"><div className="h-full rounded-full bg-win" style={{ width: `${summary.v3.strong60.hitRate}%` }} /></div>
                 </div>
               )}
             </div>
           ) : (
-            <div className="text-sm text-muted">Loading the record…</div>
+            <div className="text-sm text-muted">{tt("Loading the record…")}</div>
           )}
-          <p className="text-sm text-muted leading-relaxed">Picks right, every game counted. Each prediction is saved before kick-off and never edited.</p>
-          <Link to="/accuracy" className="mt-auto text-sm font-bold text-accent">See the full record →</Link>
+          <p className="text-sm text-muted leading-relaxed">{tt("Picks right, every game counted. Each prediction is saved before kick-off and never edited.")}</p>
+          <Link to="/accuracy" className="mt-auto text-sm font-bold text-accent">{tt("See the full record →")}</Link>
         </div>
 
         <div className="card p-6 flex flex-col gap-4">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="font-display text-lg font-bold">Draw picks</h2>
+            <h2 className="font-display text-lg font-bold">{tt("Draw picks")}</h2>
           </div>
           {full ? (
             alerts.length ? (
@@ -449,19 +447,19 @@ export default function Home() {
                 <Link key={a.matchId} to={`/match/${a.matchId}`} className="rounded-2xl p-4 bg-draw/10 border border-draw/25 space-y-2 hover:bg-draw/15 transition-colors">
                   <div className="flex justify-between text-[11px] text-faint"><span>{a.league}</span><span>{when(a.date)}</span></div>
                   <div className="font-extrabold">{a.home} – {a.away}</div>
-                  <div className="text-xs text-muted">Draw chance <b className="text-draw">{Math.round(a.ourDraw)}%</b></div>
+                  <div className="text-xs text-muted">{tt("Draw chance")}{' '}<b className="text-draw">{Math.round(a.ourDraw)}%</b></div>
                 </Link>
               ))
             ) : (
-              <p className="text-sm text-muted">No draw picks this week yet. They appear when the coming games are scheduled.</p>
+              <p className="text-sm text-muted">{tt("No draw picks this week yet. They appear when the coming games are scheduled.")}</p>
             )
           ) : (
             <div className="rounded-2xl p-4 bg-surface2/60 space-y-2">
-              <div className="flex items-center gap-2 font-bold"><Lock /> {summary?.drawAlerts?.picks ? `${summary.drawAlerts.picks} draw pick${summary.drawAlerts.picks === 1 ? '' : 's'} this week` : 'Draw picks'}</div>
-              <p className="text-sm text-muted">The 2 games of the week most likely to end in a draw, picked by our model. Part of Pro.</p>
+              <div className="flex items-center gap-2 font-bold"><Lock /> {summary?.drawAlerts?.picks ? tt("{n, plural, one {# draw pick} other {# draw picks}} this week", { n: summary.drawAlerts.picks }) : tt("Draw picks")}</div>
+              <p className="text-sm text-muted">{tt("The 2 games of the week most likely to end in a draw, picked by our model. Part of Pro.")}</p>
             </div>
           )}
-          <Link to={full ? '/draw-alerts' : '/premium'} className="mt-auto text-sm font-bold text-accent">{full ? 'All draw picks →' : 'Unlock draw picks →'}</Link>
+          <Link to={full ? '/draw-alerts' : '/premium'} className="mt-auto text-sm font-bold text-accent">{full ? tt("All draw picks →") : tt("Unlock draw picks →")}</Link>
         </div>
 
         <div className="card p-3 flex flex-col">
@@ -472,7 +470,7 @@ export default function Home() {
       {/* ---------- news + premium ---------- */}
       <div className={`grid gap-5 ${full ? '2xl:hidden' : 'xl:grid-cols-[2.4fr_1fr] 2xl:grid-cols-1'}`}>
         <div className="2xl:hidden">
-        <Section title="Around the world">
+        <Section title={tt("Around the world")}>
           {news.length ? (
             <div className="grid gap-4 md:grid-cols-[1.25fr_1fr]">
               {(() => {
@@ -492,7 +490,7 @@ export default function Home() {
                         {!lead.image && <span className="text-[11px] font-extrabold uppercase tracking-wide text-accent">{lead.source}</span>}
                         <span className="font-display text-lg sm:text-xl font-bold leading-snug text-ink">{lead.title}</span>
                         {lead.summary && <span className="text-sm text-muted line-clamp-3">{lead.summary}</span>}
-                        <span className="mt-auto pt-2 text-[11px] text-faint">{lead.published ? `${ago(lead.published)} · ` : ''}opens {lead.source}</span>
+                        <span className="mt-auto pt-2 text-[11px] text-faint">{lead.published ? `${ago(lead.published)} · ` : ''}{tt("opens {0}", { 0: lead.source })}</span>
                       </span>
                     </a>
                     <div className="card p-2 flex flex-col">
@@ -517,16 +515,16 @@ export default function Home() {
               })()}
             </div>
           ) : (
-            <div className="card p-6 text-sm text-muted">Loading the latest football news…</div>
+            <div className="card p-6 text-sm text-muted">{tt("Loading the latest football news…")}</div>
           )}
         </Section>
         </div>
         {!full && (
           <div className="rounded-3xl p-7 border border-home/40 bg-[linear-gradient(150deg,#1B2A55_0%,#101624_70%)] text-[#EEF1F6] flex flex-col gap-4 self-start">
-            <span className="self-start text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#07090D] bg-[#C8FF3D] px-3 py-1 rounded-full">Premium</span>
-            <h2 className="font-display text-2xl font-bold leading-tight">See the numbers behind every pick</h2>
-            <p className="text-sm text-[#C9D0DB] leading-relaxed">Full percentages, the v3 breakdown, draw picks, strong picks, team analysis and the complete track record.</p>
-            <Link to="/premium" className="h-12 rounded-2xl bg-[#C8FF3D] text-[#07090D] font-extrabold grid place-items-center">Go Premium</Link>
+            <span className="self-start text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#07090D] bg-[#C8FF3D] px-3 py-1 rounded-full">{tt("Premium")}</span>
+            <h2 className="font-display text-2xl font-bold leading-tight">{tt("See the numbers behind every pick")}</h2>
+            <p className="text-sm text-[#C9D0DB] leading-relaxed">{tt("Full percentages, the v3 breakdown, draw picks, strong picks, team analysis and the complete track record.")}</p>
+            <Link to="/premium" className="h-12 rounded-2xl bg-[#C8FF3D] text-[#07090D] font-extrabold grid place-items-center">{tt("Go Premium")}</Link>
           </div>
         )}
       </div>
@@ -545,9 +543,9 @@ function NewsRail({ news }: { news: News[] }) {
   const rest = lead ? news.filter(n => n !== lead).slice(0, 8) : []
   return (
     <section className="card p-3 max-h-[calc(100vh-6.5rem)] overflow-y-auto flex flex-col gap-2">
-      <h2 className="font-display text-lg font-bold px-2 pt-1">Around the world</h2>
+      <h2 className="font-display text-lg font-bold px-2 pt-1">{tt("Around the world")}</h2>
       {!lead ? (
-        <p className="px-2 pb-2 text-sm text-muted">Loading the latest football news…</p>
+        <p className="px-2 pb-2 text-sm text-muted">{tt("Loading the latest football news…")}</p>
       ) : (
         <>
           <a href={lead.link} target="_blank" rel="noreferrer" className="rounded-2xl overflow-hidden bg-surface2/40 hover:bg-surface2/70 transition-colors flex flex-col">

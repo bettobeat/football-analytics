@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import axios from 'axios'
 import { API_URL, socket } from './socket'
+import { t } from './i18n'
 
 // Same-origin cookies are sent by default; this also covers a separate API host
 axios.defaults.withCredentials = true
@@ -48,7 +49,7 @@ interface AuthState {
 const AuthContext = createContext<AuthState | null>(null)
 
 /** Readable message from an axios error. */
-export function errorText(e: any, fallback = 'Something went wrong. Please try again.') {
+export function errorText(e: any, fallback = t("Something went wrong. Please try again.")) {
   return e?.response?.data?.error || e?.response?.data?.message || fallback
 }
 

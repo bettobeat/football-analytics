@@ -27,6 +27,7 @@ import Accessibility from './pages/Accessibility'
 import { socket } from './lib/socket'
 import { useTheme } from './lib/theme'
 import { useUnlocks, resetDay } from './lib/unlocks'
+import { t as tt, basename, applyHeadLang, LANGS, lang, setLang, type Lang } from './lib/i18n'
 
 export function LogoMark({ size = 36 }: { size?: number }) {
   return (
@@ -40,11 +41,10 @@ export function LogoMark({ size = 36 }: { size?: number }) {
 
 function Logo() {
   return (
-    <Link to="/" className="flex items-center gap-2.5 group min-w-0" aria-label="Bet To Beat home">
+    <Link to="/" className="flex items-center gap-2.5 group min-w-0" aria-label={tt("Bet To Beat home")}>
       <LogoMark />
       <span className="hidden min-[380px]:inline font-display font-bold text-lg tracking-tight text-ink">
-        bet<span className="text-accent">to</span>beat
-      </span>
+        bet<span className="text-accent">to</span>beat</span>
     </Link>
   )
 }
@@ -54,8 +54,8 @@ function ThemeToggle({ theme, onToggle }: { theme: 'dark' | 'light'; onToggle: (
     <button
       onClick={onToggle}
       className="w-9 h-9 grid place-items-center rounded-xl border border-line/80 bg-surface text-muted hover:text-ink hover:border-faint transition-colors"
-      title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-      aria-label="Toggle theme"
+      title={theme === 'dark' ? tt("Switch to light") : tt("Switch to dark")}
+      aria-label={tt("Toggle theme")}
     >
       {theme === 'dark' ? (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -71,6 +71,27 @@ function ThemeToggle({ theme, onToggle }: { theme: 'dark' | 'light'; onToggle: (
   )
 }
 
+/** Language: a small select in the header; changing it opens the same page under the other prefix. */
+function LangSwitch({ compact = false }: { compact?: boolean }) {
+  return (
+    <label className={`inline-flex items-center gap-1.5 ${compact ? '' : 'h-9 px-2.5 rounded-xl border border-line/80 bg-surface'} text-muted`} title={tt('Language')}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+      </svg>
+      <select
+        value={lang}
+        onChange={e => setLang(e.target.value as Lang)}
+        aria-label={tt('Language')}
+        className="bg-transparent text-sm font-semibold text-ink focus:outline-none cursor-pointer"
+      >
+        {(Object.keys(LANGS) as Lang[]).map(l => (
+          <option key={l} value={l} className="text-ink bg-surface">{LANGS[l].name}</option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
 function UserMenu() {
   const { user, access, loading } = useAuth()
   const loc = useLocation()
@@ -80,8 +101,7 @@ function UserMenu() {
       <Link
         to={['/login', '/signup', '/verify', '/forgot'].includes(loc.pathname) ? '/login' : `/login?next=${encodeURIComponent(loc.pathname)}`}
         className="px-3.5 py-2 rounded-xl bg-accent text-bg text-sm font-semibold whitespace-nowrap">
-        Sign in
-      </Link>
+        {tt("Sign in")}</Link>
     )
   const badge = access === 'admin' ? 'Admin' : access === 'pro' ? 'Pro' : access === 'premium' ? 'Premium' : 'Free'
   return (
@@ -109,14 +129,13 @@ function UnlocksBanner() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-2 text-sm">
         <span className="text-ink">
           {u.left === 0 ? (
-            <>You've used all <b>{u.allowance}</b> unlocks this month. They renew on {resetDay(u.resetsAt)}.</>
+            <>{tt("You've used all {0} unlocks this month. They renew on {1}.", { 0: u.allowance, 1: resetDay(u.resetsAt) })}</>
           ) : (
-            <><b className="num">{u.left}</b> unlock{u.left === 1 ? '' : 's'} left this month. You're using Bet To Beat a lot.</>
+            <><b className="num">{u.left}</b> {tt("{n, plural, one {unlock} other {unlocks}} left this month. You're using Bet To Beat a lot.", { n: u.left })}</>
           )}
         </span>
         <Link to="/premium" className="px-3 py-1 rounded-lg bg-accent text-bg text-xs font-extrabold">
-          Pro is unlimited →
-        </Link>
+          {tt("Pro is unlimited →")}</Link>
       </div>
     </div>
   )
@@ -129,10 +148,9 @@ function VerifyBanner() {
   return (
     <div className="bg-draw/15 border-b border-draw/30">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2 text-sm text-ink flex flex-wrap items-center justify-between gap-2">
-        <span>Confirm your email to finish creating your account.</span>
+        <span>{tt("Confirm your email to finish creating your account.")}</span>
         <Link to={`/verify?next=${encodeURIComponent(loc.pathname)}`} className="font-semibold text-draw">
-          Enter code →
-        </Link>
+          {tt("Enter code →")}</Link>
       </div>
     </div>
   )
@@ -143,32 +161,25 @@ function NavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
   return (
     <>
       <NavLink to="/" end className={cls}>
-        Home
-      </NavLink>
+        {tt("Home")}</NavLink>
       <NavLink to="/matches" className={cls}>
-        Matches
-      </NavLink>
+        {tt("Matches")}</NavLink>
       <NavLink to="/favorites" className={cls}>
-        Favorites
-      </NavLink>
+        {tt("Favorites")}</NavLink>
       <NavLink to="/draw-alerts" className={cls}>
-        Draw picks
-      </NavLink>
+        {tt("Draw picks")}</NavLink>
       <NavLink to="/accuracy" className={cls}>
-        Accuracy
-      </NavLink>
+        {tt("Accuracy")}</NavLink>
       <NavLink to="/past" className={cls}>
-        Past seasons
-      </NavLink>
+        {tt("Past seasons")}</NavLink>
       {access !== 'pro' && access !== 'admin' && (
         <NavLink to="/premium" className={cls}>
-          {access === 'premium' ? 'Go Pro' : 'Premium'}
+          {access === 'premium' ? tt("Go Pro") : tt("Premium")}
         </NavLink>
       )}
       {access === 'admin' && (
         <NavLink to="/admin" className={cls}>
-          Users
-        </NavLink>
+          {tt("Users")}</NavLink>
       )}
     </>
   )
@@ -200,7 +211,7 @@ function BottomTabs() {
       <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
         <path d={TAB_ICONS[label]} />
       </svg>
-      <span className="text-[10px] font-bold">{label}</span>
+      <span className="text-[10px] font-bold">{tt(label)}</span>
     </NavLink>
   )
   return (
@@ -209,21 +220,21 @@ function BottomTabs() {
         <div className="lg:hidden fixed inset-0 z-50 bg-bg/95 backdrop-blur-md p-4 pt-6">
           <div className="flex items-center gap-2">
             <div className="flex-1"><SearchBox compact onDone={() => setSearching(false)} /></div>
-            <button onClick={() => setSearching(false)} className="h-11 px-3 text-sm font-semibold text-muted">Close</button>
+            <button onClick={() => setSearching(false)} className="h-11 px-3 text-sm font-semibold text-muted">{tt("Close")}</button>
           </div>
         </div>
       )}
-      <nav aria-label="Tabs" className="lg:hidden fixed left-3 right-3 bottom-3 z-40 grid grid-cols-6 gap-1 p-1.5 rounded-3xl bg-surface/85 backdrop-blur-xl border border-line/80 shadow-lift sm:max-w-lg sm:mx-auto">
+      <nav aria-label={tt("Tabs")} className="lg:hidden fixed left-3 right-3 bottom-3 z-40 grid grid-cols-6 gap-1 p-1.5 rounded-3xl bg-surface/85 backdrop-blur-xl border border-line/80 shadow-lift sm:max-w-lg sm:mx-auto">
         {tab('/', 'Home', true)}
         {tab('/matches', 'Matches')}
         {tab('/favorites', 'Favorites')}
         {tab('/draw-alerts', 'Draws')}
         {tab('/accuracy', 'Accuracy')}
-        <button onClick={() => setSearching(true)} className="h-14 flex flex-col items-center justify-center gap-1 rounded-2xl text-muted" aria-label="Search">
+        <button onClick={() => setSearching(true)} className="h-14 flex flex-col items-center justify-center gap-1 rounded-2xl text-muted" aria-label={tt("Search")}>
           <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d={TAB_ICONS.Search} />
           </svg>
-          <span className="text-[10px] font-bold">Search</span>
+          <span className="text-[10px] font-bold">{tt("Search")}</span>
         </button>
       </nav>
     </>
@@ -231,31 +242,32 @@ function BottomTabs() {
 }
 
 const TITLES: [RegExp, string][] = [
-  [/^\/$/, 'Home'],
-  [/^\/matches/, 'Matches'],
-  [/^\/favorites/, 'Favorites'],
-  [/^\/team\//, 'Team'],
-  [/^\/league\//, 'League'],
-  [/^\/player\//, 'Player'],
-  [/^\/match\//, 'Match'],
-  [/^\/accuracy/, 'Accuracy'],
-  [/^\/draw-alerts/, 'Draw picks'],
-  [/^\/past/, 'Past seasons'],
-  [/^\/premium/, 'Premium'],
-  [/^\/login/, 'Sign in'],
-  [/^\/signup/, 'Create account'],
-  [/^\/account/, 'Account'],
-  [/^\/terms/, 'Terms of use'],
-  [/^\/privacy/, 'Privacy policy'],
-  [/^\/accessibility/, 'Accessibility statement'],
+  [/^\/$/, tt('Home')],
+  [/^\/matches/, tt('Matches')],
+  [/^\/favorites/, tt('Favorites')],
+  [/^\/team\//, tt('Team')],
+  [/^\/league\//, tt('League')],
+  [/^\/player\//, tt('Player')],
+  [/^\/match\//, tt('Match')],
+  [/^\/accuracy/, tt('Accuracy')],
+  [/^\/draw-alerts/, tt('Draw picks')],
+  [/^\/past/, tt('Past seasons')],
+  [/^\/premium/, tt('Premium')],
+  [/^\/login/, tt('Sign in')],
+  [/^\/signup/, tt('Create account')],
+  [/^\/account/, tt('Account')],
+  [/^\/terms/, tt('Terms of use')],
+  [/^\/privacy/, tt('Privacy policy')],
+  [/^\/accessibility/, tt('Accessibility statement')],
   [/^\/admin/, 'Users']
 ]
 /** Browser tab title per page (the match page sets its own once the teams are loaded). */
 function PageTitle() {
   const loc = useLocation()
   useEffect(() => {
+    applyHeadLang(loc.pathname)
     const t = TITLES.find(([re]) => re.test(loc.pathname))?.[1]
-    document.title = t && t !== 'Home' ? `${t} · Bet To Beat` : 'Bet To Beat · Football predictions, tested in public'
+    document.title = t && t !== 'Home' ? tt("{0} · Bet To Beat", { 0: t }) : tt("Bet To Beat · Football predictions, tested in public")
   }, [loc.pathname])
   return null
 }
@@ -289,15 +301,13 @@ function Shell() {
   }, [])
 
   const navCls = ({ isActive }: { isActive: boolean }) =>
-    `px-3.5 py-1.5 rounded-full text-sm transition-colors whitespace-nowrap ${
-      isActive ? 'bg-ink text-bg font-bold' : 'text-muted font-medium hover:text-ink'
-    }`
+    `px-3.5 py-1.5 rounded-full text-sm transition-colors whitespace-nowrap ${isActive ? 'bg-ink text-bg font-bold' : 'text-muted font-medium hover:text-ink'}`
 
   return (
-    <Router>
+    <Router basename={basename}>
       <div className="min-h-screen">
         <div className="stage" aria-hidden />
-        <a href="#main" className="skip-link">Skip to content</a>
+        <a href="#main" className="skip-link">{tt("Skip to content")}</a>
         <header className="sticky top-0 z-40 backdrop-blur-xl bg-bg/70 border-b border-line/50">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-[72px] flex items-center gap-3 lg:gap-5">
             <Logo />
@@ -312,11 +322,12 @@ function Shell() {
                 className={`hidden md:inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold ${
                   connected ? 'text-live bg-live/10' : 'text-faint bg-surface2'
                 }`}
-                title={connected ? 'Live updates connected' : 'Reconnecting…'}
+                title={connected ? tt("Live updates connected") : tt("Reconnecting…")}
               >
                 <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-live animate-pulseDot' : 'bg-faint'}`} />
-                {connected ? 'Live' : 'Offline'}
+                {connected ? tt("Live") : tt("Offline")}
               </div>
+              <div className="hidden md:block"><LangSwitch /></div>
               <ThemeToggle theme={theme} onToggle={toggle} />
               <UserMenu />
             </div>
@@ -371,17 +382,17 @@ function Shell() {
 
         <footer className="max-w-7xl mx-auto px-4 sm:px-6 pt-10 pb-28 lg:pb-10 text-xs text-faint space-y-2">
           <div className="flex flex-wrap gap-x-4 gap-y-1">
-            <Link to="/terms" className="hover:text-ink">Terms</Link>
-            <Link to="/privacy" className="hover:text-ink">Privacy</Link>
+            <Link to="/terms" className="hover:text-ink">{tt("Terms")}</Link>
+            <Link to="/privacy" className="hover:text-ink">{tt("Privacy")}</Link>
             <Link to="/accessibility" className="hover:text-ink">Accessibility · נגישות</Link>
-            <Link to="/premium" className="hover:text-ink">Premium</Link>
+            <Link to="/premium" className="hover:text-ink">{tt("Premium")}</Link>
+            <span className="ml-auto"><LangSwitch compact /></span>
           </div>
           <p>
-            Bet To Beat · predictions are probabilities, not promises. Information only, not betting advice. 18+. If gambling stops being fun,
-            stop and{' '}
-            <a href="https://www.begambleaware.org" target="_blank" rel="noreferrer" className="underline hover:text-ink">get help</a>.
+            {tt("Bet To Beat · predictions are probabilities, not promises. Information only, not betting advice. 18+. If gambling stops being fun, stop and")}{' '}
+            <a href="https://www.begambleaware.org" target="_blank" rel="noreferrer" className="underline hover:text-ink">{tt("get help")}</a>.
           </p>
-          <p>Data: Football-Data.org, API-Football, football-data.co.uk, Transfermarkt (squad values).</p>
+          <p>{tt("Data: Football-Data.org, API-Football, football-data.co.uk, Transfermarkt (squad values).")}</p>
         </footer>
         <BottomTabs />
         <Assistant />

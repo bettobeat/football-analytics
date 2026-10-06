@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import axios from 'axios'
 import { API_URL } from './socket'
 import { useAuth } from './auth'
+import { t as tt } from './i18n'
 
 /**
  * Favorite leagues, teams and players.
@@ -209,7 +210,7 @@ export function FavStar({ fav, size = 'md', label = false, tone, className = '' 
   const { has, toggle } = useFavorites()
   const on = has(fav.kind, fav.ref)
   const what = fav.kind === 'league' ? 'league' : fav.kind === 'team' ? 'team' : 'player'
-  const title = on ? `Remove ${fav.name} from favorites` : `Add ${fav.name} to favorites`
+  const title = on ? tt("Remove {0} from favorites", { 0: fav.name }) : tt("Add {0} to favorites", { 0: fav.name })
   const px = size === 'sm' ? 'w-4 h-4' : 'w-5 h-5'
   return (
     <button

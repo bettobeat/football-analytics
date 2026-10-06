@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import type { Prediction } from '../lib/predict'
+import { t as tt } from '../lib/i18n'
 
 /**
  * Live win probability: how our pre-match prediction moves with the game.
@@ -126,7 +127,7 @@ export default function WinProbability({ p, m }: { p: Prediction; m: WPMatch }) 
       </div>
       <div className="relative">
         <svg viewBox={`0 0 ${W} ${Hh}`} className="w-full h-auto rounded-xl bg-surface2/40 border border-line/60" role="img"
-          aria-label={`Win probability over the match: now ${hn} ${Math.round(last.H)}%, draw ${Math.round(last.D)}%, ${an} ${Math.round(last.A)}%`}>
+          aria-label={tt("Win probability over the match: now {0} {1}%, draw {2}%, {3} {4}%", { 0: hn, 1: Math.round(last.H), 2: Math.round(last.D), 3: an, 4: Math.round(last.A) })}>
           {[45, 90].map(t => <line key={t} x1={x(t)} x2={x(t)} y1={pad} y2={Hh - pad} stroke="rgb(var(--line))" strokeDasharray="3 4" />)}
           <line x1={pad} x2={W - pad} y1={y(50)} y2={y(50)} stroke="rgb(var(--line))" strokeDasharray="3 4" />
           <path d={band(() => 0, q => q.H)} fill="rgb(var(--home) / 0.55)" />
@@ -143,19 +144,18 @@ export default function WinProbability({ p, m }: { p: Prediction; m: WPMatch }) 
           {live && <line x1={x(c.now)} x2={x(c.now)} y1={pad} y2={Hh - pad} stroke="rgb(var(--live))" strokeWidth="2" />}
         </svg>
         <div className="flex justify-between text-[11px] text-faint mt-1.5 px-0.5">
-          <span>Kick-off</span><span>Half-time</span><span>{c.done ? 'Full time' : live ? `${c.now}'` : '90\''}</span>
+          <span>{tt("Kick-off")}</span><span>{tt("Half-time")}</span><span>{c.done ? tt("Full time") : live ? `${c.now}'` : '90\''}</span>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted">
         <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-home/60" />{hn}</span>
-        <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-draw/50" />Draw</span>
+        <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-draw/50" />{tt("Draw")}</span>
         <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-away/55" />{an}</span>
-        <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-ink" />Goal</span>
-        <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2.5 rounded-[2px] bg-loss" />Red card</span>
+        <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-ink" />{tt("Goal")}</span>
+        <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2.5 rounded-[2px] bg-loss" />{tt("Red card")}</span>
       </div>
       <p className="text-[11px] text-faint leading-relaxed">
-        Starts from our prediction saved before kick-off, then updates with the score, the time left and red cards. It shows how the chances moved during the game — it is not a new prediction.
-      </p>
+        {tt("Starts from our prediction saved before kick-off, then updates with the score, the time left and red cards. It shows how the chances moved during the game — it is not a new prediction.")}</p>
     </div>
   )
 }

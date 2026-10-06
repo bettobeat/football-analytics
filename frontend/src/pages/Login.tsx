@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { errorText, useAuth } from '../lib/auth'
 import { safeNext } from '../lib/nav'
+import { t } from '../lib/i18n'
 
 /** Sign in and create account on one page: /login and /signup. */
 export default function Login({ mode: initial }: { mode: 'login' | 'signup' }) {
@@ -28,7 +29,7 @@ export default function Login({ mode: initial }: { mode: 'login' | 'signup' }) {
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     setError(null)
-    if (mode === 'signup' && password.length < 8) return setError('Password must be at least 8 characters.')
+    if (mode === 'signup' && password.length < 8) return setError(t("Password must be at least 8 characters."))
     setBusy(true)
     try {
       if (mode === 'login') await login(email, password)
@@ -46,20 +47,20 @@ export default function Login({ mode: initial }: { mode: 'login' | 'signup' }) {
   return (
     <div className="max-w-md mx-auto px-4 sm:px-6 py-12 sm:py-16">
       <div className="card p-6 sm:p-8">
-        <h1 className="font-display text-2xl font-extrabold text-ink">{mode === 'login' ? 'Sign in' : 'Create your account'}</h1>
+        <h1 className="font-display text-2xl font-extrabold text-ink">{mode === 'login' ? t("Sign in") : t("Create your account")}</h1>
         <p className="text-sm text-muted mt-1">
-          {mode === 'login' ? 'Welcome back.' : 'Free account: every match, live scores, the model’s pick and 2 full predictions a week.'}
+          {mode === 'login' ? t("Welcome back.") : t("Free account: every match, live scores, the model’s pick and 2 full predictions a week.")}
         </p>
 
         <form onSubmit={submit} className="mt-6 space-y-3">
           {mode === 'signup' && (
             <label className="block">
-              <span className="label">Name (optional)</span>
+              <span className="label">{t("Name (optional)")}</span>
               <input className={`${input} mt-1`} value={name} onChange={e => setName(e.target.value)} autoComplete="name" maxLength={80} />
             </label>
           )}
           <label className="block">
-            <span className="label">Email</span>
+            <span className="label">{t("Email")}</span>
             <input
               className={`${input} mt-1`}
               type="email"
@@ -71,7 +72,7 @@ export default function Login({ mode: initial }: { mode: 'login' | 'signup' }) {
             />
           </label>
           <label className="block">
-            <span className="label">Password</span>
+            <span className="label">{t("Password")}</span>
             <input
               className={`${input} mt-1`}
               type="password"
@@ -81,13 +82,13 @@ export default function Login({ mode: initial }: { mode: 'login' | 'signup' }) {
               onChange={e => setPassword(e.target.value)}
               autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             />
-            {mode === 'signup' && <span className="text-[11px] text-faint">At least 8 characters.</span>}
+            {mode === 'signup' && <span className="text-[11px] text-faint">{t("At least 8 characters.")}</span>}
           </label>
 
           {mode === 'signup' && (
             <label className="flex items-start gap-2.5 text-sm text-muted cursor-pointer select-none">
               <input type="checkbox" checked={optIn} onChange={e => setOptIn(e.target.checked)} className="mt-0.5 w-4 h-4 accent-[rgb(var(--accent))]" />
-              <span>Email me about new features, Premium and weekly picks. You can turn this off anytime.</span>
+              <span>{t("Email me about new features, Premium and weekly picks. You can turn this off anytime.")}</span>
             </label>
           )}
 
@@ -98,32 +99,29 @@ export default function Login({ mode: initial }: { mode: 'login' | 'signup' }) {
             disabled={busy}
             className="w-full rounded-xl bg-accent text-bg font-semibold py-2.5 text-sm disabled:opacity-60 transition-opacity"
           >
-            {busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
+            {busy ? t("Please wait…") : mode === 'login' ? t("Sign in") : t("Create account")}
           </button>
         </form>
 
         <div className="mt-5 text-sm text-muted text-center">
           {mode === 'login' ? (
             <>
-              New here?{' '}
+              {t("New here?")}{' '}
               <Link to={`/signup${loc.search}`} className="text-accent font-medium">
-                Create an account
-              </Link>
+                {t("Create an account")}</Link>
             </>
           ) : (
             <>
-              Already have an account?{' '}
+              {t("Already have an account?")}{' '}
               <Link to={`/login${loc.search}`} className="text-accent font-medium">
-                Sign in
-              </Link>
+                {t("Sign in")}</Link>
             </>
           )}
         </div>
         {mode === 'login' && (
           <p className="mt-3 text-xs text-center">
             <Link to="/forgot" className="text-muted hover:text-ink">
-              Forgot your password?
-            </Link>
+              {t("Forgot your password?")}</Link>
           </p>
         )}
       </div>

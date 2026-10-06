@@ -1,3 +1,4 @@
+import { t } from './i18n'
 // Prediction shape served by the backend (see backend/src/services/predictionModel.ts)
 export interface Prediction {
   model: string
@@ -41,10 +42,10 @@ export interface Prediction {
 }
 
 export const MATCH_TYPE_LABEL: Record<NonNullable<Prediction['grid']>['matchType'], string> = {
-  mismatch: 'Mismatch',
-  standard: 'Standard',
-  even: 'Even match',
-  big: 'Big match'
+  mismatch: t('Mismatch'),
+  standard: t('Standard'),
+  even: t('Even match'),
+  big: t('Big match')
 }
 
 /** The model's pick (works for full and locked predictions). */
@@ -62,9 +63,9 @@ export function fairOdds(pct: number) {
 }
 
 export const CONFIDENCE_LABEL: Record<Prediction['confidence'], string> = {
-  low: 'Low confidence · few games played',
-  medium: 'Medium confidence',
-  high: 'High confidence'
+  low: t('Low confidence · few games played'),
+  medium: t('Medium confidence'),
+  high: t('High confidence')
 }
 
 /** Bookmaker market for a match (backend/src/services/odds.ts). Probabilities are margin-free, in %. */
@@ -89,11 +90,11 @@ export function bookLabel(m: Market) {
 
 /** Short and long labels for each model id. */
 export const MODEL_INFO: Record<string, { tag: string; name: string; desc: string }> = {
-  'poisson-dc-v1': { tag: 'v1', name: 'Standings model', desc: 'Poisson from the current league table' },
-  'dc-history-v2': { tag: 'v2', name: 'History model', desc: 'Dixon-Coles fitted on 3 seasons of results' },
-  'grid-v3': { tag: 'v3', name: 'Grid model', desc: 'Scoring grid: value × relevance per parameter, 1000-point split' },
-  'elo-intl': { tag: 'v3', name: 'v3 · national teams', desc: 'Our national-team engine: rating from every senior international result since 2014, plus squad value' },
-  'elo-euro': { tag: 'v3', name: 'v3 · European cups', desc: 'Our European-cup engine: cross-league club rating from domestic and UEFA cup results, plus squad value' }
+  'poisson-dc-v1': { tag: 'v1', name: t('Standings model'), desc: t('Poisson from the current league table') },
+  'dc-history-v2': { tag: 'v2', name: t('History model'), desc: t('Dixon-Coles fitted on 3 seasons of results') },
+  'grid-v3': { tag: 'v3', name: t('Grid model'), desc: t('Scoring grid: value × relevance per parameter, 1000-point split') },
+  'elo-intl': { tag: 'v3', name: t('v3 · national teams'), desc: t('Our national-team engine: rating from every senior international result since 2014, plus squad value') },
+  'elo-euro': { tag: 'v3', name: t('v3 · European cups'), desc: t('Our European-cup engine: cross-league club rating from domestic and UEFA cup results, plus squad value') }
 }
 
 export function modelInfo(model: string) {

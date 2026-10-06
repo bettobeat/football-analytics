@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
+import { t as tt, LOCALE } from '../lib/i18n'
 
 interface TeamHit { id: number; name: string; logo: string; national: boolean }
 interface CompHit { code: string; name: string; emblem: string | null; country: string | null }
@@ -58,7 +59,7 @@ export default function SearchBox({ compact = false, onDone }: { compact?: boole
           <circle cx="11" cy="11" r="7" />
           <path d="M20 20l-3.5-3.5" />
         </svg>
-        <span className="sr-only">Search</span>
+        <span className="sr-only">{tt("Search")}</span>
         <input
           ref={input}
           type="search"
@@ -73,7 +74,7 @@ export default function SearchBox({ compact = false, onDone }: { compact?: boole
               else if (players[0]) { nav(`/player/${players[0].id}`); done() }
             }
           }}
-          placeholder="Search leagues, teams, players"
+          placeholder={tt("Search leagues, teams, players")}
           className="flex-1 min-w-0 bg-transparent outline-none text-sm text-ink placeholder:text-faint"
         />
         {!compact && <kbd className="hidden md:inline text-[11px] text-faint border border-line rounded-md px-1.5 py-0.5">/</kbd>}
@@ -81,11 +82,11 @@ export default function SearchBox({ compact = false, onDone }: { compact?: boole
 
       {show && (
         <div className="absolute left-0 right-0 mt-2 z-50 card p-2 max-h-[70vh] overflow-y-auto">
-          {loading && !teams.length && !matches.length && !comps.length && !players.length && <div className="px-3 py-3 text-sm text-faint">Searching…</div>}
-          {!loading && !teams.length && !matches.length && !comps.length && !players.length && <div className="px-3 py-3 text-sm text-faint">Nothing found for "{q.trim()}".</div>}
+          {loading && !teams.length && !matches.length && !comps.length && !players.length && <div className="px-3 py-3 text-sm text-faint">{tt("Searching…")}</div>}
+          {!loading && !teams.length && !matches.length && !comps.length && !players.length && <div className="px-3 py-3 text-sm text-faint">{tt("Nothing found for \"")}{q.trim()}".</div>}
           {comps.length > 0 && (
             <div className="py-1">
-              <div className="label px-3 pb-1">Leagues and competitions</div>
+              <div className="label px-3 pb-1">{tt("Leagues and competitions")}</div>
               {comps.map(c => (
                 <Link key={c.code} to={`/league/${c.code}`} onClick={done} className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-surface2">
                   {c.emblem ? <img src={c.emblem} alt="" width={24} height={24} className="w-6 h-6 object-contain" /> : <span className="w-6 h-6 rounded-full bg-surface2" />}
@@ -97,19 +98,19 @@ export default function SearchBox({ compact = false, onDone }: { compact?: boole
           )}
           {teams.length > 0 && (
             <div className={`py-1 ${comps.length ? 'border-t border-line/60 mt-1' : ''}`}>
-              <div className="label px-3 pb-1">Teams</div>
+              <div className="label px-3 pb-1">{tt("Teams")}</div>
               {teams.map(t => (
                 <Link key={t.id} to={`/team/${t.id}`} onClick={done} className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-surface2">
                   <img src={t.logo} alt="" width={24} height={24} className="w-6 h-6 object-contain" />
                   <span className="text-sm font-semibold text-ink">{t.name}</span>
-                  {t.national && <span className="ml-auto text-[11px] text-faint">National team</span>}
+                  {t.national && <span className="ml-auto text-[11px] text-faint">{tt("National team")}</span>}
                 </Link>
               ))}
             </div>
           )}
           {players.length > 0 && (
             <div className={`py-1 ${comps.length || teams.length ? 'border-t border-line/60 mt-1' : ''}`}>
-              <div className="label px-3 pb-1">Players</div>
+              <div className="label px-3 pb-1">{tt("Players")}</div>
               {players.map(p => (
                 <Link key={p.id} to={`/player/${p.id}`} onClick={done} className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-surface2">
                   <span className="photo-duo w-6 h-6 rounded-full overflow-hidden flex-shrink-0">
@@ -134,12 +135,12 @@ export default function SearchBox({ compact = false, onDone }: { compact?: boole
           )}
           {matches.length > 0 && (
             <div className="py-1 border-t border-line/60 mt-1">
-              <div className="label px-3 pt-2 pb-1">Matches</div>
+              <div className="label px-3 pt-2 pb-1">{tt("Matches")}</div>
               {matches.map(m => (
                 <Link key={m.id} to={`/match/${m.id}`} onClick={done} className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-surface2">
                   <span className="text-sm text-ink font-medium truncate">{m.home} – {m.away}</span>
                   <span className="ml-auto text-[11px] text-faint whitespace-nowrap">
-                    {['IN_PLAY', 'PAUSED'].includes(m.status) ? 'Live' : new Date(m.utcDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                    {['IN_PLAY', 'PAUSED'].includes(m.status) ? tt("Live") : new Date(m.utcDate).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short' })}
                   </span>
                 </Link>
               ))}

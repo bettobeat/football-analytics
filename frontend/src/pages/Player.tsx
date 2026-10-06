@@ -4,6 +4,7 @@ import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { errorText } from '../lib/auth'
 import { FavStar } from '../lib/favorites'
+import { t as tt, LOCALE } from '../lib/i18n'
 
 /**
  * Player page: /player/<API-Football id>. /player/find?name=&team=&c=&n= looks a scorer up first (Football-Data ids).
@@ -54,7 +55,7 @@ interface PlayerData {
   stale?: boolean
 }
 
-const fmt = (d?: string | null) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '')
+const fmt = (d?: string | null) => (d ? new Date(d).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short', year: 'numeric' }) : '')
 
 function Card({ title, action, children, className = '' }: { title: string; action?: ReactNode; children: ReactNode; className?: string }) {
   return (
@@ -86,7 +87,7 @@ function Lock() {
   )
 }
 
-const mon = (d: string) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+const mon = (d: string) => new Date(d).toLocaleDateString(LOCALE, { month: 'short', year: 'numeric' })
 const span = (a: string | null, b: string | null) => (a && b ? (mon(a) === mon(b) ? mon(a) : `${mon(a)} – ${mon(b)}`) : '')
 
 const teamHref = (t: SiteTeam) => `/team/${t.id}`
@@ -111,7 +112,7 @@ export default function Player() {
       axios
         .get(`${API_URL}/player-page/find`, { params: Object.fromEntries(params.entries()) })
         .then(r => !cancelled && nav(`/player/${r.data.data.id}`, { replace: true }))
-        .catch(() => !cancelled && setError(`We couldn't find ${params.get('name') || 'this player'}'s page yet.`))
+        .catch(() => !cancelled && setError(tt("We couldn't find {0}'s page yet.", { 0: params.get('name') || 'this player' })))
     } else {
       axios
         .get(`${API_URL}/player-page/${id}`)
@@ -125,14 +126,14 @@ export default function Player() {
   }, [id, params, nav])
 
   useEffect(() => {
-    if (data?.player.name) document.title = `${data.player.name} · Bet To Beat`
+    if (data?.player.name) document.title = tt("{0} · Bet To Beat", { 0: data.player.name })
   }, [data])
 
   if (error)
     return (
       <div className="max-w-3xl mx-auto px-4 py-16 text-center">
         <p className="text-muted">{error}</p>
-        <Link to="/" className="inline-block mt-4 text-sm font-bold text-accent">Back to home →</Link>
+        <Link to="/" className="inline-block mt-4 text-sm font-bold text-accent">{tt("Back to home →")}</Link>
       </div>
     )
   if (!data)
@@ -141,7 +142,7 @@ export default function Player() {
         {slow && (
           <div className="card p-4 text-sm text-muted flex items-center gap-3" role="status">
             <span className="w-4 h-4 rounded-full border-2 border-accent border-t-transparent animate-spin flex-shrink-0" aria-hidden />
-            <span>Putting together his full career, every season and every competition. The first time takes up to a minute; after that it opens instantly.</span>
+            <span>{tt("Putting together his full career, every season and every competition. The first time takes up to a minute; after that it opens instantly.")}</span>
           </div>
         )}
         <div className="card h-44 animate-pulse bg-surface2/60" />
@@ -178,11 +179,11 @@ export default function Player() {
               {data.number && <span className="num">#{data.number}</span>}
               {data.status.out ? (
                 <span className="px-2 py-0.5 rounded-full bg-loss/15 text-loss font-bold">
-                  Out · {data.status.type}
-                  {data.status.until ? ` until ${fmt(data.status.until)}` : ''}
+                  {tt("Out · {0}", { 0: data.status.type })}
+                  {data.status.until ? tt(" until {0}", { 0: fmt(data.status.until) }) : ''}
                 </span>
               ) : (
-                <span className="px-2 py-0.5 rounded-full bg-win/15 text-win font-bold">Available</span>
+                <span className="px-2 py-0.5 rounded-full bg-win/15 text-win font-bold">{tt("Available")}</span>
               )}
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -208,21 +209,21 @@ export default function Player() {
             )}
           </div>
           <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-            {p.age !== null && (<><dt className="text-faint">Age</dt><dd className="text-ink font-semibold num">{p.age}</dd></>)}
-            {p.nationality && (<><dt className="text-faint">Nationality</dt><dd className="text-ink font-semibold">{p.nationality}</dd></>)}
-            {p.height && (<><dt className="text-faint">Height</dt><dd className="text-ink font-semibold">{p.height}</dd></>)}
-            {p.birth?.date && (<><dt className="text-faint">Born</dt><dd className="text-ink font-semibold">{fmt(p.birth.date)}</dd></>)}
+            {p.age !== null && (<><dt className="text-faint">{tt("Age")}</dt><dd className="text-ink font-semibold num">{p.age}</dd></>)}
+            {p.nationality && (<><dt className="text-faint">{tt("Nationality")}</dt><dd className="text-ink font-semibold">{p.nationality}</dd></>)}
+            {p.height && (<><dt className="text-faint">{tt("Height")}</dt><dd className="text-ink font-semibold">{p.height}</dd></>)}
+            {p.birth?.date && (<><dt className="text-faint">{tt("Born")}</dt><dd className="text-ink font-semibold">{fmt(p.birth.date)}</dd></>)}
           </dl>
         </div>
       </section>
 
-      {data.stale && <p className="text-xs text-faint">Showing the last saved copy; live data is paused for today.</p>}
+      {data.stale && <p className="text-xs text-faint">{tt("Showing the last saved copy; live data is paused for today.")}</p>}
 
       {/* ---------- season stats ---------- */}
       {season ? (
         <>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="font-display text-xl font-bold text-ink">Season {season.label}</h2>
+            <h2 className="font-display text-xl font-bold text-ink">{tt("Season")}{' '}{season.label}</h2>
             {data.seasons.length > 1 && (
               <div className="seg max-w-full overflow-x-auto no-scrollbar">
                 {data.seasons.map((s, i) => (
@@ -234,26 +235,26 @@ export default function Player() {
             )}
           </div>
           <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
-            <Stat label="Apps" value={t.apps} />
-            <Stat label="Goals" value={t.goals} accent />
-            <Stat label="Assists" value={full ? t.assists ?? 0 : <span className="text-faint text-base inline-flex items-center gap-1"><Lock /> Pro</span>} />
-            <Stat label="Minutes" value={full ? (t.minutes ?? 0).toLocaleString('en-GB') : <span className="text-faint text-base inline-flex items-center gap-1"><Lock /> Pro</span>} />
-            <Stat label="Rating" value={full ? t.rating ?? '–' : <span className="text-faint text-base inline-flex items-center gap-1"><Lock /> Pro</span>} />
-            <Stat label="Cards" value={full ? <span><span className="text-draw">{t.yellow ?? 0}</span><span className="text-faint text-base"> / </span><span className="text-loss">{t.red ?? 0}</span></span> : <span className="text-faint text-base inline-flex items-center gap-1"><Lock /> Pro</span>} />
+            <Stat label={tt("Apps")} value={t.apps} />
+            <Stat label={tt("Goals")} value={t.goals} accent />
+            <Stat label={tt("Assists")} value={full ? t.assists ?? 0 : <span className="text-faint text-base inline-flex items-center gap-1"><Lock /> Pro</span>} />
+            <Stat label={tt("Minutes")} value={full ? (t.minutes ?? 0).toLocaleString(LOCALE) : <span className="text-faint text-base inline-flex items-center gap-1"><Lock /> Pro</span>} />
+            <Stat label={tt("Rating")} value={full ? t.rating ?? '–' : <span className="text-faint text-base inline-flex items-center gap-1"><Lock /> Pro</span>} />
+            <Stat label={tt("Cards")} value={full ? <span><span className="text-draw">{t.yellow ?? 0}</span><span className="text-faint text-base"> / </span><span className="text-loss">{t.red ?? 0}</span></span> : <span className="text-faint text-base inline-flex items-center gap-1"><Lock /> Pro</span>} />
           </div>
 
-          <Card title="By competition">
+          <Card title={tt("By competition")}>
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[560px]">
                 <thead>
                   <tr className="text-[11px] text-faint">
-                    <th className="text-left font-medium py-1.5 pl-2">Competition</th>
-                    <th className="text-left font-medium py-1.5">Team</th>
-                    <th className="text-right font-medium py-1.5 num w-12">Apps</th>
-                    {full && <th className="text-right font-medium py-1.5 num w-14">Min</th>}
-                    <th className="text-right font-medium py-1.5 num w-12">Goals</th>
-                    {full && <th className="text-right font-medium py-1.5 num w-12">Ast</th>}
-                    {full && <th className="text-right font-medium py-1.5 num w-14 pr-2">Rating</th>}
+                    <th className="text-left font-medium py-1.5 pl-2">{tt("Competition")}</th>
+                    <th className="text-left font-medium py-1.5">{tt("Team")}</th>
+                    <th className="text-right font-medium py-1.5 num w-12">{tt("Apps")}</th>
+                    {full && <th className="text-right font-medium py-1.5 num w-14">{tt("Min")}</th>}
+                    <th className="text-right font-medium py-1.5 num w-12">{tt("Goals")}</th>
+                    {full && <th className="text-right font-medium py-1.5 num w-12">{tt("Ast")}</th>}
+                    {full && <th className="text-right font-medium py-1.5 num w-14 pr-2">{tt("Rating")}</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -288,7 +289,7 @@ export default function Player() {
                   ))}
                   {season.rows.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="py-4 text-center text-faint">No games this season yet.</td>
+                      <td colSpan={7} className="py-4 text-center text-faint">{tt("No games this season yet.")}</td>
                     </tr>
                   )}
                 </tbody>
@@ -297,21 +298,21 @@ export default function Player() {
           </Card>
 
           {full && main && (
-            <Card title={`Detail · ${main.league.name}`}>
+            <Card title={tt("Detail · {0}", { 0: main.league.name })}>
               <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
                 {gk ? (
                   <>
-                    <Stat label="Saves" value={main.saves ?? '–'} />
-                    <Stat label="Conceded" value={main.conceded ?? '–'} />
-                    <Stat label="Pass accuracy" value={main.passAcc != null ? `${main.passAcc}%` : '–'} />
-                    <Stat label="Duels won" value={main.duels ? `${main.duelsWon ?? 0}/${main.duels}` : '–'} />
+                    <Stat label={tt("Saves")} value={main.saves ?? '–'} />
+                    <Stat label={tt("Conceded")} value={main.conceded ?? '–'} />
+                    <Stat label={tt("Pass accuracy")} value={main.passAcc != null ? `${main.passAcc}%` : '–'} />
+                    <Stat label={tt("Duels won")} value={main.duels ? `${main.duelsWon ?? 0}/${main.duels}` : '–'} />
                   </>
                 ) : (
                   <>
-                    <Stat label="Shots (on target)" value={main.shots != null ? `${main.shots} (${main.shotsOn ?? 0})` : '–'} />
-                    <Stat label="Key passes" value={main.keyPasses ?? '–'} />
-                    <Stat label="Tackles + interceptions" value={main.tackles != null || main.interceptions != null ? (main.tackles || 0) + (main.interceptions || 0) : '–'} />
-                    <Stat label="Duels won" value={main.duels ? `${main.duelsWon ?? 0}/${main.duels}` : '–'} />
+                    <Stat label={tt("Shots (on target)")} value={main.shots != null ? `${main.shots} (${main.shotsOn ?? 0})` : '–'} />
+                    <Stat label={tt("Key passes")} value={main.keyPasses ?? '–'} />
+                    <Stat label={tt("Tackles + interceptions")} value={main.tackles != null || main.interceptions != null ? (main.tackles || 0) + (main.interceptions || 0) : '–'} />
+                    <Stat label={tt("Duels won")} value={main.duels ? `${main.duelsWon ?? 0}/${main.duels}` : '–'} />
                   </>
                 )}
               </div>
@@ -319,24 +320,24 @@ export default function Player() {
           )}
         </>
       ) : (
-        <div className="card p-6 text-sm text-muted">No season data for this player yet.</div>
+        <div className="card p-6 text-sm text-muted">{tt("No season data for this player yet.")}</div>
       )}
 
       {data.seasons.length > 0 && (
         <Card
-          title="Club career"
-          action={data.career ? <span className="text-[11px] text-faint">{data.career.seasons} season{data.career.seasons === 1 ? '' : 's'}{data.career.from ? ` since ${data.career.from}` : ''}</span> : undefined}
+          title={tt("Club career")}
+          action={data.career ? <span className="text-[11px] text-faint">{tt("{n, plural, one {# season} other {# seasons}}", { n: data.career.seasons })}{data.career.from ? tt(" since {0}", { 0: data.career.from }) : ''}</span> : undefined}
         >
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[520px]">
               <thead>
                 <tr className="text-[11px] text-faint">
-                  <th className="text-left font-medium py-1.5 pl-2 w-20">Season</th>
-                  <th className="text-left font-medium py-1.5">Club</th>
-                  <th className="text-right font-medium py-1.5 num w-12">Apps</th>
-                  <th className="text-right font-medium py-1.5 num w-12">Goals</th>
-                  {full && <th className="text-right font-medium py-1.5 num w-12">Ast</th>}
-                  {full && <th className="text-right font-medium py-1.5 num w-16 pr-2">Min</th>}
+                  <th className="text-left font-medium py-1.5 pl-2 w-20">{tt("Season")}</th>
+                  <th className="text-left font-medium py-1.5">{tt("Club")}</th>
+                  <th className="text-right font-medium py-1.5 num w-12">{tt("Apps")}</th>
+                  <th className="text-right font-medium py-1.5 num w-12">{tt("Goals")}</th>
+                  {full && <th className="text-right font-medium py-1.5 num w-12">{tt("Ast")}</th>}
+                  {full && <th className="text-right font-medium py-1.5 num w-16 pr-2">{tt("Min")}</th>}
                 </tr>
               </thead>
               <tbody>
@@ -358,38 +359,37 @@ export default function Player() {
                       <td className="py-2 text-right num text-muted">{s.totals.apps}</td>
                       <td className="py-2 text-right num font-bold text-ink">{s.totals.goals}</td>
                       {full && <td className="py-2 text-right num text-muted">{s.totals.assists ?? 0}</td>}
-                      {full && <td className="py-2 pr-2 text-right num text-muted">{(s.totals.minutes ?? 0).toLocaleString('en-GB')}</td>}
+                      {full && <td className="py-2 pr-2 text-right num text-muted">{(s.totals.minutes ?? 0).toLocaleString(LOCALE)}</td>}
                     </tr>
                   )
                 })}
                 {data.career && (
                   <tr className="border-t-2 border-line">
-                    <td className="py-2 pl-2 font-bold text-ink" colSpan={2}>Total</td>
+                    <td className="py-2 pl-2 font-bold text-ink" colSpan={2}>{tt("Total")}</td>
                     <td className="py-2 text-right num font-bold text-ink">{data.career.apps}</td>
                     <td className="py-2 text-right num font-extrabold text-accent">{data.career.goals}</td>
                     {full && <td className="py-2 text-right num font-bold text-ink">{data.career.assists ?? 0}</td>}
-                    {full && <td className="py-2 pr-2 text-right num font-bold text-ink">{(data.career.minutes ?? 0).toLocaleString('en-GB')}</td>}
+                    {full && <td className="py-2 pr-2 text-right num font-bold text-ink">{(data.career.minutes ?? 0).toLocaleString(LOCALE)}</td>}
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
           <p className="mt-2 text-[11px] text-faint">
-            Official club games in every competition (friendlies left out). Tap a season to see it in detail.
-            {data.careerPartial ? ' Some older seasons are still loading: they appear within a day.' : ''}
+            {tt("Official club games in every competition (friendlies left out). Tap a season to see it in detail.")}{data.careerPartial ? tt(" Some older seasons are still loading: they appear within a day.") : ''}
           </p>
         </Card>
       )}
 
       {data.international && data.international.length > 0 && (
-        <Card title="National team">
+        <Card title={tt("National team")}>
           {data.internationalTotals && data.internationalTotals.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-3">
               {data.internationalTotals.map((t, i) => (
                 <span key={i} className="inline-flex items-center gap-2 rounded-xl bg-surface2/60 border border-line/60 px-3 py-2 text-sm">
                   {t.team && <img src={t.team.logo} alt="" className="w-5 h-5 object-contain" />}
-                  <span className="font-semibold text-ink">{t.team?.name || 'National team'}</span>
-                  <span className="text-muted num">{t.apps} caps · <b className="text-ink">{t.goals}</b> goals{full && t.assists !== undefined ? ` · ${t.assists} assists` : ''}</span>
+                  <span className="font-semibold text-ink">{t.team?.name || tt("National team")}</span>
+                  <span className="text-muted num">{tt("{0} caps · {1} goals", { 0: t.apps, 1: t.goals })}{full && t.assists !== undefined ? tt(" · {0} assists", { 0: t.assists }) : ''}</span>
                 </span>
               ))}
             </div>
@@ -398,11 +398,11 @@ export default function Player() {
             <table className="w-full text-sm min-w-[520px]">
               <thead>
                 <tr className="text-[11px] text-faint">
-                  <th className="text-left font-medium py-1.5 pl-2">Competition</th>
-                  <th className="text-left font-medium py-1.5">Played</th>
-                  <th className="text-right font-medium py-1.5 num w-12">Apps</th>
-                  <th className="text-right font-medium py-1.5 num w-12">Goals</th>
-                  {full && <th className="text-right font-medium py-1.5 num w-12 pr-2">Ast</th>}
+                  <th className="text-left font-medium py-1.5 pl-2">{tt("Competition")}</th>
+                  <th className="text-left font-medium py-1.5">{tt("Played")}</th>
+                  <th className="text-right font-medium py-1.5 num w-12">{tt("Apps")}</th>
+                  <th className="text-right font-medium py-1.5 num w-12">{tt("Goals")}</th>
+                  {full && <th className="text-right font-medium py-1.5 num w-12 pr-2">{tt("Ast")}</th>}
                 </tr>
               </thead>
               <tbody>
@@ -424,23 +424,23 @@ export default function Player() {
               </tbody>
             </table>
           </div>
-          <p className="mt-2 text-[11px] text-faint">His whole international career by tournament, friendlies included. Not counted in the club seasons.</p>
+          <p className="mt-2 text-[11px] text-faint">{tt("His whole international career by tournament, friendlies included. Not counted in the club seasons.")}</p>
         </Card>
       )}
 
       {!full && data.locked && (
         <div className="rounded-3xl p-6 border border-home/40 bg-[linear-gradient(150deg,#1B2A55_0%,#101624_70%)] text-[#EEF1F6] flex flex-wrap items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="font-display text-lg font-bold">Every stat with Premium</div>
+            <div className="font-display text-lg font-bold">{tt("Every stat with Premium")}</div>
             <p className="text-sm text-[#C9D0DB]">{data.locked.join(' · ')}</p>
           </div>
-          <Link to="/premium" className="h-11 px-6 rounded-2xl bg-[#C8FF3D] text-[#07090D] font-extrabold grid place-items-center">Go Premium</Link>
+          <Link to="/premium" className="h-11 px-6 rounded-2xl bg-[#C8FF3D] text-[#07090D] font-extrabold grid place-items-center">{tt("Go Premium")}</Link>
         </div>
       )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 items-start">
         {data.transfers.length > 0 && (
-          <Card title="Career moves">
+          <Card title={tt("Career moves")}>
             <ul className="space-y-1">
               {data.transfers.map((tr, i) => (
                 <li key={i} className="flex items-center gap-3 py-2 border-b border-line/50 last:border-0 text-sm">
@@ -462,7 +462,7 @@ export default function Player() {
         )}
 
         {full && data.sidelined.length > 0 && (
-          <Card title="Injuries & suspensions">
+          <Card title={tt("Injuries & suspensions")}>
             <ul className="space-y-1">
               {data.sidelined.map((s, i) => (
                 <li key={i} className="flex items-center justify-between gap-3 py-2 border-b border-line/50 last:border-0 text-sm">

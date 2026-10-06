@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
+import { t as tt, LOCALE } from '../lib/i18n'
 
 type Pick = 'H' | 'D' | 'A'
 const PICK_COLOR: Record<Pick, string> = { H: 'text-home', D: 'text-draw', A: 'text-away' }
@@ -45,14 +46,13 @@ export default function RecentResults({ code, limit, days = 14, compact, large, 
   return (
     <div>
       <div className={`flex items-baseline justify-between gap-2 ${large ? 'px-3 pt-3 pb-3' : 'px-1 pb-2'}`}>
-        <h2 className={`font-display font-bold text-ink ${large ? 'text-lg' : ''}`}>Latest results</h2>
+        <h2 className={`font-display font-bold text-ink ${large ? 'text-lg' : ''}`}>{tt("Latest results")}</h2>
         {rows && rows.length > 0 && (
           <span className="text-[11px] text-faint">
-            <span className="num font-semibold text-ink">{hits}</span>/<span className="num">{rows.length}</span> picks right
-          </span>
+            <span className="num font-semibold text-ink">{hits}</span>/<span className="num">{rows.length}</span> {tt("picks right")}</span>
         )}
       </div>
-      {error && <p className="px-1 text-xs text-faint">Couldn't load results.</p>}
+      {error && <p className="px-1 text-xs text-faint">{tt("Couldn't load results.")}</p>}
       {!rows && !error && (
         <div className="space-y-2">
           {Array.from({ length: compact ? 3 : 6 }).map((_, i) => (
@@ -60,7 +60,7 @@ export default function RecentResults({ code, limit, days = 14, compact, large, 
           ))}
         </div>
       )}
-      {rows && rows.length === 0 && <p className="px-1 text-xs text-faint">No finished games in the last {days} days.</p>}
+      {rows && rows.length === 0 && <p className="px-1 text-xs text-faint">{tt("No finished games in the last {0} days.", { 0: days })}</p>}
       <ul className={`space-y-1 ${listClass}`}>
         {rows?.map(r => (
           <li key={r.matchId}>
@@ -70,8 +70,7 @@ export default function RecentResults({ code, limit, days = 14, compact, large, 
       </ul>
       {rows && rows.length > 0 && (
         <Link to="/accuracy" className="block px-1 pt-2 text-[11px] font-semibold text-muted hover:text-ink">
-          How accurate is the model? →
-        </Link>
+          {tt("How accurate is the model? →")}</Link>
       )}
     </div>
   )
@@ -80,7 +79,7 @@ export default function RecentResults({ code, limit, days = 14, compact, large, 
 function ResultRow({ r, compact }: { r: Settled; compact?: boolean }) {
   const [hg, ag] = r.score.split(/[–-]/).map(x => x.trim())
   const pickName = r.pick === 'H' ? r.home : r.pick === 'A' ? r.away : 'Draw'
-  const when = new Date(r.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+  const when = new Date(r.date).toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric', month: 'short' })
   const side = (name: string, crest: string | null | undefined, goals: string, won: boolean) => (
     <div className="flex items-center justify-between gap-2 py-0.5">
       <span className="flex items-center gap-2 min-w-0">
@@ -100,14 +99,14 @@ function ResultRow({ r, compact }: { r: Settled; compact?: boolean }) {
       {side(r.away, r.awayCrest, ag, r.outcome === 'A')}
       <div className="mt-1 flex items-center justify-between gap-2 text-[11px]">
         <span className="text-faint truncate">
-          Pick <span className={`font-semibold ${PICK_COLOR[r.pick]}`}>{pickName}</span>
+          {tt("Pick")}{' '}<span className={`font-semibold ${PICK_COLOR[r.pick]}`}>{pickName}</span>
           {!compact && r.p && <span className="num"> {Math.round(r.p[r.pick])}%</span>}
         </span>
         <span
           className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${r.hit ? 'bg-win/15 text-win' : 'bg-loss/15 text-loss'}`}
-          aria-label={r.hit ? 'Pick was right' : 'Pick was wrong'}
+          aria-label={r.hit ? tt("Pick was right") : tt("Pick was wrong")}
         >
-          {r.hit ? '✓ Hit' : '✗ Miss'}
+          {r.hit ? tt("✓ Hit") : tt("✗ Miss")}
         </span>
       </div>
     </Link>

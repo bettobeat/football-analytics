@@ -8,6 +8,7 @@ import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
 import { pickOfPrediction, type Prediction } from '../lib/predict'
 import { useFavorites, FavStar } from '../lib/favorites'
+import { t as tt, LOCALE } from '../lib/i18n'
 
 export interface Team {
   id: number
@@ -26,7 +27,7 @@ export interface Competition {
   rank?: number // 0 = core leagues, 1 = European cups, 2 = more leagues, 3 = national teams
 }
 
-const GROUP_TITLE: Record<number, string> = { 0: 'Top leagues', 1: 'European cups', 2: 'More leagues', 3: 'National teams' }
+const GROUP_TITLE: Record<number, string> = { 0: tt('Top leagues'), 1: tt('European cups'), 2: tt('More leagues'), 3: tt('National teams') }
 
 export interface APIMatch {
   id: number
@@ -61,13 +62,13 @@ export function dayKey(iso: string) {
 export function dayLabel(ts: number) {
   const today = dayKey(new Date().toISOString())
   const diff = Math.round((ts - today) / 86400000)
-  if (diff === 0) return 'Today'
-  if (diff === 1) return 'Tomorrow'
-  return new Date(ts).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })
+  if (diff === 0) return tt('Today')
+  if (diff === 1) return tt('Tomorrow')
+  return new Date(ts).toLocaleDateString(LOCALE, { weekday: 'long', day: 'numeric', month: 'short' })
 }
 
 function kickoff(iso: string) {
-  return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  return new Date(iso).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })
 }
 
 function pickOf(p: Prediction): Pick {
@@ -247,12 +248,11 @@ function Dashboard() {
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-display font-bold text-ink flex items-center gap-2">
                 <span className={`w-2 h-2 rounded-full ${live.length ? 'bg-live animate-pulseDot' : 'bg-faint'}`} />
-                Live
-              </h2>
+                {tt("Live")}</h2>
               <span className="num text-xs text-faint">{live.length}</span>
             </div>
             {live.length === 0 ? (
-              <p className="text-xs text-faint">No matches in play right now.</p>
+              <p className="text-xs text-faint">{tt("No matches in play right now.")}</p>
             ) : (
               <ul className="space-y-1">
                 {live.map(m => (
@@ -266,13 +266,12 @@ function Dashboard() {
 
           {/* Leagues */}
           <section className="card p-2">
-            <div className="px-2 pt-2 pb-1 label">Leagues</div>
+            <div className="px-2 pt-2 pb-1 label">{tt("Leagues")}</div>
             <ul className="space-y-0.5">
               <li>
                 <button onClick={() => setLeague('ALL')} className={`side-item ${league === 'ALL' ? 'side-item-active' : ''}`}>
                   <span className="w-5 h-5 rounded-md bg-surface2 grid place-items-center text-[10px] font-bold text-muted">∞</span>
-                  All leagues
-                  <span className="ml-auto num text-xs text-faint">{matches.length}</span>
+                  {tt("All leagues")}<span className="ml-auto num text-xs text-faint">{matches.length}</span>
                 </button>
               </li>
               <li>
@@ -280,8 +279,7 @@ function Dashboard() {
                   <span className="w-5 h-5 rounded-md bg-accent/15 grid place-items-center text-accent">
                     <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="currentColor" aria-hidden><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5z" /></svg>
                   </span>
-                  My favorites
-                  <span className="ml-auto num text-xs text-faint">{favList.length ? favCount : ''}</span>
+                  {tt("My favorites")}<span className="ml-auto num text-xs text-faint">{favList.length ? favCount : ''}</span>
                 </button>
               </li>
               {[0, 1, 2, 3].map(g => {
@@ -343,14 +341,12 @@ function Dashboard() {
           <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
             <div>
               <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">
-                {league === 'ALL' ? 'Matches' : favMode ? 'My favorites' : competitions.find(c => c.code === league)?.name || 'Matches'}
+                {league === 'ALL' ? tt("Matches") : favMode ? tt("My favorites") : competitions.find(c => c.code === league)?.name || tt("Matches")}
               </h1>
               <p className="mt-1 text-sm text-muted">
-                <span className="num text-ink font-semibold">{upcoming.length}</span> fixtures in the next {days} days
-                {league !== 'ALL' && !favMode && (
+                {tt("{0} fixtures in the next {1} days", { 0: upcoming.length, 1: days })}{league !== 'ALL' && !favMode && (
                   <Link to={`/league/${league}`} className="ml-3 font-bold text-accent">
-                    League page →
-                  </Link>
+                    {tt("League page →")}</Link>
                 )}
               </p>
             </div>
@@ -371,41 +367,39 @@ function Dashboard() {
             </div>
           )}
 
-          {error && <div className="card p-5 border-loss/40 text-loss">Failed to load matches: {error}</div>}
+          {error && <div className="card p-5 border-loss/40 text-loss">{tt("Failed to load matches:")}{' '}{error}</div>}
 
           {!loading && !error && upcoming.length === 0 && (
             favMode && !favList.length ? (
               <div className="card p-10 text-center space-y-3">
-                <p className="text-ink font-semibold">You have no favorites yet.</p>
+                <p className="text-ink font-semibold">{tt("You have no favorites yet.")}</p>
                 <p className="text-sm text-muted max-w-md mx-auto">
-                  Tap the star next to a league here, or on any team, league or player page. Their games then show up in this list.
-                </p>
-                <Link to="/favorites" className="inline-block text-sm font-bold text-accent">Manage favorites →</Link>
+                  {tt("Tap the star next to a league here, or on any team, league or player page. Their games then show up in this list.")}</p>
+                <Link to="/favorites" className="inline-block text-sm font-bold text-accent">{tt("Manage favorites →")}</Link>
               </div>
             ) : (
-              <div className="card p-12 text-center text-muted">{favMode ? 'None of your favorites play in this period.' : 'No matches for this selection.'}</div>
+              <div className="card p-12 text-center text-muted">{favMode ? tt("None of your favorites play in this period.") : tt("No matches for this selection.")}</div>
             )
           )}
 
           {/* Your favorites: pinned on top of the full list */}
           {!loading && favUpcoming.length > 0 && (
             <section className="mb-8">
-              <SectionTitle label="Your favorites" sub="their next games" />
+              <SectionTitle label={tt("Your favorites")} sub={tt("their next games")} />
               <div className="card overflow-hidden border-accent/25 divide-y divide-line/50">
                 {favUpcoming.map(m => (
                   <MatchRow key={m.id} match={m} showComp showDay />
                 ))}
               </div>
               <button type="button" onClick={() => setLeague('FAV')} className="mt-2 text-xs font-bold text-accent">
-                Show only my favorites →
-              </button>
+                {tt("Show only my favorites →")}</button>
             </section>
           )}
 
           {/* Spotlight: the biggest games, same compact rows */}
           {!loading && spotlight.length > 0 && (
             <section className="mb-8">
-              <SectionTitle label="Spotlight" sub="the biggest games of the coming days" />
+              <SectionTitle label={tt("Spotlight")} sub={tt("the biggest games of the coming days")} />
               <div className="card overflow-hidden border-accent/25 divide-y divide-line/50">
                 {spotlight.map(m => (
                   <MatchRow key={m.id} match={m} showComp showDay />
@@ -510,7 +504,7 @@ function LeaguePanel({ code }: { code: string }) {
       <div className="seg w-full">
         {(['table', 'results', 'scorers', 'assists'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)} className={`seg-btn flex-1 ${tab === t ? 'seg-btn-active' : ''}`}>
-            {t === 'table' ? 'Table' : t === 'results' ? 'Results' : t === 'scorers' ? 'Scorers' : 'Assists'}
+            {t === 'table' ? tt("Table") : t === 'results' ? tt("Results") : t === 'scorers' ? tt("Scorers") : tt("Assists")}
           </button>
         ))}
       </div>
@@ -525,10 +519,10 @@ function LeaguePanel({ code }: { code: string }) {
               <thead>
                 <tr className="text-faint">
                   <th className="text-left font-medium py-1 pl-1 w-6">#</th>
-                  <th className="text-left font-medium py-1">Team</th>
+                  <th className="text-left font-medium py-1">{tt("Team")}</th>
                   <th className="text-right font-medium py-1 num">P</th>
-                  <th className="text-right font-medium py-1 num">GD</th>
-                  <th className="text-right font-medium py-1 pr-1 num">Pts</th>
+                  <th className="text-right font-medium py-1 num">{tt("GD")}</th>
+                  <th className="text-right font-medium py-1 pr-1 num">{tt("Pts")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -566,7 +560,7 @@ function LeaguePanel({ code }: { code: string }) {
             <thead>
               <tr className="text-faint">
                 <th className="text-left font-medium py-1 pl-1 w-6">#</th>
-                <th className="text-left font-medium py-1">Player</th>
+                <th className="text-left font-medium py-1">{tt("Player")}</th>
                 <th className="text-right font-medium py-1 num">{tab === 'scorers' ? 'G' : 'A'}</th>
                 <th className="text-right font-medium py-1 pr-1 num">{tab === 'scorers' ? 'A' : 'G'}</th>
               </tr>
@@ -590,12 +584,12 @@ function LeaguePanel({ code }: { code: string }) {
               ))}
               {(tab === 'scorers' ? topScorers : topAssists).length === 0 && (
                 <tr>
-                  <td colSpan={4} className="py-4 text-center text-faint">No data yet this season.</td>
+                  <td colSpan={4} className="py-4 text-center text-faint">{tt("No data yet this season.")}</td>
                 </tr>
               )}
             </tbody>
           </table>
-          {tab === 'assists' && <p className="text-[10px] text-faint mt-2 px-1">Assists from the top-40 scorers list.</p>}
+          {tab === 'assists' && <p className="text-[10px] text-faint mt-2 px-1">{tt("Assists from the top-40 scorers list.")}</p>}
         </section>
       )}
     </aside>
@@ -623,7 +617,7 @@ export function SectionTitle({
         {accent === 'live' && <span className="inline-block w-2 h-2 rounded-full bg-live animate-pulseDot mr-2 align-middle" />}
         {label}
       </h2>
-      {count !== undefined && <span className="num text-xs text-faint">{count} matches</span>}
+      {count !== undefined && <span className="num text-xs text-faint">{count} {tt("matches")}</span>}
       {sub && <span className="text-xs text-faint">{sub}</span>}
     </div>
   )
@@ -635,7 +629,7 @@ function LiveRow({ match }: { match: APIMatch }) {
     <Link to={`/match/${match.id}`} className="block rounded-xl px-2 py-2 hover:bg-surface2 transition-colors">
       <div className="flex items-center justify-between text-[10px] text-faint mb-1">
         <span className="truncate">{match.competition.name}</span>
-        <span className="font-bold text-live tracking-wider">{match.status === 'PAUSED' ? 'HT' : 'LIVE'}</span>
+        <span className="font-bold text-live tracking-wider">{match.status === 'PAUSED' ? tt("HT") : tt("LIVE")}</span>
       </div>
       {[match.homeTeam, match.awayTeam].map((t, i) => (
         <div key={t.id} className="flex items-center justify-between gap-2 py-0.5">
@@ -692,8 +686,8 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
   const extras =
     p && pick && pickPct !== null && typeof p.over25 === 'number' && typeof p.btts === 'number'
       ? [
-          { k: 'o25', top: p.over25 >= 50 ? 'Over 2.5' : 'Under 2.5', v: p.over25 >= 50 ? p.over25 : 100 - p.over25 },
-          { k: 'btts', top: p.btts >= 50 ? 'Both score' : 'Not both', v: p.btts >= 50 ? p.btts : 100 - p.btts }
+          { k: 'o25', top: p.over25 >= 50 ? tt("Over 2.5") : tt("Under 2.5"), v: p.over25 >= 50 ? p.over25 : 100 - p.over25 },
+          { k: 'btts', top: p.btts >= 50 ? tt("Both score") : tt("Not both"), v: p.btts >= 50 ? p.btts : 100 - p.btts }
         ]
       : null
 
@@ -702,19 +696,19 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
       {/* time */}
       <div className="relative w-11 flex-shrink-0 text-center">
         {favWhy.length > 0 && (
-          <span className="absolute -left-2.5 sm:-left-3 top-1/2 -translate-y-1/2 text-accent" title={`Favorite: ${favWhy.map(f => f.name).join(', ')}`}>
+          <span className="absolute -left-2.5 sm:-left-3 top-1/2 -translate-y-1/2 text-accent" title={tt("Favorite: {0}", { 0: favWhy.map(f => f.name).join(', ') })}>
             <svg viewBox="0 0 24 24" className="w-3 h-3" fill="currentColor" aria-hidden><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5z" /></svg>
           </span>
         )}
         {isLive ? (
           <span className="inline-flex items-center gap-1 text-[11px] font-bold text-live">
             <span className="w-1.5 h-1.5 rounded-full bg-live animate-pulseDot" />
-            {match.status === 'PAUSED' ? 'HT' : 'LIVE'}
+            {match.status === 'PAUSED' ? tt("HT") : tt("LIVE")}
           </span>
         ) : (
           <>
             <span className="block num text-xs text-ink">{kickoff(match.utcDate)}</span>
-            {showDay && <span className="block text-[10px] text-faint">{new Date(match.utcDate).toLocaleDateString('en-GB', { weekday: 'short' })}</span>}
+            {showDay && <span className="block text-[10px] text-faint">{new Date(match.utcDate).toLocaleDateString(LOCALE, { weekday: 'short' })}</span>}
           </>
         )}
       </div>
@@ -761,11 +755,10 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
               <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
               <circle cx="12" cy="12" r="3" />
             </svg>
-            Reveal
-          </button>
+            {tt("Reveal")}</button>
         ) : p && p.locked && !pickPct ? (
           <span className="inline-flex items-center gap-1.5 text-xs text-faint">
-            <LockIcon /> {pickName ? <span className={`font-semibold ${PICK_COLOR[pick!]}`}>{pickName}</span> : 'Locked'}
+            <LockIcon /> {pickName ? <span className={`font-semibold ${PICK_COLOR[pick!]}`}>{pickName}</span> : tt("Locked")}
           </span>
         ) : p && pick && pickPct !== null ? (
           <>
@@ -798,7 +791,7 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
                       key={x.k}
                       className={`hidden md:grid w-[68px] h-9 rounded-lg place-items-center leading-none border ${x.v >= 60 ? 'border-accent/40 bg-accent/10 text-accent' : 'border-line/70 text-muted'} ${roll ? 'pop-in' : ''}`}
                       style={roll ? { animationDelay: `${300 + i * 90}ms` } : undefined}
-                      title={x.k === 'o25' ? `Over 2.5 goals: ${Math.round(p.over25)}% · Under: ${Math.round(100 - p.over25)}%` : `Both teams score: ${Math.round(p.btts)}% · Not both: ${Math.round(100 - p.btts)}%`}
+                      title={x.k === 'o25' ? tt("Over 2.5 goals: {0}% · Under: {1}%", { 0: Math.round(p.over25), 1: Math.round(100 - p.over25) }) : tt("Both teams score: {0}% · Not both: {1}%", { 0: Math.round(p.btts), 1: Math.round(100 - p.btts) })}
                     >
                       <span className="text-[9px] font-bold opacity-80 whitespace-nowrap">{x.top}</span>
                       <CountUp value={x.v} suffix="%" animate={roll} delay={300 + i * 90} className="num text-xs font-bold" />

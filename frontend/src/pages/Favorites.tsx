@@ -6,8 +6,9 @@ import { useAuth } from '../lib/auth'
 import { useFavorites, type Favorite, type FavKind } from '../lib/favorites'
 import SearchBox from '../components/SearchBox'
 import { MatchRow, SectionTitle, dayKey, dayLabel, LIVE, ENDED, type APIMatch } from './Dashboard'
+import { t, LOCALE } from '../lib/i18n'
 
-const TITLES: Record<FavKind, string> = { league: 'Leagues', team: 'Teams', player: 'Players' }
+const TITLES: Record<FavKind, string> = { league: t('Leagues'), team: t('Teams'), player: t('Players') }
 
 function hrefOf(f: Favorite) {
   if (f.kind === 'league') return `/league/${f.code || f.ref}`
@@ -57,12 +58,9 @@ export default function Favorites() {
             <svg viewBox="0 0 24 24" className="w-8 h-8 text-accent" fill="currentColor" aria-hidden>
               <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5z" />
             </svg>
-            Favorites
-          </h1>
+            {t("Favorites")}</h1>
           <p className="mt-1 text-sm text-muted">
-            {user ? (
-              synced ? 'Saved to your account, on every device you sign in on.' : 'Saving to your account…'
-            ) : (
+            {user ? (synced ? t("Saved to your account, on every device you sign in on.") : t("Saving to your account…")) : (
               <>
                 Saved in this browser.{' '}
                 <Link to="/login?next=%2Ffavorites" className="font-bold text-accent">Sign in</Link> to keep them on your phone and computer.
@@ -77,13 +75,11 @@ export default function Favorites() {
 
       {list.length === 0 ? (
         <div className="card p-8 sm:p-10 text-center space-y-3">
-          <p className="text-lg font-semibold text-ink">Follow the teams, leagues and players you care about</p>
+          <p className="text-lg font-semibold text-ink">{t("Follow the teams, leagues and players you care about")}</p>
           <p className="text-sm text-muted max-w-lg mx-auto">
-            Search above, open a team, league or player and tap the star. You can also star a league from the list on the Matches page. Their games
-            then appear here, are marked with a star everywhere, and come first on the Matches page.
-          </p>
+            {t("Search above, open a team, league or player and tap the star. You can also star a league from the list on the Matches page. Their games then appear here, are marked with a star everywhere, and come first on the Matches page.")}</p>
           <div className="flex flex-wrap justify-center gap-2 pt-1">
-            <Link to="/matches" className="h-10 px-4 rounded-xl bg-accent text-bg font-bold text-sm grid place-items-center">Browse matches</Link>
+            <Link to="/matches" className="h-10 px-4 rounded-xl bg-accent text-bg font-bold text-sm grid place-items-center">{t("Browse matches")}</Link>
           </div>
         </div>
       ) : (
@@ -96,7 +92,7 @@ export default function Favorites() {
               </div>
               {items.length === 0 ? (
                 <p className="text-xs text-faint">
-                  {kind === 'league' ? 'Star a league on its page or in the Matches list.' : `Star a ${kind} on its page.`}
+                  {kind === 'league' ? t("Star a league on its page or in the Matches list.") : t("Star a {0} on its page.", { 0: kind })}
                 </p>
               ) : (
                 <ul className="space-y-1">
@@ -112,21 +108,15 @@ export default function Favorites() {
                         <Link to={hrefOf(f)} className="min-w-0 flex-1">
                           <span className="block text-sm font-semibold text-ink truncate">{f.name}</span>
                           <span className="block text-[11px] text-faint truncate">
-                            {nx
-                              ? `Next: ${nx.homeTeam.shortName || nx.homeTeam.name} – ${nx.awayTeam.shortName || nx.awayTeam.name}, ${new Date(nx.utcDate).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}`
-                              : f.kind === 'player' && f.teamName
-                                ? f.teamName
-                                : matches
-                                  ? 'No game in the next 30 days'
-                                  : ''}
+                            {nx ? t("Next: {0} – {1}, {2}", { 0: nx.homeTeam.shortName || nx.homeTeam.name, 1: nx.awayTeam.shortName || nx.awayTeam.name, 2: new Date(nx.utcDate).toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric', month: 'short' }) }) : f.kind === 'player' && f.teamName ? f.teamName : matches ? t("No game in the next 30 days") : ''}
                           </span>
                         </Link>
                         <button
                           type="button"
                           onClick={() => remove(f.kind, f.ref)}
                           className="w-7 h-7 grid place-items-center rounded-lg text-faint hover:text-loss hover:bg-loss/10 flex-shrink-0"
-                          title={`Remove ${f.name}`}
-                          aria-label={`Remove ${f.name} from favorites`}
+                          title={t("Remove {0}", { 0: f.name })}
+                          aria-label={t("Remove {0} from favorites", { 0: f.name })}
                         >
                           ×
                         </button>
@@ -142,18 +132,18 @@ export default function Favorites() {
 
       {list.length > 0 && (
         <div>
-          <SectionTitle label="Their next games" sub="next 30 days, with our predictions" />
+          <SectionTitle label={t("Their next games")} sub={t("next 30 days, with our predictions")} />
           {matches === null ? (
             <div className="space-y-2">
               {Array.from({ length: 4 }).map((_, i) => <div key={i} className="card h-14 animate-pulse bg-surface2/60" />)}
             </div>
           ) : games.length === 0 ? (
-            <div className="card p-8 text-center text-sm text-muted">None of your favorites play in the next 30 days.</div>
+            <div className="card p-8 text-center text-sm text-muted">{t("None of your favorites play in the next 30 days.")}</div>
           ) : (
             <div className="space-y-6">
               {live.length > 0 && (
                 <section>
-                  <SectionTitle label="Live now" accent="live" />
+                  <SectionTitle label={t("Live now")} accent="live" />
                   <div className="card overflow-hidden divide-y divide-line/50">
                     {live.map(m => <MatchRow key={m.id} match={m} showComp />)}
                   </div>

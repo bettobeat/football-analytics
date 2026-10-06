@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { errorText } from '../lib/auth'
+import { t as tt, LOCALE } from '../lib/i18n'
 
 /*
  * Draw picks (Pro): the 2 games of the coming 7 days where a draw is most likely by our own model, then more
@@ -20,7 +21,7 @@ interface TeamDraw { team: string; league: string; n: number; d: number; rate: n
 interface Report { picks: Pick[]; likely?: Likely[]; leagues?: LeagueDraw[]; teams?: TeamDraw[] }
 
 const when = (iso: string) =>
-  new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  new Date(iso).toLocaleString(LOCALE, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 
 function Crest({ src, name }: { src?: string | null; name: string }) {
   return src ? (
@@ -37,7 +38,7 @@ function PickCard({ p, n }: { p: Pick; n: number }) {
       <div className="pointer-events-none absolute -top-24 -right-24 w-64 h-64 rounded-full bg-draw/15 blur-3xl" />
       <div className="relative flex items-center justify-between gap-3 text-xs">
         <span className="inline-flex items-center gap-2 min-w-0">
-          <span className="px-2 py-0.5 rounded-full bg-draw/20 text-draw font-extrabold uppercase tracking-wider text-[10px] whitespace-nowrap">Draw pick {n}</span>
+          <span className="px-2 py-0.5 rounded-full bg-draw/20 text-draw font-extrabold uppercase tracking-wider text-[10px] whitespace-nowrap">{tt("Draw pick")}{' '}{n}</span>
           <span className="text-muted truncate">{p.league}</span>
         </span>
         <span className="text-muted whitespace-nowrap">{when(p.date)}</span>
@@ -50,7 +51,7 @@ function PickCard({ p, n }: { p: Pick; n: number }) {
         </div>
         <div className="text-center">
           <div className="font-display text-4xl sm:text-5xl font-extrabold text-draw num leading-none">{Math.round(p.ourDraw)}%</div>
-          <div className="text-[11px] text-muted mt-1">draw chance</div>
+          <div className="text-[11px] text-muted mt-1">{tt("draw chance")}</div>
         </div>
         <div className="flex flex-col items-center gap-2 text-center min-w-0">
           <Crest src={p.awayCrest} name={p.away} />
@@ -60,16 +61,16 @@ function PickCard({ p, n }: { p: Pick; n: number }) {
 
       <div className="relative space-y-1.5">
         <div className="flex items-center gap-2 text-xs">
-          <span className="w-24 text-muted shrink-0">Draw chance</span>
+          <span className="w-24 text-muted shrink-0">{tt("Draw chance")}</span>
           <div className="flex-1 h-2 rounded-full bg-surface2 overflow-hidden">
             <div className="h-full bg-draw rounded-full" style={{ width: `${Math.min(100, (p.ourDraw / max) * 100)}%` }} />
           </div>
           <span className="num w-12 text-right font-bold text-ink">{Math.round(p.ourDraw)}%</span>
         </div>
-        <p className="text-[11px] text-faint">A typical game ends level about 1 time in 4. This one is among the most likely draws of the week.</p>
+        <p className="text-[11px] text-faint">{tt("A typical game ends level about 1 time in 4. This one is among the most likely draws of the week.")}</p>
       </div>
 
-      <span className="relative text-sm font-bold text-accent">Full match analysis →</span>
+      <span className="relative text-sm font-bold text-accent">{tt("Full match analysis →")}</span>
     </Link>
   )
 }
@@ -79,7 +80,7 @@ export default function DrawAlerts() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    document.title = 'Draw picks · Bet To Beat'
+    document.title = tt("Draw picks · Bet To Beat")
     axios
       .get(`${API_URL}/draw-alerts`)
       .then(r => setData(r.data.data))
@@ -91,10 +92,9 @@ export default function DrawAlerts() {
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-6">
       <div>
-        <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">Draw picks</h1>
+        <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">{tt("Draw picks")}</h1>
         <p className="text-muted mt-2 max-w-2xl">
-          The 2 games of the coming week where a draw is most likely, picked by our model. Updated as new information comes in.
-        </p>
+          {tt("The 2 games of the coming week where a draw is most likely, picked by our model. Updated as new information comes in.")}</p>
       </div>
 
       {!data ? (
@@ -103,10 +103,9 @@ export default function DrawAlerts() {
         </div>
       ) : data.picks.length === 0 ? (
         <div className="card p-8 text-center space-y-2">
-          <div className="font-display text-lg font-bold text-ink">Our 2 draw picks are coming</div>
+          <div className="font-display text-lg font-bold text-ink">{tt("Our 2 draw picks are coming")}</div>
           <p className="text-sm text-muted max-w-md mx-auto">
-            They appear once the coming week's games are scheduled and our model has rated them.
-          </p>
+            {tt("They appear once the coming week's games are scheduled and our model has rated them.")}</p>
         </div>
       ) : (
         <div className={`grid gap-5 ${data.picks.length > 1 ? 'md:grid-cols-2' : 'max-w-xl'}`}>
@@ -118,16 +117,16 @@ export default function DrawAlerts() {
       {data?.likely && data.likely.filter(m => !data.picks.some(p => p.matchId === m.matchId)).length > 0 && (
         <section className="card overflow-hidden">
           <div className="px-4 sm:px-5 py-3 border-b border-line/60 flex items-baseline justify-between gap-3">
-            <h2 className="font-display text-lg font-bold text-ink">More likely draws this week</h2>
-            <span className="text-[11px] text-faint">by our draw chance</span>
+            <h2 className="font-display text-lg font-bold text-ink">{tt("More likely draws this week")}</h2>
+            <span className="text-[11px] text-faint">{tt("by our draw chance")}</span>
           </div>
           <ul className="divide-y divide-line/50">
             {data.likely.filter(m => !data.picks.some(p => p.matchId === m.matchId)).map(m => (
               <li key={m.matchId}>
                 <Link to={`/match/${m.matchId}`} className="flex items-center gap-3 px-4 sm:px-5 py-2.5 hover:bg-surface2/50">
                   <span className="w-16 flex-shrink-0 text-[11px] text-faint leading-tight">
-                    {new Date(m.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })}
-                    <span className="block num">{new Date(m.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+                    {new Date(m.date).toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric' })}
+                    <span className="block num">{new Date(m.date).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })}</span>
                   </span>
                   <span className="flex-1 min-w-0">
                     <span className="flex items-center gap-1.5 min-w-0 text-sm text-ink">
@@ -152,12 +151,12 @@ export default function DrawAlerts() {
           {data?.leagues && data.leagues.length > 0 && (
             <section className="card p-4 sm:p-5">
               <div className="flex items-baseline justify-between gap-3 mb-3">
-                <h2 className="font-display text-lg font-bold text-ink">Draws by league</h2>
-                <span className="text-[11px] text-faint">this season · last season</span>
+                <h2 className="font-display text-lg font-bold text-ink">{tt("Draws by league")}</h2>
+                <span className="text-[11px] text-faint">{tt("this season · last season")}</span>
               </div>
               <ul className="space-y-2">
                 {data.leagues.map(l => (
-                  <li key={l.division} className="flex items-center gap-3 text-sm" title={`${l.n} games this season`}>
+                  <li key={l.division} className="flex items-center gap-3 text-sm" title={tt("{0} games this season", { 0: l.n })}>
                     <span className="w-36 truncate text-ink">{l.league}</span>
                     <span className="flex-1 h-2 rounded-full bg-surface2 overflow-hidden">
                       <span className="block h-full rounded-full bg-draw" style={{ width: `${Math.min(100, ((l.now ?? 0) / 40) * 100)}%` }} />
@@ -167,14 +166,14 @@ export default function DrawAlerts() {
                   </li>
                 ))}
               </ul>
-              <p className="text-[11px] text-faint mt-3">Share of league games that ended in a draw.</p>
+              <p className="text-[11px] text-faint mt-3">{tt("Share of league games that ended in a draw.")}</p>
             </section>
           )}
           {data?.teams && data.teams.length > 0 && (
             <section className="card p-4 sm:p-5">
               <div className="flex items-baseline justify-between gap-3 mb-3">
-                <h2 className="font-display text-lg font-bold text-ink">Teams that draw the most</h2>
-                <span className="text-[11px] text-faint">this season</span>
+                <h2 className="font-display text-lg font-bold text-ink">{tt("Teams that draw the most")}</h2>
+                <span className="text-[11px] text-faint">{tt("this season")}</span>
               </div>
               <ul className="divide-y divide-line/50">
                 {data.teams.map((t, i) => (
@@ -184,7 +183,7 @@ export default function DrawAlerts() {
                       <span className="block truncate text-ink font-semibold">{t.team}</span>
                       <span className="block truncate text-[11px] text-faint">{t.league}</span>
                     </span>
-                    <span className="text-[11px] text-muted num whitespace-nowrap">{t.d} of {t.n}</span>
+                    <span className="text-[11px] text-muted num whitespace-nowrap">{tt("{0} of {1}", { 0: t.d, 1: t.n })}</span>
                     <span className="w-11 text-right num font-bold text-draw">{Math.round(t.rate)}%</span>
                   </li>
                 ))}
@@ -195,8 +194,7 @@ export default function DrawAlerts() {
       )}
 
       <p className="text-xs text-faint max-w-2xl leading-relaxed">
-        A draw is never a sure thing: even our strongest draw calls come in about 1 time in 3. Probabilities, not promises.
-      </p>
+        {tt("A draw is never a sure thing: even our strongest draw calls come in about 1 time in 3. Probabilities, not promises.")}</p>
     </div>
   )
 }

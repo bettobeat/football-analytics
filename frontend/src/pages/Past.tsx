@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { errorText } from '../lib/auth'
+import { t as tt, LOCALE } from '../lib/i18n'
 
 type O = 'H' | 'D' | 'A'
 interface SeasonModel { n: number; hitRate: number | null; marketN: number; marketHitRate: number | null; strong60: { n: number; hitRate: number | null }; first: string; last: string; leagues: number }
@@ -15,9 +16,9 @@ interface Inventory {
   backtestPredictions: number; livePredictions: number; liveSettled: number; trackingSince: string | null
 }
 
-const fmt = (n: number | null | undefined) => (n === null || n === undefined ? '–' : n.toLocaleString('en-GB'))
+const fmt = (n: number | null | undefined) => (n === null || n === undefined ? '–' : n.toLocaleString(LOCALE))
 const pct = (x: number | null | undefined) => (x === null || x === undefined ? '–' : `${Math.round(x)}%`)
-const MODEL_NAME: Record<string, string> = { 'grid-v3': 'Our model (v3)', 'dc-history-v2': 'Older model (v2)' }
+const MODEL_NAME: Record<string, string> = { 'grid-v3': tt("Our model (v3)"), 'dc-history-v2': tt("Older model (v2)") }
 
 function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
   return <div className={`card p-5 sm:p-6 ${className}`}>{children}</div>
@@ -39,7 +40,7 @@ function Probs({ p, pick, outcome }: { p: Record<O, number>; pick?: O; outcome: 
         <span
           key={k}
           className={`w-9 text-center rounded-md py-0.5 ${k === outcome ? 'ring-1 ring-ink/40' : ''} ${pick === k ? 'bg-accent/20 text-ink font-bold' : 'text-muted'}`}
-          title={k === 'H' ? 'Home' : k === 'D' ? 'Draw' : 'Away'}
+          title={k === 'H' ? tt("Home") : k === 'D' ? tt("Draw") : tt("Away")}
         >
           {p[k]}
         </span>
@@ -97,11 +98,9 @@ export default function Past() {
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
       <div>
-        <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">Past seasons</h1>
+        <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">{tt("Past seasons")}</h1>
         <p className="text-sm text-muted mt-1 max-w-2xl">
-          What our models would have predicted on every match of the last seasons. Each prediction was made the way it is today:
-          using only results known <span className="text-ink">before</span> that match — so these are honest tests, not hindsight.
-        </p>
+          {tt("What our models would have predicted on every match of the last seasons. Each prediction was made the way it is today: using only results known before that match — so these are honest tests, not hindsight.")}</p>
       </div>
 
       {error && <div className="rounded-xl border border-loss/40 bg-loss/10 px-4 py-3 text-sm text-loss">{error}</div>}
@@ -109,27 +108,26 @@ export default function Past() {
       {/* What we've collected */}
       {inv && (
         <Card>
-          <h2 className="font-display text-xl font-bold text-ink">What we've collected</h2>
-          <p className="text-sm text-muted mt-0.5 mb-4">All the information the models learn from{inv.trackingSince ? `; live tracking since ${new Date(inv.trackingSince).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}.</p>
+          <h2 className="font-display text-xl font-bold text-ink">{tt("What we've collected")}</h2>
+          <p className="text-sm text-muted mt-0.5 mb-4">{tt("All the information the models learn from")}{inv.trackingSince ? tt("; live tracking since {0}", { 0: new Date(inv.trackingSince).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short', year: 'numeric' }) }) : ''}.</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Fact value={fmt(inv.leagueMatches)} label={`league matches · ${inv.leagues} leagues`} />
-            <Fact value={fmt(inv.leagueTeams)} label="clubs" />
-            <Fact value={fmt(inv.withShots)} label="matches with shots & corners" />
-            <Fact value={fmt(inv.withXg)} label="matches with expected goals (xG) — still downloading" />
-            <Fact value={fmt(inv.lineups)} label="official lineups" />
-            <Fact value={fmt(inv.injuries)} label="injury & suspension records" />
-            <Fact value={fmt(inv.squadClubs)} label={`clubs with monthly squad values (${fmt(inv.squadMonths)} club-months)`} />
-            <Fact value={fmt(inv.nationalMatches)} label={`national-team matches${inv.nationalSince ? ` since ${inv.nationalSince}` : ''}`} />
-            <Fact value={fmt(inv.cupMatches)} label="Champions / Europa / Conference League matches" />
-            <Fact value={fmt(inv.backtestPredictions)} label="past predictions (tests)" />
-            <Fact value={fmt(inv.liveSettled)} label="live predictions already scored" />
+            <Fact value={fmt(inv.leagueMatches)} label={tt("league matches · {0} leagues", { 0: inv.leagues })} />
+            <Fact value={fmt(inv.leagueTeams)} label={tt("clubs")} />
+            <Fact value={fmt(inv.withShots)} label={tt("matches with shots & corners")} />
+            <Fact value={fmt(inv.withXg)} label={tt("matches with expected goals (xG) — still downloading")} />
+            <Fact value={fmt(inv.lineups)} label={tt("official lineups")} />
+            <Fact value={fmt(inv.injuries)} label={tt("injury & suspension records")} />
+            <Fact value={fmt(inv.squadClubs)} label={tt("clubs with monthly squad values ({0} club-months)", { 0: fmt(inv.squadMonths) })} />
+            <Fact value={fmt(inv.nationalMatches)} label={tt("national-team matches{0}", { 0: inv.nationalSince ? ` since ${inv.nationalSince}` : '' })} />
+            <Fact value={fmt(inv.cupMatches)} label={tt("Champions / Europa / Conference League matches")} />
+            <Fact value={fmt(inv.backtestPredictions)} label={tt("past predictions (tests)")} />
+            <Fact value={fmt(inv.liveSettled)} label={tt("live predictions already scored")} />
           </div>
           {inv.seasons.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted">
               {inv.seasons.map(s => (
                 <span key={s.season} className="px-2.5 py-1 rounded-full border border-line">
-                  {s.season}: <span className="num text-ink">{fmt(s.matches)}</span> matches
-                </span>
+                  {s.season}: <span className="num text-ink">{fmt(s.matches)}</span> {tt("matches")}</span>
               ))}
             </div>
           )}
@@ -147,15 +145,15 @@ export default function Past() {
               <button key={s.season} onClick={() => setSeason(s.season)} className={`text-left card p-5 transition-colors ${active ? 'border-accent/60 bg-accent/5' : 'hover:border-faint'}`}>
                 <div className="flex items-center justify-between">
                   <span className="font-display text-lg font-bold text-ink">{s.label}</span>
-                  {active && <span className="text-[11px] font-bold uppercase tracking-wider text-accent">Showing</span>}
+                  {active && <span className="text-[11px] font-bold uppercase tracking-wider text-accent">{tt("Showing")}</span>}
                 </div>
-                <div className="text-xs text-faint mt-0.5">{fmt(v3?.n ?? v2?.n)} matches{v3 ? ` · ${v3.leagues} leagues` : ''}</div>
+                <div className="text-xs text-faint mt-0.5">{fmt(v3?.n ?? v2?.n)} {tt("matches")}{v3 ? tt(" · {0} leagues", { 0: v3.leagues }) : ''}</div>
                 <div className="mt-3 space-y-1.5 text-sm">
-                  <div className="flex justify-between"><span className="text-muted">Our model (v3)</span><span className="num font-bold text-ink">{pct(v3?.hitRate)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted">Older model (v2)</span><span className="num font-semibold text-ink">{pct(v2?.hitRate)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted">{tt("Our model (v3)")}</span><span className="num font-bold text-ink">{pct(v3?.hitRate)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted">{tt("Older model (v2)")}</span><span className="num font-semibold text-ink">{pct(v2?.hitRate)}</span></div>
                   {v3 && v3.strong60.n > 0 && (
                     <div className="pt-1.5 mt-1.5 border-t border-line/60 text-xs text-muted">
-                      When v3 said 60%+: right <span className="num font-bold text-accent">{pct(v3.strong60.hitRate)}</span> of {fmt(v3.strong60.n)}
+                      {tt("When v3 said 60%+: right {0} of {1}", { 0: pct(v3.strong60.hitRate), 1: fmt(v3.strong60.n) })}
                     </div>
                   )}
                 </div>
@@ -164,12 +162,12 @@ export default function Past() {
           })}
         </div>
       )}
-      {seasons.length > 0 && <p className="text-xs text-faint -mt-3">% = how often the pick (the most likely result) was right. Click a season to browse its matches.</p>}
+      {seasons.length > 0 && <p className="text-xs text-faint -mt-3">{tt("% = how often the pick (the most likely result) was right. Click a season to browse its matches.")}</p>}
 
       {/* Browse */}
       {season && (
         <Card>
-          <h2 className="font-display text-xl font-bold text-ink mb-4">Every prediction · {seasons.find(s => s.season === season)?.label}</h2>
+          <h2 className="font-display text-xl font-bold text-ink mb-4">{tt("Every prediction ·")}{' '}{seasons.find(s => s.season === season)?.label}</h2>
           <div className="flex flex-wrap gap-2 mb-4">
             <select value={model} onChange={e => setModel(e.target.value)} className={select}>
               {Object.entries(MODEL_NAME).map(([k, v]) => (
@@ -177,31 +175,30 @@ export default function Past() {
               ))}
             </select>
             <select value={division} onChange={e => setDivision(e.target.value)} className={select}>
-              <option value="">All leagues</option>
+              <option value="">{tt("All leagues")}</option>
               {(data?.divisions || []).map(d => (
                 <option key={d.code} value={d.code}>{d.name}</option>
               ))}
             </select>
             <select value={result} onChange={e => setResult(e.target.value)} className={select}>
-              <option value="">Right and wrong</option>
-              <option value="right">Only right picks</option>
-              <option value="wrong">Only wrong picks</option>
+              <option value="">{tt("Right and wrong")}</option>
+              <option value="right">{tt("Only right picks")}</option>
+              <option value="wrong">{tt("Only wrong picks")}</option>
             </select>
-            <input value={team} onChange={e => setTeam(e.target.value)} placeholder="Search a team" className={`${select} w-44`} />
+            <input value={team} onChange={e => setTeam(e.target.value)} placeholder={tt("Search a team")} className={`${select} w-44`} />
           </div>
 
           {data && (
             <>
               <div className="text-xs text-faint mb-2">
-                {fmt(data.total)} matches · numbers are Home / Draw / Away % · our pick is highlighted, the real result is outlined
-              </div>
+                {fmt(data.total)} {tt("matches · numbers are Home / Draw / Away % · our pick is highlighted, the real result is outlined")}</div>
               <div className="overflow-x-auto -mx-2">
                 <table className="w-full text-sm min-w-[480px]">
                   <thead>
                     <tr className="text-left text-xs text-faint border-b border-line">
                       <th className="px-2 py-2 font-medium w-8"></th>
-                      <th className="px-2 py-2 font-medium">Match</th>
-                      <th className="px-2 py-2 font-medium">Our %</th>
+                      <th className="px-2 py-2 font-medium">{tt("Match")}</th>
+                      <th className="px-2 py-2 font-medium">{tt("Our %")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -215,7 +212,7 @@ export default function Past() {
                             {r.home} <span className="num font-semibold">{r.score}</span> {r.away}
                           </div>
                           <div className="text-xs text-faint">
-                            {new Date(r.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · {r.league}
+                            {new Date(r.date).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short', year: 'numeric' })} · {r.league}
                           </div>
                         </td>
                         <td className="px-2 py-2"><Probs p={r.p} pick={r.pick} outcome={r.outcome} /></td>
@@ -223,7 +220,7 @@ export default function Past() {
                     ))}
                     {!data.rows.length && (
                       <tr>
-                        <td colSpan={3} className="px-2 py-8 text-center text-faint">No matches for this filter.</td>
+                        <td colSpan={3} className="px-2 py-8 text-center text-faint">{tt("No matches for this filter.")}</td>
                       </tr>
                     )}
                   </tbody>
@@ -232,12 +229,10 @@ export default function Past() {
               {pages > 1 && (
                 <div className="mt-4 flex items-center justify-between text-sm">
                   <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="px-3 py-1.5 rounded-xl border border-line text-ink disabled:opacity-40">
-                    ← Newer
-                  </button>
-                  <span className="text-muted num">Page {page} of {pages}</span>
+                    {tt("← Newer")}</button>
+                  <span className="text-muted num">{tt("Page {0} of {1}", { 0: page, 1: pages })}</span>
                   <button disabled={page >= pages} onClick={() => setPage(p => p + 1)} className="px-3 py-1.5 rounded-xl border border-line text-ink disabled:opacity-40">
-                    Older →
-                  </button>
+                    {tt("Older →")}</button>
                 </div>
               )}
             </>

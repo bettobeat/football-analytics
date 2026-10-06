@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { t, LOCALE } from '../lib/i18n'
 
 /*
  * Team analysis on the team page: strengths & weaknesses, how our model rates the team (with a 6-month trend),
@@ -38,7 +39,7 @@ export interface Analysis {
 
 const RES_BG = { W: 'bg-win', D: 'bg-draw', L: 'bg-loss' }
 const ord = (n: number) => `${n}${['th', 'st', 'nd', 'rd'][n % 10 > 3 || [11, 12, 13].includes(n % 100) ? 0 : n % 10]}`
-const shortDate = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+const shortDate = (d: string) => new Date(d).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short' })
 
 function Block({ title, sub, children }: { title: string; sub?: ReactNode; children: ReactNode }) {
   return (
@@ -55,18 +56,18 @@ function Block({ title, sub, children }: { title: string; sub?: ReactNode; child
 function NoteIcon({ kind }: { kind: 'plus' | 'minus' | 'note' }) {
   if (kind === 'plus')
     return (
-      <span className="w-5 h-5 rounded-full bg-win/15 text-win grid place-items-center flex-shrink-0" aria-label="Strength">
+      <span className="w-5 h-5 rounded-full bg-win/15 text-win grid place-items-center flex-shrink-0" aria-label={t("Strength")}>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden><path d="M12 5v14M5 12h14" /></svg>
       </span>
     )
   if (kind === 'minus')
     return (
-      <span className="w-5 h-5 rounded-full bg-loss/15 text-loss grid place-items-center flex-shrink-0" aria-label="Weakness">
+      <span className="w-5 h-5 rounded-full bg-loss/15 text-loss grid place-items-center flex-shrink-0" aria-label={t("Weakness")}>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden><path d="M5 12h14" /></svg>
       </span>
     )
   return (
-    <span className="w-5 h-5 rounded-full bg-home/15 text-home grid place-items-center flex-shrink-0" aria-label="Note">
+    <span className="w-5 h-5 rounded-full bg-home/15 text-home grid place-items-center flex-shrink-0" aria-label={t("Note")}>
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden><path d="M12 8h.01M12 12v5" /></svg>
     </span>
   )
@@ -98,7 +99,7 @@ function RankTrend({ points, teams }: { points: TrendPoint[]; teams: number }) {
   const h = hover !== null ? points[hover] : null
   return (
     <div className="relative">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label={`League rank by our rating: ${points.map(p => `${shortDate(p.date)} #${p.rank}`).join(', ')}`}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label={t("League rank by our rating: {0}", { 0: points.map(p => `${shortDate(p.date)} #${p.rank}`).join(', ') })}>
         {[1, Math.round((maxRank + 1) / 2), maxRank].map(r => (
           <g key={r}>
             <line x1={padL} x2={W - padR} y1={y(r)} y2={y(r)} stroke="rgb(var(--line))" strokeWidth="1" strokeDasharray={r === 1 ? undefined : '2 4'} />
@@ -110,7 +111,7 @@ function RankTrend({ points, teams }: { points: TrendPoint[]; teams: number }) {
           <g key={p.date}>
             <circle cx={x(i)} cy={y(p.rank)} r={hover === i ? 5 : 4} fill="rgb(var(--accent))" stroke="rgb(var(--surface))" strokeWidth="2" />
             <text x={x(i)} y={H - 6} textAnchor="middle" fontSize="9" fill="rgb(var(--faint))">
-              {i === points.length - 1 ? 'Now' : new Date(p.date).toLocaleDateString('en-GB', { month: 'short' })}
+              {i === points.length - 1 ? t("Now") : new Date(p.date).toLocaleDateString(LOCALE, { month: 'short' })}
             </text>
             {/* hit target, bigger than the mark */}
             <rect x={x(i) - 18} y={0} width={36} height={H} fill="transparent" onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} onFocus={() => setHover(i)} onBlur={() => setHover(null)} tabIndex={0} />
@@ -122,8 +123,8 @@ function RankTrend({ points, teams }: { points: TrendPoint[]; teams: number }) {
           className="absolute -top-2 pointer-events-none rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[11px] shadow-lift whitespace-nowrap"
           style={{ left: `${(x(hover!) / W) * 100}%`, transform: 'translate(-50%, -100%)' }}
         >
-          <div className="font-bold text-ink">{hover === points.length - 1 ? 'Now' : shortDate(h.date)} · #{h.rank} of {teams}</div>
-          <div className="text-muted">Rating {h.elo} · attack {h.attack.toFixed(2)} · defence {h.defence.toFixed(2)}</div>
+          <div className="font-bold text-ink">{hover === points.length - 1 ? t("Now") : shortDate(h.date)} · {t("#{0} of {1}", { 0: h.rank, 1: teams })}</div>
+          <div className="text-muted">{t("Rating")}{' '}{h.elo} {t("· attack")}{' '}{h.attack.toFixed(2)} {t("· defence")}{' '}{h.defence.toFixed(2)}</div>
         </div>
       )}
     </div>
@@ -141,18 +142,18 @@ function Tile({ k, v, sub }: { k: string; v: ReactNode; sub?: ReactNode }) {
 }
 
 function FormTable({ form }: { form: NonNullable<Analysis['form']> }) {
-  const cols: [string, Summary | null][] = [['Last 5', form.last5], ['Last 10', form.last10], ['Home', form.home], ['Away', form.away]]
+  const cols: [string, Summary | null][] = [[t("Last 5"), form.last5], [t("Last 10"), form.last10], [t('Home'), form.home], [t('Away'), form.away]]
   const shown = cols.filter(([, s]) => s && s.n > 0) as [string, Summary][]
-  if (!shown.length) return <p className="text-sm text-faint">No finished games yet.</p>
+  if (!shown.length) return <p className="text-sm text-faint">{t("No finished games yet.")}</p>
   const rate = (a: number, n: number) => `${a}/${n}`
   const rows: [string, (s: Summary) => ReactNode][] = [
-    ['Won · drawn · lost', s => `${s.won} · ${s.drawn} · ${s.lost}`],
-    ['Points a game', s => s.ppg.toFixed(2)],
-    ['Goals for · against', s => `${s.gf.toFixed(1)} · ${s.ga.toFixed(1)}`],
-    ['xG for · against', s => (s.xg ? `${s.xg.for.toFixed(1)} · ${s.xg.against.toFixed(1)}` : '–')],
-    ['Clean sheets', s => rate(s.cleanSheets, s.n)],
-    ['Both teams scored', s => rate(s.btts, s.n)],
-    ['Over 2.5 goals', s => rate(s.over25, s.n)]
+    [t("Won · drawn · lost"), s => `${s.won} · ${s.drawn} · ${s.lost}`],
+    [t("Points a game"), s => s.ppg.toFixed(2)],
+    [t("Goals for · against"), s => `${s.gf.toFixed(1)} · ${s.ga.toFixed(1)}`],
+    [t('xG for · against'), s => (s.xg ? `${s.xg.for.toFixed(1)} · ${s.xg.against.toFixed(1)}` : '–')],
+    [t("Clean sheets"), s => rate(s.cleanSheets, s.n)],
+    [t("Both teams scored"), s => rate(s.btts, s.n)],
+    [t("Over 2.5 goals"), s => rate(s.over25, s.n)]
   ]
   return (
     <div className="overflow-x-auto -mx-1">
@@ -160,7 +161,7 @@ function FormTable({ form }: { form: NonNullable<Analysis['form']> }) {
         <thead>
           <tr className="text-[11px] text-faint">
             <th className="text-left font-medium px-1 py-1" />
-            {shown.map(([k, s]) => <th key={k} className="text-right font-medium px-1 py-1">{k}<span className="block text-[10px] text-faint/80">{s.n} games</span></th>)}
+            {shown.map(([k, s]) => <th key={k} className="text-right font-medium px-1 py-1">{k}<span className="block text-[10px] text-faint/80">{s.n} {t("games")}</span></th>)}
           </tr>
         </thead>
         <tbody>
@@ -182,14 +183,13 @@ export function TeamAnalysisCard({ a, full }: { a: Analysis | null | undefined; 
     return (
       <section className="rounded-3xl p-6 border border-accent/30 bg-[linear-gradient(160deg,rgb(var(--accent)/0.09),rgb(var(--surface)/0.6))] space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="font-display text-lg font-bold">Team analysis</h2>
-          <span className="text-[11px] font-extrabold text-bg bg-accent px-2.5 py-1 rounded-full">Premium</span>
+          <h2 className="font-display text-lg font-bold">{t("Team analysis")}</h2>
+          <span className="text-[11px] font-extrabold text-bg bg-accent px-2.5 py-1 rounded-full">{t("Premium")}</span>
         </div>
         <p className="text-sm text-muted leading-relaxed">
-          How our model rates this team and how that changed this season, form over the last 5 and 10 games (home, away, xG,
-          clean sheets, both teams scoring, over 2.5){a.notesCount ? `, and ${a.notesCount} strengths and weaknesses we found in the numbers` : ''}.
+          {t("How our model rates this team and how that changed this season, form over the last 5 and 10 games (home, away, xG, clean sheets, both teams scoring, over 2.5)")}{a.notesCount ? t(", and {0} strengths and weaknesses we found in the numbers", { 0: a.notesCount }) : ''}.
         </p>
-        <Link to="/premium" className="inline-block text-sm font-bold text-accent">See Premium →</Link>
+        <Link to="/premium" className="inline-block text-sm font-bold text-accent">{t("See Premium →")}</Link>
       </section>
     )
   }
@@ -198,12 +198,12 @@ export function TeamAnalysisCard({ a, full }: { a: Analysis | null | undefined; 
   return (
     <section className="rounded-3xl p-5 sm:p-6 border border-accent/30 bg-[linear-gradient(160deg,rgb(var(--accent)/0.07),rgb(var(--surface)/0.6))] space-y-6">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="font-display text-lg font-bold">Team analysis</h2>
-        <span className="text-[11px] text-faint">From our model and the latest results</span>
+        <h2 className="font-display text-lg font-bold">{t("Team analysis")}</h2>
+        <span className="text-[11px] text-faint">{t("From our model and the latest results")}</span>
       </div>
 
       {a.notes && a.notes.length > 0 && (
-        <Block title="Strengths and weaknesses">
+        <Block title={t("Strengths and weaknesses")}>
           <ul className="space-y-2">
             {a.notes.map((n, i) => (
               <li key={i} className="flex gap-2.5 text-sm text-ink/90 leading-snug">
@@ -216,28 +216,28 @@ export function TeamAnalysisCard({ a, full }: { a: Analysis | null | undefined; 
       )}
 
       {m && (
-        <Block title="How our model rates them" sub={`${m.played} league games this season`}>
+        <Block title={t("How our model rates them")} sub={t("{0} league games this season", { 0: m.played })}>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            <Tile k="Strength" v={`${ord(m.rank)} of ${m.teams}`} sub={`Rating ${m.elo}`} />
-            <Tile k="Attack" v={m.attack.toFixed(2)} sub={`goals a game · avg ${m.leagueGoals.toFixed(2)}`} />
-            <Tile k="Defence" v={m.defence.toFixed(2)} sub={`conceded a game · avg ${m.leagueGoals.toFixed(2)}`} />
-            <Tile k="Home · away" v={`${m.homePpg.toFixed(1)} · ${m.awayPpg.toFixed(1)}`} sub="points a game" />
+            <Tile k="Strength" v={`${ord(m.rank)} of ${m.teams}`} sub={t("Rating {0}", { 0: m.elo })} />
+            <Tile k="Attack" v={m.attack.toFixed(2)} sub={t("goals a game · avg {0}", { 0: m.leagueGoals.toFixed(2) })} />
+            <Tile k="Defence" v={m.defence.toFixed(2)} sub={t("conceded a game · avg {0}", { 0: m.leagueGoals.toFixed(2) })} />
+            <Tile k="Home · away" v={`${m.homePpg.toFixed(1)} · ${m.awayPpg.toFixed(1)}`} sub={t("points a game")} />
           </div>
-          <p className="text-[11px] text-faint">Attack and defence are adjusted for the strength of the opponents faced.</p>
+          <p className="text-[11px] text-faint">{t("Attack and defence are adjusted for the strength of the opponents faced.")}</p>
           <div className="grid gap-5 sm:grid-cols-2 items-start">
             <div className="space-y-2">
-              <div className="text-[11px] text-faint">Score in the league, 1–10</div>
-              <ScoreBar label="Strength" v={m.scores.strength} />
-              <ScoreBar label="Attack" v={m.scores.attack} />
-              <ScoreBar label="Defence" v={m.scores.defence} />
-              <ScoreBar label="Form" v={m.scores.form} />
-              <ScoreBar label="Home" v={m.scores.home} />
-              <ScoreBar label="Away" v={m.scores.away} />
-              <ScoreBar label="Squad value" v={m.scores.squad} />
+              <div className="text-[11px] text-faint">{t("Score in the league, 1–10")}</div>
+              <ScoreBar label={t("Strength")} v={m.scores.strength} />
+              <ScoreBar label={t("Attack")} v={m.scores.attack} />
+              <ScoreBar label={t("Defence")} v={m.scores.defence} />
+              <ScoreBar label={t("Form")} v={m.scores.form} />
+              <ScoreBar label={t("Home")} v={m.scores.home} />
+              <ScoreBar label={t("Away")} v={m.scores.away} />
+              <ScoreBar label={t("Squad value")} v={m.scores.squad} />
             </div>
             {m.trend.length >= 2 && (
               <div className="space-y-1">
-                <div className="text-[11px] text-faint">League rank by our rating, last 6 months</div>
+                <div className="text-[11px] text-faint">{t("League rank by our rating, last 6 months")}</div>
                 <RankTrend points={m.trend} teams={m.teams} />
               </div>
             )}
@@ -246,16 +246,16 @@ export function TeamAnalysisCard({ a, full }: { a: Analysis | null | undefined; 
       )}
 
       {!m && a.national && (
-        <Block title="How our model rates them">
+        <Block title={t("How our model rates them")}>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
             <Tile k="World rank (our rating)" v={`${ord(a.national.rank)} of ${a.national.teams}`} />
-            <Tile k="Rating" v={a.national.elo} sub={`from ${a.national.matches} matches`} />
+            <Tile k="Rating" v={a.national.elo} sub={t("from {0} matches", { 0: a.national.matches })} />
           </div>
         </Block>
       )}
 
       {f && (
-        <Block title="Form and trends" sub={f.source === 'league' ? 'league games' : 'all competitions'}>
+        <Block title={t("Form and trends")} sub={f.source === 'league' ? t("league games") : t("all competitions")}>
           {f.games.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {[...f.games].reverse().map((g, i) => (
@@ -284,17 +284,17 @@ export function TeamRecordCard({ rec, teamName }: { rec: TeamRecord | undefined;
   return (
     <section className="card p-5 sm:p-6">
       <div className="flex items-center justify-between gap-3 mb-4">
-        <h2 className="font-display text-base sm:text-lg font-bold text-ink">Our record on {teamName}</h2>
-        <Link to="/accuracy" className="text-xs font-bold text-accent">Full record →</Link>
+        <h2 className="font-display text-base sm:text-lg font-bold text-ink">{t("Our record on")}{' '}{teamName}</h2>
+        <Link to="/accuracy" className="text-xs font-bold text-accent">{t("Full record →")}</Link>
       </div>
       {!rec.n ? (
-        <p className="text-sm text-faint">No finished games with a saved prediction yet.</p>
+        <p className="text-sm text-faint">{t("No finished games with a saved prediction yet.")}</p>
       ) : (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-2.5">
-            <Tile k={`Result, ${rec.n} games`} v={`${rec.hitRate}%`} sub={`${rec.hits} right`} />
-            {rec.btts && <Tile k="Both teams score" v={`${rec.btts.hitRate}%`} sub={`${rec.btts.n} games`} />}
-            {rec.over25 && <Tile k="Over / under 2.5" v={`${rec.over25.hitRate}%`} sub={`${rec.over25.n} games`} />}
+            <Tile k={`Result, ${rec.n} games`} v={`${rec.hitRate}%`} sub={t("{0} right", { 0: rec.hits })} />
+            {rec.btts && <Tile k="Both teams score" v={`${rec.btts.hitRate}%`} sub={t("{0} games", { 0: rec.btts.n })} />}
+            {rec.over25 && <Tile k="Over / under 2.5" v={`${rec.over25.hitRate}%`} sub={t("{0} games", { 0: rec.over25.n })} />}
           </div>
           {rec.games && rec.games.length > 0 && (
             <div>
@@ -304,12 +304,12 @@ export function TeamRecordCard({ rec, teamName }: { rec: TeamRecord | undefined;
                   <span className="flex-1 min-w-0 truncate text-sm text-muted">{g.home ? 'vs' : 'at'} <span className="text-ink font-semibold">{g.opp}</span></span>
                   <span className="text-sm num font-bold text-ink">{g.score}</span>
                   <span className="w-12 text-right text-[11px] text-muted">{g.pick}</span>
-                  <span className={`w-5 h-5 rounded-full grid place-items-center text-[10px] font-extrabold ${g.hit ? 'bg-win/20 text-win' : 'bg-loss/20 text-loss'}`} aria-label={g.hit ? 'Right' : 'Wrong'}>
+                  <span className={`w-5 h-5 rounded-full grid place-items-center text-[10px] font-extrabold ${g.hit ? 'bg-win/20 text-win' : 'bg-loss/20 text-loss'}`} aria-label={g.hit ? t("Right") : t("Wrong")}>
                     {g.hit ? '✓' : '✗'}
                   </span>
                 </Link>
               ))}
-              <p className="text-[11px] text-faint mt-2">Our pick for {teamName} (win, draw or loss), saved before kick-off.</p>
+              <p className="text-[11px] text-faint mt-2">{t("Our pick for")}{' '}{teamName} {t("(win, draw or loss), saved before kick-off.")}</p>
             </div>
           )}
         </div>

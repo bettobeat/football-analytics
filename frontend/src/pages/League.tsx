@@ -6,6 +6,7 @@ import type { Prediction } from '../lib/predict'
 import { isCovered, revealMatch, useRevealState } from '../lib/reveal'
 import RecentResults from '../components/RecentResults'
 import { FavStar } from '../lib/favorites'
+import { t as tt, LOCALE } from '../lib/i18n'
 
 /**
  * League page: /league/<code> (football-data codes like PL, API-Football codes like AF140).
@@ -181,7 +182,7 @@ function League() {
   }, [code])
 
   useEffect(() => {
-    if (comp?.name) document.title = `${comp.name} · Bet To Beat`
+    if (comp?.name) document.title = tt("{0} · Bet To Beat", { 0: comp.name })
   }, [comp])
 
   const totals = useMemo(() => {
@@ -213,7 +214,7 @@ function League() {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 text-xs text-faint">
               {comp?.area?.flag && <img src={comp.area.flag} alt="" className="w-4 h-3 object-cover rounded-[2px]" />}
-              <span>{comp?.area?.name || 'League'}</span>
+              <span>{comp?.area?.name || tt("League")}</span>
             </div>
             <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink truncate">{comp?.name || code}</h1>
             {comp?.name && code && (
@@ -223,9 +224,9 @@ function League() {
           {record && record.hitRate !== null && record.n > 0 && (
             <div className="flex gap-3">
               <div className="glass px-4 py-3 text-center">
-                <div className="text-[11px] text-faint">Our picks right</div>
+                <div className="text-[11px] text-faint">{tt("Our picks right")}</div>
                 <div className="font-display text-2xl font-extrabold text-accent num">{Math.round(record.hitRate)}%</div>
-                <div className="text-[10px] text-faint num">{record.n} games · 12 months</div>
+                <div className="text-[10px] text-faint num">{record.n} {tt("games · 12 months")}</div>
               </div>
             </div>
           )}
@@ -235,11 +236,11 @@ function League() {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] items-start">
         {/* ---------- left: table + leaders ---------- */}
         <div className="space-y-6 min-w-0">
-          <Card title="Table">
+          <Card title={tt("Table")}>
             {!tables ? (
               <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-7 rounded-lg bg-surface2/60 animate-pulse" />)}</div>
             ) : totals.length === 0 ? (
-              <p className="text-sm text-faint">No league table here: it's a knockout cup, friendlies, or a tournament that isn't on right now.</p>
+              <p className="text-sm text-faint">{tt("No league table here: it's a knockout cup, friendlies, or a tournament that isn't on right now.")}</p>
             ) : (
               <div className="space-y-5">
                 {totals.map((t, i) => (
@@ -249,15 +250,15 @@ function League() {
                       <thead>
                         <tr className="text-[11px] text-faint">
                           <th className="text-left font-medium py-1.5 pl-2 w-8">#</th>
-                          <th className="text-left font-medium py-1.5">Team</th>
+                          <th className="text-left font-medium py-1.5">{tt("Team")}</th>
                           <th className="text-right font-medium py-1.5 num w-9">P</th>
                           <th className="text-right font-medium py-1.5 num w-9">W</th>
                           <th className="text-right font-medium py-1.5 num w-9">D</th>
                           <th className="text-right font-medium py-1.5 num w-9">L</th>
-                          <th className="text-right font-medium py-1.5 num w-16 hidden sm:table-cell">Goals</th>
-                          <th className="text-right font-medium py-1.5 num w-10">GD</th>
-                          <th className="text-right font-medium py-1.5 num w-10 pr-2">Pts</th>
-                          {hasForm && <th className="text-center font-medium py-1.5 w-[104px] hidden md:table-cell" title="Last 5 league games, latest on the right">Form</th>}
+                          <th className="text-right font-medium py-1.5 num w-16 hidden sm:table-cell">{tt("Goals")}</th>
+                          <th className="text-right font-medium py-1.5 num w-10">{tt("GD")}</th>
+                          <th className="text-right font-medium py-1.5 num w-10 pr-2">{tt("Pts")}</th>
+                          {hasForm && <th className="text-center font-medium py-1.5 w-[104px] hidden md:table-cell" title={tt("Last 5 league games, latest on the right")}>{tt("Form")}</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -304,7 +305,7 @@ function League() {
           </Card>
 
           <Card
-            title={leaders === 'goals' ? 'Top scorers' : 'Top assists'}
+            title={leaders === 'goals' ? tt("Top scorers") : tt("Top assists")}
             action={
               <div className="seg">
                 {(['goals', 'assists'] as const).map(k => (
@@ -318,7 +319,7 @@ function League() {
             {!scorers ? (
               <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-8 rounded-lg bg-surface2/60 animate-pulse" />)}</div>
             ) : top.length === 0 ? (
-              <p className="text-sm text-faint">No data yet this season.</p>
+              <p className="text-sm text-faint">{tt("No data yet this season.")}</p>
             ) : (
               <ol className="space-y-1">
                 {top.map((s, i) => {
@@ -339,7 +340,7 @@ function League() {
                     </li>
                   )
                 })}
-                {leaders === 'assists' && <li className="text-[10px] text-faint pt-1">Assists among the league's top-40 scorers list.</li>}
+                {leaders === 'assists' && <li className="text-[10px] text-faint pt-1">{tt("Assists among the league's top-40 scorers list.")}</li>}
               </ol>
             )}
           </Card>
@@ -348,7 +349,7 @@ function League() {
         {/* ---------- right: fixtures, results ---------- */}
         <div className="space-y-6 min-w-0">
           {live.length > 0 && (
-            <Card title="Live now">
+            <Card title={tt("Live now")}>
               <ul className="space-y-1">
                 {live.map(m => (
                   <li key={m.id}>
@@ -362,11 +363,11 @@ function League() {
             </Card>
           )}
 
-          <Card title="Next fixtures" action={<Link to={`/matches?league=${code}`} className="text-xs font-bold text-accent">All →</Link>}>
+          <Card title={tt("Next fixtures")} action={<Link to={`/matches?league=${code}`} className="text-xs font-bold text-accent">All →</Link>}>
             {!matches ? (
               <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-12 rounded-xl bg-surface2/60 animate-pulse" />)}</div>
             ) : upcoming.length === 0 ? (
-              <p className="text-sm text-faint">No fixtures in the next 30 days.</p>
+              <p className="text-sm text-faint">{tt("No fixtures in the next 30 days.")}</p>
             ) : (
               <ul className="max-h-[430px] overflow-y-auto overscroll-contain pr-1 space-y-1">
                 {upcoming.map(m => (
@@ -380,7 +381,7 @@ function League() {
 
           {edition && edition.matches.length > 0 && (
             <Card
-              title={`Latest edition${editionYears(edition) ? ` · ${editionYears(edition)}` : ''}`}
+              title={tt("Latest edition{0}", { 0: editionYears(edition) ? ` · ${editionYears(edition)}` : '' })}
               action={edition.winner ? (
                 <span className="inline-flex items-center gap-1.5 text-xs font-bold text-ink">
                   <span aria-hidden>🏆</span>
@@ -395,12 +396,12 @@ function League() {
                   return (
                     <li key={m.id}>
                       <Link to={`/match/${m.id}`} className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-surface2/60 text-sm">
-                        <span className="w-14 text-[11px] text-faint">{new Date(m.utcDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+                        <span className="w-14 text-[11px] text-faint">{new Date(m.utcDate).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short' })}</span>
                         <span className="flex-1 min-w-0">
                           <span className="block truncate">
                             <span className="text-ink font-semibold">{tn(m.homeTeam)}</span> <span className="num font-bold text-ink">{ft?.home ?? '–'}–{ft?.away ?? '–'}</span> <span className="text-ink font-semibold">{tn(m.awayTeam)}</span>
                           </span>
-                          <span className="block text-[11px] text-faint truncate">{m.round}{m.penalties ? ` · pens ${m.penalties.home}–${m.penalties.away}` : ''}</span>
+                          <span className="block text-[11px] text-faint truncate">{m.round}{m.penalties ? tt(" · pens {0}–{1}", { 0: m.penalties.home, 1: m.penalties.away }) : ''}</span>
                         </span>
                       </Link>
                     </li>
@@ -430,8 +431,8 @@ function FixtureRow({ m }: { m: Match }) {
   return (
     <Link to={`/match/${m.id}`} className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-surface2/60 transition-colors">
       <span className="w-12 flex-shrink-0 text-center">
-        <span className="block text-[10px] text-faint">{new Date(m.utcDate).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })}</span>
-        <span className="block text-xs font-bold text-ink num">{new Date(m.utcDate).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+        <span className="block text-[10px] text-faint">{new Date(m.utcDate).toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric' })}</span>
+        <span className="block text-xs font-bold text-ink num">{new Date(m.utcDate).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })}</span>
       </span>
       <span className="min-w-0 flex-1 space-y-1">
         <span className="flex items-center gap-2 text-sm"><Crest team={m.homeTeam} size={16} /><span className="truncate text-ink">{tn(m.homeTeam)}</span></span>
@@ -446,11 +447,10 @@ function FixtureRow({ m }: { m: Match }) {
             }}
             className="text-[11px] font-bold text-bg bg-accent px-2.5 py-1 rounded-full"
           >
-            Reveal
-          </button>
+            {tt("Reveal")}</button>
         ) : name ? (
           <>
-            <span className="block text-[10px] text-faint">Pick</span>
+            <span className="block text-[10px] text-faint">{tt("Pick")}</span>
             <span className={`block text-xs font-bold truncate ${color}`}>
               {name}
               {val !== null && <span className="num"> {Math.round(val)}%</span>}

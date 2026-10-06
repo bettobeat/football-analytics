@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import axios from 'axios'
 import { API_URL } from './socket'
+import { LOCALE, t } from './i18n'
 
 /**
  * $15 Premium: monthly allowance of match unlocks (see backend services/billing.ts).
@@ -60,8 +61,8 @@ export async function unlockMatch(matchId: number, status: string): Promise<Unlo
       current = e.response.data.data
       window.dispatchEvent(new Event(EVT))
     }
-    throw { upgrade: !!e?.response?.data?.upgrade, message: e?.response?.data?.error || 'Could not unlock this match. Try again.' }
+    throw { upgrade: !!e?.response?.data?.upgrade, message: e?.response?.data?.error || t("Could not unlock this match. Try again.") }
   }
 }
 
-export const resetDay = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+export const resetDay = (iso: string) => new Date(iso).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short' })
