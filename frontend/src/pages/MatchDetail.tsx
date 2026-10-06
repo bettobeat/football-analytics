@@ -248,8 +248,10 @@ function GridBreakdown({ p, home, away }: { p: Prediction; home: Team; away: Tea
   const hn = home.shortName || home.name
   const an = away.shortName || away.name
   const DRAW_ROWS = new Set(['#15', '#30', '#16'])
-  const teamRows = g.rows.filter(r => !DRAW_ROWS.has(r.id))
-  const drawRows = g.rows.filter(r => DRAW_ROWS.has(r.id))
+  // rows with weight 0 are measured but carry no points (the October 2026 fit found they add nothing once the others are in)
+  const unused = g.rows.filter(r => !r.rel).map(r => r.name)
+  const teamRows = g.rows.filter(r => !DRAW_ROWS.has(r.id) && r.rel > 0)
+  const drawRows = g.rows.filter(r => DRAW_ROWS.has(r.id) && r.rel > 0)
   return (
     <div className="mt-5 rounded-xl border border-line/70 bg-surface/60 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
@@ -327,7 +329,9 @@ function GridBreakdown({ p, home, away }: { p: Prediction; home: Team; away: Tea
       <p className="mt-3 text-[11px] text-faint">
         Each parameter is scored within the league (5.5 = average; most teams land between 1 and 10, standouts like the league's superteams can
         go above 10) and multiplied by its relevance for this match type. The difference between the two totals sets the home/away split of the
-        points left after the draw pot, which starts from the goals-based chance of a draw. Calibrated on the 2025-26 and 2026-27 results.
+        points left after the draw pot, which starts from the goals-based chance of a draw. Weights fitted on the 2024-25 and 2025-26 seasons
+        and checked on 2026-27 (October 2026).
+        {unused.length > 0 && <> Measured but not used, because they add nothing once the others are in: {unused.join(', ')}.</>}
       </p>
       )}
     </div>

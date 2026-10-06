@@ -97,11 +97,12 @@ export function explainPrediction(p: Prediction, homeName: string, awayName: str
   const drawReal = top.k === 'D' || (second.k === 'D' && p.draw >= 27) || p.draw >= 30
   if (drawReal) {
     if (g.matchType === 'even') draw.push('On results so far the two sides are closely matched, which makes a draw more likely.')
-    const derby = g.rows.find(r => r.id === '#16')
+    // only rows the model actually uses (a row with weight 0 is shown for information but carries no points)
+    const derby = g.rows.find(r => r.id === '#16' && r.rel > 0)
     if (derby && derby.home >= 7) draw.push('It is a derby — these are often tight.')
-    const league = g.rows.find(r => r.id === '#30')
+    const league = g.rows.find(r => r.id === '#30' && r.rel > 0)
     if (league && league.home >= 6) draw.push(`This league has a lot of draws${league.note ? ` (${league.note.replace('league draw rate', 'draw rate')})` : ''}.`)
-    const prone = g.rows.find(r => r.id === '#15')
+    const prone = g.rows.find(r => r.id === '#15' && r.rel > 0)
     if (prone && prone.home >= 6.5) draw.push('Both teams draw often.')
     if (p.expectedGoals.home + p.expectedGoals.away < 2.3) draw.push(`We expect few goals (${p.expectedGoals.home} – ${p.expectedGoals.away}), and low-scoring games end level more often.`)
     if (p.drawStreak && Math.min(p.drawStreak.home, p.drawStreak.away) >= 0.32)

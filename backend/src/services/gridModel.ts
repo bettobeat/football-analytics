@@ -104,7 +104,7 @@ export const CONV = {
   pitSquad: 1, // point-in-time squad values (squadHistory.ts): honest backtests; live = latest month
   // a team with no squad value (usually a promoted club missing from the Transfermarkt dump) gets the value at this
   // percentile of its division instead of the neutral 5 (= league average, which overrates promoted sides). −1 = neutral.
-  squadMissingPct: -1,
+  squadMissingPct: 0.15, // Oct 2026: with squad value weighted 12, a promoted club without data is placed low in its division, not at the average
   // Transfermarkt only values players while their club is in a league the dataset covers, so a promoted club's
   // value is built from the few players who came from covered clubs (Hull 2026: €24m for the "top 15"). Floor every
   // club at this share of its division's median value (log scale). −1 = off.
