@@ -88,8 +88,8 @@ export default function AccessibilityMenu() {
         onClick={() => setOpen(o => !o)}
         aria-expanded={open}
         aria-controls="a11y-menu"
-        aria-label={t("Accessibility menu · תפריט נגישות")}
-        title={t("Accessibility · נגישות")}
+        aria-label={t("Accessibility menu")}
+        title={t("Accessibility")}
         className={`fixed z-40 left-4 bottom-24 lg:bottom-6 lg:left-6 w-12 h-12 rounded-full grid place-items-center shadow-lift border-2 ${active ? 'bg-accent text-bg border-accent' : 'bg-[#1d4ed8] text-white border-white/70'}`}
       >
         {/* the universal accessibility icon */}
@@ -108,12 +108,12 @@ export default function AccessibilityMenu() {
           className="fixed z-50 left-4 right-4 bottom-40 lg:bottom-20 lg:left-6 lg:right-auto lg:w-[360px] max-h-[70vh] overflow-y-auto rounded-3xl border border-line bg-surface shadow-lift p-4 space-y-3"
         >
           <div className="flex items-center justify-between">
-            <h2 className="font-display font-bold text-ink">{t("Accessibility · נגישות")}</h2>
+            <h2 className="font-display font-bold text-ink">{t("Accessibility")}</h2>
             <button type="button" onClick={() => setOpen(false)} className="w-8 h-8 grid place-items-center rounded-lg text-muted hover:text-ink hover:bg-surface2" aria-label={t("Close")}>×</button>
           </div>
 
           <div>
-            <div className="text-xs font-semibold text-muted mb-1.5">{t("Text size · גודל טקסט")}</div>
+            <div className="text-xs font-semibold text-muted mb-1.5">{t("Text size")}</div>
             <div className="grid grid-cols-4 gap-1.5" role="radiogroup" aria-label={t("Text size")}>
               {([0, 1, 2, 3] as const).map(n => (
                 <button key={n} type="button" role="radio" aria-checked={p.text === n} onClick={() => setP({ ...p, text: n })}
@@ -125,7 +125,7 @@ export default function AccessibilityMenu() {
           </div>
 
           <div>
-            <div className="text-xs font-semibold text-muted mb-1.5">{t("Colours · צבעים")}</div>
+            <div className="text-xs font-semibold text-muted mb-1.5">{t("Colours")}</div>
             <div className="grid grid-cols-2 gap-1.5" role="radiogroup" aria-label={t("Colours")}>
               {([['none', 'Normal'], ['high', 'High contrast'], ['invert', 'Inverted'], ['gray', 'Grayscale']] as const).map(([v, l]) => (
                 <button key={v} type="button" role="radio" aria-checked={p.contrast === v} onClick={() => setP({ ...p, contrast: v })}
@@ -137,16 +137,16 @@ export default function AccessibilityMenu() {
           </div>
 
           <div className="space-y-1.5">
-            <Toggle k="font" label={t("Readable font")} hint={t("Plain font, wider letters · פונט קריא")} />
-            <Toggle k="links" label={t("Highlight links")} hint={t("Underlined and marked · הדגשת קישורים")} />
-            <Toggle k="spacing" label={t("More line spacing")} hint={t("Room between lines and words · ריווח")} />
-            <Toggle k="motion" label={t("Stop animations")} hint={t("No moving numbers or effects · עצירת אנימציות")} />
-            <Toggle k="cursor" label={t("Big cursor")} hint={t("Easier to follow · סמן גדול")} />
+            <Toggle k="font" label={t("Readable font")} hint={t("Plain font, wider letters")} />
+            <Toggle k="links" label={t("Highlight links")} hint={t("Underlined and marked")} />
+            <Toggle k="spacing" label={t("More line spacing")} hint={t("Room between lines and words")} />
+            <Toggle k="motion" label={t("Stop animations")} hint={t("No moving numbers or effects")} />
+            <Toggle k="cursor" label={t("Big cursor")} hint={t("Easier to follow")} />
           </div>
 
           <div className="flex items-center justify-between gap-2 pt-1 text-xs">
-            <button type="button" onClick={() => setP(DEFAULT)} className="text-muted hover:text-ink underline underline-offset-4">{t("Reset · איפוס")}</button>
-            <Link to="/accessibility" className="font-semibold text-accent">{t("Accessibility statement · הצהרת נגישות →")}</Link>
+            <button type="button" onClick={() => setP(DEFAULT)} className="text-muted hover:text-ink underline underline-offset-4">{t("Reset")}</button>
+            <Link to="/accessibility" className="font-semibold text-accent">{t("Accessibility statement →")}</Link>
           </div>
         </div>
       )}

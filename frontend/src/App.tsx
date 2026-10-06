@@ -301,7 +301,7 @@ function Shell() {
   }, [])
 
   const navCls = ({ isActive }: { isActive: boolean }) =>
-    `px-3.5 py-1.5 rounded-full text-sm transition-colors whitespace-nowrap ${isActive ? 'bg-ink text-bg font-bold' : 'text-muted font-medium hover:text-ink'}`
+    `px-3 xl:px-3.5 py-1.5 rounded-full text-sm transition-colors whitespace-nowrap ${isActive ? 'bg-ink text-bg font-bold' : 'text-muted font-medium hover:text-ink'}`
 
   return (
     <Router basename={basename}>
@@ -311,10 +311,10 @@ function Shell() {
         <header className="sticky top-0 z-40 backdrop-blur-xl bg-bg/70 border-b border-line/50">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-[72px] flex items-center gap-3 lg:gap-5">
             <Logo />
-            <nav className="hidden lg:flex items-center gap-0.5 p-1 rounded-full bg-surface2/60 border border-line/60">
+            <nav className="hidden lg:flex shrink-0 items-center gap-0.5 p-1 rounded-full bg-surface2/60 border border-line/60">
               <NavLinks cls={navCls} />
             </nav>
-            <div className="hidden lg:block flex-1 min-w-[140px] max-w-md ml-auto">
+            <div className="hidden lg:block flex-1 min-w-[240px] xl:min-w-[300px] max-w-lg ml-auto">
               <SearchBox />
             </div>
             <div className="flex items-center gap-2.5 ml-auto lg:ml-0">
@@ -325,7 +325,7 @@ function Shell() {
                 title={connected ? tt("Live updates connected") : tt("Reconnecting…")}
               >
                 <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-live animate-pulseDot' : 'bg-faint'}`} />
-                {connected ? tt("Live") : tt("Offline")}
+                <span className="hidden xl:inline">{connected ? tt("Live") : tt("Offline")}</span>
               </div>
               <div className="hidden md:block"><LangSwitch /></div>
               <ThemeToggle theme={theme} onToggle={toggle} />

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 const UPDATED = '6 October 2026'
 const CONTACT = 'accessibility@sportlikely.com' // the accessibility contact (set up the inbox or change the address)
 
-/** Accessibility statement (Israeli regulations / IS 5568, EU Accessibility Act), in English and Hebrew. */
+/** Accessibility statement (Israeli regulations / IS 5568, EU Accessibility Act). */
 export default function Accessibility() {
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-10">
@@ -38,35 +38,6 @@ export default function Accessibility() {
         <p className="text-xs text-faint">Last updated {UPDATED}. We review this statement whenever the site changes significantly, and at least once a year.</p>
       </section>
 
-      <section dir="rtl" lang="he" className="space-y-4 border-t border-line/60 pt-8 text-right">
-        <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">הצהרת נגישות</h1>
-        <p className="text-muted">
-          אנו רואים חשיבות רבה בהנגשת האתר לכלל הציבור, ובכלל זה לאנשים עם מוגבלות. האתר מונגש בהתאם לתקנות שוויון זכויות לאנשים עם
-          מוגבלות (התאמות נגישות לשירות), התשע״ג-2013, לתקן ישראלי 5568 ולהנחיות WCAG 2.1 ברמה AA.
-        </p>
-        <h2 className="font-display text-xl font-bold text-ink">התאמות הנגישות באתר</h2>
-        <ul className="list-disc pr-5 space-y-1.5 text-muted">
-          <li>תפריט נגישות בכל עמוד (הכפתור הכחול בפינה): הגדלת טקסט בשלוש רמות, ניגודיות גבוהה, היפוך צבעים, גווני אפור, פונט קריא, הדגשת קישורים, ריווח שורות, עצירת אנימציות וסמן גדול. ההגדרות נשמרות במכשיר.</li>
-          <li>מצב בהיר ומצב כהה.</li>
-          <li>ניווט מלא במקלדת: כל קישור, לשונית וכפתור נגישים באמצעות Tab ומופעלים ב-Enter או ברווח; הרכיב הממוקד מסומן בבירור; קישור "דלג לתוכן" מופיע בלחיצת Tab הראשונה.</li>
-          <li>תמיכה בקוראי מסך: כותרות בכל עמוד, תיאורים לכפתורי אייקונים ולתיבת החיפוש, סמלי קבוצות ודגלים מסומנים כדקורטיביים, טבלאות עם כותרות תקינות והצהרת שפת העמוד.</li>
-          <li>ניתן להגדיל את התצוגה עד 200% ללא אובדן תוכן; האתר מותאם לטלפונים ולטאבלטים.</li>
-          <li>אין תוכן מהבהב; האנימציות קצרות וניתן לכבותן, והאתר מכבד את הגדרת "הפחתת תנועה" של המכשיר.</li>
-        </ul>
-        <h2 className="font-display text-xl font-bold text-ink">מגבלות ידועות</h2>
-        <ul className="list-disc pr-5 space-y-1.5 text-muted">
-          <li>תצוגת המגרש של ההרכבים היא תמונה הבנויה משמות השחקנים; אותם הרכבים מופיעים כטקסט מתחתיה.</li>
-          <li>סמלי קבוצות, תמונות שחקנים ותמונות חדשות מגיעים מספקי מידע חיצוניים וייתכן שאין להם תיאור.</li>
-          <li>סרטוני תקצירים מוטמעים מ-YouTube וכפופים לנגישות של YouTube.</li>
-        </ul>
-        <h2 className="font-display text-xl font-bold text-ink">פנייה בנושא נגישות</h2>
-        <p className="text-muted">
-          אם נתקלתם בקושי בשימוש באתר, או שאתם זקוקים למידע בפורמט אחר, כתבו לרכז הנגישות בכתובת{' '}
-          <a href={`mailto:${CONTACT}`} className="font-semibold text-accent" dir="ltr">{CONTACT}</a>. אנא ציינו באיזה עמוד מדובר ומה קרה; נשיב
-          בתוך 7 ימי עבודה.
-        </p>
-        <p className="text-xs text-faint">ההצהרה עודכנה לאחרונה ב-{UPDATED}. ההצהרה נבדקת בכל שינוי מהותי באתר ולפחות אחת לשנה.</p>
-      </section>
 
       <p className="text-sm">
         <Link to="/" className="font-semibold text-accent">← Back to the site</Link>
