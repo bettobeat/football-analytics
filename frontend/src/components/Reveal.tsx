@@ -46,7 +46,7 @@ export function RevealCover({ onReveal, autoStart = false }: { onReveal: () => v
   if (phase === 'loading')
     return (
       <div className="relative overflow-hidden rounded-2xl border border-accent/40 bg-accent/[0.06] p-6 sm:p-8" role="status" aria-live="polite">
-        <div aria-hidden className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-accent/15 to-transparent animate-[scan_1.1s_linear_infinite] motion-reduce:hidden" />
+        <div aria-hidden className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-accent/15 to-transparent animate-[scan_1.1s_linear_infinite]" />
         <div className="relative flex flex-col items-center gap-4 text-center">
           <div className="flex items-center gap-2.5 text-accent font-display font-bold">
             <Spinner size={18} /> {tt("v3 is analysing this match")}</div>
@@ -96,7 +96,7 @@ export function RevealChip({ onReveal, dark = false }: { onReveal: () => void; d
         dark ? 'bg-white/10 text-[#C8FF3D] border border-white/15 hover:bg-white/15' : 'bg-accent/10 text-accent border border-accent/30 hover:bg-accent/15'
       }`}
     >
-      {busy && <span aria-hidden className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-current to-transparent opacity-20 animate-[scan_0.75s_linear_infinite] motion-reduce:hidden" />}
+      {busy && <span aria-hidden className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-current to-transparent opacity-20 animate-[scan_0.75s_linear_infinite]" />}
       {busy ? <><Spinner size={15} /> {tt("Analysing…")}</> : <><Eye size={16} /> {tt("Reveal prediction")}</>}
     </button>
   )

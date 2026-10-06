@@ -384,7 +384,7 @@ function Shell() {
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             <Link to="/terms" className="hover:text-ink">{tt("Terms")}</Link>
             <Link to="/privacy" className="hover:text-ink">{tt("Privacy")}</Link>
-            <Link to="/accessibility" className="hover:text-ink">Accessibility · נגישות</Link>
+            <Link to="/accessibility" className="hover:text-ink">{tt("Accessibility")}</Link>
             <Link to="/premium" className="hover:text-ink">{tt("Premium")}</Link>
             <span className="ml-auto"><LangSwitch compact /></span>
           </div>

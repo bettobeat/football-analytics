@@ -21,7 +21,7 @@ export default function Accessibility() {
           <li>Keyboard use: every link, tab and button can be reached with Tab and activated with Enter or Space; the focused element is clearly outlined; a "Skip to content" link appears on the first Tab press.</li>
           <li>Screen readers: headings on every page, descriptive labels on icon buttons and the search box, images of crests and flags marked as decorative, tables with proper headers, the page language declared.</li>
           <li>Text can be enlarged with the browser's zoom up to 200% without losing content; the site works on phones and tablets.</li>
-          <li>No content flashes; animations are short and can be switched off, and the site respects the "reduce motion" setting of your device.</li>
+          <li>No content flashes; animations are short and can be switched off at any time with "Stop animations" in the accessibility menu.</li>
         </ul>
         <h2 className="font-display text-xl font-bold text-ink">Known limitations</h2>
         <ul className="list-disc pl-5 space-y-1.5 text-muted">

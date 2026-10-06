@@ -107,7 +107,6 @@ html.dark {
   100% { opacity: 1; transform: none; }
 }
 .pop-in { animation: popIn 0.55s cubic-bezier(0.2, 1.2, 0.4, 1) both; }
-@media (prefers-reduced-motion: reduce) { .pop-in { animation: none; } }
 
 @keyframes scan {
   from { transform: translateX(0); }
@@ -214,9 +213,8 @@ html.a11y-spacing body { line-height: 1.9; word-spacing: 0.12em; }
 html.a11y-spacing p, html.a11y-spacing li { margin-bottom: 0.4em; }
 html.a11y-cursor, html.a11y-cursor * { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 24 24'%3E%3Cpath d='M5 3l14 9-6 1.5L16 20l-2.5 1-3-6.5L6 19z' fill='%23fff' stroke='%23000' stroke-width='1.2'/%3E%3C/svg%3E") 4 2, auto !important; }
 html.a11y-motion *, html.a11y-motion *::before, html.a11y-motion *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
-}
+/* Animations are stopped only by the site's own accessibility menu ("Stop animations"), not by the device setting,
+   which many Windows PCs have switched off by default. */
 
 /* keyboard focus: always visible, never only on mouse */
 :focus-visible { outline: 3px solid rgb(var(--accent)); outline-offset: 2px; border-radius: 6px; }

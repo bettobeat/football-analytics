@@ -535,7 +535,11 @@ function MatchDetail() {
   const showScore = live || done
   // v1 (standings) is a fallback only: shown when no other model covers the match
   const allModels = details.predictions && details.predictions.length ? details.predictions : details.prediction ? [details.prediction] : []
-  const models = allModels.some(m => m.model !== 'poisson-dc-v1') ? allModels.filter(m => m.model !== 'poisson-dc-v1') : allModels
+  // Only our own model (v3) is shown; the older v1/v2 stay as a fallback for matches v3 doesn't cover
+  const OLD = ['poisson-dc-v1', 'dc-history-v2']
+  const models = allModels.some(m => !OLD.includes(m.model))
+    ? allModels.filter(m => !OLD.includes(m.model))
+    : allModels.some(m => m.model === 'dc-history-v2') ? allModels.filter(m => m.model === 'dc-history-v2') : allModels
   // our main model first (v3 for leagues, national teams, European cups); older models only on request
   const p = (modelId && models.find(m => m.model === modelId)) || models.find(m => ['grid-v3', 'elo-intl', 'elo-euro'].includes(m.model)) || details.prediction || models[0] || null
   const ft = m.score.fullTime

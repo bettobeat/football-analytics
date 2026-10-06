@@ -18,7 +18,7 @@ interface Inventory {
 
 const fmt = (n: number | null | undefined) => (n === null || n === undefined ? '–' : n.toLocaleString(LOCALE))
 const pct = (x: number | null | undefined) => (x === null || x === undefined ? '–' : `${Math.round(x)}%`)
-const MODEL_NAME: Record<string, string> = { 'grid-v3': tt("Our model (v3)"), 'dc-history-v2': tt("Older model (v2)") }
+const MODEL_NAME: Record<string, string> = { 'grid-v3': tt("Our model (v3)") }
 
 function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
   return <div className={`card p-5 sm:p-6 ${className}`}>{children}</div>
@@ -150,7 +150,6 @@ export default function Past() {
                 <div className="text-xs text-faint mt-0.5">{fmt(v3?.n ?? v2?.n)} {tt("matches")}{v3 ? tt(" · {0} leagues", { 0: v3.leagues }) : ''}</div>
                 <div className="mt-3 space-y-1.5 text-sm">
                   <div className="flex justify-between"><span className="text-muted">{tt("Our model (v3)")}</span><span className="num font-bold text-ink">{pct(v3?.hitRate)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted">{tt("Older model (v2)")}</span><span className="num font-semibold text-ink">{pct(v2?.hitRate)}</span></div>
                   {v3 && v3.strong60.n > 0 && (
                     <div className="pt-1.5 mt-1.5 border-t border-line/60 text-xs text-muted">
                       {tt("When v3 said 60%+: right {0} of {1}", { 0: pct(v3.strong60.hitRate), 1: fmt(v3.strong60.n) })}
@@ -169,11 +168,13 @@ export default function Past() {
         <Card>
           <h2 className="font-display text-xl font-bold text-ink mb-4">{tt("Every prediction ·")}{' '}{seasons.find(s => s.season === season)?.label}</h2>
           <div className="flex flex-wrap gap-2 mb-4">
-            <select value={model} onChange={e => setModel(e.target.value)} className={select}>
-              {Object.entries(MODEL_NAME).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
-              ))}
-            </select>
+            {Object.keys(MODEL_NAME).length > 1 && (
+              <select value={model} onChange={e => setModel(e.target.value)} className={select}>
+                {Object.entries(MODEL_NAME).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </select>
+            )}
             <select value={division} onChange={e => setDivision(e.target.value)} className={select}>
               <option value="">{tt("All leagues")}</option>
               {(data?.divisions || []).map(d => (
