@@ -6,8 +6,9 @@ import { Link, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
 import { pickOfPrediction, type Prediction } from '../lib/predict'
+import { useFavorites, FavStar } from '../lib/favorites'
 
-interface Team {
+export interface Team {
   id: number
   name: string
   shortName?: string
@@ -15,7 +16,7 @@ interface Team {
   crest?: string
 }
 
-interface Competition {
+export interface Competition {
   id: number
   name: string
   code: string
@@ -26,7 +27,7 @@ interface Competition {
 
 const GROUP_TITLE: Record<number, string> = { 0: 'Top leagues', 1: 'European cups', 2: 'More leagues', 3: 'National teams' }
 
-interface APIMatch {
+export interface APIMatch {
   id: number
   utcDate: string
   status: string
@@ -45,18 +46,18 @@ interface APIMatch {
 
 type Pick = 'H' | 'D' | 'A'
 
-const LIVE = new Set(['IN_PLAY', 'PAUSED'])
-const ENDED = new Set(['FINISHED', 'AWARDED', 'CANCELLED'])
+export const LIVE = new Set(['IN_PLAY', 'PAUSED'])
+export const ENDED = new Set(['FINISHED', 'AWARDED', 'CANCELLED'])
 const DAY_OPTIONS = [3, 7, 14, 30]
 const PICK_COLOR: Record<Pick, string> = { H: 'text-home', D: 'text-draw', A: 'text-away' }
 const PICK_BG: Record<Pick, string> = { H: 'bg-home', D: 'bg-draw', A: 'bg-away' }
 
-function dayKey(iso: string) {
+export function dayKey(iso: string) {
   const d = new Date(iso)
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
 }
 
-function dayLabel(ts: number) {
+export function dayLabel(ts: number) {
   const today = dayKey(new Date().toISOString())
   const diff = Math.round((ts - today) / 86400000)
   if (diff === 0) return 'Today'
@@ -178,12 +179,26 @@ function Dashboard() {
       .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0) || a.name.localeCompare(b.name))
   }, [matches])
 
+  const { list: favList, reasons } = useFavorites()
+  const favMode = league === 'FAV'
   const visible = useMemo(() => {
     const cutoff = Date.now() + days * 86400000
     return matches.filter(
-      m => new Date(m.utcDate).getTime() <= cutoff && (league === 'ALL' || m.competition.code === league)
+      m => new Date(m.utcDate).getTime() <= cutoff && (league === 'ALL' || (favMode ? reasons(m).length > 0 : m.competition.code === league))
     )
-  }, [matches, league, days])
+  }, [matches, league, days, favMode, reasons])
+  // favorites first: their next games on top of the full list
+  const favUpcoming = useMemo(
+    () =>
+      league !== 'ALL'
+        ? []
+        : matches
+            .filter(m => !LIVE.has(m.status) && !ENDED.has(m.status) && new Date(m.utcDate).getTime() <= Date.now() + days * 86400000 && reasons(m).length > 0)
+            .sort((a, b) => a.utcDate.localeCompare(b.utcDate))
+            .slice(0, 8),
+    [matches, league, days, reasons]
+  )
+  const favCount = useMemo(() => matches.filter(m => reasons(m).length > 0).length, [matches, reasons])
 
   const live = matches.filter(m => LIVE.has(m.status)) // all leagues, always
   // finished / cancelled games leave the list (they are in Latest results); live ones have their own row
@@ -191,6 +206,7 @@ function Dashboard() {
 
   // Spotlight: the three biggest games of the coming days — big clubs first, then model strength
   const spotlight = useMemo(() => {
+    if (favMode) return []
     const soon = Date.now() + 4 * 86400000
     return upcoming
       .filter(m => new Date(m.utcDate).getTime() <= soon)
@@ -205,7 +221,7 @@ function Dashboard() {
       .sort((a, b) => b.s - a.s)
       .slice(0, 3)
       .map(x => x.m)
-  }, [upcoming])
+  }, [upcoming, favMode])
   const spotlightIds = useMemo(() => new Set(spotlight.map(m => m.id)), [spotlight])
 
   // Day lists never repeat a Spotlight match
@@ -222,7 +238,7 @@ function Dashboard() {
 
   return (
     <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 py-6 lg:py-8 ${league === 'ALL' ? '2xl:max-w-[1760px]' : ''}`}>
-      <div className={`grid grid-cols-1 gap-6 lg:gap-8 items-start ${league === 'ALL' ? 'lg:grid-cols-[250px_1fr] 2xl:grid-cols-[250px_1fr_340px]' : 'lg:grid-cols-[250px_1fr] xl:grid-cols-[250px_1fr_320px]'}`}>
+      <div className={`grid grid-cols-1 gap-6 lg:gap-8 items-start ${league === 'ALL' ? 'lg:grid-cols-[250px_1fr] 2xl:grid-cols-[250px_1fr_340px]' : favMode ? 'lg:grid-cols-[250px_1fr]' : 'lg:grid-cols-[250px_1fr] xl:grid-cols-[250px_1fr_320px]'}`}>
         {/* ---------- Sidebar ---------- */}
         <aside className="lg:sticky lg:top-20 space-y-6">
           {/* Live */}
@@ -253,9 +269,18 @@ function Dashboard() {
             <ul className="space-y-0.5">
               <li>
                 <button onClick={() => setLeague('ALL')} className={`side-item ${league === 'ALL' ? 'side-item-active' : ''}`}>
-                  <span className="w-5 h-5 rounded-md bg-surface2 grid place-items-center text-[10px] font-bold text-muted">★</span>
+                  <span className="w-5 h-5 rounded-md bg-surface2 grid place-items-center text-[10px] font-bold text-muted">∞</span>
                   All leagues
                   <span className="ml-auto num text-xs text-faint">{matches.length}</span>
+                </button>
+              </li>
+              <li>
+                <button onClick={() => setLeague('FAV')} className={`side-item ${favMode ? 'side-item-active' : ''}`}>
+                  <span className="w-5 h-5 rounded-md bg-accent/15 grid place-items-center text-accent">
+                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="currentColor" aria-hidden><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5z" /></svg>
+                  </span>
+                  My favorites
+                  <span className="ml-auto num text-xs text-faint">{favList.length ? favCount : ''}</span>
                 </button>
               </li>
               {[0, 1, 2, 3].map(g => {
@@ -280,8 +305,8 @@ function Dashboard() {
                         {list.map(c => {
                           const n = matches.filter(m => m.competition.code === c.code).length
                           return (
-                            <li key={c.code}>
-                              <button onClick={() => setLeague(c.code)} className={`side-item ${league === c.code ? 'side-item-active' : ''}`}>
+                            <li key={c.code} className="group/li relative">
+                              <button onClick={() => setLeague(c.code)} className={`side-item pr-9 ${league === c.code ? 'side-item-active' : ''}`}>
                                 {c.emblem ? (
                                   <img src={c.emblem} alt="" className="w-5 h-5 object-contain" />
                                 ) : (
@@ -290,6 +315,9 @@ function Dashboard() {
                                 <span className="truncate">{c.name}</span>
                                 <span className="ml-auto num text-xs text-faint">{n}</span>
                               </button>
+                              <span className="absolute right-1.5 top-1/2 -translate-y-1/2">
+                                <FavStar size="sm" fav={{ kind: 'league', ref: c.code, code: c.code, name: c.name, img: c.emblem || null }} />
+                              </span>
                             </li>
                           )
                         })}
@@ -314,11 +342,11 @@ function Dashboard() {
           <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
             <div>
               <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">
-                {league === 'ALL' ? 'Matches' : competitions.find(c => c.code === league)?.name || 'Matches'}
+                {league === 'ALL' ? 'Matches' : favMode ? 'My favorites' : competitions.find(c => c.code === league)?.name || 'Matches'}
               </h1>
               <p className="mt-1 text-sm text-muted">
                 <span className="num text-ink font-semibold">{upcoming.length}</span> fixtures in the next {days} days
-                {league !== 'ALL' && (
+                {league !== 'ALL' && !favMode && (
                   <Link to={`/league/${league}`} className="ml-3 font-bold text-accent">
                     League page →
                   </Link>
@@ -345,7 +373,32 @@ function Dashboard() {
           {error && <div className="card p-5 border-loss/40 text-loss">Failed to load matches: {error}</div>}
 
           {!loading && !error && upcoming.length === 0 && (
-            <div className="card p-12 text-center text-muted">No matches for this selection.</div>
+            favMode && !favList.length ? (
+              <div className="card p-10 text-center space-y-3">
+                <p className="text-ink font-semibold">You have no favorites yet.</p>
+                <p className="text-sm text-muted max-w-md mx-auto">
+                  Tap the star next to a league here, or on any team, league or player page. Their games then show up in this list.
+                </p>
+                <Link to="/favorites" className="inline-block text-sm font-bold text-accent">Manage favorites →</Link>
+              </div>
+            ) : (
+              <div className="card p-12 text-center text-muted">{favMode ? 'None of your favorites play in this period.' : 'No matches for this selection.'}</div>
+            )
+          )}
+
+          {/* Your favorites: pinned on top of the full list */}
+          {!loading && favUpcoming.length > 0 && (
+            <section className="mb-8">
+              <SectionTitle label="Your favorites" sub="their next games" />
+              <div className="card overflow-hidden border-accent/25 divide-y divide-line/50">
+                {favUpcoming.map(m => (
+                  <MatchRow key={m.id} match={m} showComp showDay />
+                ))}
+              </div>
+              <button type="button" onClick={() => setLeague('FAV')} className="mt-2 text-xs font-bold text-accent">
+                Show only my favorites →
+              </button>
+            </section>
           )}
 
           {/* Spotlight: the biggest games, same compact rows */}
@@ -389,7 +442,7 @@ function Dashboard() {
         </div>
 
         {/* ---------- League panel ---------- */}
-        {league !== 'ALL' && <LeaguePanel code={league} />}
+        {league !== 'ALL' && !favMode && <LeaguePanel code={league} />}
 
         {/* ---------- Latest results (wide screens) ---------- */}
         {league === 'ALL' && (
@@ -550,7 +603,7 @@ function LeaguePanel({ code }: { code: string }) {
 
 /* ---------- pieces ---------- */
 
-function SectionTitle({
+export function SectionTitle({
   label,
   sub,
   count,
@@ -607,7 +660,7 @@ function Crest({ team, size = 32 }: { team: Team; size?: number }) {
 }
 
 /** A day's games grouped by competition: top leagues first (competition rank), then by name; games by kick-off. */
-function byCompetition(list: APIMatch[]): [Competition, APIMatch[]][] {
+export function byCompetition(list: APIMatch[]): [Competition, APIMatch[]][] {
   const map = new Map<string, { comp: Competition; games: APIMatch[] }>()
   for (const m of list) {
     const g = map.get(m.competition.code) || { comp: m.competition, games: [] }
@@ -623,7 +676,8 @@ function byCompetition(list: APIMatch[]): [Competition, APIMatch[]][] {
  * One game as a thin row: time · both teams · our 1-X-2 (pick highlighted). Locked picks show a lock, the
  * "guess first" cover shows a small Reveal button. The whole row opens the match page.
  */
-function MatchRow({ match, showComp = false, showDay = false }: { match: APIMatch; showComp?: boolean; showDay?: boolean }) {
+export function MatchRow({ match, showComp = false, showDay = false }: { match: APIMatch; showComp?: boolean; showDay?: boolean }) {
+  const favWhy = useFavorites().reasons(match)
   const isLive = LIVE.has(match.status)
   const p = match.prediction
   const { hidden: covered, reveal } = useReveal(match.id, match.status, !!p && !p.locked)
@@ -636,7 +690,12 @@ function MatchRow({ match, showComp = false, showDay = false }: { match: APIMatc
   return (
     <Link to={`/match/${match.id}`} className={`group flex items-center gap-3 px-3 sm:px-4 py-2.5 hover:bg-surface2/50 transition-colors ${isLive ? 'bg-live/5' : ''}`}>
       {/* time */}
-      <div className="w-11 flex-shrink-0 text-center">
+      <div className="relative w-11 flex-shrink-0 text-center">
+        {favWhy.length > 0 && (
+          <span className="absolute -left-2.5 sm:-left-3 top-1/2 -translate-y-1/2 text-accent" title={`Favorite: ${favWhy.map(f => f.name).join(', ')}`}>
+            <svg viewBox="0 0 24 24" className="w-3 h-3" fill="currentColor" aria-hidden><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5z" /></svg>
+          </span>
+        )}
         {isLive ? (
           <span className="inline-flex items-center gap-1 text-[11px] font-bold text-live">
             <span className="w-1.5 h-1.5 rounded-full bg-live animate-pulseDot" />

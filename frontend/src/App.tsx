@@ -19,6 +19,8 @@ import Verify from './pages/Verify'
 import Forgot from './pages/Forgot'
 import PremiumGate from './components/PremiumGate'
 import { AuthProvider, useAuth } from './lib/auth'
+import { FavoritesProvider } from './lib/favorites'
+import Favorites from './pages/Favorites'
 import { socket } from './lib/socket'
 import { useTheme } from './lib/theme'
 import { useUnlocks, resetDay } from './lib/unlocks'
@@ -143,6 +145,9 @@ function NavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
       <NavLink to="/matches" className={cls}>
         Matches
       </NavLink>
+      <NavLink to="/favorites" className={cls}>
+        Favorites
+      </NavLink>
       <NavLink to="/draw-alerts" className={cls}>
         Draw picks
       </NavLink>
@@ -170,7 +175,9 @@ const TAB_ICONS: Record<string, string> = {
   Home: 'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z',
   Matches: 'M4 5h16v14H4zM4 10h16M9 5v14',
   Alerts: 'M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8M10 20a2 2 0 0 0 4 0',
+  Draws: 'M5 12h14M5 7h14M5 17h14',
   Accuracy: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+  Favorites: 'M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5z',
   Search: 'M11 18a7 7 0 1 0 0-14a7 7 0 0 0 0 14M20 20l-3.5-3.5'
 }
 
@@ -203,9 +210,10 @@ function BottomTabs() {
           </div>
         </div>
       )}
-      <nav aria-label="Tabs" className="lg:hidden fixed left-3 right-3 bottom-3 z-40 grid grid-cols-5 gap-1 p-1.5 rounded-3xl bg-surface/85 backdrop-blur-xl border border-line/80 shadow-lift sm:max-w-lg sm:mx-auto">
+      <nav aria-label="Tabs" className="lg:hidden fixed left-3 right-3 bottom-3 z-40 grid grid-cols-6 gap-1 p-1.5 rounded-3xl bg-surface/85 backdrop-blur-xl border border-line/80 shadow-lift sm:max-w-lg sm:mx-auto">
         {tab('/', 'Home', true)}
         {tab('/matches', 'Matches')}
+        {tab('/favorites', 'Favorites')}
         {tab('/draw-alerts', 'Draws')}
         {tab('/accuracy', 'Accuracy')}
         <button onClick={() => setSearching(true)} className="h-14 flex flex-col items-center justify-center gap-1 rounded-2xl text-muted" aria-label="Search">
@@ -222,6 +230,7 @@ function BottomTabs() {
 const TITLES: [RegExp, string][] = [
   [/^\/$/, 'Home'],
   [/^\/matches/, 'Matches'],
+  [/^\/favorites/, 'Favorites'],
   [/^\/team\//, 'Team'],
   [/^\/league\//, 'League'],
   [/^\/player\//, 'Player'],
@@ -250,7 +259,9 @@ function PageTitle() {
 function App() {
   return (
     <AuthProvider>
-      <Shell />
+      <FavoritesProvider>
+        <Shell />
+      </FavoritesProvider>
     </AuthProvider>
   )
 }
@@ -312,6 +323,7 @@ function Shell() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/matches" element={<Dashboard />} />
+            <Route path="/favorites" element={<Favorites />} />
             <Route path="/team/:id" element={<Team />} />
             <Route path="/league/:code" element={<League />} />
             <Route path="/player/:id" element={<Player />} />

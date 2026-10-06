@@ -4,6 +4,7 @@ import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { errorText, useAuth } from '../lib/auth'
 import { TeamAnalysisCard, TeamRecordCard, type Analysis } from '../components/TeamAnalysis'
+import { FavStar, nameKey } from '../lib/favorites'
 
 interface Side { id: number; name: string; logo: string }
 interface Fixture { matchId: number | null; date: string; status: string; comp: string; home: Side; away: Side; hg: number | null; ag: number | null }
@@ -151,7 +152,14 @@ export default function Team() {
         <img src={team.logo} alt="" className="w-20 h-20 sm:w-28 sm:h-28 object-contain drop-shadow-lg" />
         <div className="flex-1 min-w-0 space-y-2">
           <div className="text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#9AA3B2]">{team.national ? 'National team' : data.league ? `${data.league.name} · ${team.country}` : team.country}</div>
-          <h1 className="font-display text-3xl sm:text-5xl font-extrabold tracking-tight">{team.name}</h1>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="font-display text-3xl sm:text-5xl font-extrabold tracking-tight">{team.name}</h1>
+            <FavStar
+              label
+              tone="dark"
+              fav={{ kind: 'team', ref: nameKey(team.name), name: team.name, img: team.logo, ids: [...new Set([team.id, Number(id)].filter(n => Number.isFinite(n) && n > 0))] }}
+            />
+          </div>
           <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-[#C9D0DB]">
             {standing && <span>{standing.rank}{['th', 'st', 'nd', 'rd'][standing.rank % 10 > 3 || [11, 12, 13].includes(standing.rank % 100) ? 0 : standing.rank % 10]} in the table · {standing.points} pts</span>}
             {data.venue && <span>{data.venue.name}{data.venue.capacity ? ` · ${data.venue.capacity.toLocaleString('en-GB')}` : ''}</span>}

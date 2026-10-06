@@ -10,6 +10,7 @@ import { useUnlocks, unlockMatch, resetDay } from '../lib/unlocks'
 import CountUp from '../components/CountUp'
 import { RevealCover } from '../components/Reveal'
 import PredictionStory from '../components/PredictionStory'
+import { FavStar, nameKey as favKey } from '../lib/favorites'
 
 /* ---------- types (Football-Data.org v4 shapes, loosely) ---------- */
 
@@ -1119,7 +1120,10 @@ function TeamHero({ team, align, code }: { team: Team; align: 'left' | 'right'; 
       <div className="min-w-0">
         <div className="font-display font-extrabold text-lg sm:text-2xl text-ink leading-tight truncate">{team.shortName || team.name}</div>
         {team.coach?.name && <div className="text-xs text-faint mt-0.5 truncate">{team.coach.name}</div>}
-        <div className="text-[11px] text-accent font-semibold mt-0.5">Team page →</div>
+        <div className={`flex items-center gap-1 mt-0.5 ${align === 'right' ? 'justify-end' : ''}`}>
+          <span className="text-[11px] text-accent font-semibold">Team page →</span>
+          <FavStar size="sm" fav={{ kind: 'team', ref: favKey(team.name), name: team.shortName || team.name, img: team.crest || null, ids: [team.id] }} />
+        </div>
       </div>
     </Link>
   )

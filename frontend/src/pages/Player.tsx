@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { errorText } from '../lib/auth'
+import { FavStar } from '../lib/favorites'
 
 /**
  * Player page: /player/<API-Football id>. /player/find?name=&team=&c=&n= looks a scorer up first (Football-Data ids).
@@ -184,7 +185,21 @@ export default function Player() {
                 <span className="px-2 py-0.5 rounded-full bg-win/15 text-win font-bold">Available</span>
               )}
             </div>
-            <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">{p.name}</h1>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">{p.name}</h1>
+              <FavStar
+                label
+                fav={{
+                  kind: 'player',
+                  ref: String(p.id),
+                  name: p.name,
+                  img: p.photo || null,
+                  teamName: data.team?.name || null,
+                  teamImg: data.team?.logo || null,
+                  teamIds: data.team ? [data.team.id] : []
+                }}
+              />
+            </div>
             {data.team && (
               <Link to={teamHref(data.team)} className="inline-flex items-center gap-2 text-sm font-semibold text-muted hover:text-ink">
                 <img src={data.team.logo} alt="" className="w-5 h-5 object-contain" />

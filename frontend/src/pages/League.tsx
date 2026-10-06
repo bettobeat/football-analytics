@@ -5,6 +5,7 @@ import { API_URL } from '../lib/socket'
 import type { Prediction } from '../lib/predict'
 import { isCovered, revealMatch, useRevealState } from '../lib/reveal'
 import RecentResults from '../components/RecentResults'
+import { FavStar } from '../lib/favorites'
 
 /**
  * League page: /league/<code> (football-data codes like PL, API-Football codes like AF140).
@@ -215,6 +216,9 @@ function League() {
               <span>{comp?.area?.name || 'League'}</span>
             </div>
             <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink truncate">{comp?.name || code}</h1>
+            {comp?.name && code && (
+              <FavStar label className="mt-2" fav={{ kind: 'league', ref: code, code, name: comp.name, img: comp.emblem || null }} />
+            )}
           </div>
           {record && record.hitRate !== null && record.n > 0 && (
             <div className="flex gap-3">

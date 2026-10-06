@@ -46,6 +46,7 @@ import { footballNews } from './services/news';
 import { highlightsFor, highlightsStatus, lastCandidates } from './services/highlights';
 import { rebuildPlayerQuality, playerQualityTable } from './services/playerQuality';
 import { db } from './db';
+import { listFavorites, addFavorites, removeFavorite, MAX_FAVORITES } from './services/favorites';
 import { normalizeName } from './services/history';
 import { markFresh, markFailed } from './services/freshness';
 import { dataHealth, startDataHealthScheduler } from './services/dataHealth';
@@ -249,7 +250,7 @@ app.use('/api', rateLimit('api', 600, 60000)); // ~10 a second, far above a pers
 app.use(['/api/team-page', '/api/player-page'], rateLimit('pages', 60, 10 * 60000));
 app.use('/api/unlocks', (req, res, next) => (req.method === 'POST' ? rateLimit('unlock', 30, 60000, r => String(r.user?.id || r.ip))(req, res, next) : next()));
 
-const OPEN_API = /^\/api\/(health$|auth\/|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|public\/(summary|results|record)$|unlocks(\/|$)|billing\/)/;
+const OPEN_API = /^\/api\/(health$|auth\/|favorites(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|public\/(summary|results|record)$|unlocks(\/|$)|billing\/)/;
 const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|backtest|history\/status|clv|past\/(seasons|predictions|data|patterns)|draw-alerts)$/;
 
 app.use('/api', (req, res, next) => {
@@ -366,6 +367,22 @@ app.post('/api/auth/preferences', jsonOnly, (req, res) => {
   } catch (e) {
     authFail(res, e);
   }
+});
+
+// Favorites (signed-in users; visitors keep them in the browser and they are merged here on sign-in)
+app.get('/api/favorites', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  res.json({ data: listFavorites(req.user.id) });
+});
+app.post('/api/favorites', jsonOnly, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  const items = Array.isArray(req.body?.items) ? req.body.items : [req.body];
+  res.json({ data: addFavorites(req.user.id, items), max: MAX_FAVORITES });
+});
+app.post('/api/favorites/remove', jsonOnly, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  res.json({ data: removeFavorite(req.user.id, req.body?.kind, req.body?.ref) });
 });
 
 app.post('/api/auth/login', jsonOnly, (req, res) => {

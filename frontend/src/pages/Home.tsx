@@ -9,6 +9,7 @@ import { isCovered, revealMatch, useRevealState, justRevealed } from '../lib/rev
 import { matchFame } from '../lib/fame'
 import CountUp from '../components/CountUp'
 import { RevealChip } from '../components/Reveal'
+import { useFavorites } from '../lib/favorites'
 
 interface Team { id: number; name: string; shortName?: string; tla?: string; crest?: string }
 interface Match {
@@ -235,11 +236,63 @@ export default function Home() {
     return [...near, ...fill].sort((a, b) => a.utcDate.localeCompare(b.utcDate))
   }, [notStarted, featured])
 
+  const { reasons: favReasons } = useFavorites()
+  // favorites first: their next games get their own row on top
+  const favNext = useMemo(
+    () => notStarted.filter(m => favReasons(m).length > 0).sort((a, b) => a.utcDate.localeCompare(b.utcDate)).slice(0, 10),
+    [notStarted, favReasons]
+  )
   const next = useMemo(() => {
-    const ranked = [...notStarted].sort((a, b) => ((a.competition.rank ?? 9) <= 1 ? 0 : 1) - ((b.competition.rank ?? 9) <= 1 ? 0 : 1) || a.utcDate.localeCompare(b.utcDate))
+    const ranked = [...notStarted].filter(m => !favNext.includes(m)).sort((a, b) => ((a.competition.rank ?? 9) <= 1 ? 0 : 1) - ((b.competition.rank ?? 9) <= 1 ? 0 : 1) || a.utcDate.localeCompare(b.utcDate))
     return ranked.filter(m => m.id !== featured?.id).slice(0, 10).sort((a, b) => a.utcDate.localeCompare(b.utcDate))
   }, [notStarted, featured])
 
+
+  const nextCard = (m: Match) => {
+      const p = mainPred(m)
+      const pct = hasPct(p)
+      const strongPick = pct && topPct(p) >= 60
+      const k = p ? (p.pick || (pct ? (p.home >= p.draw && p.home >= p.away ? 'H' : p.away >= p.draw ? 'A' : 'D') : null)) : null
+      return (
+        <Link key={m.id} to={`/match/${m.id}`} className="card card-hover snap-start flex-shrink-0 w-[272px] p-4 flex flex-col gap-4">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 min-w-0 text-[11px] text-faint">
+              {m.competition.emblem && <img src={m.competition.emblem} alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain" />}
+              <span className="truncate">{m.competition.name}</span>
+            </span>
+            <span className="text-[11px] font-bold text-ink bg-surface2/80 px-2 py-0.5 rounded-full whitespace-nowrap">
+              {new Date(m.utcDate).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            </span>
+          </div>
+          <div className="space-y-2.5">
+            <div className="flex items-center gap-3"><Crest team={m.homeTeam} size={32} /><span className="font-bold truncate">{tn(m.homeTeam)}</span></div>
+            <div className="flex items-center gap-3"><Crest team={m.awayTeam} size={32} /><span className="font-bold truncate">{tn(m.awayTeam)}</span></div>
+          </div>
+          {pct && isCovered(m.id, m.status, true) ? (
+            <RevealChip onReveal={() => revealMatch(m.id)} />
+          ) : pct ? (
+            <div className="space-y-2">
+              <div className="grid grid-cols-3 gap-1.5 text-center">
+                {(['H', 'D', 'A'] as const).map(o => (
+                  <span key={o} className={`rounded-xl py-1.5 text-xs font-bold num ${k === o ? (o === 'H' ? 'bg-home/20 text-home' : o === 'D' ? 'bg-draw/20 text-draw' : 'bg-away/20 text-away') : 'bg-surface2/70 text-muted'}`}>
+                    <span className="block text-[10px] font-semibold opacity-80">{o === 'H' ? '1' : o === 'D' ? 'X' : '2'}</span>
+                    <CountUp value={o === 'H' ? p.home : o === 'D' ? p.draw : p.away} suffix="%" animate={justRevealed(m.id)} delay={o === 'H' ? 0 : o === 'D' ? 100 : 200} />
+                  </span>
+                ))}
+              </div>
+              {strongPick ? <span className="inline-block text-[11px] font-extrabold text-bg bg-accent px-2 py-0.5 rounded-full">Strong pick</span> : null}
+            </div>
+          ) : p ? (
+            <div className="flex items-center justify-between text-xs rounded-xl bg-surface2/70 px-3 py-2">
+              <span className="text-muted inline-flex items-center gap-1.5"><Lock /> Prediction locked</span>
+              <span className="text-accent font-semibold">Unlock</span>
+            </div>
+          ) : (
+            <div className="text-xs text-faint">No prediction yet</div>
+          )}
+        </Link>
+      )
+  }
 
   const liveMain = live[0]
   const fp = featured ? mainPred(featured) : null
@@ -341,55 +394,20 @@ export default function Home() {
         </div>
       </div>
 
+      {/* ---------- your favorites (first) ---------- */}
+      {favNext.length > 0 && (
+        <Section title="Your favorites" action={<Link to="/favorites" className="text-sm font-bold text-accent">All favorites →</Link>}>
+          <div className="rail flex gap-3.5 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 snap-x">
+            {favNext.map(m => nextCard(m))}
+          </div>
+        </Section>
+      )}
+
       {/* ---------- next matches ---------- */}
       {next.length > 0 && (
         <Section title="Next matches" action={<Link to="/matches" className="text-sm font-bold text-accent">All matches →</Link>}>
           <div className="rail flex gap-3.5 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 snap-x">
-            {next.map(m => {
-              const p = mainPred(m)
-              const pct = hasPct(p)
-              const strongPick = pct && topPct(p) >= 60
-              const k = p ? (p.pick || (pct ? (p.home >= p.draw && p.home >= p.away ? 'H' : p.away >= p.draw ? 'A' : 'D') : null)) : null
-              return (
-                <Link key={m.id} to={`/match/${m.id}`} className="card card-hover snap-start flex-shrink-0 w-[272px] p-4 flex flex-col gap-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-1.5 min-w-0 text-[11px] text-faint">
-                      {m.competition.emblem && <img src={m.competition.emblem} alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain" />}
-                      <span className="truncate">{m.competition.name}</span>
-                    </span>
-                    <span className="text-[11px] font-bold text-ink bg-surface2/80 px-2 py-0.5 rounded-full whitespace-nowrap">
-                      {new Date(m.utcDate).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                  <div className="space-y-2.5">
-                    <div className="flex items-center gap-3"><Crest team={m.homeTeam} size={32} /><span className="font-bold truncate">{tn(m.homeTeam)}</span></div>
-                    <div className="flex items-center gap-3"><Crest team={m.awayTeam} size={32} /><span className="font-bold truncate">{tn(m.awayTeam)}</span></div>
-                  </div>
-                  {pct && isCovered(m.id, m.status, true) ? (
-                    <RevealChip onReveal={() => revealMatch(m.id)} />
-                  ) : pct ? (
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-3 gap-1.5 text-center">
-                        {(['H', 'D', 'A'] as const).map(o => (
-                          <span key={o} className={`rounded-xl py-1.5 text-xs font-bold num ${k === o ? (o === 'H' ? 'bg-home/20 text-home' : o === 'D' ? 'bg-draw/20 text-draw' : 'bg-away/20 text-away') : 'bg-surface2/70 text-muted'}`}>
-                            <span className="block text-[10px] font-semibold opacity-80">{o === 'H' ? '1' : o === 'D' ? 'X' : '2'}</span>
-                            <CountUp value={o === 'H' ? p.home : o === 'D' ? p.draw : p.away} suffix="%" animate={justRevealed(m.id)} delay={o === 'H' ? 0 : o === 'D' ? 100 : 200} />
-                          </span>
-                        ))}
-                      </div>
-                      {strongPick ? <span className="inline-block text-[11px] font-extrabold text-bg bg-accent px-2 py-0.5 rounded-full">Strong pick</span> : null}
-                    </div>
-                  ) : p ? (
-                    <div className="flex items-center justify-between text-xs rounded-xl bg-surface2/70 px-3 py-2">
-                      <span className="text-muted inline-flex items-center gap-1.5"><Lock /> Prediction locked</span>
-                      <span className="text-accent font-semibold">Unlock</span>
-                    </div>
-                  ) : (
-                    <div className="text-xs text-faint">No prediction yet</div>
-                  )}
-                </Link>
-              )
-            })}
+            {next.map(m => nextCard(m))}
           </div>
         </Section>
       )}
