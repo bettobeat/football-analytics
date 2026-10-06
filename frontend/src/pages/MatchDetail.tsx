@@ -461,6 +461,33 @@ function MatchDetail() {
     return list.sort((a, b) => a.minute - b.minute || a.extra - b.extra)
   }, [details])
 
+  // Page sections as tabs: Prediction first, then Statistics, Lineups and the league table.
+  // The open tab lives in the URL hash (#stats, #lineups, #table) so a link can open it directly.
+  const [tab, setTab] = useState<TabId>(() => {
+    const h = (typeof window !== 'undefined' ? window.location.hash.slice(1) : '') as TabId
+    return TAB_IDS.includes(h) ? h : 'prediction'
+  })
+  const pickTab = (t: TabId) => {
+    setTab(t)
+    try { history.replaceState(null, '', t === 'prediction' ? window.location.pathname + window.location.search : `#${t}`) } catch { /* ignore */ }
+  }
+
+  // League table (fetched once per competition; the tab is hidden when there is none)
+  const compCode = details?.match.competition.code
+  const [tables, setTables] = useState<StandingsTable[] | null>(null)
+  useEffect(() => {
+    if (!compCode) return
+    let cancelled = false
+    setTables(null)
+    axios
+      .get(`${API_URL}/leagues/${compCode}/standings`)
+      .then(res => !cancelled && setTables(res.data.data?.standings || []))
+      .catch(() => !cancelled && setTables([]))
+    return () => {
+      cancelled = true
+    }
+  }, [compCode])
+
   if (loading) return <div className="max-w-5xl mx-auto px-4 py-16 text-center text-muted">Loading match…</div>
   if (error || !details)
     return (
@@ -505,8 +532,18 @@ function MatchDetail() {
   const pick: 'H' | 'D' | 'A' | null = p && !(p.locked && !p.pick) ? pickOfPrediction(p) : null
   const pickVar = pick === 'H' ? '--home' : pick === 'A' ? '--away' : '--draw'
 
+  const tableTotals = (tables || []).filter(t => t.type === 'TOTAL')
+  const tableInvolving = tableTotals.filter(t => t.table.some(r => r.team.id === home.id || r.team.id === away.id))
+  const tableShow = tableInvolving.length ? tableInvolving : tableTotals
+  const tabs: { id: TabId; label: string; hint: string; live?: boolean }[] = [
+    { id: 'prediction', label: 'Prediction', hint: '' },
+    { id: 'stats', label: 'Statistics', hint: live ? 'Live stats and match events' : done ? 'Match stats, events, form and head-to-head' : 'Recent form and head-to-head', live },
+    { id: 'lineups', label: 'Lineups', hint: hasLineups ? 'Official lineups' : probable ? 'Probable lineups' : 'Published about an hour before kick-off' },
+    ...(tables === null || tableShow.length ? [{ id: 'table' as TabId, label: 'Standings', hint: `${m.competition.name} table` }] : [])
+  ]
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
       {tabTitle && <h1 className="sr-only">{tabTitle}{m.competition?.name ? ` · ${m.competition.name}` : ''} prediction</h1>}
       <Link to="/matches" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink transition-colors">
         <span aria-hidden>←</span> All matches
@@ -573,276 +610,313 @@ function MatchDetail() {
         )}
       </div>
 
-      <div className="mt-6 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-start">
-        {/* ---------- Main column ---------- */}
-        <div className="space-y-6 min-w-0">
-          {/* Live stats first while the match is on */}
-          {live && (
-            <Section title="Live stats" note={m.minute ? `${m.minute}'${m.injuryTime ? `+${m.injuryTime}` : ''} · updates every minute` : 'updates every minute'}>
-              {statKeys.length > 0 && homeStats && awayStats ? (
-                <StatsPanel home={home} away={away} hs={homeStats} as={awayStats} keys={statKeys} />
+      {/* ---------- Tabs ---------- */}
+      <div className="sticky top-16 sm:top-[72px] z-30 -mx-4 sm:mx-0 mt-6 px-4 sm:px-0 py-2 bg-bg/80 backdrop-blur-xl">
+        <nav className="flex gap-1 p-1 rounded-full bg-surface2/60 border border-line/60 overflow-x-auto no-scrollbar" aria-label="Match sections">
+          {tabs.map(t => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => pickTab(t.id)}
+              aria-current={tab === t.id ? 'page' : undefined}
+              className={`flex-1 min-w-max inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
+                tab === t.id ? 'bg-accent text-bg shadow' : 'text-muted hover:text-ink'
+              }`}
+            >
+              {t.label}
+              {t.live && <span className={`w-1.5 h-1.5 rounded-full animate-pulseDot ${tab === t.id ? 'bg-bg' : 'bg-live'}`} />}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      <div className="mt-4 space-y-6 min-w-0">
+        {tab === 'prediction' && (
+          <>
+              {/* Prediction */}
+              <Section
+                title="Prediction"
+                note={p ? [modelInfo(p.model).tag, modelInfo(p.model).name.replace(new RegExp(`^${modelInfo(p.model).tag} · `), ''), p.confidence ? CONFIDENCE_LABEL[p.confidence] : null].filter(Boolean).join(' · ') : undefined}
+              >
+                {p && p.locked ? (
+                  <LockedPrediction pick={pick} home={home} away={away} matchId={m.id} status={m.status} onUnlocked={() => { setUnlockAnim(true); load(false) }} />
+                ) : p && pick ? (
+                  hidden || unlockAnim ? (
+                    <RevealCover
+                      key={unlockAnim ? 'auto' : 'cover'}
+                      autoStart={unlockAnim}
+                      onReveal={() => {
+                        setUnlockAnim(false)
+                        reveal()
+                      }}
+                    />
+                  ) : xiAnim ? (
+                    <RevealCover key="xi" autoStart onReveal={() => { setXiAnim(false); markXiSeen() }} />
+                  ) : p.beforeLineups && !xiSeen && ['SCHEDULED', 'TIMED'].includes(m.status) ? (
+                    <LineupUpdateCover before={p.beforeLineups} home={home} away={away} onReveal={() => setXiAnim(true)} />
+                  ) : (
+                  <>
+                    {models.length > 1 && (
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                        <div className="seg">
+                          {models.map(m => {
+                            const info = modelInfo(m.model)
+                            return (
+                              <button
+                                key={m.model}
+                                onClick={() => setModelId(m.model)}
+                                className={`seg-btn flex items-center gap-1.5 ${p.model === m.model ? 'seg-btn-active' : ''}`}
+                                title={info.desc}
+                              >
+                                <span className="font-bold">{info.tag}</span>
+                                <span className="hidden sm:inline">{info.name}</span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                        <span className="text-[11px] text-faint">{modelInfo(p.model).desc}</span>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-3 gap-3">
+                      <OutcomeTile k="H" label={home.shortName || home.name} v={p.home} active={pick === 'H'} roll={justRevealed(matchId)} delay={0} />
+                      <OutcomeTile k="D" label="Draw" v={p.draw} active={pick === 'D'} roll={justRevealed(matchId)} delay={120} />
+                      <OutcomeTile k="A" label={away.shortName || away.name} v={p.away} active={pick === 'A'} roll={justRevealed(matchId)} delay={240} />
+                    </div>
+                    {(() => {
+                      const opts = [
+                        { k: 'H' as const, label: home.shortName || home.name, v: p.home },
+                        { k: 'D' as const, label: 'Draw', v: p.draw },
+                        { k: 'A' as const, label: away.shortName || away.name, v: p.away }
+                      ].sort((x, y) => y.v - x.v)
+                      const top = opts[0]
+                      if (top.v >= 50)
+                        return (
+                          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${top.v >= 60 ? 'bg-accent/15 text-accent border-accent/40' : 'bg-surface2 text-ink border-line'}`}>
+                              {top.v >= 70 ? 'Very strong pick' : top.v >= 60 ? 'Strong pick' : 'Pick'}
+                            </span>
+                            <span className="text-muted">
+                              {top.label} <span className="num text-ink font-semibold">{Math.round(top.v)}%</span>
+                            </span>
+                          </div>
+                        )
+                      const pair = opts.slice(0, 2)
+                      return (
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                          <span className="px-2.5 py-1 rounded-full text-xs font-bold border bg-surface2 text-ink border-line">Close game · two options</span>
+                          <span className="text-muted">
+                            {pair[0].label} or {pair[1].label.toLowerCase() === 'draw' ? 'draw' : pair[1].label}{' '}
+                            <span className="num text-ink font-semibold">{Math.round(pair[0].v + pair[1].v)}%</span>
+                          </span>
+                        </div>
+                      )
+                    })()}
+                    <div className="flex h-2.5 gap-[3px] mt-4">
+                      <div className={`rounded-full bg-home ${pick === 'H' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.home}% - 3px)` }} />
+                      <div className={`rounded-full bg-draw ${pick === 'D' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.draw}% - 3px)` }} />
+                      <div className={`rounded-full bg-away ${pick === 'A' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.away}% - 3px)` }} />
+                    </div>
+
+                    {['SCHEDULED', 'TIMED'].includes(m.status) && (
+                      <LineupTip kickoff={kickoff} lineupsOut={hasLineups} usesLineups={p.model === 'grid-v3'} />
+                    )}
+
+                    {p.frozen && (
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
+                        <span className="px-2.5 py-1 rounded-full bg-surface2 border border-line font-semibold text-ink">Saved before kick-off</span>
+                        <span>This is exactly what we predicted before the game — it is never recalculated after the result.{p.frozen.full ? '' : ' The detailed breakdown was only stored from 26 Sept 2026.'}</span>
+                      </div>
+                    )}
+
+                    {p.beforeLineups && <LineupChange p={p} home={home} away={away} />}
+
+                    <PredictionStory
+                      p={p}
+                      home={home.shortName || home.name}
+                      away={away.shortName || away.name}
+                      upcoming={['SCHEDULED', 'TIMED'].includes(m.status)}
+                      friendly={/friendl/i.test(m.competition.name || '')}
+                    />
+                    {guessFirstOn() && ['SCHEDULED', 'TIMED'].includes(m.status) && (
+                      <div className="mt-2 text-right">
+                        <button type="button" onClick={() => hideMatch(matchId)} className="text-xs text-faint hover:text-ink underline underline-offset-4">Hide prediction again</button>
+                      </div>
+                    )}
+
+                    <GoalsPanel p={p} home={home} away={away} roll={justRevealed(matchId)} />
+
+                    {p.grid && (
+                      <details className="mt-4 group">
+                        <summary className="cursor-pointer text-xs text-muted hover:text-ink select-none">For experts: the full model table</summary>
+                        <GridBreakdown p={p} home={home} away={away} />
+                      </details>
+                    )}
+
+                    <details className="mt-4 group">
+                      <summary className="cursor-pointer text-xs text-muted hover:text-ink select-none">{p.grid ? 'Goal model behind the extras' : 'How this was calculated'}</summary>
+                      {p.model.startsWith('elo-') ? (
+                      <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-muted">
+                        <span>{home.shortName || home.name} Elo</span>
+                        <span className="num text-ink">{p.factors.homeAttack}</span>
+                        <span>{away.shortName || away.name} Elo</span>
+                        <span className="num text-ink">{p.factors.awayAttack}</span>
+                        <span>Home advantage (Elo points)</span>
+                        <span className="num text-ink">{p.factors.homeAdvantage}</span>
+                        <span>Squad value adjustment (Elo points, + favours {home.shortName || home.name})</span>
+                        <span className="num text-ink">{p.factors.homeForm > 0 ? '+' : ''}{p.factors.homeForm}</span>
+                        <span>Matches rated</span>
+                        <span className="num text-ink">{p.factors.gamesPlayed.home} / {p.factors.gamesPlayed.away}</span>
+                      </div>
+                      ) : (
+                      <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-muted">
+                        <span>{home.shortName || home.name} attack / defence</span>
+                        <span className="num text-ink">{p.factors.homeAttack} / {p.factors.homeDefence}</span>
+                        <span>{away.shortName || away.name} attack / defence</span>
+                        <span className="num text-ink">{p.factors.awayAttack} / {p.factors.awayDefence}</span>
+                        <span>Home advantage</span>
+                        <span className="num text-ink">×{p.factors.homeAdvantage}</span>
+                        <span>Evidence (weighted games)</span>
+                        <span className="num text-ink">{p.factors.gamesPlayed.home} / {p.factors.gamesPlayed.away}</span>
+                        <span>League average goals per team</span>
+                        <span className="num text-ink">{p.factors.leagueAvgGoals}</span>
+                        <span>Other likely scores</span>
+                        <span className="num text-ink">{p.topScores.slice(1).map(sc => `${sc.home}–${sc.away} (${Math.round(sc.prob)}%)`).join(' · ')}</span>
+                      </div>
+                      )}
+                      <p className="mt-3 text-xs text-faint">
+                        Strength = goals per game relative to the league average, adjusted for opponent quality and shrunk toward average
+                        early in the season (1.00 = average). Attack above 1 is good; defence below 1 is good.
+                      </p>
+                    </details>
+                  </>
+                  )
+                ) : (
+                  <p className="text-sm text-faint">No prediction available for this match yet.</p>
+                )}
+              </Section>
+
+              {(live || done) && p && !p.locked && !hidden && !unlockAnim && (
+                <Section title={live ? 'Live win probability' : 'How the game swung'} note="From our pre-match prediction, updated with the score, time and red cards">
+                  <WinProbability p={p} m={m} />
+                </Section>
+              )}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {tabs.filter(t => t.id !== 'prediction').map(t => (
+                <button key={t.id} type="button" onClick={() => pickTab(t.id)} className="card p-4 text-left hover:border-accent/50 transition-colors">
+                  <div className="font-display font-bold text-ink">{t.label} <span aria-hidden className="text-accent">→</span></div>
+                  <div className="text-xs text-muted mt-1">{t.hint}</div>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {tab === 'stats' && (
+          <>
+              {live && (
+                <Section title="Live stats" note={m.minute ? `${m.minute}'${m.injuryTime ? `+${m.injuryTime}` : ''} · updates every minute` : 'updates every minute'}>
+                  {statKeys.length > 0 && homeStats && awayStats ? (
+                    <StatsPanel home={home} away={away} hs={homeStats} as={awayStats} keys={statKeys} />
+                  ) : (
+                    <p className="text-sm text-muted">
+                      Our data provider doesn’t publish live statistics for this match (common for friendlies and some smaller
+                      competitions). Score, cards, goals and substitutions still update live.
+                    </p>
+                  )}
+                </Section>
+              )}
+              {/* Events */}
+              {events.length > 0 && (
+                <Section title="Match events">
+                  <ol className="relative">
+                    <div className="absolute left-1/2 top-0 bottom-0 w-px bg-line/70 -translate-x-1/2" />
+                    {events.map((e, i) => {
+                      const isHome = e.teamId === home.id
+                      return (
+                        <li key={i} className={`relative grid grid-cols-[1fr_56px_1fr] items-center py-1.5 text-sm ${isHome ? '' : ''}`}>
+                          <div className={`${isHome ? 'text-right pr-3' : ''}`}>
+                            {isHome && <EventText e={e} align="right" />}
+                          </div>
+                          <div className="flex items-center justify-center">
+                            <span className="num text-[11px] text-faint bg-surface px-1.5 py-0.5 rounded-md border border-line/60">
+                              {e.minute}'{e.extra ? `+${e.extra}` : ''}
+                            </span>
+                          </div>
+                          <div className={`${!isHome ? 'pl-3' : ''}`}>{!isHome && <EventText e={e} align="left" />}</div>
+                        </li>
+                      )
+                    })}
+                  </ol>
+                </Section>
+              )}
+              {/* Statistics */}
+              {!live && statKeys.length > 0 && homeStats && awayStats && (
+                <Section title="Statistics">
+                  <StatsPanel home={home} away={away} hs={homeStats} as={awayStats} keys={statKeys} />
+                </Section>
+              )}
+            {done && <Highlights matchId={matchId} />}
+
+            <Section title="Form" note="Last results">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+                <TeamPanel team={home} row={details.standings.home} recent={details.form.home} />
+                <TeamPanel team={away} row={details.standings.away} recent={details.form.away} />
+              </div>
+            </Section>
+
+            {details.head2head && details.head2head.aggregates.numberOfMatches > 0 ? (
+              <Section title={`Head-to-head · last ${details.head2head.aggregates.numberOfMatches}`}>
+                <H2H details={details} />
+              </Section>
+            ) : (
+              <p className="text-xs text-faint text-center">These teams have not met recently.</p>
+            )}
+          </>
+        )}
+
+        {tab === 'lineups' && (
+          <>
+              {/* Lineups */}
+              {hasLineups ? (
+                <Section title={live ? 'Live pitch' : done ? 'Lineups and match events' : 'Official lineups'} note={[home.formation, away.formation].filter(Boolean).join(' vs ') || undefined}>
+                  {live || done ? <LivePitch m={m} home={home} away={away} live={live} /> : <Pitch home={home} away={away} code={m.competition?.code} />}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-5">
+                    <Bench team={home} code={m.competition?.code} />
+                    <Bench team={away} code={m.competition?.code} />
+                  </div>
+                </Section>
+              ) : probable ? (
+                <Section title="Probable lineups" note={[probable.home.formation, probable.away.formation].filter(Boolean).join(' vs ') || undefined}>
+                  <Pitch home={probable.home} away={probable.away} probable code={m.competition?.code} />
+                  <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-faint">
+                    <span>
+                      Usual XI from each team's last{' '}
+                      <span className="num text-muted">{Math.max(probable.basedOn.home, probable.basedOn.away)}</span> matches · the badge shows how many
+                      of those a player started
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulseDot" />
+                      Replaced automatically when the official lineups are published (~1h before kick-off)
+                    </span>
+                  </div>
+                </Section>
               ) : (
-                <p className="text-sm text-muted">
-                  Our data provider doesn’t publish live statistics for this match (common for friendlies and some smaller
-                  competitions). Score, cards, goals and substitutions still update live.
+                <p className="text-xs text-faint text-center">
+                  {live || done ? 'No lineup data from the provider for this match.' : 'Lineups are published about an hour before kick-off.'}
                 </p>
               )}
-            </Section>
-          )}
+          </>
+        )}
 
-          {/* Prediction */}
-          <Section
-            title="Prediction"
-            note={p ? [modelInfo(p.model).tag, modelInfo(p.model).name.replace(new RegExp(`^${modelInfo(p.model).tag} · `), ''), p.confidence ? CONFIDENCE_LABEL[p.confidence] : null].filter(Boolean).join(' · ') : undefined}
-          >
-            {p && p.locked ? (
-              <LockedPrediction pick={pick} home={home} away={away} matchId={m.id} status={m.status} onUnlocked={() => { setUnlockAnim(true); load(false) }} />
-            ) : p && pick ? (
-              hidden || unlockAnim ? (
-                <RevealCover
-                  key={unlockAnim ? 'auto' : 'cover'}
-                  autoStart={unlockAnim}
-                  onReveal={() => {
-                    setUnlockAnim(false)
-                    reveal()
-                  }}
-                />
-              ) : xiAnim ? (
-                <RevealCover key="xi" autoStart onReveal={() => { setXiAnim(false); markXiSeen() }} />
-              ) : p.beforeLineups && !xiSeen && ['SCHEDULED', 'TIMED'].includes(m.status) ? (
-                <LineupUpdateCover before={p.beforeLineups} home={home} away={away} onReveal={() => setXiAnim(true)} />
-              ) : (
-              <>
-                {models.length > 1 && (
-                  <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-                    <div className="seg">
-                      {models.map(m => {
-                        const info = modelInfo(m.model)
-                        return (
-                          <button
-                            key={m.model}
-                            onClick={() => setModelId(m.model)}
-                            className={`seg-btn flex items-center gap-1.5 ${p.model === m.model ? 'seg-btn-active' : ''}`}
-                            title={info.desc}
-                          >
-                            <span className="font-bold">{info.tag}</span>
-                            <span className="hidden sm:inline">{info.name}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                    <span className="text-[11px] text-faint">{modelInfo(p.model).desc}</span>
-                  </div>
-                )}
-                <div className="grid grid-cols-3 gap-3">
-                  <OutcomeTile k="H" label={home.shortName || home.name} v={p.home} active={pick === 'H'} roll={justRevealed(matchId)} delay={0} />
-                  <OutcomeTile k="D" label="Draw" v={p.draw} active={pick === 'D'} roll={justRevealed(matchId)} delay={120} />
-                  <OutcomeTile k="A" label={away.shortName || away.name} v={p.away} active={pick === 'A'} roll={justRevealed(matchId)} delay={240} />
-                </div>
-                {(() => {
-                  const opts = [
-                    { k: 'H' as const, label: home.shortName || home.name, v: p.home },
-                    { k: 'D' as const, label: 'Draw', v: p.draw },
-                    { k: 'A' as const, label: away.shortName || away.name, v: p.away }
-                  ].sort((x, y) => y.v - x.v)
-                  const top = opts[0]
-                  if (top.v >= 50)
-                    return (
-                      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${top.v >= 60 ? 'bg-accent/15 text-accent border-accent/40' : 'bg-surface2 text-ink border-line'}`}>
-                          {top.v >= 70 ? 'Very strong pick' : top.v >= 60 ? 'Strong pick' : 'Pick'}
-                        </span>
-                        <span className="text-muted">
-                          {top.label} <span className="num text-ink font-semibold">{Math.round(top.v)}%</span>
-                        </span>
-                      </div>
-                    )
-                  const pair = opts.slice(0, 2)
-                  return (
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-                      <span className="px-2.5 py-1 rounded-full text-xs font-bold border bg-surface2 text-ink border-line">Close game · two options</span>
-                      <span className="text-muted">
-                        {pair[0].label} or {pair[1].label.toLowerCase() === 'draw' ? 'draw' : pair[1].label}{' '}
-                        <span className="num text-ink font-semibold">{Math.round(pair[0].v + pair[1].v)}%</span>
-                      </span>
-                    </div>
-                  )
-                })()}
-                <div className="flex h-2.5 gap-[3px] mt-4">
-                  <div className={`rounded-full bg-home ${pick === 'H' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.home}% - 3px)` }} />
-                  <div className={`rounded-full bg-draw ${pick === 'D' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.draw}% - 3px)` }} />
-                  <div className={`rounded-full bg-away ${pick === 'A' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.away}% - 3px)` }} />
-                </div>
-
-                {['SCHEDULED', 'TIMED'].includes(m.status) && (
-                  <LineupTip kickoff={kickoff} lineupsOut={hasLineups} usesLineups={p.model === 'grid-v3'} />
-                )}
-
-                {p.frozen && (
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
-                    <span className="px-2.5 py-1 rounded-full bg-surface2 border border-line font-semibold text-ink">Saved before kick-off</span>
-                    <span>This is exactly what we predicted before the game — it is never recalculated after the result.{p.frozen.full ? '' : ' The detailed breakdown was only stored from 26 Sept 2026.'}</span>
-                  </div>
-                )}
-
-                {p.beforeLineups && <LineupChange p={p} home={home} away={away} />}
-
-                <PredictionStory
-                  p={p}
-                  home={home.shortName || home.name}
-                  away={away.shortName || away.name}
-                  upcoming={['SCHEDULED', 'TIMED'].includes(m.status)}
-                  friendly={/friendl/i.test(m.competition.name || '')}
-                />
-                {guessFirstOn() && ['SCHEDULED', 'TIMED'].includes(m.status) && (
-                  <div className="mt-2 text-right">
-                    <button type="button" onClick={() => hideMatch(matchId)} className="text-xs text-faint hover:text-ink underline underline-offset-4">Hide prediction again</button>
-                  </div>
-                )}
-
-                <GoalsPanel p={p} home={home} away={away} roll={justRevealed(matchId)} />
-
-                {p.grid && (
-                  <details className="mt-4 group">
-                    <summary className="cursor-pointer text-xs text-muted hover:text-ink select-none">For experts: the full model table</summary>
-                    <GridBreakdown p={p} home={home} away={away} />
-                  </details>
-                )}
-
-                <details className="mt-4 group">
-                  <summary className="cursor-pointer text-xs text-muted hover:text-ink select-none">{p.grid ? 'Goal model behind the extras' : 'How this was calculated'}</summary>
-                  {p.model.startsWith('elo-') ? (
-                  <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-muted">
-                    <span>{home.shortName || home.name} Elo</span>
-                    <span className="num text-ink">{p.factors.homeAttack}</span>
-                    <span>{away.shortName || away.name} Elo</span>
-                    <span className="num text-ink">{p.factors.awayAttack}</span>
-                    <span>Home advantage (Elo points)</span>
-                    <span className="num text-ink">{p.factors.homeAdvantage}</span>
-                    <span>Squad value adjustment (Elo points, + favours {home.shortName || home.name})</span>
-                    <span className="num text-ink">{p.factors.homeForm > 0 ? '+' : ''}{p.factors.homeForm}</span>
-                    <span>Matches rated</span>
-                    <span className="num text-ink">{p.factors.gamesPlayed.home} / {p.factors.gamesPlayed.away}</span>
-                  </div>
-                  ) : (
-                  <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-muted">
-                    <span>{home.shortName || home.name} attack / defence</span>
-                    <span className="num text-ink">{p.factors.homeAttack} / {p.factors.homeDefence}</span>
-                    <span>{away.shortName || away.name} attack / defence</span>
-                    <span className="num text-ink">{p.factors.awayAttack} / {p.factors.awayDefence}</span>
-                    <span>Home advantage</span>
-                    <span className="num text-ink">×{p.factors.homeAdvantage}</span>
-                    <span>Evidence (weighted games)</span>
-                    <span className="num text-ink">{p.factors.gamesPlayed.home} / {p.factors.gamesPlayed.away}</span>
-                    <span>League average goals per team</span>
-                    <span className="num text-ink">{p.factors.leagueAvgGoals}</span>
-                    <span>Other likely scores</span>
-                    <span className="num text-ink">{p.topScores.slice(1).map(sc => `${sc.home}–${sc.away} (${Math.round(sc.prob)}%)`).join(' · ')}</span>
-                  </div>
-                  )}
-                  <p className="mt-3 text-xs text-faint">
-                    Strength = goals per game relative to the league average, adjusted for opponent quality and shrunk toward average
-                    early in the season (1.00 = average). Attack above 1 is good; defence below 1 is good.
-                  </p>
-                </details>
-              </>
-              )
-            ) : (
-              <p className="text-sm text-faint">No prediction available for this match yet.</p>
-            )}
-          </Section>
-
-          {/* How the chances moved: live win probability / after the game, how it swung (premium: it starts from our prediction) */}
-          {(live || done) && p && !p.locked && !hidden && !unlockAnim && (
-            <Section title={live ? 'Live win probability' : 'How the game swung'} note="From our pre-match prediction, updated with the score, time and red cards">
-              <WinProbability p={p} m={m} />
-            </Section>
-          )}
-
-          {/* Official highlights after full time */}
-          {done && <Highlights matchId={matchId} />}
-
-          {/* Events */}
-          {events.length > 0 && (
-            <Section title="Match events">
-              <ol className="relative">
-                <div className="absolute left-1/2 top-0 bottom-0 w-px bg-line/70 -translate-x-1/2" />
-                {events.map((e, i) => {
-                  const isHome = e.teamId === home.id
-                  return (
-                    <li key={i} className={`relative grid grid-cols-[1fr_56px_1fr] items-center py-1.5 text-sm ${isHome ? '' : ''}`}>
-                      <div className={`${isHome ? 'text-right pr-3' : ''}`}>
-                        {isHome && <EventText e={e} align="right" />}
-                      </div>
-                      <div className="flex items-center justify-center">
-                        <span className="num text-[11px] text-faint bg-surface px-1.5 py-0.5 rounded-md border border-line/60">
-                          {e.minute}'{e.extra ? `+${e.extra}` : ''}
-                        </span>
-                      </div>
-                      <div className={`${!isHome ? 'pl-3' : ''}`}>{!isHome && <EventText e={e} align="left" />}</div>
-                    </li>
-                  )
-                })}
-              </ol>
-            </Section>
-          )}
-
-          {/* Statistics */}
-          {!live && statKeys.length > 0 && homeStats && awayStats && (
-            <Section title="Statistics">
-              <StatsPanel home={home} away={away} hs={homeStats} as={awayStats} keys={statKeys} />
-            </Section>
-          )}
-
-          {/* Lineups */}
-          {hasLineups ? (
-            <Section title={live ? 'Live pitch' : done ? 'Lineups and match events' : 'Official lineups'} note={[home.formation, away.formation].filter(Boolean).join(' vs ') || undefined}>
-              {live || done ? <LivePitch m={m} home={home} away={away} live={live} /> : <Pitch home={home} away={away} code={m.competition?.code} />}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-5">
-                <Bench team={home} code={m.competition?.code} />
-                <Bench team={away} code={m.competition?.code} />
-              </div>
-            </Section>
-          ) : probable ? (
-            <Section title="Probable lineups" note={[probable.home.formation, probable.away.formation].filter(Boolean).join(' vs ') || undefined}>
-              <Pitch home={probable.home} away={probable.away} probable code={m.competition?.code} />
-              <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-faint">
-                <span>
-                  Usual XI from each team's last{' '}
-                  <span className="num text-muted">{Math.max(probable.basedOn.home, probable.basedOn.away)}</span> matches · the badge shows how many
-                  of those a player started
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulseDot" />
-                  Replaced automatically when the official lineups are published (~1h before kick-off)
-                </span>
-              </div>
-            </Section>
+        {tab === 'table' && (
+          tables === null ? (
+            <p className="text-sm text-muted text-center py-10">Loading table…</p>
+          ) : tableShow.length ? (
+            <LeagueTable tables={tableShow} name={details.match.competition.name} homeId={home.id} awayId={away.id} />
           ) : (
-            <p className="text-xs text-faint text-center">
-              {live || done ? 'No lineup data from the provider for this match.' : 'Lineups are published about an hour before kick-off.'}
-            </p>
-          )}
-        </div>
-
-        {/* ---------- Side column ---------- */}
-        <div className="space-y-6">
-          <Section title="Teams">
-            <div className="space-y-6">
-              <TeamPanel team={home} row={details.standings.home} recent={details.form.home} />
-              <div className="border-t border-line/60" />
-              <TeamPanel team={away} row={details.standings.away} recent={details.form.away} />
-            </div>
-          </Section>
-
-          <LeagueTable code={details.match.competition.code} name={details.match.competition.name} homeId={home.id} awayId={away.id} />
-
-          {details.head2head && details.head2head.aggregates.numberOfMatches > 0 && (
-            <Section title={`Head-to-head · last ${details.head2head.aggregates.numberOfMatches}`}>
-              <H2H details={details} />
-            </Section>
-          )}
-        </div>
+            <p className="text-sm text-faint text-center py-10">There is no league table for this competition.</p>
+          )
+        )}
       </div>
     </div>
   )
@@ -1364,41 +1438,30 @@ interface TableRow extends StandingRow {
   team: { id: number; name: string; shortName?: string; crest?: string }
 }
 
-function LeagueTable({ code, name, homeId, awayId }: { code: string; name: string; homeId: number; awayId: number }) {
-  const [tables, setTables] = useState<{ type: string; group?: string | null; table: TableRow[] }[] | null>(null)
+type TabId = 'prediction' | 'stats' | 'lineups' | 'table'
+const TAB_IDS: TabId[] = ['prediction', 'stats', 'lineups', 'table']
 
-  useEffect(() => {
-    let cancelled = false
-    setTables(null)
-    axios
-      .get(`${API_URL}/leagues/${code}/standings`)
-      .then(res => !cancelled && setTables(res.data.data?.standings || []))
-      .catch(() => !cancelled && setTables([]))
-    return () => {
-      cancelled = true
-    }
-  }, [code])
+type StandingsTable = { type: string; group?: string | null; table: TableRow[] }
 
-  if (tables === null) return null
-  const totals = tables.filter(t => t.type === 'TOTAL')
-  const involving = totals.filter(t => t.table.some(r => r.team.id === homeId || r.team.id === awayId))
-  const show = involving.length ? involving : totals
-  if (!show.length) return null
-
+function LeagueTable({ tables: show, name, homeId, awayId }: { tables: StandingsTable[]; name: string; homeId: number; awayId: number }) {
   return (
-    <Section title="League table" note={name}>
+    <Section title="Standings" note={name}>
       <div className="space-y-4">
         {show.map((t, i) => (
           <div key={i}>
             {t.group && <div className="label pb-2">{t.group.replace(/_/g, ' ')}</div>}
-            <table className="w-full text-xs">
+            <table className="w-full text-xs sm:text-sm">
               <thead>
-                <tr className="text-faint">
-                  <th className="text-left font-medium py-1 pl-2 w-7">#</th>
+                <tr className="text-faint text-xs">
+                  <th className="text-left font-medium py-1 pl-2 w-8">#</th>
                   <th className="text-left font-medium py-1">Team</th>
-                  <th className="text-right font-medium py-1 num">P</th>
-                  <th className="text-right font-medium py-1 num">GD</th>
-                  <th className="text-right font-medium py-1 pr-2 num">Pts</th>
+                  <th className="text-right font-medium py-1 num w-9">P</th>
+                  <th className="hidden sm:table-cell text-right font-medium py-1 num w-9">W</th>
+                  <th className="hidden sm:table-cell text-right font-medium py-1 num w-9">D</th>
+                  <th className="hidden sm:table-cell text-right font-medium py-1 num w-9">L</th>
+                  <th className="hidden sm:table-cell text-right font-medium py-1 num w-16">Goals</th>
+                  <th className="text-right font-medium py-1 num w-10">GD</th>
+                  <th className="text-right font-medium py-1 pr-2 num w-12">Pts</th>
                 </tr>
               </thead>
               <tbody>
@@ -1425,6 +1488,10 @@ function LeagueTable({ code, name, homeId, awayId }: { code: string; name: strin
                         </span>
                       </td>
                       <td className="py-1.5 text-right num text-muted">{r.playedGames}</td>
+                      <td className="hidden sm:table-cell py-1.5 text-right num text-muted">{r.won}</td>
+                      <td className="hidden sm:table-cell py-1.5 text-right num text-muted">{r.draw}</td>
+                      <td className="hidden sm:table-cell py-1.5 text-right num text-muted">{r.lost}</td>
+                      <td className="hidden sm:table-cell py-1.5 text-right num text-muted">{r.goalsFor}:{r.goalsAgainst}</td>
                       <td className={`py-1.5 text-right num ${r.goalDifference > 0 ? 'text-win' : r.goalDifference < 0 ? 'text-loss' : 'text-muted'}`}>
                         {r.goalDifference > 0 ? '+' : ''}
                         {r.goalDifference}
