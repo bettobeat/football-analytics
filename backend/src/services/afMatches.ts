@@ -928,6 +928,34 @@ async function storedFixturePart(fixtureId: number, kind: 'statistics' | 'lineup
   });
 }
 
+/**
+ * Load statistics + lineups of many finished games in ONE request (/fixtures?ids= takes up to 20 ids and returns
+ * each fixture with its statistics and lineups), and store them. Ten games cost 1 request instead of 15.
+ */
+async function prefetchFixtureParts(fixtureIds: number[]) {
+  const missing = fixtureIds.filter(id => (['statistics', 'lineups'] as const).some(k => !getExtra.get(id, k) && !cache.has(`part:${k}:${id}`)));
+  for (let i = 0; i < missing.length; i += 20) {
+    const chunk = missing.slice(i, i + 20);
+    let resp: any[] = [];
+    try {
+      resp = (await afGet('/fixtures', { ids: chunk.join('-') })).response || [];
+    } catch (e: any) {
+      logger.warn(`AF fixtures batch: ${e.message}`);
+      continue; // the per-game calls below still fill the gaps
+    }
+    const now = new Date().toISOString();
+    for (const f of resp) {
+      const id = f.fixture?.id;
+      if (!id) continue;
+      for (const kind of ['statistics', 'lineups'] as const) {
+        const part = f[kind] || [];
+        if (part.length) putExtra.run(id, kind, JSON.stringify(part), now);
+        else cache.set(`part:${kind}:${id}`, { data: [], expires: Date.now() + 24 * 3600 * 1000 });
+      }
+    }
+  }
+}
+
 const FINISHED_SHORT = new Set(['FT', 'AET', 'PEN']);
 const inflight = new Map<string, Promise<any>>();
 function once<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
@@ -981,6 +1009,7 @@ const AVG_KEYS: [string, string][] = [
 export async function teamAverages(afTeamId: number, n = 10) {
   return once(`avg:${afTeamId}:${n}`, 4 * 3600 * 1000, async () => {
     const games = await lastFinished(afTeamId, n);
+    await prefetchFixtureParts(games.map((f: any) => f.fixture.id));
     let gf = 0, ga = 0, cleanSheets = 0, btts = 0, over25 = 0, w = 0, d = 0, l = 0;
     const sums: Record<string, { sum: number; n: number }> = {};
     const list: any[] = [];
@@ -1031,6 +1060,7 @@ const POS_NAME: Record<string, string> = { G: 'Goalkeeper', D: 'Defence', M: 'Mi
 export async function probableXI(afTeamId: number, n = 5) {
   return once(`xi:${afTeamId}:${n}`, 4 * 3600 * 1000, async () => {
     const games = (await lastFinished(afTeamId, 10)).slice(0, n); // same request as the averages
+    await prefetchFixtureParts(games.map((f: any) => f.fixture.id));
     const ups: { date: string; formation: string | null; xi: any[] }[] = [];
     for (const f of games) {
       let lu: any[] = [];

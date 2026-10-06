@@ -895,15 +895,19 @@ function MatchDetail() {
               )}
             {done && <Highlights matchId={matchId} />}
 
-            <Section title="Average per match" note={`Last ${Math.max(xStats?.home.games || 0, xStats?.away.games || 0) || 10} games · all competitions`}>
+            <section>
+              <div className="flex items-baseline justify-between gap-3 mb-3 px-1">
+                <h2 className="font-display text-lg font-bold text-ink">Statistics</h2>
+                <span className="text-xs text-faint">Last {Math.max(xStats?.home.games || 0, xStats?.away.games || 0) || 10} games · all competitions</span>
+              </div>
               {xStats === undefined ? (
-                <p className="text-sm text-muted py-6 text-center">Loading the last 10 games of both teams…</p>
+                <div className="rounded-2xl border border-line/60 bg-surface2/30 p-10 text-sm text-muted text-center">Loading the last 10 games of both teams…</div>
               ) : xStats && (xStats.home.games || xStats.away.games) ? (
                 <AveragesPanel home={home} away={away} h={xStats.home} a={xStats.away} />
               ) : (
-                <p className="text-sm text-faint">No recent games found for these teams.</p>
+                <div className="rounded-2xl border border-line/60 bg-surface2/30 p-6 text-sm text-faint">No recent games found for these teams.</div>
               )}
-            </Section>
+            </section>
           </>
         )}
 
@@ -1574,54 +1578,60 @@ function avgValue(t: TeamAvg, k: string): number | null {
 }
 
 function AveragesPanel({ home, away, h, a }: { home: Team; away: Team; h: TeamAvg; a: TeamAvg }) {
-  const rows = AVG_ROWS.filter(r => avgValue(h, r.k) !== null && avgValue(a, r.k) !== null)
-  const fmt = (r: (typeof AVG_ROWS)[number], v: number) => (r.pct ? `${Math.round(v)}%` : v.toFixed(r.dec ?? 1).replace(/\.0$/, r.dec ? '.0' : ''))
-  const facts = (t: TeamAvg) => [
-    { label: 'W-D-L', value: `${t.record.won}-${t.record.draw}-${t.record.lost}` },
-    { label: 'Clean sheets', value: `${t.cleanSheets}/${t.games}` },
-    { label: 'Both scored', value: `${t.btts}/${t.games}` },
-    { label: 'Over 2.5 goals', value: `${t.over25}/${t.games}` }
-  ]
+  const rows: { label: string; hv: number; av: number; text: (v: number) => string; lowerBetter?: boolean; neutral?: boolean }[] = []
+  for (const r of AVG_ROWS) {
+    const hv = avgValue(h, r.k)
+    const av = avgValue(a, r.k)
+    if (hv === null || av === null) continue
+    rows.push({
+      label: r.label,
+      hv,
+      av,
+      lowerBetter: r.lowerBetter,
+      neutral: r.k === 'totalGoals',
+      text: v => (r.pct ? `${Math.round(v)}%` : r.dec ? v.toFixed(r.dec) : String(Math.round(v * 10) / 10))
+    })
+  }
+  // counts over the same games, in the same style
+  const n = Math.min(h.games, a.games)
+  if (n) {
+    const count = (v: number) => String(v)
+    rows.push({ label: `Wins (of ${n})`, hv: h.record.won, av: a.record.won, text: count })
+    rows.push({ label: 'Clean sheets', hv: h.cleanSheets, av: a.cleanSheets, text: count })
+    rows.push({ label: 'Both teams scored', hv: h.btts, av: a.btts, text: count, neutral: true })
+    rows.push({ label: 'Over 2.5 goals', hv: h.over25, av: a.over25, text: count, neutral: true })
+  }
   return (
-    <div>
-      <div className="flex items-center justify-between gap-3 mb-4">
+    <div className="rounded-2xl border border-line/60 bg-surface2/30 p-4 sm:p-6">
+      <div className="text-center text-[11px] font-bold uppercase tracking-[0.14em] text-accent mb-4">Average / match</div>
+      <div className="flex items-center justify-between gap-3 pb-4 border-b border-line/60">
         <span className="flex items-center gap-2 min-w-0">
           {home.crest && <img src={home.crest} alt="" className="w-6 h-6 object-contain flex-shrink-0" />}
-          <span className="font-display font-bold text-home truncate">{home.shortName || home.name}</span>
+          <span className="font-semibold text-ink truncate">{home.shortName || home.name}</span>
         </span>
         <span className="flex items-center gap-2 min-w-0 justify-end">
-          <span className="font-display font-bold text-away truncate text-right">{away.shortName || away.name}</span>
+          <span className="font-semibold text-ink truncate text-right">{away.shortName || away.name}</span>
           {away.crest && <img src={away.crest} alt="" className="w-6 h-6 object-contain flex-shrink-0" />}
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 mb-5">
-        {[h, a].map((t, i) => (
-          <div key={i} className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-            {facts(t).map(f => <Mini key={f.label} label={f.label} value={f.value} />)}
-          </div>
-        ))}
-      </div>
-
       <div className="divide-y divide-line/50">
         {rows.map(r => {
-          const hv = avgValue(h, r.k)!
-          const av = avgValue(a, r.k)!
-          const max = Math.max(hv, av) || 1
-          const better = hv === av ? null : (r.lowerBetter ? hv < av : hv > av) ? 'H' : 'A'
+          const total = r.hv + r.av || 1
+          const better = r.neutral || r.hv === r.av ? null : (r.lowerBetter ? r.hv < r.av : r.hv > r.av) ? 'H' : 'A'
           return (
-            <div key={r.k} className="py-2.5">
-              <div className="grid grid-cols-[56px_1fr_56px] items-center gap-2 mb-1.5">
-                <span className={`num font-bold ${better === 'H' ? 'text-ink' : 'text-muted font-medium'}`}>{fmt(r, hv)}</span>
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted text-center">{r.label}</span>
-                <span className={`num font-bold text-right ${better === 'A' ? 'text-ink' : 'text-muted font-medium'}`}>{fmt(r, av)}</span>
+            <div key={r.label} className="py-3">
+              <div className="grid grid-cols-[64px_1fr_64px] items-center gap-2 mb-2">
+                <span className={`num ${better === 'H' || (!better && r.hv >= r.av) ? 'font-bold text-ink' : 'text-muted'}`}>{r.text(r.hv)}</span>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted text-center">{r.label}</span>
+                <span className={`num text-right ${better === 'A' || (!better && r.av >= r.hv) ? 'font-bold text-ink' : 'text-muted'}`}>{r.text(r.av)}</span>
               </div>
               <div className="grid grid-cols-2 gap-1">
-                <div className="h-2 rounded-l-full bg-surface2 flex justify-end overflow-hidden">
-                  <div className={`h-full rounded-l-full ${better === 'H' ? 'bg-home' : 'bg-home/35'}`} style={{ width: `${(hv / max) * 100}%` }} />
+                <div className="h-2.5 rounded-l-full bg-surface2 flex justify-end overflow-hidden">
+                  <div className={`h-full rounded-l-sm ${better === 'H' ? 'bg-accent' : 'bg-ink/20'}`} style={{ width: `${(r.hv / total) * 100}%` }} />
                 </div>
-                <div className="h-2 rounded-r-full bg-surface2 overflow-hidden">
-                  <div className={`h-full rounded-r-full ${better === 'A' ? 'bg-away' : 'bg-away/35'}`} style={{ width: `${(av / max) * 100}%` }} />
+                <div className="h-2.5 rounded-r-full bg-surface2 overflow-hidden">
+                  <div className={`h-full rounded-r-sm ${better === 'A' ? 'bg-accent' : 'bg-ink/20'}`} style={{ width: `${(r.av / total) * 100}%` }} />
                 </div>
               </div>
             </div>
