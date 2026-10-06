@@ -178,7 +178,45 @@ function describeLc(lc: LeagueConv) {
  * synchronous call and puts the experiment's config back afterwards.
  */
 const LIVE_CONV = JSON.parse(JSON.stringify(CONV)) as typeof CONV;
-function withLiveConfig<T>(fn: () => T): T {
+
+/*
+ * A tuning applied by the full tuner (services/v3Tuner.ts, table v3_tuned) replaces the row weights and the
+ * conversion constants above — at start-up, or at once with /api/model/v3/tuned?reload=1.
+ */
+db.exec(`CREATE TABLE IF NOT EXISTS v3_tuned (id INTEGER PRIMARY KEY CHECK (id = 1), rel TEXT NOT NULL, conv TEXT NOT NULL, report TEXT, updated_at TEXT NOT NULL)`);
+const TUNABLE_CONV = ['gapScale', 'homeGap', 'drawPoisScale', 'drawStretch', 'drawGapK', 'drawClose', 'drawCloseSpan', 'gapCube', 'floorOutsider', 'floorDraw', 'drawCap', 'kDraw'];
+const CODED_REL = ROWS.map(r => ({ id: r.id, rel: { ...r.rel } }));
+const CODED_CONV = JSON.parse(JSON.stringify(CONV)) as typeof CONV;
+export function applyStoredTuning(): boolean {
+  const r: any = db.prepare(`SELECT rel, conv FROM v3_tuned WHERE id = 1`).get();
+  // back to the coded setting first (a cleared tuning, or a new one replacing an old one)
+  for (const c of CODED_REL) setRowRel(c.id, c.rel);
+  for (const k of TUNABLE_CONV) (CONV as any)[k] = k === 'drawCap' ? { ...CODED_CONV.drawCap } : (CODED_CONV as any)[k];
+  let applied = false;
+  if (r) {
+    try {
+      const rel = JSON.parse(r.rel) as Record<string, Record<MatchType, number>>;
+      const conv = JSON.parse(r.conv) as Record<string, any>;
+      for (const [id, v] of Object.entries(rel)) setRowRel(id, v);
+      for (const k of TUNABLE_CONV) if (conv[k] !== undefined) (CONV as any)[k] = k === 'drawCap' ? { ...CONV.drawCap, ...conv[k] } : conv[k];
+      applied = true;
+    } catch (e: any) {
+      logger.warn(`v3 tuning not applied: ${e.message}`);
+    }
+  }
+  Object.assign(LIVE_CONV, JSON.parse(JSON.stringify(CONV)));
+  return applied;
+}
+export function tunedStatus() {
+  const r: any = db.prepare(`SELECT rel, conv, report, updated_at FROM v3_tuned WHERE id = 1`).get();
+  return { applied: !!r, stored: r ? { rel: JSON.parse(r.rel), conv: JSON.parse(r.conv), report: r.report ? JSON.parse(r.report) : null, updatedAt: r.updated_at } : null, live: { rows: ROWS.map(x => ({ id: x.id, name: x.name, rel: x.rel })), conv: CONV } };
+}
+export function storeTuning(rel: Record<string, Record<MatchType, number>>, conv: Record<string, any>, report: any) {
+  db.prepare(`INSERT OR REPLACE INTO v3_tuned (id, rel, conv, report, updated_at) VALUES (1, ?, ?, ?, ?)`).run(JSON.stringify(rel), JSON.stringify(conv), JSON.stringify(report), new Date().toISOString());
+}
+export function clearTuning() { db.exec(`DELETE FROM v3_tuned`); applyStoredTuning(); }
+if (applyStoredTuning()) logger.info('v3: tuned weights applied from v3_tuned');
+export function withLiveConfig<T>(fn: () => T): T {
   const savedConv = JSON.parse(JSON.stringify(CONV));
   const savedRel = REL_OVERRIDE;
   Object.assign(CONV, JSON.parse(JSON.stringify(LIVE_CONV)));
@@ -311,7 +349,7 @@ function seasonOf(date: string) {
  * side's first game, "last division seen" is still the old one, so without the hint it would be rated
  * against second-division teams (Hamburg 68% at Gladbach on matchday 1).
  */
-const weekDivs = (week: HistoryMatch[]) => {
+export const weekDivs = (week: HistoryMatch[]) => {
   const m = new Map<string, string>();
   for (const x of week) { m.set(x.home, x.division); m.set(x.away, x.division); }
   return m;
@@ -597,6 +635,18 @@ function poissonDraw(lh: number, la: number) {
 
 /** Pre-split numbers of the last scoreMatch call (used by the per-league tuner). */
 let LAST_RAW: { gap: number; drawRaw: number; type: MatchType } | null = null;
+/** Every row value of the last scoreMatch call (used by the full tuner, services/v3Tuner.ts). */
+export interface ScoreDetail {
+  div: string; type: MatchType;
+  rows: { id: string; vh: number; va: number; counted: boolean }[];
+  draws: { id: string; v: number }[];
+  poisDraw: number; leagueDraw: number; derby: boolean; evidence: number;
+}
+export let LAST_DETAIL: ScoreDetail | null = null;
+export const TEAM_ROW_IDS = ['#1', '#13', '#12', '#1e', '#19', '#14', '#10', '#23', '#7', '#21'];
+export const DRAW_ROW_IDS = ['#15', '#30', '#16'];
+export function rowRel(id: string): Record<MatchType, number> | null { const r = ROWS.find(x => x.id === id); return r ? { ...r.rel } : null; }
+export function setRowRel(id: string, rel: Record<MatchType, number>) { const r = ROWS.find(x => x.id === id); if (r) r.rel = { ...rel }; }
 
 /** Final step: draw pot + gap → home / draw / away points (unrounded), with optional league settings. */
 function splitPoints(gap0: number, drawRaw: number, type: MatchType, lc?: LeagueConv) {
@@ -626,6 +676,7 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   const h2h = h2hLast10(all, home, away, asOf);
   const rows: NonNullable<Prediction['grid']>['rows'] = [];
   let totH = 0, totA = 0, drawFactors = 0, relSum = 0;
+  const detRows: ScoreDetail['rows'] = [], detDraws: ScoreDetail['draws'] = [];
 
   const push = (def: RowDef, vh: number, va: number, note?: string, counted = true) => {
     const rel = REL_OVERRIDE?.[def.id]?.[type] ?? def.rel[type];
@@ -634,10 +685,12 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
       const ph = vh * rel, pa = va * rel;
       totH += ph; totA += pa; if (counted) relSum += rel;
       rows.push({ id: def.id, name: def.name, rel, home: vh, away: va, edge: Math.round((ph - pa) * 10) / 10, note: note || def.note });
+      detRows.push({ id: def.id, vh, va, counted });
     } else {
       // draw rows: a single value (how much this pushes toward the draw), stored in both columns
       drawFactors += (vh - 5) * rel * CONV.kDraw;
       rows.push({ id: def.id, name: def.name, rel, home: vh, away: vh, edge: 0, note: note || def.note });
+      detDraws.push({ id: def.id, v: vh });
     }
   };
   const R = (id: string) => ROWS.find(r => r.id === id)!;
@@ -697,6 +750,7 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   let drawRaw = base + drawFactors + volatility + closeness;
   drawRaw = CONV.drawCenter + CONV.drawStretch * (drawRaw - CONV.drawCenter) - CONV.drawGapK * 1000 * Math.abs(gap - CONV.homeGap);
   LAST_RAW = { gap, drawRaw, type };
+  LAST_DETAIL = { div, type, rows: detRows, draws: detDraws, poisDraw: poissonDraw(lamH, lamA), leagueDraw, derby, evidence: Math.min(h.played, a.played) };
 
   // --- split the 1000 points (with this league's own settings, if any)
   const lc = CONV.useLeagueConv ? LEAGUE_CONV.get(div) : undefined;

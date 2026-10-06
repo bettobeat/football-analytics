@@ -47,6 +47,7 @@ import { highlightsFor, highlightsStatus, lastCandidates } from './services/high
 import { rebuildPlayerQuality, playerQualityTable } from './services/playerQuality';
 import { db } from './db';
 import { listFavorites, addFavorites, removeFavorite, MAX_FAVORITES } from './services/favorites';
+import { tuneV3Full, tuneStatus, isTuning } from './services/v3Tuner';
 import { normalizeName } from './services/history';
 import { markFresh, markFailed } from './services/freshness';
 import { dataHealth, startDataHealthScheduler } from './services/dataHealth';
@@ -57,7 +58,7 @@ import {
   sendVerification, verifyEmail, requestPasswordReset, resetPassword, setMarketingOptIn, usersCsv, verificationRequired
 } from './services/auth';
 import { playerDataStatus, teamPlayers } from './services/playerData';
-import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, backfillV3, setRelOverride, SweepVariant, tuneLeaguesV3, leagueTuneProgress, leagueConvStatus, clearLeagueConv } from './services/gridModel';
+import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, backfillV3, setRelOverride, SweepVariant, tuneLeaguesV3, leagueTuneProgress, leagueConvStatus, clearLeagueConv, tunedStatus, clearTuning, applyStoredTuning } from './services/gridModel';
 
 const isDev = (process.env.NODE_ENV || 'development') !== 'production';
 
@@ -1289,6 +1290,31 @@ app.get('/api/players/team', (req, res) => {
 app.post('/api/backtest/sweep', sweepHandler);
 app.get('/api/backtest/sweep/result', (_req, res) => {
   res.json({ data: sweeping ? { running: true, progress: sweepProgress } : lastSweep, timestamp: new Date().toISOString() });
+});
+
+// Full v3 tuner: every row weight and conversion constant fitted on whole seasons, scored on a later one
+//   GET /api/model/v3/tune?train=2425,2526&test=2627[&since=YYYY-MM-DD][&rounds=80][&lambda=0][&shared=1][&lc=0][&obj=brier][&all=1][&only=rel|conv|#1,...][&freeze=...][&apply=1]
+//   GET /api/model/v3/tune/result · GET /api/model/v3/tuned[?clear=1]
+app.get('/api/model/v3/tune', (req, res) => {
+  if (isTuning() || leagueTuning || sweeping || backtestProgressV3()) { res.status(409).json({ error: 'A tune, sweep or backtest is already running' }); return; }
+  const q = req.query as Record<string, string>;
+  const list = (v?: string) => (v ? String(v).split(',').map(x => x.trim()).filter(Boolean) : []);
+  const opt = {
+    train: list(q.train || '2425,2526'), test: list(q.test || '2627'), since: q.since || null,
+    rounds: q.rounds ? parseInt(q.rounds, 10) : 80, lambda: q.lambda ? parseFloat(q.lambda) : 0,
+    shared: q.shared === '1', lc: q.lc !== '0', obj: (q.obj === 'brier' ? 'brier' : 'll') as 'll' | 'brier',
+    apply: q.apply === '1', allDivs: q.all === '1', freeze: list(q.freeze), only: list(q.only)
+  };
+  tuneV3Full(opt).then(() => logger.info('v3 full tune finished')).catch(err => logger.error('v3 full tune failed', { message: err.message }));
+  res.json({ data: { started: true, options: opt }, timestamp: new Date().toISOString() });
+});
+app.get('/api/model/v3/tune/result', (_req, res) => {
+  res.json({ data: tuneStatus(), timestamp: new Date().toISOString() });
+});
+app.get('/api/model/v3/tuned', (req, res) => {
+  if (req.query.clear === '1') { clearTuning(); res.json({ data: { cleared: true, live: tunedStatus().live } }); return; }
+  if (req.query.reload === '1') { const ok = applyStoredTuning(); res.json({ data: { reloaded: ok, ...tunedStatus() } }); return; }
+  res.json({ data: tunedStatus(), timestamp: new Date().toISOString() });
 });
 
 // Per-league v3 settings (draw / home advantage / favourite strength per division), fitted on one season and
