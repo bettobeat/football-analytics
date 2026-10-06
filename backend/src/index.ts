@@ -31,7 +31,7 @@ import { clvTick, clvReport, startClvScheduler, clvProbe } from './services/clv'
 import {
   isAfMatchId, isAfCode, afUpcoming, afLive, afWithPredictions, getAfMatchDetails, getAfStandings, getAfScorers, getAfRecent,
   afCompetitions, pollAfLive, startAfMatchesScheduler, afWindowStatus, refreshAfWindow, onAfWindow, isKnownAfFixture, afExtrasForFd, withAfOdds, backfillAfOdds,
-  afTeamsOf, afTeamsByAfMatchId, teamAverages, probableXI, lastMeetings, AF_OFFSET
+  afTeamsOf, afTeamsByAfMatchId, warmMatchExtras, teamAverages, probableXI, lastMeetings, AF_OFFSET
 } from './services/afMatches';
 import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNationalEloScheduler, nationalGoalsSensitivity, tuneNational, nationalTuneStatus } from './services/nationalElo';
 import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler, clubValueReport } from './services/clubElo';
@@ -1565,6 +1565,13 @@ server.listen(PORT, () => {
   startClvScheduler();
   // Extra competitions (national teams, Europa/Conference League, Israel, Saudi, more European leagues)
   startAfMatchesScheduler();
+  // Match-page tabs (averages, expected XI, H2H) prepared ahead for the next 48h, every 2 hours
+  const warmExtras = async () => {
+    const fd = await footballDataAPI.getUpcomingMatches(3).catch(() => [] as any[]);
+    await warmMatchExtras([...fd, ...afUpcoming(3)], 48);
+  };
+  setTimeout(() => warmExtras().catch(() => undefined), 4 * 60 * 1000);
+  setInterval(() => warmExtras().catch(() => undefined), 2 * 3600 * 1000);
   // National-team Elo from international results since 2014 (API-Football)
   startNationalEloScheduler();
   // European club Elo (UEFA cups + domestic results + squad values)

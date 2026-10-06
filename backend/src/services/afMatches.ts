@@ -699,7 +699,7 @@ async function afTeamForm(afTeamId: number) {
 }
 
 async function afH2H(homeAf: number, awayAf: number, homeId: number, awayId: number) {
-  return cached(`h2h:${homeAf}-${awayAf}`, 6 * 3600 * 1000, async () => {
+  return cached(`h2h:${homeAf}-${awayAf}`, 12 * 3600 * 1000, async () => {
     const j = await afGet('/fixtures/headtohead', { h2h: `${homeAf}-${awayAf}`, last: 16 });
     // the last 10 meetings that were played, however long ago, newest first
     const matches = (j.response || []).map(toFdMatch).filter((m: any) => m.status === 'FINISHED')
@@ -940,7 +940,7 @@ function once<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T>
 
 /** A team's last `n` finished games (raw API-Football fixtures, newest first). */
 async function lastFinished(afTeamId: number, n: number): Promise<any[]> {
-  return once(`lastfin:${afTeamId}:${n}`, 3 * 3600 * 1000, async () => {
+  return once(`lastfin:${afTeamId}:${n}`, 4 * 3600 * 1000, async () => {
     const j = await afGet('/fixtures', { team: afTeamId, last: n + 6 });
     return (j.response || [])
       .filter((f: any) => FINISHED_SHORT.has(f.fixture?.status?.short))
@@ -979,7 +979,7 @@ const AVG_KEYS: [string, string][] = [
 
 /** Average per game over a team's last `n` finished games: goals for/against always, the rest where the provider has statistics. */
 export async function teamAverages(afTeamId: number, n = 10) {
-  return once(`avg:${afTeamId}:${n}`, 3 * 3600 * 1000, async () => {
+  return once(`avg:${afTeamId}:${n}`, 4 * 3600 * 1000, async () => {
     const games = await lastFinished(afTeamId, n);
     let gf = 0, ga = 0, cleanSheets = 0, btts = 0, over25 = 0, w = 0, d = 0, l = 0;
     const sums: Record<string, { sum: number; n: number }> = {};
@@ -1029,8 +1029,8 @@ const POS_NAME: Record<string, string> = { G: 'Goalkeeper', D: 'Defence', M: 'Mi
  * position of that formation the player who played there most often (latest game wins a tie).
  */
 export async function probableXI(afTeamId: number, n = 5) {
-  return once(`xi:${afTeamId}:${n}`, 3 * 3600 * 1000, async () => {
-    const games = await lastFinished(afTeamId, n);
+  return once(`xi:${afTeamId}:${n}`, 4 * 3600 * 1000, async () => {
+    const games = (await lastFinished(afTeamId, 10)).slice(0, n); // same request as the averages
     const ups: { date: string; formation: string | null; xi: any[] }[] = [];
     for (const f of games) {
       let lu: any[] = [];
@@ -1097,4 +1097,44 @@ export async function probableXI(afTeamId: number, n = 5) {
 /** The last `n` meetings of two teams, however long ago (API-Football keeps history back to ~2010 and earlier for big leagues). */
 export async function lastMeetings(homeAf: number, awayAf: number) {
   return afH2H(homeAf, awayAf, AF_OFFSET + homeAf, AF_OFFSET + awayAf);
+}
+
+/**
+ * Build the match-page tabs (last-10 averages, expected XI, last-10 meetings) for every game in the next `hours`,
+ * soonest first, so visitors never wait for them. Finished games' stats/lineups are stored for good, so after the
+ * first pass a team costs about one request (its latest results). Stops before eating the reserve kept for live use.
+ */
+let warming = false;
+export async function warmMatchExtras(matches: any[], hours = 48) {
+  if (warming || !afConfigured()) return;
+  warming = true;
+  const t0 = Date.now();
+  let done = 0, skipped = 0;
+  try {
+    const horizon = Date.now() + hours * 3600 * 1000;
+    const list = matches
+      .filter(m => { const t = new Date(m.utcDate).getTime(); return t > Date.now() - 3 * 3600 * 1000 && t <= horizon; })
+      .sort((a, b) => a.utcDate.localeCompare(b.utcDate));
+    const seen = new Set<number>();
+    for (const m of list) {
+      if (afRemaining() < 3500) { skipped = list.length - done; break; }
+      try {
+        const teams = await afTeamsOf(m);
+        if (!teams) continue;
+        for (const id of [teams.home, teams.away]) {
+          if (seen.has(id)) continue;
+          seen.add(id);
+          await teamAverages(id, 10);
+          await probableXI(id, 5);
+        }
+        await lastMeetings(teams.home, teams.away);
+        done++;
+      } catch (e: any) {
+        logger.warn(`Match extras warm-up ${m.id}: ${e.message}`);
+      }
+    }
+    logger.info(`Match extras ready for ${done} matches (${seen.size} teams) in ${Math.round((Date.now() - t0) / 1000)}s${skipped ? `, ${skipped} left for later (API budget)` : ''}`);
+  } finally {
+    warming = false;
+  }
 }
