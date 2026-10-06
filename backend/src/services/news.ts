@@ -36,7 +36,7 @@ const tag = (block: string, name: string) => {
 };
 
 async function fetchFeed(f: { source: string; url: string }): Promise<NewsItem[]> {
-  const res = await fetch(f.url, { signal: AbortSignal.timeout(8000), headers: { 'User-Agent': 'BetToBeat/1.0 (+https://bettobeat.com)' } });
+  const res = await fetch(f.url, { signal: AbortSignal.timeout(8000), headers: { 'User-Agent': 'SportLikely/1.0 (+https://sportlikely.com)' } });
   if (!res.ok) throw new Error(`${f.source}: HTTP ${res.status}`);
   const xml = await res.text();
   const items: NewsItem[] = [];
@@ -80,7 +80,7 @@ async function previewImage(link: string): Promise<string | null> {
   if (ogCache.has(link)) return ogCache.get(link)!;
   let img: string | null = null;
   try {
-    const res = await fetch(link, { signal: AbortSignal.timeout(6000), headers: { 'User-Agent': 'BetToBeat/1.0 (+https://bettobeat.com)' } });
+    const res = await fetch(link, { signal: AbortSignal.timeout(6000), headers: { 'User-Agent': 'SportLikely/1.0 (+https://sportlikely.com)' } });
     if (res.ok) {
       const html = (await res.text()).slice(0, 300_000);
       const m = html.match(/<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["'][^>]*content=["']([^"']+)["']/i)

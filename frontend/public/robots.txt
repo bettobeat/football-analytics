@@ -5,4 +5,4 @@ Disallow: /account
 Disallow: /verify
 Disallow: /forgot
 
-Sitemap: https://bettobeat.com/sitemap.xml
+Sitemap: https://sportlikely.com/sitemap.xml

@@ -1,7 +1,7 @@
 /**
  * Outgoing email (verification codes, password reset).
  * Provider: Resend (RESEND_API_KEY) or Brevo (BREVO_API_KEY). From address: EMAIL_FROM,
- * e.g. "Bet To Beat <no-reply@bettobeat.com>" — the domain must be verified with the provider.
+ * e.g. "SportLikely <no-reply@sportlikely.com>" — the domain must be verified with the provider.
  * With no provider configured, email is off and sign-ups are not asked for a code.
  */
 import axios from 'axios';
@@ -9,14 +9,14 @@ import logger from '../utils/logger';
 
 const RESEND_KEY = process.env.RESEND_API_KEY || '';
 const BREVO_KEY = process.env.BREVO_API_KEY || '';
-const FROM = process.env.EMAIL_FROM || 'Bet To Beat <no-reply@bettobeat.com>';
+const FROM = process.env.EMAIL_FROM || 'SportLikely <no-reply@sportlikely.com>';
 
 export const emailProvider: 'resend' | 'brevo' | null = RESEND_KEY ? 'resend' : BREVO_KEY ? 'brevo' : null;
 export const emailEnabled = !!emailProvider;
 
 function parseFrom(from: string): { name: string; email: string } {
   const m = from.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
-  return m ? { name: m[1] || 'Bet To Beat', email: m[2] } : { name: 'Bet To Beat', email: from.trim() };
+  return m ? { name: m[1] || 'SportLikely', email: m[2] } : { name: 'SportLikely', email: from.trim() };
 }
 
 export async function sendEmail(to: string, subject: string, html: string, text: string): Promise<void> {
@@ -39,7 +39,7 @@ export async function sendEmail(to: string, subject: string, html: string, text:
 
 /* ---------- shared look for every email we send ---------- */
 
-export const SITE = `https://${process.env.CANONICAL_HOST || 'bettobeat.com'}`;
+export const SITE = `https://${process.env.CANONICAL_HOST || 'sportlikely.com'}`;
 export const C = { ink: '#111419', muted: '#646c78', faint: '#969da8', line: '#e2e5ea', soft: '#f4f5f7', chip: '#f0f2f5', green: '#10a35a', amber: '#d98a06', red: '#d64545' };
 export const esc = (x: unknown) => String(x ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -62,7 +62,7 @@ export function layout(o: { preheader: string; label?: string; body: string; cta
     ${o.body}
     ${btn}
   </table>
-  <p style="max-width:560px;font-size:11px;line-height:1.5;color:${C.faint};margin:16px auto 0">${o.footer ? `${o.footer}<br>` : ''}Bet To Beat · <a href="${SITE}" style="color:${C.faint}">bettobeat.com</a></p>
+  <p style="max-width:560px;font-size:11px;line-height:1.5;color:${C.faint};margin:16px auto 0">${o.footer ? `${o.footer}<br>` : ''}SportLikely · <a href="${SITE}" style="color:${C.faint}">sportlikely.com</a></p>
 </td></tr></table></body></html>`;
 }
 
@@ -82,28 +82,28 @@ function codeEmail(title: string, intro: string, code: string, outro: string) {
         <p style="font-size:13px;line-height:1.5;color:#646c78;margin:20px 0 24px">${outro}</p>
       </td></tr>
     </table>
-    <p style="font-size:11px;color:#969da8;margin-top:16px">Bet To Beat · bettobeat.com</p>
+    <p style="font-size:11px;color:#969da8;margin-top:16px">SportLikely · sportlikely.com</p>
   </td></tr></table></body></html>`;
-  const text = `${title}\n\n${intro}\n\n${code}\n\n${outro}\n\nBet To Beat · bettobeat.com`;
+  const text = `${title}\n\n${intro}\n\n${code}\n\n${outro}\n\nSportLikely · sportlikely.com`;
   return { html, text };
 }
 
 export function sendVerificationCode(to: string, code: string) {
   const { html, text } = codeEmail(
     'Confirm your email',
-    'Enter this code on Bet To Beat to confirm your email address:',
+    'Enter this code on SportLikely to confirm your email address:',
     code,
     'The code is valid for 10 minutes. If you didn’t create an account, you can ignore this email.'
   );
-  return sendEmail(to, `${code} is your Bet To Beat code`, html, text);
+  return sendEmail(to, `${code} is your SportLikely code`, html, text);
 }
 
 export function sendResetCode(to: string, code: string) {
   const { html, text } = codeEmail(
     'Reset your password',
-    'Enter this code on Bet To Beat to choose a new password:',
+    'Enter this code on SportLikely to choose a new password:',
     code,
     'The code is valid for 10 minutes. If you didn’t ask to reset your password, you can ignore this email — your password stays the same.'
   );
-  return sendEmail(to, `${code} is your Bet To Beat reset code`, html, text);
+  return sendEmail(to, `${code} is your SportLikely reset code`, html, text);
 }

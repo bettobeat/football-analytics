@@ -144,7 +144,7 @@ const upsertSync = db.prepare(
 
 async function fetchCSV(division: string, season: string): Promise<string> {
   const url = `${BASE}/${season}/${division}.csv`;
-  const res = await fetch(url, { headers: { 'User-Agent': 'BetToBeat/1.0' } });
+  const res = await fetch(url, { headers: { 'User-Agent': 'SportLikely/1.0' } });
   if (!res.ok) throw new Error(`${url} → HTTP ${res.status}`);
   return res.text();
 }

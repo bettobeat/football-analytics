@@ -119,7 +119,7 @@ export default function Team() {
   }, [id, sp, access])
 
   useEffect(() => {
-    if (data) document.title = t("{0} · Bet To Beat", { 0: data.team.name })
+    if (data) document.title = t("{0} · SportLikely", { 0: data.team.name })
   }, [data])
 
   const groups = useMemo(() => {

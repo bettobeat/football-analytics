@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 
 const UPDATED = '6 October 2026'
-const CONTACT = 'accessibility@bettobeat.com' // the accessibility contact (set up the inbox or change the address)
+const CONTACT = 'accessibility@sportlikely.com' // the accessibility contact (set up the inbox or change the address)
 
 /** Accessibility statement (Israeli regulations / IS 5568, EU Accessibility Act), in English and Hebrew. */
 export default function Accessibility() {
@@ -10,7 +10,7 @@ export default function Accessibility() {
       <section className="space-y-4">
         <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">Accessibility statement</h1>
         <p className="text-muted">
-          Bet To Beat wants every visitor to be able to use the site, including people with disabilities. We work to the Israeli
+          SportLikely wants every visitor to be able to use the site, including people with disabilities. We work to the Israeli
           accessibility regulations (Equal Rights for Persons with Disabilities, service accessibility regulations 2013, Israeli
           Standard 5568) and to WCAG 2.1 level AA, which also covers the EU Accessibility Act.
         </p>

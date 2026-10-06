@@ -126,7 +126,7 @@ export default function Player() {
   }, [id, params, nav])
 
   useEffect(() => {
-    if (data?.player.name) document.title = tt("{0} · Bet To Beat", { 0: data.player.name })
+    if (data?.player.name) document.title = tt("{0} · SportLikely", { 0: data.player.name })
   }, [data])
 
   if (error)

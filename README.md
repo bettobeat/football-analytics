@@ -1,4 +1,4 @@
-# Bet To Beat
+# SportLikely
 
 Football match-prediction platform. Real fixtures, live scores and a statistical
 outcome model for the big European leagues.

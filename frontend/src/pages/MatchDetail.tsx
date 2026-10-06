@@ -366,10 +366,10 @@ function MatchDetail() {
     load(true)
   }, [matchId])
 
-  // browser tab: "Arsenal vs Chelsea · Bet To Beat"
+  // browser tab: "Arsenal vs Chelsea · SportLikely"
   const tabTitle = details ? `${details.match.homeTeam.shortName || details.match.homeTeam.name} vs ${details.match.awayTeam.shortName || details.match.awayTeam.name}` : ''
   useEffect(() => {
-    if (tabTitle) document.title = tt("{0} · Bet To Beat", { 0: tabTitle })
+    if (tabTitle) document.title = tt("{0} · SportLikely", { 0: tabTitle })
   }, [tabTitle])
 
   // Live scores arrive over the socket; full details (events, lineups) are re-fetched on a timer:

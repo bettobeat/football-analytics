@@ -1,4 +1,4 @@
-# Bet To Beat — single image: Express API + built React site + SQLite on a volume.
+# SportLikely — single image: Express API + built React site + SQLite on a volume.
 # Node 24 (node:sqlite is built in). Used by Railway (see railway.json) or any Docker host.
 
 # ---- 1. build the frontend ----

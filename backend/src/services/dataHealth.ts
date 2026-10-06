@@ -239,7 +239,7 @@ export function healthEmail(failing: Check[], all: Check[]) {
     footer: 'You get at most one alert every 6 hours. It stops by itself once the feed recovers.'
   });
   const text = [
-    `Bet To Beat · data alert · ${when}`,
+    `SportLikely · data alert · ${when}`,
     'Failing for 30+ minutes:',
     ...failing.map(c => `- ${c.label}: ${c.detail}${c.items?.length ? '\n    ' + c.items.slice(0, 6).join('\n    ') : ''}`),
     '',

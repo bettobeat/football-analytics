@@ -216,7 +216,7 @@ export default function Premium() {
       </div>
 
       <p className="mt-8 text-center text-xs text-faint max-w-xl mx-auto">
-        {t("3-day money-back guarantee on every plan: not for you? Ask within 3 days of paying and you get the full amount back. Unlocked matches stay open. Finished matches are always open on paid plans. Unlocks renew on the 1st of every month. Predictions are probabilities, not promises. Bet To Beat is an analytics service and does not take bets.")}</p>
+        {t("3-day money-back guarantee on every plan: not for you? Ask within 3 days of paying and you get the full amount back. Unlocked matches stay open. Finished matches are always open on paid plans. Unlocks renew on the 1st of every month. Predictions are probabilities, not promises. SportLikely is an analytics service and does not take bets.")}</p>
     </div>
   )
 }

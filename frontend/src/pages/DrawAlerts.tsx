@@ -80,7 +80,7 @@ export default function DrawAlerts() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    document.title = tt("Draw picks · Bet To Beat")
+    document.title = tt("Draw picks · SportLikely")
     axios
       .get(`${API_URL}/draw-alerts`)
       .then(r => setData(r.data.data))

@@ -2,7 +2,7 @@
  * Languages. English is the source text: every visible string is written in English in the code and passed through
  * t(); the other languages are dictionaries in src/locales/<lang>.json keyed by the English text.
  *
- * The language is part of the address (bettobeat.com/es/...), so search engines index each language separately.
+ * The language is part of the address (sportlikely.com/es/...), so search engines index each language separately.
  * It is fixed for the page load: switching language navigates to the same page under the other prefix.
  * Placeholders: {0}, {1} or {name}. Plurals in a translation: "{n, plural, one {# partido} other {# partidos}}".
  */

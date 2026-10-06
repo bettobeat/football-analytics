@@ -136,7 +136,7 @@ export default function Assistant() {
           <div className="flex items-center gap-3 px-4 py-3 border-b border-line/70 bg-surface2/50">
             <span className="w-8 h-8 rounded-full bg-accent text-bg grid place-items-center font-display font-extrabold">B</span>
             <div className="min-w-0 flex-1">
-              <div className="font-display font-bold text-ink leading-tight">{t("Ask Bet To Beat")}</div>
+              <div className="font-display font-bold text-ink leading-tight">{t("Ask SportLikely")}</div>
               <div className="text-[11px] text-faint truncate">{matchId ? t("Knows this match: our prediction, form, line-ups, H2H") : t("About our predictions, the site and football")}</div>
             </div>
             {msgs.length > 0 && (

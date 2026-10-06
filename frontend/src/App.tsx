@@ -33,7 +33,7 @@ export function LogoMark({ size = 36 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 36 36" aria-hidden className="flex-shrink-0">
       <rect width="36" height="36" rx="10" fill="#C8FF3D" />
-      <path d="M11 25V11h7.5a4 4 0 0 1 0 8H11m7.5 0H20a3 3 0 0 1 0 6h-9" fill="none" stroke="#07090D" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M23 13.2c-.9-1.6-2.6-2.4-4.8-2.4H16a3.8 3.8 0 0 0 0 7.6h3.4a3.8 3.8 0 0 1 0 7.6h-2.6c-2.3 0-4-.9-4.9-2.6" fill="none" stroke="#07090D" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M24 14l3-3m0 0h-3m3 0v3" fill="none" stroke="#07090D" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
@@ -41,10 +41,10 @@ export function LogoMark({ size = 36 }: { size?: number }) {
 
 function Logo() {
   return (
-    <Link to="/" className="flex items-center gap-2.5 group shrink-0 whitespace-nowrap" aria-label={tt("Bet To Beat home")}>
+    <Link to="/" className="flex items-center gap-2.5 group shrink-0 whitespace-nowrap" aria-label={tt("SportLikely home")}>
       <LogoMark />
       <span className="hidden min-[380px]:inline lg:hidden xl:inline font-display font-bold text-lg tracking-tight text-ink">
-        bet<span className="text-accent">to</span>beat</span>
+        sport<span className="text-accent">likely</span></span>
     </Link>
   )
 }
@@ -131,7 +131,7 @@ function UnlocksBanner() {
           {u.left === 0 ? (
             <>{tt("You've used all {0} unlocks this month. They renew on {1}.", { 0: u.allowance, 1: resetDay(u.resetsAt) })}</>
           ) : (
-            <><b className="num">{u.left}</b> {tt("{n, plural, one {unlock} other {unlocks}} left this month. You're using Bet To Beat a lot.", { n: u.left })}</>
+            <><b className="num">{u.left}</b> {tt("{n, plural, one {unlock} other {unlocks}} left this month. You're using SportLikely a lot.", { n: u.left })}</>
           )}
         </span>
         <Link to="/premium" className="px-3 py-1 rounded-lg bg-accent text-bg text-xs font-extrabold">
@@ -267,7 +267,7 @@ function PageTitle() {
   useEffect(() => {
     applyHeadLang(loc.pathname)
     const t = TITLES.find(([re]) => re.test(loc.pathname))?.[1]
-    document.title = t && t !== 'Home' ? tt("{0} · Bet To Beat", { 0: t }) : tt("Bet To Beat · Football predictions, tested in public")
+    document.title = t && t !== 'Home' ? tt("{0} · SportLikely", { 0: t }) : tt("SportLikely · Football predictions, tested in public")
   }, [loc.pathname])
   return null
 }
@@ -389,7 +389,7 @@ function Shell() {
             <span className="ml-auto"><LangSwitch compact /></span>
           </div>
           <p>
-            {tt("Bet To Beat · predictions are probabilities, not promises. Information only, not betting advice. 18+. If gambling stops being fun, stop and")}{' '}
+            {tt("SportLikely · predictions are probabilities, not promises. Information only, not betting advice. 18+. If gambling stops being fun, stop and")}{' '}
             <a href="https://www.begambleaware.org" target="_blank" rel="noreferrer" className="underline hover:text-ink">{tt("get help")}</a>.
           </p>
           <p>{tt("Data: Football-Data.org, API-Football, football-data.co.uk, Transfermarkt (squad values).")}</p>

@@ -64,7 +64,7 @@ import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgr
 const isDev = (process.env.NODE_ENV || 'development') !== 'production';
 
 // In development accept any local origin (Vite may switch ports, 127.0.0.1 vs localhost, etc.)
-const allowedOrigins = (process.env.CORS_ORIGIN || (isDev ? 'http://localhost:3000' : 'https://bettobeat.com,https://www.bettobeat.com'))
+const allowedOrigins = (process.env.CORS_ORIGIN || (isDev ? 'http://localhost:3000' : 'https://sportlikely.com,https://www.sportlikely.com,https://bettobeat.com,https://www.bettobeat.com'))
   .split(',')
   .map(o => o.trim());
 const corsOrigin = isDev ? true : allowedOrigins;
@@ -131,10 +131,10 @@ app.use((req, _res, next) => {
   next();
 });
 
-// ---------- One address: https://bettobeat.com ----------
-// www.bettobeat.com and plain http go to the canonical https address (301), so links, cookies and search engines
+// ---------- One address: https://sportlikely.com ----------
+// www.sportlikely.com and plain http go to the canonical https address (301), so links, cookies and search engines
 // all use one host. Only requests for our own domain are touched (Railway's internal health checks are not).
-const CANONICAL_HOST = process.env.CANONICAL_HOST || (isDev ? '' : 'bettobeat.com');
+const CANONICAL_HOST = process.env.CANONICAL_HOST || (isDev ? '' : 'sportlikely.com');
 if (CANONICAL_HOST) {
   app.use((req, res, next) => {
     const host = (req.hostname || '').toLowerCase();
@@ -156,7 +156,7 @@ if (SITE_PASSWORD) {
     if (req.path === '/api/health' || PUBLIC_FILES.has(req.path)) return next();
     if (req.headers.authorization === SITE_AUTH) return next();
     if (req.method === 'GET' && req.path.startsWith('/api/') && tokenKind(req.query.token)) return next();
-    res.set('WWW-Authenticate', 'Basic realm="Bet To Beat - private beta", charset="UTF-8"');
+    res.set('WWW-Authenticate', 'Basic realm="SportLikely - private beta", charset="UTF-8"');
     res.status(401).send('Private beta. Sign in to continue.');
   });
   logger.info('Private beta gate enabled (SITE_USER / SITE_PASSWORD)');
@@ -452,7 +452,7 @@ app.post('/api/auth/password', jsonOnly, (req, res) => {
 
 app.get('/api/admin/users.csv', (_req, res) => {
   res.set('Content-Type', 'text/csv; charset=utf-8');
-  res.set('Content-Disposition', `attachment; filename="bettobeat-users-${new Date().toISOString().slice(0, 10)}.csv"`);
+  res.set('Content-Disposition', `attachment; filename="sportlikely-users-${new Date().toISOString().slice(0, 10)}.csv"`);
   res.set('Cache-Control', 'no-store');
   res.send(usersCsv());
 });

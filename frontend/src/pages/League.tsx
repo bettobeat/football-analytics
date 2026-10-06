@@ -182,7 +182,7 @@ function League() {
   }, [code])
 
   useEffect(() => {
-    if (comp?.name) document.title = tt("{0} · Bet To Beat", { 0: comp.name })
+    if (comp?.name) document.title = tt("{0} · SportLikely", { 0: comp.name })
   }, [comp])
 
   const totals = useMemo(() => {

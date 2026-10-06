@@ -235,7 +235,7 @@ export function auditEmail(report: any) {
     footer: 'Runs every morning after the night’s games. Differences between the two data providers usually clear within a few days; a player still wrong after a week is worth a look.'
   });
   const text = [
-    `Bet To Beat · daily data check · ${day}`,
+    `SportLikely · daily data check · ${day}`,
     `${pct}% · ${report.matched} of ${report.checked} top scorers match the official lists`,
     verdict,
     '',

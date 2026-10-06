@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
-const CONTACT = 'contact@bettobeat.com'
+const CONTACT = 'contact@sportlikely.com'
 const UPDATED = '25 September 2026'
 
 function Page({ title, children }: { title: string; children: ReactNode }) {
@@ -32,9 +32,9 @@ const Mail = () => (
 export function Terms() {
   return (
     <Page title="Terms of use">
-      <Section title="What Bet To Beat is">
+      <Section title="What SportLikely is">
         <p>
-          Bet To Beat publishes football statistics and match predictions made by our own models, together with live scores and match
+          SportLikely publishes football statistics and match predictions made by our own models, together with live scores and match
           statistics from third-party data providers. Predictions are probabilities, not promises: any match can end in
           any result.
         </p>

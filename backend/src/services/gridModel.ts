@@ -1,5 +1,5 @@
 /**
- * Bet To Beat – model v3 "grid" (Yarin's scoring system)
+ * SportLikely – model v3 "grid" (Yarin's scoring system)
  *
  * Every parameter gets two numbers: a VALUE (1–10, the team's standing on it within its
  * league, read against the opponent's tier where it matters) and a RELEVANCE (1–5, how

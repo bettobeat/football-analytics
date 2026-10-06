@@ -1,5 +1,5 @@
 /**
- * Bet To Beat – prediction model v1 (Poisson with Dixon-Coles correction)
+ * SportLikely – prediction model v1 (Poisson with Dixon-Coles correction)
  *
  * Inputs come straight from the league table (Football-Data.org standings):
  *   TOTAL / HOME / AWAY tables → goals for/against per game for each team.
