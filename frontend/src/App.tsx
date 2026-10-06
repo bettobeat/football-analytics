@@ -41,9 +41,9 @@ export function LogoMark({ size = 36 }: { size?: number }) {
 
 function Logo() {
   return (
-    <Link to="/" className="flex items-center gap-2.5 group min-w-0" aria-label={tt("Bet To Beat home")}>
+    <Link to="/" className="flex items-center gap-2.5 group shrink-0 whitespace-nowrap" aria-label={tt("Bet To Beat home")}>
       <LogoMark />
-      <span className="hidden min-[380px]:inline font-display font-bold text-lg tracking-tight text-ink">
+      <span className="hidden min-[380px]:inline lg:hidden xl:inline font-display font-bold text-lg tracking-tight text-ink">
         bet<span className="text-accent">to</span>beat</span>
     </Link>
   )
@@ -314,7 +314,7 @@ function Shell() {
             <nav className="hidden lg:flex items-center gap-0.5 p-1 rounded-full bg-surface2/60 border border-line/60">
               <NavLinks cls={navCls} />
             </nav>
-            <div className="hidden lg:block flex-1 min-w-[180px] max-w-md ml-auto">
+            <div className="hidden lg:block flex-1 min-w-[140px] max-w-md ml-auto">
               <SearchBox />
             </div>
             <div className="flex items-center gap-2.5 ml-auto lg:ml-0">
