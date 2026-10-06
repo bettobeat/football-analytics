@@ -700,8 +700,10 @@ async function afTeamForm(afTeamId: number) {
 
 async function afH2H(homeAf: number, awayAf: number, homeId: number, awayId: number) {
   return cached(`h2h:${homeAf}-${awayAf}`, 6 * 3600 * 1000, async () => {
-    const j = await afGet('/fixtures/headtohead', { h2h: `${homeAf}-${awayAf}`, last: 10 });
-    const matches = (j.response || []).map(toFdMatch).filter((m: any) => m.status === 'FINISHED');
+    const j = await afGet('/fixtures/headtohead', { h2h: `${homeAf}-${awayAf}`, last: 16 });
+    // the last 10 meetings that were played, however long ago, newest first
+    const matches = (j.response || []).map(toFdMatch).filter((m: any) => m.status === 'FINISHED')
+      .sort((a: any, b: any) => b.utcDate.localeCompare(a.utcDate)).slice(0, 10);
     const agg = { numberOfMatches: matches.length, totalGoals: 0, homeTeam: { id: homeId, wins: 0, draws: 0, losses: 0 }, awayTeam: { id: awayId, wins: 0, draws: 0, losses: 0 } };
     for (const m of matches) {
       const hg = m.score.fullTime.home ?? 0, ag = m.score.fullTime.away ?? 0;
@@ -860,6 +862,22 @@ async function afFixtureForFd(match: any): Promise<number | null> {
       return null; // don't remember a failure caused by the API
     }
   }
+  // anything else (national teams, other cups): every fixture of that day, matched by kick-off time and both names
+  if (!found) {
+    try {
+      const j = await cached(`alldate:${day}`, 3 * 3600 * 1000, () => afGet('/fixtures', { date: day }));
+      const ko = new Date(match.utcDate).getTime();
+      const hits = (j.response || []).filter((x: any) =>
+        Math.abs(new Date(x.fixture?.date).getTime() - ko) <= 20 * 60000 &&
+        (sameTeam(x.teams?.home?.name, match.homeTeam?.name) || sameTeam(x.teams?.home?.name, match.homeTeam?.shortName || '')) &&
+        (sameTeam(x.teams?.away?.name, match.awayTeam?.name) || sameTeam(x.teams?.away?.name, match.awayTeam?.shortName || ''))
+      );
+      if (hits.length === 1) found = hits[0].fixture.id;
+    } catch (e: any) {
+      logger.warn(`AF date lookup for FD ${match.id}: ${e.message}`);
+      return null;
+    }
+  }
   fdToAf.set(match.id, found);
   return found;
 }
@@ -885,4 +903,198 @@ export async function afExtrasForFd(match: any): Promise<{ home: any; away: any;
   const m = toFdMatchFull(await withStatsAndLineups(raw));
   const pick = (t: any) => ({ statistics: t.statistics || null, formation: t.formation || null, lineup: t.lineup || [], bench: t.bench || [], coach: t.coach || null });
   return { home: pick(m.homeTeam), away: pick(m.awayTeam), minute: m.minute ?? null };
+}
+
+
+/* ------------------------------------------------------------------ */
+/* Match page extras: last-10 averages, probable lineups, last-10 H2H   */
+/* (API-Football, for both API-Football and Football-Data.org matches)  */
+/* ------------------------------------------------------------------ */
+
+// Finished games never change: their statistics and lineups are kept in the database for good.
+db.exec(`CREATE TABLE IF NOT EXISTS af_fixture_extra (fixture_id INTEGER NOT NULL, kind TEXT NOT NULL, json TEXT NOT NULL, fetched_at TEXT NOT NULL, PRIMARY KEY (fixture_id, kind))`);
+const getExtra = db.prepare(`SELECT json FROM af_fixture_extra WHERE fixture_id = ? AND kind = ?`);
+const putExtra = db.prepare(`INSERT OR REPLACE INTO af_fixture_extra (fixture_id, kind, json, fetched_at) VALUES (?, ?, ?, ?)`);
+
+async function storedFixturePart(fixtureId: number, kind: 'statistics' | 'lineups'): Promise<any[]> {
+  const row: any = getExtra.get(fixtureId, kind);
+  if (row) return JSON.parse(row.json);
+  // an empty answer may still be filled later by the provider: remember it, but only in memory for a day
+  return cached(`part:${kind}:${fixtureId}`, 24 * 3600 * 1000, async () => {
+    const j = await afGet(`/fixtures/${kind}`, { fixture: fixtureId });
+    const resp = j.response || [];
+    if (resp.length) putExtra.run(fixtureId, kind, JSON.stringify(resp), new Date().toISOString());
+    return resp;
+  });
+}
+
+const FINISHED_SHORT = new Set(['FT', 'AET', 'PEN']);
+const inflight = new Map<string, Promise<any>>();
+function once<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
+  const run = inflight.get(key);
+  if (run) return run;
+  const p = cached(key, ttlMs, load).finally(() => inflight.delete(key));
+  inflight.set(key, p);
+  return p;
+}
+
+/** A team's last `n` finished games (raw API-Football fixtures, newest first). */
+async function lastFinished(afTeamId: number, n: number): Promise<any[]> {
+  return once(`lastfin:${afTeamId}:${n}`, 3 * 3600 * 1000, async () => {
+    const j = await afGet('/fixtures', { team: afTeamId, last: n + 6 });
+    return (j.response || [])
+      .filter((f: any) => FINISHED_SHORT.has(f.fixture?.status?.short))
+      .sort((a: any, b: any) => new Date(b.fixture.date).getTime() - new Date(a.fixture.date).getTime())
+      .slice(0, n);
+  });
+}
+
+/** API-Football team ids of a match page (API-Football match, or the twin fixture of a Football-Data.org match). */
+export async function afTeamsByAfMatchId(matchId: number): Promise<{ home: number; away: number } | null> {
+  const fixtureId = matchId - AF_OFFSET;
+  const raw = await cached(`fixture:${fixtureId}`, 60 * 1000, async () => {
+    const j = await afGet('/fixtures', { id: fixtureId });
+    return j.response?.[0] || null;
+  });
+  return raw ? { home: raw.teams.home.id, away: raw.teams.away.id } : null;
+}
+
+export async function afTeamsOf(match: any): Promise<{ home: number; away: number } | null> {
+  if (isAfMatchId(match.id)) return { home: match.homeTeam.id - AF_OFFSET, away: match.awayTeam.id - AF_OFFSET };
+  if (!afConfigured()) return null;
+  const fid = await afFixtureForFd(match);
+  if (!fid) return null;
+  const raw = await cached(`fixture:${fid}`, 6 * 3600 * 1000, async () => {
+    const j = await afGet('/fixtures', { id: fid });
+    return j.response?.[0] || null;
+  });
+  return raw ? { home: raw.teams.home.id, away: raw.teams.away.id } : null;
+}
+
+const AVG_KEYS: [string, string][] = [
+  ['ball_possession', 'Ball Possession'], ['shots', 'Total Shots'], ['shots_on_goal', 'Shots on Goal'], ['shots_off_goal', 'Shots off Goal'],
+  ['corner_kicks', 'Corner Kicks'], ['fouls', 'Fouls'], ['offsides', 'Offsides'], ['saves', 'Goalkeeper Saves'],
+  ['yellow_cards', 'Yellow Cards'], ['red_cards', 'Red Cards'], ['expected_goals', 'expected_goals'], ['pass_accuracy', 'Passes %']
+];
+
+/** Average per game over a team's last `n` finished games: goals for/against always, the rest where the provider has statistics. */
+export async function teamAverages(afTeamId: number, n = 10) {
+  return once(`avg:${afTeamId}:${n}`, 3 * 3600 * 1000, async () => {
+    const games = await lastFinished(afTeamId, n);
+    let gf = 0, ga = 0, cleanSheets = 0, btts = 0, over25 = 0, w = 0, d = 0, l = 0;
+    const sums: Record<string, { sum: number; n: number }> = {};
+    const list: any[] = [];
+    for (const f of games) {
+      const home = f.teams.home.id === afTeamId;
+      const f1 = (home ? f.goals.home : f.goals.away) ?? 0, a1 = (home ? f.goals.away : f.goals.home) ?? 0;
+      gf += f1; ga += a1;
+      if (a1 === 0) cleanSheets++;
+      if (f1 > 0 && a1 > 0) btts++;
+      if (f1 + a1 > 2) over25++;
+      if (f1 > a1) w++; else if (f1 < a1) l++; else d++;
+      list.push({ ...toFdMatch(f), venueSide: home ? 'H' : 'A' });
+      let stats: any[] = [];
+      try { stats = await storedFixturePart(f.fixture.id, 'statistics'); } catch { /* no statistics for this game */ }
+      const mine = stats.find((s: any) => s.team?.id === afTeamId);
+      if (!mine) continue;
+      for (const [key, label] of AVG_KEYS) {
+        const raw = (mine.statistics || []).find((s: any) => s.type === label)?.value;
+        if (raw === null || raw === undefined) continue;
+        const v = typeof raw === 'string' ? parseFloat(raw) : raw;
+        if (!Number.isFinite(v)) continue;
+        (sums[key] ||= { sum: 0, n: 0 }).sum += v;
+        sums[key].n++;
+      }
+    }
+    const g = games.length || 1;
+    const r1 = (x: number) => Math.round(x * 10) / 10;
+    const averages: Record<string, number> = {};
+    for (const [k, v] of Object.entries(sums)) if (v.n >= Math.min(3, games.length)) averages[k] = k === 'expected_goals' ? Math.round((v.sum / v.n) * 100) / 100 : r1(v.sum / v.n);
+    return {
+      games: games.length,
+      withStats: Math.max(0, ...Object.values(sums).map(v => v.n)),
+      record: { won: w, draw: d, lost: l },
+      goalsFor: r1(gf / g), goalsAgainst: r1(ga / g), totalGoals: r1((gf + ga) / g),
+      cleanSheets, btts, over25,
+      averages,
+      matches: list
+    };
+  });
+}
+
+const POS_NAME: Record<string, string> = { G: 'Goalkeeper', D: 'Defence', M: 'Midfield', F: 'Offence' };
+
+/**
+ * The XI we expect, from a team's last `n` lineups: the formation used most (latest wins a tie), then for every
+ * position of that formation the player who played there most often (latest game wins a tie).
+ */
+export async function probableXI(afTeamId: number, n = 5) {
+  return once(`xi:${afTeamId}:${n}`, 3 * 3600 * 1000, async () => {
+    const games = await lastFinished(afTeamId, n);
+    const ups: { date: string; formation: string | null; xi: any[] }[] = [];
+    for (const f of games) {
+      let lu: any[] = [];
+      try { lu = await storedFixturePart(f.fixture.id, 'lineups'); } catch { /* no lineup */ }
+      const mine = lu.find((x: any) => x.team?.id === afTeamId);
+      if (mine?.startXI?.length) ups.push({ date: f.fixture.date, formation: mine.formation || null, xi: mine.startXI.map((x: any) => x.player).filter((p: any) => p?.name) });
+    }
+    if (!ups.length) return { basedOn: 0, formation: null, lineup: [] };
+    const fcount = new Map<string, number>();
+    for (const u of ups) if (u.formation) fcount.set(u.formation, (fcount.get(u.formation) || 0) + 1);
+    const formation = [...fcount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null; // ups are newest first → stable sort keeps the latest on a tie
+    const starts = new Map<string, number>();
+    const keyOf = (p: any) => (p.id ? `i${p.id}` : `n${p.name}`);
+    for (const u of ups) for (const p of u.xi) starts.set(keyOf(p), (starts.get(keyOf(p)) || 0) + 1);
+
+    const same = ups.filter(u => u.formation === formation);
+    const useGrid = !!formation && same.length > 0 && same.every(u => u.xi.every((p: any) => p.grid));
+    const picked = new Set<string>();
+    const out: any[] = [];
+    if (useGrid) {
+      // slot → candidates with how often they played there
+      const slots = new Map<string, Map<string, { p: any; n: number; latest: number }>>();
+      same.forEach((u, gi) => u.xi.forEach((p: any) => {
+        const m = slots.get(p.grid) || new Map();
+        const c = m.get(keyOf(p)) || { p, n: 0, latest: gi };
+        c.n++;
+        m.set(keyOf(p), c);
+        slots.set(p.grid, m);
+      }));
+      // fill the most settled slots first, so a regular is not taken by a weaker slot
+      const order = [...slots.entries()].sort((a, b) => Math.max(...[...b[1].values()].map(c => c.n)) - Math.max(...[...a[1].values()].map(c => c.n)));
+      for (const [grid, cands] of order) {
+        const best = [...cands.values()].filter(c => !picked.has(keyOf(c.p)))
+          .sort((a, b) => b.n - a.n || (starts.get(keyOf(b.p)) || 0) - (starts.get(keyOf(a.p)) || 0) || a.latest - b.latest)[0];
+        // nobody left for this slot: the most used player not picked yet, from the latest game
+        const p = best?.p || ups[0].xi.find((x: any) => !picked.has(keyOf(x)));
+        if (!p) continue;
+        picked.add(keyOf(p));
+        out.push({ ...p, grid });
+      }
+    } else {
+      const ranked = [...new Map(ups.flatMap(u => u.xi.map((p: any) => [keyOf(p), p] as [string, any]))).values()]
+        .sort((a, b) => (starts.get(keyOf(b)) || 0) - (starts.get(keyOf(a)) || 0));
+      const gk = ranked.find(p => p.pos === 'G');
+      const rest = ranked.filter(p => p.pos !== 'G').slice(0, 10);
+      const ord: Record<string, number> = { D: 0, M: 1, F: 2 };
+      out.push(...(gk ? [gk] : []), ...rest.sort((a, b) => (ord[a.pos] ?? 1) - (ord[b.pos] ?? 1)).map(p => ({ ...p, grid: null })));
+    }
+    return {
+      basedOn: ups.length,
+      formation,
+      lineup: out.map((p, i) => ({
+        id: p.id ? AF_OFFSET + p.id : -(5000 + i),
+        name: p.name,
+        position: POS_NAME[p.pos] || null,
+        shirtNumber: p.number ?? null,
+        grid: p.grid || null,
+        starts: starts.get(keyOf(p)) || 0
+      }))
+    };
+  });
+}
+
+/** The last `n` meetings of two teams, however long ago (API-Football keeps history back to ~2010 and earlier for big leagues). */
+export async function lastMeetings(homeAf: number, awayAf: number) {
+  return afH2H(homeAf, awayAf, AF_OFFSET + homeAf, AF_OFFSET + awayAf);
 }

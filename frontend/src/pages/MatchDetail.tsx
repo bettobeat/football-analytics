@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
@@ -488,6 +488,34 @@ function MatchDetail() {
     }
   }, [compCode])
 
+  // Tab data loaded on first open (built from API-Football: last 10 games, last 5 lineups, last 10 meetings).
+  // undefined = not loaded yet, null = nothing available.
+  const [xStats, setXStats] = useState<{ home: TeamAvg; away: TeamAvg } | null | undefined>(undefined)
+  const [xLineups, setXLineups] = useState<{ home: XI; away: XI } | null | undefined>(undefined)
+  const [xH2H, setXH2H] = useState<H2HData | null | undefined>(undefined)
+  const requested = useRef<{ id: number; parts: Set<string> }>({ id: 0, parts: new Set<string>() })
+  useEffect(() => {
+    if (!matchId || !details) return
+    if (requested.current.id !== matchId) {
+      requested.current = { id: matchId, parts: new Set<string>() }
+      setXStats(undefined)
+      setXLineups(undefined)
+      setXH2H(undefined)
+    }
+    const setters: Record<string, (v: any) => void> = { stats: setXStats, lineups: setXLineups, h2h: setXH2H }
+    // the open tab; the expected lineups also load in the background from the prediction tab
+    const parts = [tab, ...(tab === 'prediction' ? ['lineups'] : [])].filter(p => p in setters)
+    for (const part of parts) {
+      if (requested.current.parts.has(part)) continue
+      requested.current.parts.add(part)
+      const id = matchId
+      axios
+        .get(`${API_URL}/matches/${id}/extras/${part}`, { timeout: 90000 })
+        .then(res => requested.current.id === id && setters[part](res.data.data ?? null))
+        .catch(() => requested.current.id === id && setters[part](null))
+    }
+  }, [tab, matchId, !!details])
+
   if (loading) return <div className="max-w-5xl mx-auto px-4 py-16 text-center text-muted">Loading match…</div>
   if (error || !details)
     return (
@@ -528,6 +556,15 @@ function MatchDetail() {
         }
       : null
 
+  // expected XI from the last 5 lineups (API-Football), in the same shape the pitch draws
+  const xProbable =
+    xLineups && ((xLineups.home?.lineup.length || 0) > 0 || (xLineups.away?.lineup.length || 0) > 0)
+      ? {
+          home: { ...home, formation: xLineups.home?.formation || null, lineup: xLineups.home?.lineup || [], bench: [], basedOn: xLineups.home?.basedOn || 0 } as Team,
+          away: { ...away, formation: xLineups.away?.formation || null, lineup: xLineups.away?.lineup || [], bench: [], basedOn: xLineups.away?.basedOn || 0 } as Team
+        }
+      : null
+
   // a locked upcoming match carries no pick at all
   const pick: 'H' | 'D' | 'A' | null = p && !(p.locked && !p.pick) ? pickOfPrediction(p) : null
   const pickVar = pick === 'H' ? '--home' : pick === 'A' ? '--away' : '--draw'
@@ -537,8 +574,9 @@ function MatchDetail() {
   const tableShow = tableInvolving.length ? tableInvolving : tableTotals
   const tabs: { id: TabId; label: string; hint: string; live?: boolean }[] = [
     { id: 'prediction', label: 'Prediction', hint: '' },
-    { id: 'stats', label: 'Statistics', hint: live ? 'Live stats and match events' : done ? 'Match stats, events, form and head-to-head' : 'Recent form and head-to-head', live },
-    { id: 'lineups', label: 'Lineups', hint: hasLineups ? 'Official lineups' : probable ? 'Probable lineups' : 'Published about an hour before kick-off' },
+    { id: 'stats', label: 'Statistics', hint: live ? 'Live stats, match events and averages' : done ? 'Match stats, events and averages' : 'Averages from the last 10 games', live },
+    { id: 'lineups', label: 'Lineups', hint: hasLineups ? 'Official lineups' : done ? 'Lineups' : 'Expected XI from the last 5 games' },
+    { id: 'h2h', label: 'H2H', hint: 'Last 10 meetings and recent form' },
     ...(tables === null || tableShow.length ? [{ id: 'table' as TabId, label: 'Standings', hint: `${m.competition.name} table` }] : [])
   ]
 
@@ -800,7 +838,7 @@ function MatchDetail() {
                   <WinProbability p={p} m={m} />
                 </Section>
               )}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {tabs.filter(t => t.id !== 'prediction').map(t => (
                 <button key={t.id} type="button" onClick={() => pickTab(t.id)} className="card p-4 text-left hover:border-accent/50 transition-colors">
                   <div className="font-display font-bold text-ink">{t.label} <span aria-hidden className="text-accent">→</span></div>
@@ -857,20 +895,38 @@ function MatchDetail() {
               )}
             {done && <Highlights matchId={matchId} />}
 
+            <Section title="Average per match" note={`Last ${Math.max(xStats?.home.games || 0, xStats?.away.games || 0) || 10} games · all competitions`}>
+              {xStats === undefined ? (
+                <p className="text-sm text-muted py-6 text-center">Loading the last 10 games of both teams…</p>
+              ) : xStats && (xStats.home.games || xStats.away.games) ? (
+                <AveragesPanel home={home} away={away} h={xStats.home} a={xStats.away} />
+              ) : (
+                <p className="text-sm text-faint">No recent games found for these teams.</p>
+              )}
+            </Section>
+          </>
+        )}
+
+        {tab === 'h2h' && (
+          <>
+            {(() => {
+              const h2h = xH2H || details.head2head
+              if (xH2H === undefined && !details.head2head) return <p className="text-sm text-muted text-center py-10">Loading head-to-head…</p>
+              return h2h && h2h.aggregates.numberOfMatches > 0 ? (
+                <Section title={`Last ${h2h.matches.length} meetings`} note={h2h.matches.length ? `since ${new Date(h2h.matches[h2h.matches.length - 1].utcDate).getFullYear()}` : undefined}>
+                  <H2H h2h={h2h} home={home} away={away} />
+                </Section>
+              ) : (
+                <p className="text-sm text-faint text-center py-6">These teams have never met in the games we can see.</p>
+              )
+            })()}
+
             <Section title="Form" note="Last results">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
                 <TeamPanel team={home} row={details.standings.home} recent={details.form.home} />
                 <TeamPanel team={away} row={details.standings.away} recent={details.form.away} />
               </div>
             </Section>
-
-            {details.head2head && details.head2head.aggregates.numberOfMatches > 0 ? (
-              <Section title={`Head-to-head · last ${details.head2head.aggregates.numberOfMatches}`}>
-                <H2H details={details} />
-              </Section>
-            ) : (
-              <p className="text-xs text-faint text-center">These teams have not met recently.</p>
-            )}
           </>
         )}
 
@@ -885,6 +941,23 @@ function MatchDetail() {
                     <Bench team={away} code={m.competition?.code} />
                   </div>
                 </Section>
+              ) : !done && xProbable ? (
+                <Section title="Probable lineups" note={[xProbable.home.formation, xProbable.away.formation].filter(Boolean).join(' vs ') || undefined}>
+                  <Pitch home={xProbable.home} away={xProbable.away} probable code={m.competition?.code} />
+                  <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-faint">
+                    <span>
+                      Our expected XI from each team's last{' '}
+                      <span className="num text-muted">{Math.max(xProbable.home.basedOn || 0, xProbable.away.basedOn || 0)}</span> games: the formation they used most,
+                      and the player who played each position most · the badge shows how many of those games he started
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulseDot" />
+                      Replaced automatically when the official lineups are published (~1h before kick-off)
+                    </span>
+                  </div>
+                </Section>
+              ) : !done && xLineups === undefined && !probable ? (
+                <p className="text-sm text-muted text-center py-10">Working out the expected lineups from the last 5 games…</p>
               ) : probable ? (
                 <Section title="Probable lineups" note={[probable.home.formation, probable.away.formation].filter(Boolean).join(' vs ') || undefined}>
                   <Pitch home={probable.home} away={probable.away} probable code={m.competition?.code} />
@@ -1396,39 +1469,172 @@ function Mini({ label, value }: { label: string; value: string | number }) {
   )
 }
 
-function H2H({ details }: { details: Details }) {
-  const agg = details.head2head!.aggregates
-  const m = details.match
+type H2HData = NonNullable<Details['head2head']>
+
+function H2H({ h2h, home, away }: { h2h: H2HData; home: Team; away: Team }) {
+  const agg = h2h.aggregates
   const total = agg.numberOfMatches || 1
   const hw = agg.homeTeam.wins
   const d = agg.homeTeam.draws
   const aw = agg.awayTeam.wins
+  const played = h2h.matches.filter(h => DONE.has(h.status))
+  // results are shown from this page's home team's side (they may have been the away side back then)
+  const isHomeSide = (id: number, name: string) => id === agg.homeTeam.id || id === home.id || name === home.name || name === home.shortName
   return (
     <>
-      <div className="flex justify-between text-xs mb-1.5">
-        <span className="font-semibold text-home">{m.homeTeam.shortName || m.homeTeam.name} · <span className="num">{hw}</span></span>
-        <span className="text-faint">Draws · <span className="num">{d}</span></span>
-        <span className="font-semibold text-away"><span className="num">{aw}</span> · {m.awayTeam.shortName || m.awayTeam.name}</span>
+      <div className="grid grid-cols-3 gap-2 mb-3">
+        <div className="rounded-lg bg-home/10 border border-home/30 py-2 text-center">
+          <div className="num text-2xl font-extrabold text-home">{hw}</div>
+          <div className="text-[11px] text-muted truncate px-1">{home.shortName || home.name} wins</div>
+        </div>
+        <div className="rounded-lg bg-surface2/60 border border-line/50 py-2 text-center">
+          <div className="num text-2xl font-extrabold text-ink">{d}</div>
+          <div className="text-[11px] text-muted">Draws</div>
+        </div>
+        <div className="rounded-lg bg-away/10 border border-away/30 py-2 text-center">
+          <div className="num text-2xl font-extrabold text-away">{aw}</div>
+          <div className="text-[11px] text-muted truncate px-1">{away.shortName || away.name} wins</div>
+        </div>
       </div>
       <div className="flex h-2 gap-[3px] mb-1.5">
         <div className="rounded-full bg-home" style={{ width: `calc(${(hw / total) * 100}% - 3px)` }} />
         <div className="rounded-full bg-faint" style={{ width: `calc(${(d / total) * 100}% - 3px)` }} />
         <div className="rounded-full bg-away" style={{ width: `calc(${(aw / total) * 100}% - 3px)` }} />
       </div>
-      <div className="text-[11px] text-faint mb-3 num">
-        {agg.totalGoals} goals in {agg.numberOfMatches} · {(agg.totalGoals / total).toFixed(1)} per game
+      <div className="text-[11px] text-faint mb-4 num">
+        {agg.totalGoals} goals in {agg.numberOfMatches} games · {(agg.totalGoals / total).toFixed(1)} per game
       </div>
-      <ul className="space-y-1 text-sm">
-        {details.head2head!.matches.filter(h => DONE.has(h.status)).map(h => (
-          <li key={h.id} className="flex items-center gap-2">
-            <span className="num w-[76px] flex-shrink-0 text-[11px] text-faint whitespace-nowrap">{shortDate(h.utcDate)}</span>
-            <span className="flex-1 text-right truncate text-muted">{h.homeTeam.shortName || h.homeTeam.name}</span>
-            <span className="num font-semibold text-ink px-1">{h.score.fullTime.home}–{h.score.fullTime.away}</span>
-            <span className="flex-1 truncate text-muted">{h.awayTeam.shortName || h.awayTeam.name}</span>
-          </li>
-        ))}
+      <ul className="divide-y divide-line/50 text-sm">
+        {played.map(h => {
+          const hg = h.score.fullTime.home ?? 0
+          const ag = h.score.fullTime.away ?? 0
+          const ourHomeWasHome = isHomeSide(h.homeTeam.id, h.homeTeam.name)
+          const ours = ourHomeWasHome ? hg - ag : ag - hg
+          const r = ours > 0 ? 'W' : ours < 0 ? 'L' : 'D'
+          return (
+            <li key={h.id} className="py-2 flex items-center gap-2">
+              <div className="w-[84px] flex-shrink-0">
+                <div className="num text-[11px] text-muted whitespace-nowrap">{shortDate(h.utcDate)}</div>
+                <div className="text-[10px] text-faint truncate" title={h.competition?.name}>{h.competition?.name}</div>
+              </div>
+              <span className="flex-1 text-right truncate text-muted">{h.homeTeam.shortName || h.homeTeam.name}</span>
+              <span className={`num font-bold px-2 py-0.5 rounded-md text-ink ${r === 'W' ? 'bg-home/15' : r === 'L' ? 'bg-away/15' : 'bg-surface2'}`}>{hg}–{ag}</span>
+              <span className="flex-1 truncate text-muted">{h.awayTeam.shortName || h.awayTeam.name}</span>
+            </li>
+          )
+        })}
       </ul>
     </>
+  )
+}
+
+/* ---------- averages over the last 10 games ---------- */
+
+interface TeamAvg {
+  games: number
+  withStats: number
+  record: { won: number; draw: number; lost: number }
+  goalsFor: number
+  goalsAgainst: number
+  totalGoals: number
+  cleanSheets: number
+  btts: number
+  over25: number
+  averages: Record<string, number>
+}
+
+interface XI {
+  basedOn: number
+  formation: string | null
+  lineup: (Player & { starts: number; grid?: string | null })[]
+}
+
+const AVG_ROWS: { k: string; label: string; lowerBetter?: boolean; pct?: boolean; dec?: number }[] = [
+  { k: 'totalGoals', label: 'Total goals' },
+  { k: 'goalsFor', label: 'Goals scored' },
+  { k: 'goalsAgainst', label: 'Goals conceded', lowerBetter: true },
+  { k: 'expected_goals', label: 'Expected goals (xG)', dec: 2 },
+  { k: 'ball_possession', label: 'Possession', pct: true },
+  { k: 'shots', label: 'Total shots' },
+  { k: 'shots_on_goal', label: 'Shots on target' },
+  { k: 'shots_off_goal', label: 'Shots off target' },
+  { k: 'corner_kicks', label: 'Corners' },
+  { k: 'pass_accuracy', label: 'Pass accuracy', pct: true },
+  { k: 'saves', label: 'Goalkeeper saves' },
+  { k: 'fouls', label: 'Fouls', lowerBetter: true },
+  { k: 'offsides', label: 'Offsides', lowerBetter: true },
+  { k: 'yellow_cards', label: 'Yellow cards', lowerBetter: true },
+  { k: 'red_cards', label: 'Red cards', lowerBetter: true, dec: 2 }
+]
+
+function avgValue(t: TeamAvg, k: string): number | null {
+  if (k === 'totalGoals' || k === 'goalsFor' || k === 'goalsAgainst') return t.games ? t[k] : null
+  const v = t.averages?.[k]
+  return typeof v === 'number' ? v : null
+}
+
+function AveragesPanel({ home, away, h, a }: { home: Team; away: Team; h: TeamAvg; a: TeamAvg }) {
+  const rows = AVG_ROWS.filter(r => avgValue(h, r.k) !== null && avgValue(a, r.k) !== null)
+  const fmt = (r: (typeof AVG_ROWS)[number], v: number) => (r.pct ? `${Math.round(v)}%` : v.toFixed(r.dec ?? 1).replace(/\.0$/, r.dec ? '.0' : ''))
+  const facts = (t: TeamAvg) => [
+    { label: 'W-D-L', value: `${t.record.won}-${t.record.draw}-${t.record.lost}` },
+    { label: 'Clean sheets', value: `${t.cleanSheets}/${t.games}` },
+    { label: 'Both scored', value: `${t.btts}/${t.games}` },
+    { label: 'Over 2.5 goals', value: `${t.over25}/${t.games}` }
+  ]
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <span className="flex items-center gap-2 min-w-0">
+          {home.crest && <img src={home.crest} alt="" className="w-6 h-6 object-contain flex-shrink-0" />}
+          <span className="font-display font-bold text-home truncate">{home.shortName || home.name}</span>
+        </span>
+        <span className="flex items-center gap-2 min-w-0 justify-end">
+          <span className="font-display font-bold text-away truncate text-right">{away.shortName || away.name}</span>
+          {away.crest && <img src={away.crest} alt="" className="w-6 h-6 object-contain flex-shrink-0" />}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 mb-5">
+        {[h, a].map((t, i) => (
+          <div key={i} className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+            {facts(t).map(f => <Mini key={f.label} label={f.label} value={f.value} />)}
+          </div>
+        ))}
+      </div>
+
+      <div className="divide-y divide-line/50">
+        {rows.map(r => {
+          const hv = avgValue(h, r.k)!
+          const av = avgValue(a, r.k)!
+          const max = Math.max(hv, av) || 1
+          const better = hv === av ? null : (r.lowerBetter ? hv < av : hv > av) ? 'H' : 'A'
+          return (
+            <div key={r.k} className="py-2.5">
+              <div className="grid grid-cols-[56px_1fr_56px] items-center gap-2 mb-1.5">
+                <span className={`num font-bold ${better === 'H' ? 'text-ink' : 'text-muted font-medium'}`}>{fmt(r, hv)}</span>
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted text-center">{r.label}</span>
+                <span className={`num font-bold text-right ${better === 'A' ? 'text-ink' : 'text-muted font-medium'}`}>{fmt(r, av)}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-1">
+                <div className="h-2 rounded-l-full bg-surface2 flex justify-end overflow-hidden">
+                  <div className={`h-full rounded-l-full ${better === 'H' ? 'bg-home' : 'bg-home/35'}`} style={{ width: `${(hv / max) * 100}%` }} />
+                </div>
+                <div className="h-2 rounded-r-full bg-surface2 overflow-hidden">
+                  <div className={`h-full rounded-r-full ${better === 'A' ? 'bg-away' : 'bg-away/35'}`} style={{ width: `${(av / max) * 100}%` }} />
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      {Math.min(h.withStats, a.withStats) < Math.min(h.games, a.games) && (
+        <p className="mt-3 text-[11px] text-faint">
+          Goals are from all {Math.max(h.games, a.games)} games. Shots, corners and cards are averaged over the games where our data provider has detailed statistics
+          ({home.shortName || home.name}: {h.withStats}, {away.shortName || away.name}: {a.withStats}).
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -1438,8 +1644,8 @@ interface TableRow extends StandingRow {
   team: { id: number; name: string; shortName?: string; crest?: string }
 }
 
-type TabId = 'prediction' | 'stats' | 'lineups' | 'table'
-const TAB_IDS: TabId[] = ['prediction', 'stats', 'lineups', 'table']
+type TabId = 'prediction' | 'stats' | 'lineups' | 'h2h' | 'table'
+const TAB_IDS: TabId[] = ['prediction', 'stats', 'lineups', 'h2h', 'table']
 
 type StandingsTable = { type: string; group?: string | null; table: TableRow[] }
 

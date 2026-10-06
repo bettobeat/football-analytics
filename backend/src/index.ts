@@ -30,7 +30,8 @@ import { marketTest, drawTest, anchoredDrawTest } from './services/marketTest';
 import { clvTick, clvReport, startClvScheduler, clvProbe } from './services/clv';
 import {
   isAfMatchId, isAfCode, afUpcoming, afLive, afWithPredictions, getAfMatchDetails, getAfStandings, getAfScorers, getAfRecent,
-  afCompetitions, pollAfLive, startAfMatchesScheduler, afWindowStatus, refreshAfWindow, onAfWindow, isKnownAfFixture, afExtrasForFd, withAfOdds, backfillAfOdds
+  afCompetitions, pollAfLive, startAfMatchesScheduler, afWindowStatus, refreshAfWindow, onAfWindow, isKnownAfFixture, afExtrasForFd, withAfOdds, backfillAfOdds,
+  afTeamsOf, afTeamsByAfMatchId, teamAverages, probableXI, lastMeetings, AF_OFFSET
 } from './services/afMatches';
 import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNationalEloScheduler, nationalGoalsSensitivity, tuneNational, nationalTuneStatus } from './services/nationalElo';
 import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler, clubValueReport } from './services/clubElo';
@@ -584,6 +585,39 @@ app.get('/api/matches/:id(\\d+)/details', async (req, res) => {
     res.json({ data: details, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Failed to fetch match details');
+  }
+});
+
+// Match page tabs, loaded when the tab opens (API-Football, cached; first view of a team can take a few seconds):
+//   stats   → each team's averages over its last 10 games
+//   lineups → the XI we expect from each team's last 5 lineups
+//   h2h     → the last 10 meetings, however long ago
+app.get('/api/matches/:id(\\d+)/extras/:part(stats|lineups|h2h)', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    let teams: { home: number; away: number } | null;
+    if (id >= AF_OFFSET) {
+      if (!isKnownAfFixture(id)) return res.status(404).json({ error: 'Match not found' });
+      teams = await afTeamsByAfMatchId(id);
+    } else {
+      const match = await footballDataAPI.getMatch(id);
+      teams = match ? await afTeamsOf(match) : null;
+    }
+    if (!teams) return res.json({ data: null, timestamp: new Date().toISOString() });
+    let data: any;
+    if (req.params.part === 'stats') {
+      const [home, away] = [await teamAverages(teams.home, 10), await teamAverages(teams.away, 10)];
+      data = { home, away };
+    } else if (req.params.part === 'lineups') {
+      const [home, away] = [await probableXI(teams.home, 5), await probableXI(teams.away, 5)];
+      data = { home, away };
+    } else {
+      data = await lastMeetings(teams.home, teams.away);
+    }
+    res.set('Cache-Control', 'public, max-age=600');
+    res.json({ data, timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Failed to fetch match extras');
   }
 });
 
