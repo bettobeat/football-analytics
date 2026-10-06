@@ -55,7 +55,7 @@ export function layout(o: { preheader: string; label?: string; body: string; cta
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border:1px solid ${C.line};border-radius:16px">
     <tr><td style="padding:22px 28px 0">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-        <td style="font-weight:800;font-size:18px">Bet<span style="color:${C.green}">To</span>Beat</td>
+        <td style="font-weight:800;font-size:18px">Sport<span style="color:${C.green}">Likely</span></td>
         ${o.label ? `<td align="right" style="font-size:12px;color:${C.faint};font-weight:600">${esc(o.label)}</td>` : ''}
       </tr></table>
     </td></tr>
@@ -75,7 +75,7 @@ function codeEmail(title: string, intro: string, code: string, outro: string) {
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px">
     <table role="presentation" width="100%" style="max-width:460px;background:#ffffff;border:1px solid #e2e5ea;border-radius:16px" cellpadding="0" cellspacing="0">
       <tr><td style="padding:28px 28px 8px">
-        <div style="font-weight:800;font-size:18px">Bet<span style="color:#10a35a">To</span>Beat</div>
+        <div style="font-weight:800;font-size:18px">Sport<span style="color:#10a35a">Likely</span></div>
         <h1 style="font-size:20px;margin:20px 0 8px">${title}</h1>
         <p style="font-size:14px;line-height:1.5;color:#646c78;margin:0 0 20px">${intro}</p>
         <div style="font-family:'JetBrains Mono',Consolas,monospace;font-size:32px;font-weight:700;letter-spacing:8px;background:#f0f2f5;border-radius:12px;padding:16px;text-align:center">${code}</div>
