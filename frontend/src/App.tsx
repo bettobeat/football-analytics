@@ -21,6 +21,9 @@ import PremiumGate from './components/PremiumGate'
 import { AuthProvider, useAuth } from './lib/auth'
 import { FavoritesProvider } from './lib/favorites'
 import Favorites from './pages/Favorites'
+import Assistant from './components/Assistant'
+import AccessibilityMenu, { initA11y } from './components/Accessibility'
+import Accessibility from './pages/Accessibility'
 import { socket } from './lib/socket'
 import { useTheme } from './lib/theme'
 import { useUnlocks, resetDay } from './lib/unlocks'
@@ -244,6 +247,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/account/, 'Account'],
   [/^\/terms/, 'Terms of use'],
   [/^\/privacy/, 'Privacy policy'],
+  [/^\/accessibility/, 'Accessibility statement'],
   [/^\/admin/, 'Users']
 ]
 /** Browser tab title per page (the match page sets its own once the teams are loaded). */
@@ -255,6 +259,8 @@ function PageTitle() {
   }, [loc.pathname])
   return null
 }
+
+initA11y()
 
 function App() {
   return (
@@ -291,6 +297,7 @@ function Shell() {
     <Router>
       <div className="min-h-screen">
         <div className="stage" aria-hidden />
+        <a href="#main" className="skip-link">Skip to content</a>
         <header className="sticky top-0 z-40 backdrop-blur-xl bg-bg/70 border-b border-line/50">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-[72px] flex items-center gap-3 lg:gap-5">
             <Logo />
@@ -319,7 +326,7 @@ function Shell() {
         <PageTitle />
         <VerifyBanner />
         <UnlocksBanner />
-        <main>
+        <main id="main" tabIndex={-1}>
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/matches" element={<Dashboard />} />
@@ -357,6 +364,7 @@ function Shell() {
             <Route path="/admin" element={<Admin />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
+            <Route path="/accessibility" element={<Accessibility />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </main>
@@ -365,6 +373,7 @@ function Shell() {
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             <Link to="/terms" className="hover:text-ink">Terms</Link>
             <Link to="/privacy" className="hover:text-ink">Privacy</Link>
+            <Link to="/accessibility" className="hover:text-ink">Accessibility · נגישות</Link>
             <Link to="/premium" className="hover:text-ink">Premium</Link>
           </div>
           <p>
@@ -375,6 +384,8 @@ function Shell() {
           <p>Data: Football-Data.org, API-Football, football-data.co.uk, Transfermarkt (squad values).</p>
         </footer>
         <BottomTabs />
+        <Assistant />
+        <AccessibilityMenu />
       </div>
     </Router>
   )

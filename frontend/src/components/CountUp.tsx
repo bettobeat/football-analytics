@@ -11,8 +11,9 @@ export default function CountUp({ value, decimals = 0, suffix = '', animate, del
   const raf = useRef(0)
   useEffect(() => {
     if (!animate) { setShown(value); return }
-    // same for everyone: the numbers only change in place (nothing slides or zooms), so it is fine with "reduce motion" too
-    const calm = false
+    // "reduce motion" (device setting or the accessibility menu): show the number at once
+    const calm = (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) || document.documentElement.classList.contains('a11y-motion')
+    if (calm) { setShown(value); return }
     const SCRAMBLE = calm ? 0 : 550, SETTLE = calm ? 700 : 950
     const t0 = performance.now() + delay
     let last = 0

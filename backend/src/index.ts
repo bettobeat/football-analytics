@@ -48,6 +48,7 @@ import { rebuildPlayerQuality, playerQualityTable } from './services/playerQuali
 import { db } from './db';
 import { listFavorites, addFavorites, removeFavorite, MAX_FAVORITES } from './services/favorites';
 import { tuneV3Full, tuneStatus, isTuning } from './services/v3Tuner';
+import { askAssistant, assistantConfigured, messagesToday, assistantStats } from './services/assistant';
 import { normalizeName } from './services/history';
 import { markFresh, markFailed } from './services/freshness';
 import { dataHealth, startDataHealthScheduler } from './services/dataHealth';
@@ -251,7 +252,7 @@ app.use('/api', rateLimit('api', 600, 60000)); // ~10 a second, far above a pers
 app.use(['/api/team-page', '/api/player-page'], rateLimit('pages', 60, 10 * 60000));
 app.use('/api/unlocks', (req, res, next) => (req.method === 'POST' ? rateLimit('unlock', 30, 60000, r => String(r.user?.id || r.ip))(req, res, next) : next()));
 
-const OPEN_API = /^\/api\/(health$|auth\/|favorites(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|public\/(summary|results|record)$|unlocks(\/|$)|billing\/)/;
+const OPEN_API = /^\/api\/(health$|auth\/|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|public\/(summary|results|record)$|unlocks(\/|$)|billing\/)/;
 const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|backtest|history\/status|clv|past\/(seasons|predictions|data|patterns)|draw-alerts)$/;
 
 app.use('/api', (req, res, next) => {
@@ -369,6 +370,38 @@ app.post('/api/auth/preferences', jsonOnly, (req, res) => {
     authFail(res, e);
   }
 });
+
+// AI chat (signed-in users). Body: { messages: [{role, content}], matchId?, page? }
+app.use('/api/assistant', (req, res, next) => (req.method === 'POST' ? rateLimit('assistant', 20, 60000, r => String(r.user?.id || r.ip))(req, res, next) : next()));
+const ASSISTANT_DAILY_CAP = parseInt(process.env.ASSISTANT_DAILY_CAP || '300', 10);
+app.get('/api/assistant/status', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: { available: assistantConfigured(), signedIn: !!req.user } });
+});
+app.post('/api/assistant/chat', jsonOnly, async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in to chat with the assistant' });
+  if (!assistantConfigured()) return res.status(503).json({ error: 'The assistant is not available yet' });
+  if (messagesToday(req.user.id) >= ASSISTANT_DAILY_CAP) return res.status(429).json({ error: `That is a lot of questions for one day (${ASSISTANT_DAILY_CAP}). Please come back tomorrow.` });
+  try {
+    const messages = Array.isArray(req.body?.messages) ? req.body.messages.filter((m: any) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string') : [];
+    const matchId = Number(req.body?.matchId) || null;
+    let matchDetails: any = null, fullPrediction = false;
+    if (matchId) {
+      try {
+        matchDetails = isAfMatchId(matchId) ? await getAfMatchDetails(matchId) : await footballDataAPI.getMatchDetails(matchId);
+        const status = matchDetails?.match?.status || '';
+        fullPrediction = canSeeFull(req.access || 'anon') || isFinished(status) || unlockedIds(req.user.id).has(matchId);
+      } catch (e: any) {
+        logger.warn(`assistant match context ${matchId}: ${e.message}`);
+      }
+    }
+    const out = await askAssistant({ userId: req.user.id, access: req.access || 'free', messages, matchId, matchDetails, fullPrediction, page: typeof req.body?.page === 'string' ? req.body.page.slice(0, 120) : null });
+    res.json({ data: out });
+  } catch (e: any) {
+    res.status(e.status || 500).json({ error: e.message || 'The assistant could not answer' });
+  }
+});
+app.get('/api/admin/assistant', (_req, res) => res.json({ data: assistantStats() }));
 
 // Favorites (signed-in users; visitors keep them in the browser and they are merged here on sign-in)
 app.get('/api/favorites', (req, res) => {
