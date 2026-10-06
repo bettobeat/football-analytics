@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useReveal } from '../lib/reveal'
+import { useReveal, justRevealed } from '../lib/reveal'
+import CountUp from '../components/CountUp'
 import { fame } from '../lib/fame'
 import RecentResults from '../components/RecentResults'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -686,6 +687,15 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
   const name = (t: Team) => t.shortName || t.name
   const pickName = pick === 'H' ? name(match.homeTeam) : pick === 'A' ? name(match.awayTeam) : pick === 'D' ? 'Draw' : null
   const pickPct = p && pick && !p.locked ? Math.round(pick === 'H' ? p.home : pick === 'D' ? p.draw : p.away) : null
+  const roll = justRevealed(match.id)
+  // goals markets next to 1-X-2: over 2.5 goals and both teams to score (yes or no, whichever is likelier)
+  const extras =
+    p && pick && pickPct !== null && typeof p.over25 === 'number' && typeof p.btts === 'number'
+      ? [
+          { k: 'o25', top: p.over25 >= 50 ? 'Over 2.5' : 'Under 2.5', v: p.over25 >= 50 ? p.over25 : 100 - p.over25 },
+          { k: 'btts', top: p.btts >= 50 ? 'Both score' : 'Not both', v: p.btts >= 50 ? p.btts : 100 - p.btts }
+        ]
+      : null
 
   return (
     <Link to={`/match/${match.id}`} className={`group flex items-center gap-3 px-3 sm:px-4 py-2.5 hover:bg-surface2/50 transition-colors ${isLive ? 'bg-live/5' : ''}`}>
@@ -728,6 +738,15 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
             </div>
           )
         })}
+        {extras && (
+          <div className={`md:hidden flex gap-3 mt-0.5 text-[11px] text-muted ${roll ? 'pop-in' : ''}`} style={roll ? { animationDelay: '420ms' } : undefined}>
+            {extras.map(x => (
+              <span key={x.k}>
+                {x.top} <CountUp value={x.v} suffix="%" animate={roll} delay={420} className={`num font-semibold ${x.v >= 60 ? 'text-accent' : 'text-ink'}`} />
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* prediction */}
@@ -751,22 +770,42 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
         ) : p && pick && pickPct !== null ? (
           <>
             {/* phones: the pick and its % */}
-            <span className="sm:hidden text-right leading-tight">
+            <span className={`sm:hidden text-right leading-tight ${roll ? 'pop-in' : ''}`}>
               <span className={`block text-xs font-bold truncate max-w-[92px] ${PICK_COLOR[pick]}`}>{pickName}</span>
-              <span className="block num text-[11px] text-muted">{pickPct}%</span>
+              <CountUp value={pickPct} suffix="%" animate={roll} className="block num text-[11px] text-muted" />
             </span>
             {/* wider screens: 1 · X · 2 with the pick highlighted */}
-            <span className="hidden sm:flex gap-1">
-              {(['H', 'D', 'A'] as Pick[]).map(k => {
+            <span className="hidden sm:flex items-center gap-1">
+              {(['H', 'D', 'A'] as Pick[]).map((k, i) => {
                 const v = Math.round(k === 'H' ? p.home : k === 'D' ? p.draw : p.away)
                 const on = k === pick
                 return (
-                  <span key={k} className={`w-[54px] h-9 rounded-lg grid place-items-center leading-none ${on ? `${PICK_BG[k]} text-bg` : 'bg-surface2/70 text-muted'}`}>
+                  <span
+                    key={k}
+                    className={`w-[54px] h-9 rounded-lg grid place-items-center leading-none transition-colors duration-500 ${on ? `${PICK_BG[k]} text-bg` : 'bg-surface2/70 text-muted'} ${roll ? 'pop-in' : ''}`}
+                    style={roll ? { animationDelay: `${i * 90}ms` } : undefined}
+                  >
                     <span className="text-[9px] font-bold opacity-80">{k === 'H' ? '1' : k === 'D' ? 'X' : '2'}</span>
-                    <span className="num text-xs font-bold">{v}%</span>
+                    <CountUp value={v} suffix="%" animate={roll} delay={i * 90} className="num text-xs font-bold" />
                   </span>
                 )
               })}
+              {extras && (
+                <>
+                  <span className="hidden md:block w-px h-6 bg-line mx-1.5" aria-hidden />
+                  {extras.map((x, i) => (
+                    <span
+                      key={x.k}
+                      className={`hidden md:grid w-[68px] h-9 rounded-lg place-items-center leading-none border ${x.v >= 60 ? 'border-accent/40 bg-accent/10 text-accent' : 'border-line/70 text-muted'} ${roll ? 'pop-in' : ''}`}
+                      style={roll ? { animationDelay: `${300 + i * 90}ms` } : undefined}
+                      title={x.k === 'o25' ? `Over 2.5 goals: ${Math.round(p.over25)}% · Under: ${Math.round(100 - p.over25)}%` : `Both teams score: ${Math.round(p.btts)}% · Not both: ${Math.round(100 - p.btts)}%`}
+                    >
+                      <span className="text-[9px] font-bold opacity-80 whitespace-nowrap">{x.top}</span>
+                      <CountUp value={x.v} suffix="%" animate={roll} delay={300 + i * 90} className="num text-xs font-bold" />
+                    </span>
+                  ))}
+                </>
+              )}
             </span>
           </>
         ) : (

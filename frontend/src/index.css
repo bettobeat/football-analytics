@@ -100,6 +100,15 @@ html.dark {
   background: rgb(var(--bg));
 }
 
+/* a prediction box landing after Reveal */
+@keyframes popIn {
+  0% { opacity: 0; transform: translateY(6px) scale(0.85); }
+  60% { opacity: 1; transform: translateY(0) scale(1.06); }
+  100% { opacity: 1; transform: none; }
+}
+.pop-in { animation: popIn 0.55s cubic-bezier(0.2, 1.2, 0.4, 1) both; }
+@media (prefers-reduced-motion: reduce) { .pop-in { animation: none; } }
+
 @keyframes scan {
   from { transform: translateX(0); }
   to { transform: translateX(400%); }
