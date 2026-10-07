@@ -591,7 +591,7 @@ function MatchDetail() {
         <span aria-hidden>←</span> {tt("All matches")}</Link>
 
       {/* ---------- Hero ---------- */}
-      <div className={`mt-4 card relative overflow-hidden p-6 sm:p-8 ${live ? 'shadow-glow border-live/40' : ''}`}>
+      <div className={`mt-4 card relative overflow-hidden p-4 sm:p-8 ${live ? 'shadow-glow border-live/40' : ''}`}>
         {pick && (
           <div
             className="pointer-events-none absolute inset-0 opacity-[0.10]"
@@ -611,9 +611,9 @@ function MatchDetail() {
           <div className="text-faint">{fmtDate(m.utcDate)}</div>
         </div>
 
-        <div className="relative grid grid-cols-[1fr_auto_1fr] items-center gap-4 sm:gap-8">
+        <div className="relative grid grid-cols-[1fr_auto_1fr] items-start sm:items-center gap-2 sm:gap-8">
           <TeamHero team={home} align="right" code={m.competition?.code} />
-          <div className="text-center min-w-[120px] sm:min-w-[170px]">
+          <div className="text-center min-w-[96px] sm:min-w-[170px] self-center">
             {showScore ? (
               <div className="num text-5xl sm:text-6xl font-extrabold text-ink tracking-tight">
                 {ft.home ?? 0}
@@ -660,7 +660,7 @@ function MatchDetail() {
               type="button"
               onClick={() => pickTab(t.id)}
               aria-current={tab === t.id ? 'page' : undefined}
-              className={`flex-1 min-w-max inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
+              className={`flex-1 min-w-max inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-4 py-2 rounded-full text-[13px] sm:text-sm font-semibold transition-colors ${
                 tab === t.id ? 'bg-accent text-bg shadow' : 'text-muted hover:text-ink'
               }`}
             >
@@ -1097,18 +1097,18 @@ function TeamHero({ team, align, code }: { team: Team; align: 'left' | 'right'; 
     <Link
       to={`/team/${team.id}?${new URLSearchParams({ ...(code ? { c: code } : {}), n: team.name }).toString()}`}
       title={tt("{0}: team page", { 0: team.name })}
-      className={`flex items-center gap-3 sm:gap-4 min-w-0 hover:opacity-90 ${align === 'right' ? 'flex-row-reverse text-right' : ''}`}
+      className={`flex flex-col items-center text-center gap-2 sm:gap-4 min-w-0 hover:opacity-90 ${align === 'right' ? 'sm:flex-row-reverse sm:text-right' : 'sm:flex-row sm:text-left'}`}
     >
       {team.crest ? (
         <img src={team.crest} alt="" className="w-14 h-14 sm:w-[72px] sm:h-[72px] object-contain flex-shrink-0 drop-shadow" />
       ) : (
         <span className="w-14 h-14 sm:w-[72px] sm:h-[72px] rounded-full bg-surface2 flex-shrink-0" />
       )}
-      <div className="min-w-0">
-        <div className="font-display font-extrabold text-lg sm:text-2xl text-ink leading-tight truncate">{team.shortName || team.name}</div>
-        {team.coach?.name && <div className="text-xs text-faint mt-0.5 truncate">{team.coach.name}</div>}
-        <div className={`flex items-center gap-1 mt-0.5 ${align === 'right' ? 'justify-end' : ''}`}>
-          <span className="text-[11px] text-accent font-semibold">{tt("Team page →")}</span>
+      <div className="min-w-0 w-full sm:w-auto">
+        <div className="font-display font-extrabold text-base sm:text-2xl text-ink leading-tight break-words sm:truncate">{team.shortName || team.name}</div>
+        {team.coach?.name && <div className="hidden sm:block text-xs text-faint mt-0.5 truncate">{team.coach.name}</div>}
+        <div className={`flex items-center justify-center gap-1 mt-1 sm:mt-0.5 ${align === 'right' ? 'sm:justify-end' : 'sm:justify-start'}`}>
+          <span className="text-[11px] text-accent font-semibold whitespace-nowrap">{tt("Team page →")}</span>
           <FavStar size="sm" fav={{ kind: 'team', ref: favKey(team.name), name: team.shortName || team.name, img: team.crest || null, ids: [team.id] }} />
         </div>
       </div>
