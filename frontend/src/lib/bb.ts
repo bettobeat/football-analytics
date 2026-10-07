@@ -23,6 +23,8 @@ export interface BbPrediction {
   restAway?: number | null
   b2bHome?: boolean
   b2bAway?: boolean
+  injHome?: number
+  injAway?: number
   hit: boolean | null
 }
 export interface BbGame {

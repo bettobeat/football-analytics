@@ -6,6 +6,7 @@
 import { db } from '../db';
 import { BB_LEAGUES, bbGet } from './basketball';
 import { predictGame, teamRating, isPreseason, leagueRatings, BB_MODEL } from './bbModel';
+import { nbaInjuries } from './bbInjuries';
 
 export const bbPublic = () => process.env.BASKETBALL_PUBLIC === '1';
 
@@ -36,7 +37,7 @@ function shape(g: Row, full: boolean) {
   }
   if (state === 'upcoming') {
     const p = predictGame(g);
-    if (p) pred = { pHome: p.pHome, margin: p.margin, total: p.total, home: p.home, away: p.away, savedAt: saved?.made_at || null, b2bHome: p.b2bHome, b2bAway: p.b2bAway, restHome: p.restHome, restAway: p.restAway };
+    if (p) pred = { pHome: p.pHome, margin: p.margin, total: p.total, home: p.home, away: p.away, savedAt: saved?.made_at || null, b2bHome: p.b2bHome, b2bAway: p.b2bAway, restHome: p.restHome, restAway: p.restAway, injHome: p.injHome || 0, injAway: p.injAway || 0 };
   }
   const pick = pred ? (pred.pHome >= 0.5 ? 'H' : 'A') : null;
   const r1 = (x: number) => Math.round(x * 10) / 10;
@@ -61,7 +62,8 @@ function shape(g: Row, full: boolean) {
       ...(showAll ? {
         pHome: Math.round(pred.pHome * 1000) / 10, pAway: Math.round((1 - pred.pHome) * 1000) / 10,
         spread: r1(pred.margin), total: r1(pred.total), score: { home: Math.round(pred.home), away: Math.round(pred.away) },
-        restHome: pred.restHome ?? null, restAway: pred.restAway ?? null, b2bHome: !!pred.b2bHome, b2bAway: !!pred.b2bAway
+        restHome: pred.restHome ?? null, restAway: pred.restAway ?? null, b2bHome: !!pred.b2bHome, b2bAway: !!pred.b2bAway,
+        injHome: pred.injHome || 0, injAway: pred.injAway || 0
       } : {}),
       hit: state === 'done' && g.hs !== null ? (pick === 'H') === (g.hs > g.as_) : null
     } : null
@@ -151,7 +153,10 @@ function schedule(teamId: number, kickoff: string) {
 /** Why we think so: the reasons behind the pick, in points of expected margin (kind is translated on the site). */
 function reasons(g: Row, pr: any, full: boolean) {
   if (!pr || !full) return [];
-  const out: { kind: 'strength' | 'home' | 'b2b'; side: 'H' | 'A'; points: number }[] = [];
+  const out: { kind: 'strength' | 'home' | 'b2b' | 'injuries'; side: 'H' | 'A'; points: number }[] = [];
+  // injuries: the side that loses fewer points to injured regulars gains the difference
+  const inj = (pr.injHome || 0) - (pr.injAway || 0);
+  if (Math.abs(inj) >= 0.5) out.push({ kind: 'injuries', side: inj > 0 ? 'A' : 'H', points: Math.round(Math.abs(inj) * 10) / 10 });
   const rh = teamRating(g.code, g.home_id), ra = teamRating(g.code, g.away_id);
   const strength = rh && ra ? rh.net - ra.net : 0;
   if (rh && ra) out.push({ kind: 'strength', side: strength >= 0 ? 'H' : 'A', points: Math.round(Math.abs(strength) * 10) / 10 });
@@ -225,6 +230,7 @@ export async function bbGame(id: number, full: boolean) {
     stats: { home: averages(g.home_id, g.kickoff), away: averages(g.away_id, g.kickoff) },
     schedule: { home: schedule(g.home_id, g.kickoff), away: schedule(g.away_id, g.kickoff) },
     preview: preview(g),
+    injuries: g.code === 'NBA' ? { home: nbaInjuries(g.home_id, g.home_name, g.kickoff), away: nbaInjuries(g.away_id, g.away_name, g.kickoff) } : null,
     h2h: h2h.map(x => ({ id: x.game_id, kickoff: x.kickoff, home: x.home_name, away: x.away_name, homeId: x.home_id, score: [x.hs, x.as_], league: x.code })),
     box,
     standings

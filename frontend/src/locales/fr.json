@@ -1187,5 +1187,14 @@
  "{0} shoot {1}% from three, above the league average of {2}%.": "{0} tire à {1} % à 3 points, au-dessus de la moyenne du championnat ({2} %).",
  "{0} wins in a row": "{0} victoires de suite",
  "{0}–{1} at home": "{0}–{1} à domicile",
- "{0}–{1} on the road": "{0}–{1} à l'extérieur"
+ "{0}–{1} on the road": "{0}–{1} à l'extérieur",
+ "Injuries": "Blessures",
+ "Players out or doubtful, from the NBA injury reports": "Joueurs absents ou incertains, d'après les rapports de blessures NBA",
+ "Injuries hurt {0} less": "Les blessures pénalisent moins {0}",
+ "No injuries listed.": "Aucun blessé signalé.",
+ "{0} min": "{0} min",
+ "Updated every 15 minutes": "Mis à jour toutes les 15 minutes",
+ "Our prediction takes off the points a team is expected to lose without its injured regulars (by minutes and production; doubtful and questionable players count partly).": "Notre pronostic retire les points qu'une équipe perd sans ses titulaires blessés (selon les minutes et le rendement ; les incertains comptent en partie).",
+ "{0} will be without {1}.": "{0} sera privé de {1}.",
+ "For {0}, {1} may not play.": "Chez {0}, {1} pourrait ne pas jouer."
 }

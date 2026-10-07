@@ -12,6 +12,7 @@
  */
 import logger from '../utils/logger';
 import { db } from '../db';
+import { injuryLoss } from './bbInjuries';
 
 export const BB_MODEL = 'bb-v2';
 const FINISHED = ['FT', 'AOT'];
@@ -19,10 +20,11 @@ const FINISHED = ['FT', 'AOT'];
 type Game = {
   game_id: number; code: string; season: string; kickoff: string; status: string | null;
   home_id: number; away_id: number; hs: number | null; as_: number | null; week: string | null;
+  home_name?: string; away_name?: string;
 };
 type Params = { k: number; r: number; b2b: number };
 type Team = { o: number; d: number; season: string; games: number; last: number };
-type Pred = { pHome: number; margin: number; total: number; home: number; away: number; hca: number; b2bHome: boolean; b2bAway: boolean; restHome: number | null; restAway: number | null };
+type Pred = { pHome: number; margin: number; total: number; home: number; away: number; hca: number; b2bHome: boolean; b2bAway: boolean; restHome: number | null; restAway: number | null; injHome?: number; injAway?: number; injPlayersHome?: string[]; injPlayersAway?: string[] };
 
 /** NBA games before 19 October are pre-season (they count less and are left out of the record). */
 export const isPreseason = (g: { code: string; kickoff: string }) => {
@@ -38,6 +40,33 @@ const normCdf = (x: number) => {
   const c = 1 - 0.3989422804014327 * Math.exp(-x * x / 2) * p;
   return x >= 0 ? c : 1 - c;
 };
+
+/** Inverse of the normal curve (Acklam), to shift a win % by a number of points. */
+function normInv(p: number) {
+  const a = [-39.69683028665376, 220.9460984245205, -275.9285104469687, 138.357751867269, -30.66479806614716, 2.506628277459239];
+  const b = [-54.47609879822406, 161.5858368580409, -155.6989798598866, 66.80131188771972, -13.28068155288572];
+  const c = [-0.007784894002430293, -0.3223964580411365, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783];
+  const d = [0.007784695709041462, 0.3224671290700398, 2.445134137142996, 3.754408661907416];
+  const q = Math.min(1 - 1e-9, Math.max(1e-9, p));
+  if (q < 0.02425) { const r = Math.sqrt(-2 * Math.log(q)); return (((((c[0] * r + c[1]) * r + c[2]) * r + c[3]) * r + c[4]) * r + c[5]) / ((((d[0] * r + d[1]) * r + d[2]) * r + d[3]) * r + 1); }
+  if (q > 1 - 0.02425) { const r = Math.sqrt(-2 * Math.log(1 - q)); return -(((((c[0] * r + c[1]) * r + c[2]) * r + c[3]) * r + c[4]) * r + c[5]) / ((((d[0] * r + d[1]) * r + d[2]) * r + d[3]) * r + 1); }
+  const r = q - 0.5, t = r * r;
+  return (((((a[0] * t + a[1]) * t + a[2]) * t + a[3]) * t + a[4]) * t + a[5]) * r / (((((b[0] * t + b[1]) * t + b[2]) * t + b[3]) * t + b[4]) * t + 1);
+}
+
+/** NBA: take the expected points of injured regulars off each side (ESPN injury list, see bbInjuries). */
+function withInjuries(g: Game, pr: Pred, sigma: number): Pred {
+  if (g.code !== 'NBA' || !g.home_name || !g.away_name) return pr;
+  const h = injuryLoss(g.home_id, g.home_name, g.kickoff), a = injuryLoss(g.away_id, g.away_name, g.kickoff);
+  if (!h.points && !a.points) return { ...pr, injHome: 0, injAway: 0 };
+  const shift = h.points - a.points; // points the home side loses relative to the away side
+  return {
+    ...pr,
+    margin: pr.margin - shift, home: pr.home - h.points, away: pr.away - a.points, total: pr.total - h.points - a.points,
+    pHome: Math.min(0.995, Math.max(0.005, normCdf(normInv(pr.pHome) - shift / sigma))),
+    injHome: h.points, injAway: a.points, injPlayersHome: h.players, injPlayersAway: a.players
+  };
+}
 
 class League {
   teams = new Map<number, Team>();
@@ -337,17 +366,17 @@ export function predictGame(g: Game): Pred | null {
   const pr = L.predict(g);
   for (const [id, t] of keep) { if (t) L.teams.set(id, t); else L.teams.delete(id); }
   L.lastPlayed = saved;
-  if (!m.L2 || !m.w2) return pr;
+  if (!m.L2 || !m.w2) return withInjuries(g, pr, L.sigma);
   // bb-v2: possession ratings, blended with v1 by the weight chosen on the tuning season
   const ko = new Date(g.kickoff).getTime();
   const keep2 = [g.home_id, g.away_id].map(id => [id, m.L2!.teams.get(id) ? { ...m.L2!.teams.get(id)! } : null] as const);
   const p2 = m.L2.predict(g, ph ? (ko - ph) / 86400000 : null, pa ? (ko - pa) / 86400000 : null);
   for (const [id, t] of keep2) { if (t) m.L2.teams.set(id, t); else m.L2.teams.delete(id); }
   const w = m.w2;
-  return {
+  return withInjuries(g, {
     ...pr, pHome: w * p2.pHome + (1 - w) * pr.pHome, margin: w * p2.margin + (1 - w) * pr.margin, total: w * p2.total + (1 - w) * pr.total,
     home: w * p2.home + (1 - w) * pr.home, away: w * p2.away + (1 - w) * pr.away, hca: w * p2.hca + (1 - w) * pr.hca
-  };
+  }, w * m.L2.sigma + (1 - w) * L.sigma);
 }
 
 /** Every team's ratings in a league (this season's teams), ranked: attack 1 = scores most, defence 1 = allows least. */
@@ -392,7 +421,7 @@ db.exec(`
 /** Save / refresh predictions for games in the next 7 days. A game's prediction is frozen at tip-off. */
 export function recordBbPredictions() {
   const now = new Date();
-  const rows = db.prepare(`SELECT game_id, code, season, kickoff, status, home_id, away_id, hs, as_, stage AS week FROM bb_games
+  const rows = db.prepare(`SELECT game_id, code, season, kickoff, status, home_id, away_id, hs, as_, stage AS week, home_name, away_name FROM bb_games
     WHERE kickoff > ? AND kickoff < ? AND (status IS NULL OR status = 'NS')`).all(now.toISOString(), new Date(now.getTime() + 7 * 86400000).toISOString()) as Game[];
   const up = db.prepare(`INSERT OR REPLACE INTO bb_predictions (game_id, code, kickoff, model, p_home, margin, total, home_pts, away_pts, made_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   let n = 0;

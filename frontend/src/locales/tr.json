@@ -1187,5 +1187,14 @@
  "{0} shoot {1}% from three, above the league average of {2}%.": "{0} üçlükte %{1} atıyor, lig ortalaması %{2}'nin üstünde.",
  "{0} wins in a row": "Üst üste {0} galibiyet",
  "{0}–{1} at home": "İç sahada {0}–{1}",
- "{0}–{1} on the road": "Deplasmanda {0}–{1}"
+ "{0}–{1} on the road": "Deplasmanda {0}–{1}",
+ "Injuries": "Sakatlıklar",
+ "Players out or doubtful, from the NBA injury reports": "NBA sakatlık raporlarına göre oynamayacak veya şüpheli oyuncular",
+ "Injuries hurt {0} less": "Sakatlıklar {0} takımını daha az etkiliyor",
+ "No injuries listed.": "Sakat oyuncu yok.",
+ "{0} min": "{0} dk",
+ "Updated every 15 minutes": "15 dakikada bir güncellenir",
+ "Our prediction takes off the points a team is expected to lose without its injured regulars (by minutes and production; doubtful and questionable players count partly).": "Tahminimiz, sakat düzenli oyuncuları olmadan bir takımın kaybedeceği sayıları düşer (dakika ve üretkenliğe göre; şüpheliler kısmen sayılır).",
+ "{0} will be without {1}.": "{0}, {1} olmadan oynayacak.",
+ "For {0}, {1} may not play.": "{0} tarafında {1} oynamayabilir."
 }

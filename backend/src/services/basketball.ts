@@ -11,6 +11,7 @@
 import logger from '../utils/logger';
 import { db } from '../db';
 import { buildAll, recordBbPredictions } from './bbModel';
+import { refreshNbaInjuries, nbaInjuryStatus } from './bbInjuries';
 
 const BASE = 'https://v1.basketball.api-sports.io';
 const KEY = () => process.env.API_BASKETBALL_KEY || process.env.API_FOOTBALL_KEY || '';
@@ -331,6 +332,13 @@ export function startBasketballScheduler() {
   setTimeout(() => void bbTick(), 45 * 1000).unref();
   setInterval(() => void bbTick(), 30 * 60 * 1000).unref();
   setInterval(() => void liveTick(), 60 * 1000).unref();
+  // NBA injury list every 15 minutes; the coming games' predictions are re-saved with it (until tip-off)
+  const injuries = async () => {
+    const n = await refreshNbaInjuries();
+    if (n !== null) { try { recordBbPredictions(); } catch (e: any) { logger.warn(`Basketball predictions: ${e.message}`); } }
+  };
+  setTimeout(() => void injuries(), 30 * 1000).unref();
+  setInterval(() => void injuries(), 15 * 60 * 1000).unref();
 }
 
 /** Admin: quota and how many games we hold per league and season. */
@@ -349,7 +357,7 @@ export async function bbStatus() {
     SELECT code, season, COUNT(*) AS games, SUM(CASE WHEN status IN ('FT','AOT') THEN 1 ELSE 0 END) AS finished,
       SUM(CASE WHEN stats = 1 THEN 1 ELSE 0 END) AS boxScores, SUM(CASE WHEN stats = 2 THEN 1 ELSE 0 END) AS noBoxScore, MIN(kickoff) AS first, MAX(kickoff) AS last
     FROM bb_games GROUP BY code, season ORDER BY code, season`).all();
-  return { account, limitDay, remainingDay, callsThisBoot: calls, lastError, leagues: leagues.map(l => ({ ...l, seasons: JSON.parse(l.seasons) })), games };
+  return { account, limitDay, remainingDay, callsThisBoot: calls, lastError, nbaInjuries: nbaInjuryStatus(), leagues: leagues.map(l => ({ ...l, seasons: JSON.parse(l.seasons) })), games };
 }
 
 /** Admin: start a sync pass now (runs in the background; box scores can take a few minutes). */

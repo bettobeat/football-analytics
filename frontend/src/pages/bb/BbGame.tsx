@@ -24,7 +24,8 @@ interface BoxPlayer { id: number; name: string; starter: boolean; minutes: numbe
 interface BoxSide { team: any; players: BoxPlayer[] }
 interface Detail {
   game: Game
-  why: { kind: 'strength' | 'home' | 'b2b'; side: 'H' | 'A'; points: number }[]
+  why: { kind: 'strength' | 'home' | 'b2b' | 'injuries'; side: 'H' | 'A'; points: number }[]
+  injuries?: { home: Injury[]; away: Injury[] } | null
   ratings: { home: { attack: number; defence: number; net: number } | null; away: { attack: number; defence: number; net: number } | null } | null
   stats: { home: Avg | null; away: Avg | null }
   schedule: { home: Sched; away: Sched }
@@ -43,7 +44,8 @@ interface PreviewSide {
   ranks: { attack: number; defence: number; overall: number; of: number } | null
   profile: { team: Profile | null; league: Profile | null }
 }
-type Tab = 'prediction' | 'stats' | 'rest' | 'h2h' | 'table' | 'box'
+interface Injury { name: string; status: string; weight: number; comment: string | null; minutes: number | null; playerId: number | null }
+type Tab = 'prediction' | 'stats' | 'injuries' | 'rest' | 'h2h' | 'table' | 'box'
 
 /** A game page — laid out like football's match page: hero, tabs, prediction first. */
 export default function BbGame() {
@@ -87,6 +89,7 @@ export default function BbGame() {
     { id: 'prediction', label: t('Prediction'), hint: '' },
     ...(d.box ? [{ id: 'box' as Tab, label: t('Box score'), short: t('Box'), hint: live ? t('Live player stats') : t('Every player: points, shooting, rebounds, assists'), live }] : []),
     { id: 'stats', label: t('Statistics'), short: t('Stats'), hint: t('Averages from the last 10 games') },
+    ...(d.injuries ? [{ id: 'injuries' as Tab, label: t('Injuries'), hint: t('Players out or doubtful, from the NBA injury reports') }] : []),
     { id: 'rest', label: t('Schedule & rest'), short: t('Rest'), hint: t('Back-to-backs, rest days and the next game') },
     { id: 'h2h', label: t('H2H'), hint: t('Last meetings and recent form') },
     ...(d.standings ? [{ id: 'table' as Tab, label: t('Standings'), short: t('Table'), hint: t('{0} table', { 0: g.league.name }) }] : [])
@@ -175,6 +178,7 @@ export default function BbGame() {
         )}
         {tab === 'box' && d.box && <BoxTab d={d} />}
         {tab === 'stats' && <StatsTab d={d} />}
+        {tab === 'injuries' && d.injuries && <InjuriesCard d={d} />}
         {tab === 'rest' && <RestTab d={d} />}
         {tab === 'h2h' && (
           <Card title={t('Last meetings')}>
@@ -208,7 +212,7 @@ export default function BbGame() {
   )
 }
 
-const TABS: Tab[] = ['prediction', 'box', 'stats', 'rest', 'h2h', 'table']
+const TABS: Tab[] = ['prediction', 'box', 'stats', 'injuries', 'rest', 'h2h', 'table']
 
 function LeagueStar({ code, name }: { code: string; name: string }) {
   const cfg = useBbConfig()
@@ -326,6 +330,7 @@ function PredictionSection({ d }: { d: Detail }) {
                       <span className="text-ink flex-1">
                         {w.kind === 'strength' ? t('{0} is the stronger team this season', { 0: team.name })
                           : w.kind === 'home' ? t('Home court for {0}', { 0: team.name })
+                          : w.kind === 'injuries' ? t('Injuries hurt {0} less', { 0: team.name })
                           : t('{0} is fresher: the other team played last night', { 0: team.name })}
                       </span>
                       {w.points > 0 && <span className="num text-xs font-bold text-muted">+{w.points.toFixed(1)} {t('pts')}</span>}
@@ -409,6 +414,15 @@ function AnalysisCard({ d }: { d: Detail }) {
       ? t('{0} shoot {1}% from three, above the league average of {2}%.', { 0: best[0], 1: best[1], 2: lg })
       : t('Both teams shoot below the league average from three ({0}%).', { 0: lg }))
   }
+  if (d.injuries) {
+    const key = (list: Injury[], name: string) => {
+      const out = list.filter(x => x.weight >= 1 && (x.minutes || 0) >= 12).map(x => x.name)
+      const maybe = list.filter(x => x.weight >= 0.4 && x.weight < 1 && (x.minutes || 0) >= 12).map(x => x.name)
+      return [out.length ? t('{0} will be without {1}.', { 0: name, 1: out.join(', ') }) : '', maybe.length ? t('For {0}, {1} may not play.', { 0: name, 1: maybe.join(', ') }) : ''].filter(Boolean).join(' ')
+    }
+    const txt = [key(d.injuries.home, H), key(d.injuries.away, A)].filter(Boolean).join(' ')
+    if (txt) paras.push(txt)
+  }
   if (pv.h2h.games > 0) paras.push(t('In their last {0} meetings {1} won {2} and {3} won {4}.', { 0: pv.h2h.games, 1: H, 2: pv.h2h.homeWins, 3: A, 4: pv.h2h.awayWins }))
   const p = g.prediction
   if (p?.pick && !hidden) {
@@ -424,6 +438,44 @@ function AnalysisCard({ d }: { d: Detail }) {
         {paras.map((x, i) => <p key={i}>{x}</p>)}
       </div>
       <p className="mt-4 text-[11px] text-faint">{t('Written from the numbers: this season’s results, our team ratings, the schedule and box scores.')}</p>
+    </Card>
+  )
+}
+
+/** NBA injury list of both teams; regulars (12+ minutes) are the ones the model takes points off for. */
+function InjuriesCard({ d }: { d: Detail }) {
+  const g = d.game
+  const side = (team: Game['home'], list: Injury[], pts?: number) => (
+    <div>
+      <div className="flex items-center gap-2 mb-3">
+        <TeamLogo team={team} size={22} />
+        <span className="font-display font-bold text-ink">{team.name}</span>
+        {pts ? <span className="ml-auto text-xs font-bold text-loss num">−{pts.toFixed(1)} {t('pts')}</span> : null}
+      </div>
+      {list.length === 0 ? <p className="text-sm text-faint">{t('No injuries listed.')}</p> : (
+        <ul className="space-y-2">
+          {list.map(x => (
+            <li key={x.name} className="text-sm">
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${x.weight >= 1 ? 'bg-loss' : x.weight >= 0.4 ? 'bg-draw' : 'bg-faint'}`} />
+                <span className="text-ink font-semibold truncate">{x.name}</span>
+                {x.minutes !== null && <span className="text-[11px] text-faint num">{t('{0} min', { 0: x.minutes })}</span>}
+                <span className={`ml-auto text-xs font-bold ${x.weight >= 1 ? 'text-loss' : 'text-draw'}`}>{x.status}</span>
+              </div>
+              {x.comment && <p className="mt-0.5 ml-4 text-xs text-muted line-clamp-2">{x.comment}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+  return (
+    <Card title={t('Injuries')} action={<span className="text-xs text-faint">{t('Updated every 15 minutes')}</span>}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+        {side(g.home, d.injuries!.home, g.prediction?.injHome)}
+        {side(g.away, d.injuries!.away, g.prediction?.injAway)}
+      </div>
+      <p className="mt-4 text-[11px] text-faint">{t('Our prediction takes off the points a team is expected to lose without its injured regulars (by minutes and production; doubtful and questionable players count partly).')}</p>
     </Card>
   )
 }
