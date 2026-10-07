@@ -178,7 +178,7 @@ function Section({ title, action, children }: { title: string; action?: ReactNod
 }
 
 export default function Home() {
-  const { access } = useAuth()
+  const { access, loading: authLoading } = useAuth()
   const full = access === 'pro' || access === 'admin'
   const [upcoming, setUpcoming] = useState<Match[]>([])
   const [live, setLive] = useState<Match[]>([])
@@ -188,6 +188,8 @@ export default function Home() {
   useRevealState()
 
   useEffect(() => {
+    // wait until we know who is signed in: otherwise every list is loaded twice (as a visitor, then as the user)
+    if (authLoading) return
     const loadMatches = () => {
       axios.get(`${API_URL}/matches/upcoming`, { params: { days: 14 } }).then(r => setUpcoming(r.data.data || [])).catch(() => undefined)
       axios.get(`${API_URL}/matches/live`).then(r => setLive(r.data.data || [])).catch(() => undefined)
@@ -200,7 +202,7 @@ export default function Home() {
     const onLive = (msg: { data: Match[] }) => setLive(msg.data || [])
     socket.on('matches:live', onLive)
     return () => { socket.off('matches:live', onLive); clearInterval(timer) }
-  }, [access])
+  }, [access, authLoading])
 
   useEffect(() => {
     if (!full) { setAlerts([]); return }

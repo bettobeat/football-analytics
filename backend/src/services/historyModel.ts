@@ -2,6 +2,7 @@
  * Model v2 ("dc-history-v2"): Dixon-Coles fitted on football-data.co.uk history,
  * one fit per country group. Also runs the walk-forward backtest.
  */
+import { yieldLoop, timed } from './perf';
 import { db } from '../db';
 import logger from '../utils/logger';
 import { Prediction } from './predictionModel';
@@ -68,9 +69,10 @@ db.exec(`
 }
 
 /** Fit (or refit) every group from the stored history, as of today. */
-export function fitAllGroups(asOf: string = new Date().toISOString().slice(0, 10)) {
+export async function fitAllGroups(asOf: string = new Date().toISOString().slice(0, 10)) {
   let fitted = 0;
   for (const group of Object.keys(GROUPS)) {
+    await yieldLoop(); // one group at a time, so the site keeps answering
     const matches = loadGroupMatches(group, asOf);
     if (matches.length < 100) {
       console.log(`  ⚠️  model v2 ${group}: only ${matches.length} matches, skipping`);
@@ -166,7 +168,7 @@ export async function prepareModelV2(standingsByCode: Map<string, any>, forceSyn
   }
   const map = mapTeamsFromStandings(standingsByCode);
   lastMapReport = map;
-  const fitted = fitAllGroups();
+  const fitted = await timed('model v2 fit', () => fitAllGroups());
   return { fitted, map };
 }
 

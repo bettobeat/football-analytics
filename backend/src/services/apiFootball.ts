@@ -15,6 +15,8 @@
  * Budget: Pro = 7,500 requests/day. Daily upkeep is ~100 requests; the rest drips the lineup
  * history in, most recent first, always leaving a reserve.
  */
+import { clearPredictionCache } from './predCache';
+import { yieldLoop, timed } from './perf';
 import { db } from '../db';
 import logger from '../utils/logger';
 import { markFresh, markFailed } from './freshness';
@@ -533,6 +535,16 @@ export function rebuildAfFeatures() {
   featuresBuiltAt = new Date().toISOString();
   return n;
 }
+/** The same, one group at a time with a pause between (used by the 10-minute tick). */
+export async function rebuildAfFeaturesAsync() {
+  let n = 0;
+  for (const g of Object.keys(GROUPS)) {
+    await yieldLoop();
+    n += buildFeatures(g);
+  }
+  featuresBuiltAt = new Date().toISOString();
+  return n;
+}
 
 /** Availability for a match by football-data.co.uk names and date (±1 day for time zones). */
 export function availabilityFor(group: string, fdHome: string, fdAway: string, date: string): MatchAvail | null {
@@ -577,7 +589,7 @@ export async function afTick(force = false) {
           notes.push(`${lg.id}/${s}: ${e.message}`);
         }
       }
-    for (const g of Object.keys(GROUPS)) mapTeams(g);
+    for (const g of Object.keys(GROUPS)) { await yieldLoop(); mapTeams(g); }
 
     // 2) lineups for matches kicking off within the next 90 min (or started in the last 3 h) — top divisions only
     const now = Date.now();
@@ -620,7 +632,8 @@ export async function afTick(force = false) {
     }
     if (gotXg) notes.push(`${gotXg} match stats`);
 
-    rebuildAfFeatures();
+    await timed('lineup/injury features', () => rebuildAfFeaturesAsync());
+    clearPredictionCache(); // new lineups / injuries change v3
     lastError = null;
     markFresh('injuries-lineups');
   } catch (e: any) {

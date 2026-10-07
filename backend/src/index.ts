@@ -1,4 +1,6 @@
 import express from 'express';
+import { slimForList } from './services/predCache';
+import { perfStatus, setJob } from './services/perf';
 import cors from 'cors';
 import helmet from 'helmet';
 import { Server } from 'socket.io';
@@ -534,7 +536,7 @@ app.get('/api/matches/upcoming', async (req, res) => {
     // + extra competitions from API-Football (national teams, cups, more leagues)
     const matches = [...fd, ...afWithPredictions(afUpcoming(days))].sort((a: any, b: any) => a.utcDate.localeCompare(b.utcDate));
     res.json({
-      data: matches,
+      data: matches.map(slimForList),
       count: matches.length,
       days,
       cacheAgeMs: footballDataAPI.windowAge,
@@ -547,7 +549,7 @@ app.get('/api/matches/upcoming', async (req, res) => {
 
 app.get('/api/matches/live', async (_req, res) => {
   try {
-    const matches = [...footballDataAPI.withPredictions(await footballDataAPI.getLiveMatches()), ...afWithPredictions(afLive())];
+    const matches = [...footballDataAPI.withPredictions(await footballDataAPI.getLiveMatches()), ...afWithPredictions(afLive())].map(slimForList);
     res.json({ data: matches, count: matches.length, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Failed to fetch live matches');
@@ -1189,6 +1191,12 @@ app.get('/api/af/xg', (_req, res) => {
   res.json({ data: xgCoverage(), timestamp: new Date().toISOString() });
 });
 
+// Admin: event-loop stalls and how long the heavy jobs take (why the site feels slow)
+app.get('/api/perf', (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: perfStatus(), timestamp: new Date().toISOString() });
+});
+
 app.get('/api/af/status', async (_req, res) => {
   try {
     res.json({ data: await afStatus(), timestamp: new Date().toISOString() });
@@ -1552,9 +1560,10 @@ setInterval(async () => {
   if (livePolling) return; // a slow poll (API waits) must not overlap the next one
   livePolling = true;
   try {
-    const fdLive = footballDataAPI.withPredictions(await footballDataAPI.getLiveMatches());
+    setJob('live poll');
+    const fdLive = footballDataAPI.withPredictions(await footballDataAPI.getLiveMatches(true));
     recordPredictions(fdLive); // locks anything that has kicked off (Football-Data.org matches only)
-    const live = [...fdLive, ...afWithPredictions(await pollAfLive())];
+    const live = [...fdLive, ...afWithPredictions(await pollAfLive())].map(slimForList);
     const ts = new Date().toISOString();
     io.to('full').emit('matches:live', { data: live, timestamp: ts });
     io.to('teaser').emit('matches:live', teaseDeep({ data: live, timestamp: ts }));
@@ -1569,6 +1578,7 @@ setInterval(async () => {
     markFailed('live', error);
   } finally {
     livePolling = false;
+    setJob(null);
   }
 }, LIVE_POLL_MS);
 

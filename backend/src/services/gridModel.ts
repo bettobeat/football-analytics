@@ -18,6 +18,8 @@
  * that feed exists — they neither help nor hurt. Relevance and conversion constants are
  * the starting values from the Scoring Grid; the backtest calibrates them.
  */
+import { clearPredictionCache } from './predCache';
+import { yieldLoop } from './perf';
 import { db } from '../db';
 import logger from '../utils/logger';
 import { markFresh } from './freshness';
@@ -822,6 +824,28 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
 const liveState = new Map<string, { state: GroupState; all: HistoryMatch[] }>();
 let lastBuiltAt: string | null = null;
 
+/**
+ * Same as prepareModelV3, but gives the server a breath between groups (20 groups since Oct 2026), so visitors
+ * are not kept waiting while the whole model is rebuilt.
+ */
+export async function prepareModelV3Async() {
+  const asOf = new Date(Date.now() + DAY).toISOString().slice(0, 10);
+  let built = 0;
+  for (const group of Object.keys(GROUPS)) {
+    await yieldLoop();
+    const all = loadGroupMatches(group);
+    if (all.length < 100) continue;
+    liveState.set(group, { state: withLiveConfig(() => buildState(group, all, asOf)), all });
+    built++;
+  }
+  lastBuiltAt = new Date().toISOString();
+  clearPredictionCache();
+  trendCache.clear();
+  markFresh('model', `${built} groups`);
+  logger.info(`model v3 state built for ${built} groups`);
+  return built;
+}
+
 /** Rebuild every group's state as of today (cheap: a few thousand rows per group). */
 export function prepareModelV3() {
   const asOf = new Date(Date.now() + DAY).toISOString().slice(0, 10); // include today's finished games
@@ -833,6 +857,7 @@ export function prepareModelV3() {
     built++;
   }
   lastBuiltAt = new Date().toISOString();
+  clearPredictionCache();
   trendCache.clear();
   markFresh('model', `${built} groups`);
   logger.info(`model v3 state built for ${built} groups`);

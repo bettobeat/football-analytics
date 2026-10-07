@@ -7,6 +7,7 @@
  * Budget (Pro 7,500/day): fixture window every 30 min (~15 leagues), live scores every 60 s only while one of
  * these matches is in play, match details / tables / scorers / odds on demand with caching.
  */
+import { cachedPredictions, mainPrediction } from './predCache';
 import { isTrialCompetition } from './trial';
 import logger from '../utils/logger';
 import { markFresh } from './freshness';
@@ -603,7 +604,7 @@ export function afPrediction(m: any): Prediction | null {
 
 /** Every model that covers the match: v1 (table), plus v2/v3 where the league has history (Belgium, Turkey, Scotland, Greece). */
 export function afPredictions(m: any): Prediction[] {
-  return freezePredictions(m, computeAfPredictions(m));
+  return cachedPredictions(m, () => freezePredictions(m, computeAfPredictions(m)));
 }
 
 function computeAfPredictions(m: any): Prediction[] {
@@ -627,7 +628,7 @@ function computeAfPredictions(m: any): Prediction[] {
 export function afWithPredictions(matches: any[]) {
   return matches.map(m => {
     const predictions = afPredictions(m);
-    return { ...m, prediction: predictions.find(p => p.model.startsWith('dc-history')) || predictions[0] || null, predictions };
+    return { ...m, prediction: mainPrediction(predictions), predictions };
   });
 }
 
@@ -795,7 +796,7 @@ export async function getAfMatchDetails(matchId: number) {
   const predictions = afPredictions(match);
   return {
     match,
-    prediction: predictions.find(p => p.model.startsWith('dc-history')) || predictions[0] || null,
+    prediction: mainPrediction(predictions),
     predictions,
     head2head: h2h,
     standings: { home: standingRow(standings, match.homeTeam.id), away: standingRow(standings, match.awayTeam.id) },

@@ -1,11 +1,13 @@
 import axios, { AxiosInstance } from 'axios';
+import { cachedPredictions, clearPredictionCache, mainPrediction } from './predCache';
+import { timed } from './perf';
 import { freezePredictions } from './tracking';
 import logger from '../utils/logger';
 import { db } from '../db';
 import { markFresh, markFailed } from './freshness';
 import { predictFromStandings, Prediction, StandingsResponse } from './predictionModel';
 import { predictV2, prepareModelV2 } from './historyModel';
-import { predictV3, prepareModelV3 } from './gridModel';
+import { predictV3, prepareModelV3, prepareModelV3Async } from './gridModel';
 import { predictClubEuro } from './clubElo';
 import { withMarket, oddsFor } from './odds';
 
@@ -304,7 +306,7 @@ class FootballDataAPI {
 
   /** All model predictions for a match (v1 standings, v2 history) — for tracking both. */
   allPredictionsFor(match: any): Prediction[] {
-    return freezePredictions(match, this.computePredictions(match));
+    return cachedPredictions(match, () => freezePredictions(match, this.computePredictions(match)));
   }
 
   private computePredictions(match: any): Prediction[] {
@@ -337,15 +339,14 @@ class FootballDataAPI {
 
   /** The prediction shown on the site: v2 (history model) when available, else v1. */
   predictionFor(match: any): Prediction | null {
-    const all = this.allPredictionsFor(match);
-    return all.find(p => p.model.startsWith('dc-history')) || all.find(p => p.model === 'elo-euro') || all[0] || null;
+    return mainPrediction(this.allPredictionsFor(match));
   }
 
   /** Attach model predictions and (when stored) market odds to match objects. */
   withPredictions<T extends { id: number }>(matches: T[]): (T & { prediction: Prediction | null; predictions: Prediction[] })[] {
     return withMarket(matches).map(m => {
       const predictions = this.allPredictionsFor(m);
-      return { ...m, prediction: predictions.find(p => p.model.startsWith('dc-history')) || predictions.find(p => p.model === 'elo-euro') || predictions[0] || null, predictions };
+      return { ...m, prediction: mainPrediction(predictions), predictions };
     });
   }
 
@@ -354,7 +355,8 @@ class FootballDataAPI {
     try {
       const r = await prepareModelV2(this.standingsByCode, forceSync);
       console.log(`🧠 Model v2 ready: ${r.fitted} groups fitted`);
-      const g = prepareModelV3();
+      const g = await timed('model v3 build', () => prepareModelV3Async());
+      clearPredictionCache();
       console.log(`🧮 Model v3 (grid) ready: ${g} groups`);
       return r;
     } catch (error: any) {
@@ -422,31 +424,47 @@ class FootballDataAPI {
   }
 
   /** Matches currently in play across all competitions the plan allows. */
-  async getLiveMatches() {
-    const cacheKey = 'live';
-    const cached = this.getCached<any[]>(cacheKey);
+  private liveLast: { data: any[]; at: number } | null = null;
+  private liveInFlight: Promise<any[]> | null = null;
+
+  /**
+   * Live matches. Visitors never wait for Football-Data.org (two calls, ~3 s with the rate limit): they get the last
+   * list we fetched (refreshed every minute by the live poll, and in the background here when it is over 30 s old).
+   * Pass fresh = true to wait for a new list (the live poll itself).
+   */
+  async getLiveMatches(fresh = false) {
+    const cached = this.getCached<any[]>('live');
     if (cached) return cached;
-
-    try {
-      const response = await this.client.get('/matches', {
-        params: { status: 'IN_PLAY' },
-        ...this.bg
-      });
-      const inPlay: any[] = response.data.matches || [];
-      // The API treats IN_PLAY and PAUSED separately; fetch PAUSED too
-      const pausedRes = await this.client.get('/matches', {
-        params: { status: 'PAUSED' },
-        ...this.bg
-      });
-      const paused: any[] = pausedRes.data.matches || [];
-
-      const live = [...inPlay, ...paused].filter(m => LIVE_STATUSES.has(m.status));
-      this.setCached(cacheKey, live, LIVE_CACHE_TTL_MS);
-      return live;
-    } catch (error: any) {
-      logger.error('Error fetching live matches', { error: error.message });
-      throw error;
+    if (!fresh && this.liveLast && Date.now() - this.liveLast.at < 5 * 60 * 1000) {
+      this.refreshLive().catch(() => undefined);
+      return this.liveLast.data;
     }
+    return this.refreshLive();
+  }
+
+  private refreshLive(): Promise<any[]> {
+    if (this.liveInFlight) return this.liveInFlight;
+    this.liveInFlight = (async () => {
+      try {
+        // The API treats IN_PLAY and PAUSED separately: ask for both at once
+        const [response, pausedRes] = await Promise.all([
+          this.client.get('/matches', { params: { status: 'IN_PLAY' }, ...this.bg }),
+          this.client.get('/matches', { params: { status: 'PAUSED' }, ...this.bg })
+        ]);
+        const inPlay: any[] = response.data.matches || [];
+        const paused: any[] = pausedRes.data.matches || [];
+        const live = [...inPlay, ...paused].filter(m => LIVE_STATUSES.has(m.status));
+        this.setCached('live', live, LIVE_CACHE_TTL_MS);
+        this.liveLast = { data: live, at: Date.now() };
+        return live;
+      } catch (error: any) {
+        logger.error('Error fetching live matches', { error: error.message });
+        throw error;
+      } finally {
+        this.liveInFlight = null;
+      }
+    })();
+    return this.liveInFlight;
   }
 
   async getLeagues() {
