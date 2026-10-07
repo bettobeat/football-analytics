@@ -1148,6 +1148,89 @@ export async function lastMeetings(homeAf: number, awayAf: number) {
   return afH2H(homeAf, awayAf, AF_OFFSET + homeAf, AF_OFFSET + awayAf);
 }
 
+/** API-Football fixture id, team ids and kick-off of a match page (an API-Football match, or a Football-Data.org match's twin). */
+export async function afFixtureInfo(match: any): Promise<{ fid: number; home: number; away: number; kickoff: string } | null> {
+  if (!afConfigured()) return null;
+  const fid = isAfMatchId(match.id) ? match.id - AF_OFFSET : await afFixtureForFd(match);
+  if (!fid) return null;
+  const raw = await cached(`fixture:${fid}`, 60 * 1000, async () => {
+    const j = await afGet('/fixtures', { id: fid });
+    return j.response?.[0] || null;
+  });
+  if (!raw) return null;
+  return { fid, home: raw.teams.home.id, away: raw.teams.away.id, kickoff: new Date(raw.fixture.date).toISOString() };
+}
+
+/** Players listed as out ("Missing Fixture") or doubtful ("Questionable") for a fixture, per side. */
+export async function fixtureInjuries(fid: number, homeAf: number, awayAf: number) {
+  return once(`inj:${fid}`, 2 * 3600 * 1000, async () => {
+    const j = await afGet('/injuries', { fixture: fid });
+    const side = (teamId: number) =>
+      (j.response || [])
+        .filter((r: any) => r.team?.id === teamId && r.player?.name)
+        .map((r: any) => ({
+          id: r.player.id ? AF_OFFSET + r.player.id : null,
+          name: r.player.name,
+          out: r.player.type !== 'Questionable',
+          reason: r.player.reason || null
+        }))
+        .sort((a: any, b: any) => Number(b.out) - Number(a.out) || a.name.localeCompare(b.name));
+    return { home: side(homeAf), away: side(awayAf) };
+  });
+}
+
+/** A team's next fixtures (any competition). */
+async function nextFixtures(afTeamId: number, n = 5): Promise<any[]> {
+  return once(`next:${afTeamId}:${n}`, 3 * 3600 * 1000, async () => {
+    const j = await afGet('/fixtures', { team: afTeamId, next: n });
+    return j.response || [];
+  });
+}
+
+/**
+ * Schedule and rest around a match for one team: days since its previous game, how many games it played in the
+ * last 14 / 30 days (all competitions), away trips, and when its next game is (rotation risk before a big midweek game).
+ */
+export async function teamSchedule(afTeamId: number, kickoffIso: string) {
+  const ko = new Date(kickoffIso).getTime();
+  const [past, next] = await Promise.all([lastFinished(afTeamId, 10), nextFixtures(afTeamId, 5)]);
+  const seen = new Set<number>();
+  const all = [...past, ...next].filter((f: any) => f?.fixture?.id && !seen.has(f.fixture.id) && seen.add(f.fixture.id));
+  const brief = (f: any) => {
+    const home = f.teams.home.id === afTeamId;
+    const opp = home ? f.teams.away : f.teams.home;
+    const gf = home ? f.goals?.home : f.goals?.away, ga = home ? f.goals?.away : f.goals?.home;
+    const t = new Date(f.fixture.date).getTime();
+    return {
+      date: new Date(t).toISOString(),
+      days: Math.round((Math.abs(ko - t) / 86400000) * 10) / 10,
+      home,
+      opponent: opp?.name || '?',
+      opponentCrest: opp?.logo || null,
+      competition: f.league?.name || null,
+      score: FINISHED_SHORT.has(f.fixture?.status?.short) && gf != null && ga != null ? `${gf}-${ga}` : null
+    };
+  };
+  const HOUR = 3600 * 1000;
+  const before = all.filter((f: any) => new Date(f.fixture.date).getTime() < ko - 2 * HOUR)
+    .sort((a: any, b: any) => new Date(b.fixture.date).getTime() - new Date(a.fixture.date).getTime());
+  const after = all.filter((f: any) => new Date(f.fixture.date).getTime() > ko + 2 * HOUR)
+    .sort((a: any, b: any) => new Date(a.fixture.date).getTime() - new Date(b.fixture.date).getTime());
+  const within = (days: number) => before.filter((f: any) => ko - new Date(f.fixture.date).getTime() <= days * 86400000);
+  // the list only reaches back 10 games: say "unknown" rather than undercount a 30-day window it doesn't cover
+  const oldest = before.length ? new Date(before[before.length - 1].fixture.date).getTime() : ko;
+  const covers = (days: number) => before.length >= 10 ? ko - oldest >= days * 86400000 : true;
+  return {
+    previous: before[0] ? brief(before[0]) : null,
+    next: after[0] ? brief(after[0]) : null,
+    games14: within(14).length,
+    games30: covers(30) ? within(30).length : null,
+    away30: covers(30) ? within(30).filter((f: any) => f.teams.away.id === afTeamId).length : null,
+    recent: before.slice(0, 5).map(brief),
+    upcoming: after.slice(0, 3).map(brief)
+  };
+}
+
 /**
  * Build the match-page tabs (last-10 averages, expected XI, last-10 meetings) for every game in the next `hours`,
  * soonest first, so visitors never wait for them. Finished games' stats/lineups are stored for good, so after the

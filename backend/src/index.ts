@@ -34,7 +34,8 @@ import { clvTick, clvReport, startClvScheduler, clvProbe } from './services/clv'
 import {
   isAfMatchId, isAfCode, afUpcoming, afLive, afWithPredictions, getAfMatchDetails, getAfStandings, getAfScorers, getAfRecent,
   afCompetitions, pollAfLive, startAfMatchesScheduler, afWindowStatus, refreshAfWindow, onAfWindow, isKnownAfFixture, afExtrasForFd, withAfOdds, backfillAfOdds,
-  afTeamsOf, afTeamsByAfMatchId, warmMatchExtras, teamAverages, probableXI, lastMeetings, AF_OFFSET
+  warmMatchExtras, teamAverages, probableXI, lastMeetings, AF_OFFSET,
+  afFixtureInfo, fixtureInjuries, teamSchedule
 } from './services/afMatches';
 import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNationalEloScheduler, nationalGoalsSensitivity, tuneNational, nationalTuneStatus } from './services/nationalElo';
 import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler, clubValueReport } from './services/clubElo';
@@ -256,7 +257,7 @@ app.use(['/api/team-page', '/api/player-page'], rateLimit('pages', 60, 10 * 6000
 app.use('/api/unlocks', (req, res, next) => (req.method === 'POST' ? rateLimit('unlock', 30, 60000, r => String(r.user?.id || r.ip))(req, res, next) : next()));
 
 const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|public\/(summary|results|record)$|unlocks(\/|$)|billing\/)/;
-const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|backtest|history\/status|clv|past\/(seasons|predictions|data|patterns)|draw-alerts)$/;
+const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|history\/status|clv|draw-alerts)$/; // past seasons and backtests are admin only (Oct 2026)
 
 app.use('/api', (req, res, next) => {
   const p = req.originalUrl.split('?')[0];
@@ -656,25 +657,33 @@ app.get('/api/matches/:id(\\d+)/details', async (req, res) => {
 //   stats   → each team's averages over its last 10 games
 //   lineups → the XI we expect from each team's last 5 lineups
 //   h2h     → the last 10 meetings, however long ago
-app.get('/api/matches/:id(\\d+)/extras/:part(stats|lineups|h2h)', async (req, res) => {
+//   rest    → schedule & rest: days since the last game, games in the last 14/30 days, the next game
+//   (lineups also carries the injured / doubtful players listed for the fixture)
+app.get('/api/matches/:id(\\d+)/extras/:part(stats|lineups|h2h|rest)', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
-    let teams: { home: number; away: number } | null;
+    let info: { fid: number; home: number; away: number; kickoff: string } | null;
     if (id >= AF_OFFSET) {
       if (!isKnownAfFixture(id)) return res.status(404).json({ error: 'Match not found' });
-      teams = await afTeamsByAfMatchId(id);
+      info = await afFixtureInfo({ id });
     } else {
       const match = await footballDataAPI.getMatch(id);
-      teams = match ? await afTeamsOf(match) : null;
+      info = match ? await afFixtureInfo(match) : null;
     }
-    if (!teams) return res.json({ data: null, timestamp: new Date().toISOString() });
+    if (!info) return res.json({ data: null, timestamp: new Date().toISOString() });
+    const teams = { home: info.home, away: info.away };
     let data: any;
     if (req.params.part === 'stats') {
       const [home, away] = [await teamAverages(teams.home, 10), await teamAverages(teams.away, 10)];
       data = { home, away };
     } else if (req.params.part === 'lineups') {
       const [home, away] = [await probableXI(teams.home, 5), await probableXI(teams.away, 5)];
-      data = { home, away };
+      let injuries: any = null;
+      try { injuries = await fixtureInjuries(info.fid, teams.home, teams.away); } catch { /* no injury list for this league */ }
+      data = { home, away, injuries };
+    } else if (req.params.part === 'rest') {
+      const [home, away] = await Promise.all([teamSchedule(teams.home, info.kickoff), teamSchedule(teams.away, info.kickoff)]);
+      data = { kickoff: info.kickoff, home, away };
     } else {
       data = await lastMeetings(teams.home, teams.away);
     }

@@ -491,8 +491,9 @@ function MatchDetail() {
   // Tab data loaded on first open (built from API-Football: last 10 games, last 5 lineups, last 10 meetings).
   // undefined = not loaded yet, null = nothing available.
   const [xStats, setXStats] = useState<{ home: TeamAvg; away: TeamAvg } | null | undefined>(undefined)
-  const [xLineups, setXLineups] = useState<{ home: XI; away: XI } | null | undefined>(undefined)
+  const [xLineups, setXLineups] = useState<{ home: XI; away: XI; injuries?: { home: Injury[]; away: Injury[] } | null } | null | undefined>(undefined)
   const [xH2H, setXH2H] = useState<H2HData | null | undefined>(undefined)
+  const [xRest, setXRest] = useState<{ kickoff: string; home: TeamSchedule; away: TeamSchedule } | null | undefined>(undefined)
   const requested = useRef<{ id: number; parts: Set<string> }>({ id: 0, parts: new Set<string>() })
   useEffect(() => {
     if (!matchId || !details) return
@@ -501,8 +502,9 @@ function MatchDetail() {
       setXStats(undefined)
       setXLineups(undefined)
       setXH2H(undefined)
+      setXRest(undefined)
     }
-    const setters: Record<string, (v: any) => void> = { stats: setXStats, lineups: setXLineups, h2h: setXH2H }
+    const setters: Record<string, (v: any) => void> = { stats: setXStats, lineups: setXLineups, h2h: setXH2H, rest: setXRest }
     // the open tab; the expected lineups also load in the background from the prediction tab
     const parts = [tab, ...(tab === 'prediction' ? ['lineups'] : [])].filter(p => p in setters)
     for (const part of parts) {
@@ -579,7 +581,8 @@ function MatchDetail() {
   const tabs: { id: TabId; label: string; short?: string; hint: string; live?: boolean }[] = [
     { id: 'prediction', label: tt('Prediction'), hint: '' },
     { id: 'stats', label: tt('Statistics'), short: tt('Stats'), hint: live ? tt("Live stats, match events and averages") : done ? tt("Match stats, events and averages") : tt("Averages from the last 10 games"), live },
-    { id: 'lineups', label: tt('Lineups'), hint: hasLineups ? tt("Official lineups") : done ? tt('Lineups') : tt("Expected XI from the last 5 games") },
+    { id: 'lineups', label: tt('Lineups & injuries'), short: tt('Lineups'), hint: hasLineups ? tt("Official lineups") : done ? tt('Lineups') : tt("Expected XI from the last 5 games") },
+    { id: 'rest', label: tt('Schedule & rest'), short: tt('Rest'), hint: tt("Days of rest, recent and next games") },
     { id: 'h2h', label: tt('H2H'), hint: tt("Last 10 meetings and recent form") },
     ...(tables === null || tableShow.length ? [{ id: 'table' as TabId, label: tt('Standings'), short: tt('Table'), hint: tt('{0} table', { 0: m.competition.name }) }] : [])
   ]
@@ -981,7 +984,39 @@ function MatchDetail() {
                   {live || done ? tt("No lineup data from the provider for this match.") : tt("Lineups are published about an hour before kick-off.")}
                 </p>
               )}
+
+              {/* Injured and doubtful players listed for this match */}
+              {xLineups?.injuries && (
+                <Section title={tt("Injuries & suspensions")} note={tt("Players listed as out or doubtful for this match")}>
+                  {xLineups.injuries.home.length || xLineups.injuries.away.length ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+                      <InjuryList team={home} list={xLineups.injuries.home} />
+                      <InjuryList team={away} list={xLineups.injuries.away} />
+                    </div>
+                  ) : (
+                    <p className="text-sm text-faint">{done ? tt("No missing players were listed for this match.") : tt("No missing players listed yet — the list usually fills in during the days before the game.")}</p>
+                  )}
+                </Section>
+              )}
           </>
+        )}
+
+        {tab === 'rest' && (
+          xRest === undefined ? (
+            <p className="text-sm text-muted text-center py-10">{tt("Loading schedule…")}</p>
+          ) : xRest ? (
+            <>
+              <Section title={tt("Schedule & rest")} note={tt("All competitions")}>
+                <RestSummary home={home} away={away} h={xRest.home} a={xRest.away} />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 mt-5">
+                  <RestPanel team={home} s={xRest.home} />
+                  <RestPanel team={away} s={xRest.away} />
+                </div>
+              </Section>
+            </>
+          ) : (
+            <p className="text-sm text-faint text-center py-10">{tt("No schedule data for this match.")}</p>
+          )
         )}
 
         {tab === 'table' && (
@@ -1537,6 +1572,99 @@ interface TeamAvg {
   averages: Record<string, number>
 }
 
+interface Injury { id: number | null; name: string; out: boolean; reason: string | null }
+interface Fixture1 { date: string; days: number; home: boolean; opponent: string; opponentCrest: string | null; competition: string | null; score: string | null }
+interface TeamSchedule { previous: Fixture1 | null; next: Fixture1 | null; games14: number; games30: number | null; away30: number | null; recent: Fixture1[]; upcoming: Fixture1[] }
+
+function InjuryList({ team, list }: { team: Team; list: Injury[] }) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3">
+        {team.crest && <img src={team.crest} alt="" className="w-6 h-6 object-contain" />}
+        <span className="font-display font-bold text-ink">{team.shortName || team.name}</span>
+        <span className="ml-auto num text-xs text-faint">{list.filter(x => x.out).length} {tt("out")} · {list.filter(x => !x.out).length} {tt("doubtful")}</span>
+      </div>
+      {list.length ? (
+        <ul className="space-y-1.5">
+          {list.map((x, i) => (
+            <li key={x.id ?? i} className="flex items-center gap-2 text-sm">
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${x.out ? 'bg-loss' : 'bg-draw'}`} />
+              {x.id ? <Link to={`/player/${x.id}`} className="text-ink hover:text-accent truncate">{x.name}</Link> : <span className="text-ink truncate">{x.name}</span>}
+              <span className="ml-auto text-xs text-faint text-right">{x.out ? tt("Out") : tt("Doubtful")}{x.reason ? ` · ${x.reason}` : ''}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-faint">{tt("Nobody listed.")}</p>
+      )}
+    </div>
+  )
+}
+
+const daysText = (d: number) => (d < 1 ? tt("under a day") : tt("{0} days", { 0: Math.floor(d) }))
+
+/** One line comparing both teams' rest and workload. */
+function RestSummary({ home, away, h, a }: { home: Team; away: Team; h: TeamSchedule; a: TeamSchedule }) {
+  const lines: string[] = []
+  const hr = h.previous?.days, ar = a.previous?.days
+  if (hr != null && ar != null) {
+    const diff = Math.floor(hr) - Math.floor(ar)
+    if (Math.abs(diff) >= 2) lines.push(tt("{0} has {1} more days of rest.", { 0: diff > 0 ? home.shortName || home.name : away.shortName || away.name, 1: Math.abs(diff) }))
+    else lines.push(tt("Similar rest for both teams."))
+  }
+  for (const [t, s] of [[home, h], [away, a]] as const) {
+    if (s.games14 >= 4) lines.push(tt("{0} played {1} games in the last 14 days.", { 0: t.shortName || t.name, 1: s.games14 }))
+    if (s.next && s.next.days <= 4) lines.push(tt("{0} plays again {1} later ({2}).", { 0: t.shortName || t.name, 1: daysText(s.next.days), 2: s.next.competition || '' }))
+  }
+  if (!lines.length) return null
+  return (
+    <div className="rounded-xl bg-surface2/50 border border-line/60 px-4 py-3 text-sm text-muted space-y-1">
+      {lines.map((l, i) => <p key={i}>{l}</p>)}
+    </div>
+  )
+}
+
+function RestPanel({ team, s }: { team: Team; s: TeamSchedule }) {
+  const fx = (f: Fixture1, before: boolean, key: number) => (
+    <li key={key} className="flex items-center gap-2 text-xs">
+      <span className="num text-faint w-14 shrink-0">{new Date(f.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span>
+      <span className="text-faint w-4 shrink-0">{f.home ? tt("H") : tt("A")}</span>
+      {f.opponentCrest && <img src={f.opponentCrest} alt="" className="w-4 h-4 object-contain shrink-0" loading="lazy" />}
+      <span className="text-ink truncate">{f.opponent}</span>
+      <span className="ml-auto text-faint truncate max-w-[40%] text-right">{f.score ? <span className="num text-muted mr-1.5">{f.score}</span> : null}{f.competition}</span>
+      <span className="sr-only">{before ? tt("{0} before", { 0: daysText(f.days) }) : tt("{0} after", { 0: daysText(f.days) })}</span>
+    </li>
+  )
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3">
+        {team.crest && <img src={team.crest} alt="" className="w-6 h-6 object-contain" />}
+        <span className="font-display font-bold text-ink">{team.shortName || team.name}</span>
+      </div>
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        <Mini label={tt("Days of rest")} value={s.previous ? (s.previous.days < 1 ? '<1' : Math.floor(s.previous.days)) : '—'} />
+        <Mini label={tt("Games, last 14 days")} value={s.games14} />
+        <Mini label={tt("Next game in")} value={s.next ? tt("{0} d", { 0: Math.floor(s.next.days) }) : '—'} />
+      </div>
+      {s.recent.length > 0 && (
+        <>
+          <div className="label pb-1.5">{tt("Before this match")}</div>
+          <ul className="space-y-1.5 mb-3">{s.recent.map((f, i) => fx(f, true, i))}</ul>
+        </>
+      )}
+      {s.upcoming.length > 0 && (
+        <>
+          <div className="label pb-1.5">{tt("After this match")}</div>
+          <ul className="space-y-1.5">{s.upcoming.map((f, i) => fx(f, false, i))}</ul>
+        </>
+      )}
+      {s.games30 != null && (
+        <p className="mt-3 text-[11px] text-faint">{tt("{0} games in the last 30 days, {1} of them away.", { 0: s.games30, 1: s.away30 ?? 0 })}</p>
+      )}
+    </div>
+  )
+}
+
 interface XI {
   basedOn: number
   formation: string | null
@@ -1643,8 +1771,8 @@ interface TableRow extends StandingRow {
   team: { id: number; name: string; shortName?: string; crest?: string }
 }
 
-type TabId = 'prediction' | 'stats' | 'lineups' | 'h2h' | 'table'
-const TAB_IDS: TabId[] = ['prediction', 'stats', 'lineups', 'h2h', 'table']
+type TabId = 'prediction' | 'stats' | 'lineups' | 'rest' | 'h2h' | 'table'
+const TAB_IDS: TabId[] = ['prediction', 'stats', 'lineups', 'rest', 'h2h', 'table']
 
 type StandingsTable = { type: string; group?: string | null; table: TableRow[] }
 

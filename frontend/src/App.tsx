@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link, NavLink, useLocation } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
 import Home from './pages/Home'
@@ -33,6 +33,13 @@ import { t as tt, basename, applyHeadLang, LANGS, lang, setLang, type Lang } fro
 
 export function LogoMark({ size = 36 }: { size?: number }) {
   return <img src="/logo-mark.png" width={size} height={size} alt="" aria-hidden className="flex-shrink-0 rounded-[10px]" />
+}
+
+/** Pages only the admin sees; everyone else gets "not found". */
+function AdminOnly({ children }: { children: ReactNode }) {
+  const { access, loading } = useAuth()
+  if (loading) return null
+  return access === 'admin' ? <>{children}</> : <NotFound />
 }
 
 function Logo() {
@@ -178,16 +185,19 @@ function NavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
         {tt("Draw picks")}</NavLink>
       <NavLink to="/accuracy" className={cls}>
         {tt("Accuracy")}</NavLink>
-      <NavLink to="/past" className={cls}>
-        {tt("Past seasons")}</NavLink>
       {access !== 'pro' && access !== 'admin' && (
         <NavLink to="/premium" className={cls}>
           {access === 'premium' ? tt("Go Pro") : tt("Premium")}
         </NavLink>
       )}
       {access === 'admin' && (
-        <NavLink to="/admin" className={cls}>
-          {tt("Users")}</NavLink>
+        <>
+          {/* Oct 2026: past-season tests are internal only (the model then had less information than now) */}
+          <NavLink to="/past" className={cls}>
+            {tt("Past seasons")}</NavLink>
+          <NavLink to="/admin" className={cls}>
+            {tt("Users")}</NavLink>
+        </>
       )}
     </>
   )
@@ -369,11 +379,7 @@ function Shell() {
             />
             <Route
               path="/past"
-              element={
-                <PremiumGate title="Past seasons">
-                  <Past />
-                </PremiumGate>
-              }
+              element={<AdminOnly><Past /></AdminOnly>}
             />
             <Route path="/login" element={<Login mode="login" />} />
             <Route path="/signup" element={<Login mode="signup" />} />
