@@ -307,7 +307,7 @@ export function leaguesFor(title: string, summary: string, feedLeague?: string):
 /* Refresh and storage                                                   */
 /* ------------------------------------------------------------------ */
 
-const feedStatus = new Map<string, { source: string; league: string | null; ok: boolean; items: number; error: string | null; at: string }>();
+const feedStatus = new Map<string, { source: string; league: string | null; ok: boolean; items: number; last14d?: number; newest?: string | null; error: string | null; at: string }>();
 let lastRefresh: string | null = null;
 let refreshing: Promise<void> | null = null;
 
@@ -320,7 +320,13 @@ async function refresh() {
     const f = FEEDS[i];
     if (r.status === 'fulfilled') {
       raws.push(...r.value);
-      feedStatus.set(f.url, { source: f.source, league: f.league || null, ok: true, items: r.value.length, error: null, at: now });
+      const cut = Date.now() - 14 * 86400000;
+      const dated = r.value.map(x => x.published).filter((x): x is string => !!x).sort();
+      feedStatus.set(f.url, {
+        source: f.source, league: f.league || null, ok: true, items: r.value.length,
+        last14d: r.value.filter(x => !x.published || new Date(x.published).getTime() >= cut).length,
+        newest: dated.length ? dated[dated.length - 1] : null, error: null, at: now
+      });
     } else {
       const msg = (r.reason as any)?.message || String(r.reason);
       const prev = feedStatus.get(f.url);
@@ -351,7 +357,8 @@ async function refresh() {
       ins.run(it.link, it.title, it.source, it.published, it.summary, it.image, codes.length ? `,${codes.join(',')},` : '', now);
       if (!it.image) fresh.push(it.link);
     }
-    db.prepare(`DELETE FROM news_items WHERE seen_at < ?`).run(new Date(Date.now() - 21 * 86400000).toISOString());
+    db.prepare(`DELETE FROM news_items WHERE seen_at < ? AND (leagues = '' OR seen_at < ?)`)
+      .run(new Date(Date.now() - 21 * 86400000).toISOString(), new Date(Date.now() - 60 * 86400000).toISOString());
     db.exec('COMMIT');
   } catch (e) {
     db.exec('ROLLBACK');
@@ -416,10 +423,13 @@ export async function footballNews(limit = 12, league?: string): Promise<NewsIte
   if (!have.n) await refreshNow(); // first boot: wait for the first fill
   else if (!lastRefresh) void refreshNow();
   if (league) {
+    // the last 14 days; a quiet league (fewer than 8 stories) also gets its older stories, up to 60 days back
     const code = league.toUpperCase();
-    const rows = db.prepare(`
+    const q = db.prepare(`
       SELECT * FROM news_items WHERE leagues LIKE ? AND COALESCE(published, seen_at) >= ?
-      ORDER BY COALESCE(published, seen_at) DESC LIMIT ?`).all(`%,${code},%`, new Date(Date.now() - 14 * 86400000).toISOString(), limit);
+      ORDER BY COALESCE(published, seen_at) DESC LIMIT ?`);
+    let rows = q.all(`%,${code},%`, new Date(Date.now() - 14 * 86400000).toISOString(), limit);
+    if (rows.length < Math.min(8, limit)) rows = q.all(`%,${code},%`, new Date(Date.now() - 60 * 86400000).toISOString(), Math.min(limit, 8));
     return rows.map(toItem);
   }
   const rows = db.prepare(`SELECT * FROM news_items WHERE COALESCE(published, seen_at) >= ? ORDER BY COALESCE(published, seen_at) DESC LIMIT 300`)

@@ -45,7 +45,22 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_bb_games_code_kickoff ON bb_games(code, kickoff);
   CREATE TABLE IF NOT EXISTS bb_sync (key TEXT PRIMARY KEY, done_at TEXT NOT NULL, info TEXT);
+  CREATE TABLE IF NOT EXISTS bb_team_stats (
+    game_id INTEGER NOT NULL, team_id INTEGER NOT NULL,
+    fgm INTEGER, fga INTEGER, tpm INTEGER, tpa INTEGER, ftm INTEGER, fta INTEGER,
+    reb INTEGER, oreb INTEGER, dreb INTEGER, ast INTEGER, stl INTEGER, blk INTEGER, tov INTEGER, pf INTEGER,
+    PRIMARY KEY (game_id, team_id)
+  );
+  CREATE TABLE IF NOT EXISTS bb_player_stats (
+    game_id INTEGER NOT NULL, team_id INTEGER NOT NULL, player_id INTEGER NOT NULL, name TEXT,
+    starter INTEGER, minutes REAL, pts INTEGER, fgm INTEGER, fga INTEGER, tpm INTEGER, tpa INTEGER, ftm INTEGER, fta INTEGER,
+    reb INTEGER, ast INTEGER,
+    PRIMARY KEY (game_id, player_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_bb_player_stats_player ON bb_player_stats(player_id);
 `);
+// box scores fetched? 0 = not yet, 1 = stored, 2 = the provider has none
+try { db.exec(`ALTER TABLE bb_games ADD COLUMN stats INTEGER NOT NULL DEFAULT 0`); } catch { /* column exists */ }
 
 let lastCall = 0;
 let remainingDay: number | null = null;
@@ -140,9 +155,67 @@ async function syncSeason(code: string, leagueId: number, season: string) {
   return n;
 }
 
+const num = (x: any) => (x === null || x === undefined || x === '' ? null : Number(x));
+const mins = (m: any) => {
+  if (m === null || m === undefined || m === '') return null;
+  const [a, b] = String(m).split(':');
+  const v = Number(a) + (Number(b) || 0) / 60;
+  return Number.isFinite(v) ? Math.round(v * 10) / 10 : null;
+};
+
+/**
+ * Box scores (team and player stats) of finished games, 20 games per request, newest first.
+ * `maxBatches` keeps one pass bounded; the next pass continues where this one stopped.
+ */
+async function syncBoxScores(maxBatches = 400) {
+  const todo = db.prepare(`SELECT game_id FROM bb_games WHERE status IN ('FT','AOT') AND stats = 0 ORDER BY kickoff DESC LIMIT ?`).all(maxBatches * 20) as any[];
+  const insT = db.prepare(`INSERT OR REPLACE INTO bb_team_stats (game_id, team_id, fgm, fga, tpm, tpa, ftm, fta, reb, oreb, dreb, ast, stl, blk, tov, pf)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  const insP = db.prepare(`INSERT OR REPLACE INTO bb_player_stats (game_id, team_id, player_id, name, starter, minutes, pts, fgm, fga, tpm, tpa, ftm, fta, reb, ast)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  const mark = db.prepare(`UPDATE bb_games SET stats = ? WHERE game_id = ?`);
+  let games = 0;
+  for (let i = 0; i < todo.length; i += 20) {
+    const ids = todo.slice(i, i + 20).map(r => r.game_id);
+    const [t, p] = [await bb('/games/statistics/teams', { ids: ids.join('-') }), await bb('/games/statistics/players', { ids: ids.join('-') })];
+    const got = new Set<number>();
+    db.exec('BEGIN');
+    try {
+      for (const r of t.response || []) {
+        const gid = r.game?.id, tid = r.team?.id;
+        if (!gid || !tid) continue;
+        got.add(gid);
+        insT.run(gid, tid, num(r.field_goals?.total), num(r.field_goals?.attempts), num(r.threepoint_goals?.total), num(r.threepoint_goals?.attempts),
+          num(r.freethrows_goals?.total), num(r.freethrows_goals?.attempts), num(r.rebounds?.total), num(r.rebounds?.offence), num(r.rebounds?.defense),
+          num(r.assists), num(r.steals), num(r.blocks), num(r.turnovers), num(r.personal_fouls));
+      }
+      for (const r of p.response || []) {
+        const gid = r.game?.id, pid = r.player?.id;
+        if (!gid || !pid) continue;
+        insP.run(gid, r.team?.id || 0, pid, r.player?.name || null, r.type === 'starters' ? 1 : 0, mins(r.minutes), num(r.points),
+          num(r.field_goals?.total), num(r.field_goals?.attempts), num(r.threepoint_goals?.total), num(r.threepoint_goals?.attempts),
+          num(r.freethrows_goals?.total), num(r.freethrows_goals?.attempts), num(r.rebounds?.total), num(r.assists));
+      }
+      for (const id of ids) mark.run(got.has(id) ? 1 : 2, id);
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+    games += ids.length;
+  }
+  if (games) logger.info(`API-Basketball: box scores for ${games} games`);
+  return games;
+}
+
 /** Past seasons once (a finished season never changes), the current season every 30 minutes. */
+let ticking = false;
 async function bbTick() {
-  if (!KEY()) return;
+  if (!KEY() || ticking) return;
+  ticking = true;
+  try { await bbTickInner(); } finally { ticking = false; }
+}
+async function bbTickInner() {
   for (const l of BB_LEAGUES) {
     try {
       const lg: any = await syncLeague(l);
@@ -159,6 +232,12 @@ async function bbTick() {
       lastError = `${l.code}: ${e.message}`;
       logger.warn(`API-Basketball ${l.code}: ${e.message}`);
     }
+  }
+  try {
+    await syncBoxScores();
+  } catch (e: any) {
+    lastError = `box scores: ${e.message}`;
+    logger.warn(`API-Basketball box scores: ${e.message}`);
   }
 }
 
@@ -183,13 +262,14 @@ export async function bbStatus() {
   }
   const leagues = db.prepare(`SELECT code, league_id, name, country, seasons, checked_at FROM bb_leagues`).all() as any[];
   const games = db.prepare(`
-    SELECT code, season, COUNT(*) AS games, SUM(CASE WHEN status IN ('FT','AOT') THEN 1 ELSE 0 END) AS finished, MIN(kickoff) AS first, MAX(kickoff) AS last
+    SELECT code, season, COUNT(*) AS games, SUM(CASE WHEN status IN ('FT','AOT') THEN 1 ELSE 0 END) AS finished,
+      SUM(CASE WHEN stats = 1 THEN 1 ELSE 0 END) AS boxScores, SUM(CASE WHEN stats = 2 THEN 1 ELSE 0 END) AS noBoxScore, MIN(kickoff) AS first, MAX(kickoff) AS last
     FROM bb_games GROUP BY code, season ORDER BY code, season`).all();
   return { account, limitDay, remainingDay, callsThisBoot: calls, lastError, leagues: leagues.map(l => ({ ...l, seasons: JSON.parse(l.seasons) })), games };
 }
 
-/** Admin: run a sync pass now. */
+/** Admin: start a sync pass now (runs in the background; box scores can take a few minutes). */
 export async function bbSyncNow() {
-  await bbTick();
+  void bbTick();
   return bbStatus();
 }
