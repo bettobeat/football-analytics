@@ -945,5 +945,12 @@
  "via API-Football.": "via API-Football.",
  "{n, plural, one {# draw pick} other {# draw picks}} this week": "{n, plural, one {# empate em destaque} other {# empates em destaque}} nesta semana",
  "{n, plural, one {# season} other {# seasons}}": "{n, plural, one {# temporada} other {# temporadas}}",
- " since {0}": " desde {0}"
+ " since {0}": " desde {0}",
+ "Favorite": "Favorito",
+ "Add league to favorites": "Adicionar liga aos favoritos",
+ "Add team to favorites": "Adicionar time aos favoritos",
+ "Add player to favorites": "Adicionar jogador aos favoritos",
+ "Saved in this browser.": "Salvo neste navegador.",
+ "to keep them on your phone and computer.": "para tê-los no celular e no computador.",
+ "All favorites →": "Todos os favoritos →"
 }

@@ -209,7 +209,6 @@ export function useFavorites(): FavState {
 export function FavStar({ fav, size = 'md', label = false, tone, className = '' }: { fav: Favorite; size?: 'sm' | 'md'; label?: boolean; tone?: 'dark'; className?: string }) {
   const { has, toggle } = useFavorites()
   const on = has(fav.kind, fav.ref)
-  const what = fav.kind === 'league' ? 'league' : fav.kind === 'team' ? 'team' : 'player'
   const title = on ? tt("Remove {0} from favorites", { 0: fav.name }) : tt("Add {0} to favorites", { 0: fav.name })
   const px = size === 'sm' ? 'w-4 h-4' : 'w-5 h-5'
   return (
@@ -230,7 +229,7 @@ export function FavStar({ fav, size = 'md', label = false, tone, className = '' 
       <svg viewBox="0 0 24 24" className={px} fill={on ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={1.8} aria-hidden>
         <path strokeLinejoin="round" d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5z" />
       </svg>
-      {label && (on ? 'Favorite' : `Add ${what} to favorites`)}
+      {label && (on ? tt('Favorite') : fav.kind === 'league' ? tt('Add league to favorites') : fav.kind === 'team' ? tt('Add team to favorites') : tt('Add player to favorites'))}
     </button>
   )
 }

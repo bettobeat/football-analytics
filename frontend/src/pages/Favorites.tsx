@@ -62,8 +62,8 @@ export default function Favorites() {
           <p className="mt-1 text-sm text-muted">
             {user ? (synced ? t("Saved to your account, on every device you sign in on.") : t("Saving to your account…")) : (
               <>
-                Saved in this browser.{' '}
-                <Link to="/login?next=%2Ffavorites" className="font-bold text-accent">Sign in</Link> to keep them on your phone and computer.
+                {t("Saved in this browser.")}{' '}
+                <Link to="/login?next=%2Ffavorites" className="font-bold text-accent">{t("Sign in")}</Link> {t("to keep them on your phone and computer.")}
               </>
             )}
           </p>

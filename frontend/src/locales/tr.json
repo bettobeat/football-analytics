@@ -945,5 +945,12 @@
  "via API-Football.": "API-Football üzerinden.",
  "{n, plural, one {# draw pick} other {# draw picks}} this week": "Bu hafta {n, plural, one {# beraberlik tahmini} other {# beraberlik tahmini}}",
  "{n, plural, one {# season} other {# seasons}}": "{n, plural, one {# sezon} other {# sezon}}",
- " since {0}": " {0} tarihinden beri"
+ " since {0}": " {0} tarihinden beri",
+ "Favorite": "Favori",
+ "Add league to favorites": "Ligi favorilere ekle",
+ "Add team to favorites": "Takımı favorilere ekle",
+ "Add player to favorites": "Oyuncuyu favorilere ekle",
+ "Saved in this browser.": "Bu tarayıcıda kaydedildi.",
+ "to keep them on your phone and computer.": "telefonunda ve bilgisayarında görmek için.",
+ "All favorites →": "Tüm favoriler →"
 }

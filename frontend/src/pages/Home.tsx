@@ -394,7 +394,7 @@ export default function Home() {
 
       {/* ---------- your favorites (first) ---------- */}
       {favNext.length > 0 && (
-        <Section title={tt("Your favorites")} action={<Link to="/favorites" className="text-sm font-bold text-accent">All favorites →</Link>}>
+        <Section title={tt("Your favorites")} action={<Link to="/favorites" className="text-sm font-bold text-accent">{tt("All favorites →")}</Link>}>
           <div className="rail flex gap-3.5 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 snap-x">
             {favNext.map(m => nextCard(m))}
           </div>
