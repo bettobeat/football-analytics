@@ -1,4 +1,5 @@
 import express from 'express';
+import { joinWaitlist, waitlistStats } from './services/waitlist';
 import { slimForList } from './services/predCache';
 import { perfStatus, setJob, yieldLoop } from './services/perf';
 import cors from 'cors';
@@ -254,7 +255,7 @@ app.use('/api', rateLimit('api', 600, 60000)); // ~10 a second, far above a pers
 app.use(['/api/team-page', '/api/player-page'], rateLimit('pages', 60, 10 * 60000));
 app.use('/api/unlocks', (req, res, next) => (req.method === 'POST' ? rateLimit('unlock', 30, 60000, r => String(r.user?.id || r.ip))(req, res, next) : next()));
 
-const OPEN_API = /^\/api\/(health$|auth\/|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|public\/(summary|results|record)$|unlocks(\/|$)|billing\/)/;
+const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|public\/(summary|results|record)$|unlocks(\/|$)|billing\/)/;
 const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|backtest|history\/status|clv|past\/(seasons|predictions|data|patterns)|draw-alerts)$/;
 
 app.use('/api', (req, res, next) => {
@@ -420,6 +421,16 @@ app.post('/api/favorites/remove', jsonOnly, (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Sign in required' });
   res.json({ data: removeFavorite(req.user.id, req.body?.kind, req.body?.ref) });
 });
+
+// "Tell me when it opens" for the sports that are coming (anyone, signed in or not)
+app.post('/api/waitlist', rateLimit('waitlist', 10, 15 * 60000), jsonOnly, (req, res) => {
+  try {
+    res.json({ data: joinWaitlist(req.body?.email ?? req.user?.email, req.body?.sport, req.user?.id ?? null, req.body?.lang) });
+  } catch (e: any) {
+    res.status(e.status || 500).json({ error: e.message || 'Could not save' });
+  }
+});
+app.get('/api/admin/waitlist', (_req, res) => res.json({ data: waitlistStats() }));
 
 app.post('/api/auth/login', jsonOnly, (req, res) => {
   try {

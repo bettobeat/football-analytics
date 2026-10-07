@@ -24,6 +24,8 @@ import Favorites from './pages/Favorites'
 import Assistant from './components/Assistant'
 import AccessibilityMenu, { initA11y } from './components/Accessibility'
 import Accessibility from './pages/Accessibility'
+import SportSoon from './pages/SportSoon'
+import SportSwitch from './components/SportSwitch'
 import { socket } from './lib/socket'
 import { useTheme } from './lib/theme'
 import { useUnlocks, resetDay } from './lib/unlocks'
@@ -315,12 +317,13 @@ function Shell() {
         <div className="stage" aria-hidden />
         <a href="#main" className="skip-link">{tt("Skip to content")}</a>
         <header className="sticky top-0 z-40 backdrop-blur-xl bg-bg/70 border-b border-line/50">
-          <div className="max-w-7xl 2xl:max-w-[1440px] mx-auto px-4 sm:px-6 h-16 sm:h-[72px] flex items-center gap-3">
+          <div className="max-w-7xl 2xl:max-w-[1440px] mx-auto px-4 sm:px-6 h-16 sm:h-[72px] flex items-center gap-2 sm:gap-3">
+            <SportSwitch />
             <Logo />
             <nav className="hidden xl:flex shrink-0 items-center gap-0.5 p-1 rounded-full bg-surface2/60 border border-line/60">
               <NavLinks cls={navCls} />
             </nav>
-            <div className="hidden lg:block flex-1 min-w-[200px] max-w-lg ml-auto">
+            <div className="hidden lg:block flex-1 min-w-[160px] max-w-lg ml-auto">
               <SearchBox />
             </div>
             <div className="flex shrink-0 items-center gap-2 ml-auto lg:ml-0">
@@ -382,6 +385,9 @@ function Shell() {
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/accessibility" element={<Accessibility />} />
+            <Route path="/basketball/*" element={<SportSoon sport="basketball" />} />
+            <Route path="/tennis/*" element={<SportSoon sport="tennis" />} />
+            <Route path="/american-football/*" element={<SportSoon sport="american-football" />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </main>
