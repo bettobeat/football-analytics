@@ -47,6 +47,7 @@ import { unlockStatus, unlockMatch, unlockedIds, isFinished, testCheckout, PLANS
 import { goalsCalibration } from './services/goalsCalibration';
 import { runDataAudit, lastDataAudit, startDataAuditScheduler } from './services/dataAudit';
 import { footballNews, newsStatus, startNewsScheduler } from './services/news';
+import { bbGet, bbStatus, bbSyncNow, startBasketballScheduler } from './services/basketball';
 import { highlightsFor, highlightsStatus, lastCandidates } from './services/highlights';
 import { rebuildPlayerQuality, playerQualityTable } from './services/playerQuality';
 import { db } from './db';
@@ -87,7 +88,7 @@ const tokenKind = (t: unknown): 'read' | 'job' | null =>
 
 // GET endpoints that DO something (start a job, spend API calls, change data). The read token may not call them,
 // and a browser may not call them from another website (see the cross-site guard below).
-const ACTION_GET = /^\/api\/(model\/v3\/player-quality\/rebuild|data-audit\/run|history\/(sync-season|refit)|af\/(odds-backfill|sync|raw)|clv\/(tick|probe)|model\/v3\/(backfill|squad\/sync|league-tune|league-conv)|backtest\/(run|sweep)|model\/elo\/tune)$/;
+const ACTION_GET = /^\/api\/(model\/v3\/player-quality\/rebuild|data-audit\/run|history\/(sync-season|refit)|af\/(odds-backfill|sync|raw)|bb\/(sync|raw)|clv\/(tick|probe)|model\/v3\/(backfill|squad\/sync|league-tune|league-conv)|backtest\/(run|sweep)|model\/elo\/tune)$/;
 const isActionGet = (req: express.Request) =>
   req.method === 'GET' && (ACTION_GET.test(req.path) || (req.path === '/api/team-overrides' && !!req.query.field));
 
@@ -1202,6 +1203,33 @@ app.get('/api/af/raw', async (req, res) => {
   }
 });
 
+// Admin: basketball data (API-Basketball, same API-Sports key). Not in OPEN_API → admin only.
+app.get('/api/bb/status', async (_req, res) => {
+  try {
+    res.json({ data: await bbStatus(), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Basketball status failed');
+  }
+});
+app.get('/api/bb/sync', async (_req, res) => {
+  try {
+    res.json({ data: await bbSyncNow(), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Basketball sync failed');
+  }
+});
+app.get('/api/bb/raw', async (req, res) => {
+  const pathQ = String(req.query.path || '/leagues');
+  if (!['/leagues', '/seasons', '/games', '/teams', '/standings', '/statistics', '/odds', '/games/statistics/teams', '/games/statistics/players', '/players'].includes(pathQ)) return res.status(400).json({ error: 'path not allowed' });
+  const params: Record<string, string> = {};
+  for (const [k, v] of Object.entries(req.query)) if (!['path', 'token', 'c'].includes(k)) params[k] = String(v);
+  try {
+    res.json({ data: await bbGet(pathQ, params), timestamp: new Date().toISOString() });
+  } catch (e: any) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 // Admin: fill bookmaker odds for tracked national-team / cup matches saved without them (last 7 days)
 app.get('/api/af/odds-backfill', async (_req, res) => {
   try {
@@ -1685,6 +1713,7 @@ server.listen(PORT, () => {
   // Extra competitions (national teams, Europa/Conference League, Israel, Saudi, more European leagues)
   startAfMatchesScheduler();
   startNewsScheduler();
+  startBasketballScheduler();
   // Match-page tabs (averages, expected XI, H2H) prepared ahead for the next 48h, every 2 hours
   const warmExtras = async () => {
     const fd = await footballDataAPI.getUpcomingMatches(3).catch(() => [] as any[]);
