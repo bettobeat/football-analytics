@@ -37,8 +37,10 @@ function Logo() {
   return (
     <Link to="/" className="flex items-center gap-2.5 group shrink-0 whitespace-nowrap" aria-label={tt("SportLikely home")}>
       <LogoMark />
-      <span className="hidden min-[380px]:inline lg:hidden 2xl:inline font-display font-bold text-lg tracking-tight text-ink">
-        sport<span className="text-accent">likely</span></span>
+      <span className="hidden min-[380px]:inline-flex lg:hidden 2xl:inline-flex items-center" aria-hidden>
+        <img src="/wordmark-dark.png" alt="" className="hidden dark:block h-[22px] w-auto" />
+        <img src="/wordmark-light.png" alt="" className="block dark:hidden h-[22px] w-auto" />
+      </span>
     </Link>
   )
 }
