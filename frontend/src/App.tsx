@@ -26,6 +26,15 @@ import AccessibilityMenu, { initA11y } from './components/Accessibility'
 import Accessibility from './pages/Accessibility'
 import SportSoon from './pages/SportSoon'
 import SportSwitch from './components/SportSwitch'
+import BbHome from './pages/bb/BbHome'
+import BbGames from './pages/bb/BbGames'
+import BbGame from './pages/bb/BbGame'
+import BbLeague from './pages/bb/BbLeague'
+import BbTeam from './pages/bb/BbTeam'
+import BbAccuracy from './pages/bb/BbAccuracy'
+import BbPast from './pages/bb/BbPast'
+import { useBbConfig } from './lib/bb'
+import { sportOfPath } from './lib/sports'
 import { socket } from './lib/socket'
 import { useTheme } from './lib/theme'
 import { useUnlocks, resetDay } from './lib/unlocks'
@@ -171,8 +180,31 @@ function VerifyBanner() {
   )
 }
 
+/** Basketball menu (Oct 2026): Home · Games · Accuracy · Past seasons (admin). */
+function BbNavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
+  const { access } = useAuth()
+  return (
+    <>
+      <NavLink to="/basketball" end className={cls}>{tt("Home")}</NavLink>
+      <NavLink to="/basketball/games" className={cls}>{tt("Games")}</NavLink>
+      <NavLink to="/basketball/accuracy" className={cls}>{tt("Accuracy")}</NavLink>
+      {access !== 'pro' && access !== 'admin' && <NavLink to="/premium" className={cls}>{access === 'premium' ? tt("Go Pro") : tt("Premium")}</NavLink>}
+      {access === 'admin' && <NavLink to="/basketball/past" className={cls}>{tt("Past seasons")}</NavLink>}
+    </>
+  )
+}
+
+/** The open sport's basketball section is live for this visitor (admins before launch, everyone after). */
+function useBbOpen() {
+  const loc = useLocation()
+  const cfg = useBbConfig()
+  return sportOfPath(loc.pathname).id === 'basketball' && !!cfg?.open
+}
+
 function NavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
   const { access } = useAuth()
+  const bb = useBbOpen()
+  if (bb) return <BbNavLinks cls={cls} />
   return (
     <>
       <NavLink to="/" end className={cls}>
@@ -210,11 +242,15 @@ const TAB_ICONS: Record<string, string> = {
   Draws: 'M5 12h14M5 7h14M5 17h14',
   Accuracy: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
   Favorites: 'M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5z',
-  Search: 'M11 18a7 7 0 1 0 0-14a7 7 0 0 0 0 14M20 20l-3.5-3.5'
+  Search: 'M11 18a7 7 0 1 0 0-14a7 7 0 0 0 0 14M20 20l-3.5-3.5',
+  Games: 'M4 5h16v14H4zM4 10h16M9 5v14',
+  Football: 'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18M12 7l3.5 2.5-1.3 4h-4.4l-1.3-4z',
+  Premium: 'M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z'
 }
 
 /** Phone: app-style tab bar at the bottom, with a search sheet. */
 function BottomTabs() {
+  const bb = useBbOpen()
   const [searching, setSearching] = useState(false)
   const loc = useLocation()
   useEffect(() => setSearching(false), [loc.pathname])
@@ -243,11 +279,23 @@ function BottomTabs() {
         </div>
       )}
       <nav aria-label={tt("Tabs")} className="xl:hidden fixed left-3 right-3 bottom-3 z-40 grid grid-cols-6 gap-1 p-1.5 rounded-3xl bg-surface/85 backdrop-blur-xl border border-line/80 shadow-lift sm:max-w-lg sm:mx-auto">
-        {tab('/', 'Home', true)}
-        {tab('/matches', 'Matches')}
-        {tab('/favorites', 'Favorites')}
-        {tab('/draw-alerts', 'Draws')}
-        {tab('/accuracy', 'Accuracy')}
+        {bb ? (
+          <>
+            {tab('/basketball', 'Home', true)}
+            {tab('/basketball/games', 'Games')}
+            {tab('/basketball/accuracy', 'Accuracy')}
+            {tab('/', 'Football', true)}
+            {tab('/premium', 'Premium')}
+          </>
+        ) : (
+          <>
+            {tab('/', 'Home', true)}
+            {tab('/matches', 'Matches')}
+            {tab('/favorites', 'Favorites')}
+            {tab('/draw-alerts', 'Draws')}
+            {tab('/accuracy', 'Accuracy')}
+          </>
+        )}
         <button onClick={() => setSearching(true)} className="h-14 flex flex-col items-center justify-center gap-1 rounded-2xl text-muted" aria-label={tt("Search")}>
           <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d={TAB_ICONS.Search} />
@@ -391,7 +439,7 @@ function Shell() {
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/accessibility" element={<Accessibility />} />
-            <Route path="/basketball/*" element={<SportSoon sport="basketball" />} />
+            <Route path="/basketball/*" element={<BbRoutes />} />
             <Route path="/tennis/*" element={<SportSoon sport="tennis" />} />
             <Route path="/american-football/*" element={<SportSoon sport="american-football" />} />
             <Route path="*" element={<NotFound />} />
@@ -421,3 +469,22 @@ function Shell() {
 }
 
 export default App
+
+/** Basketball section: the full site for admins (before launch) and everyone once BASKETBALL_PUBLIC is on. */
+function BbRoutes() {
+  const cfg = useBbConfig()
+  if (!cfg) return null
+  if (!cfg.open) return <SportSoon sport="basketball" />
+  return (
+    <Routes>
+      <Route index element={<BbHome />} />
+      <Route path="games" element={<BbGames />} />
+      <Route path="game/:id" element={<BbGame />} />
+      <Route path="league/:code" element={<BbLeague />} />
+      <Route path="team/:id" element={<BbTeam />} />
+      <Route path="accuracy" element={<BbAccuracy />} />
+      <Route path="past" element={<AdminOnly><BbPast /></AdminOnly>} />
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  )
+}

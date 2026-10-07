@@ -48,6 +48,8 @@ import { goalsCalibration } from './services/goalsCalibration';
 import { runDataAudit, lastDataAudit, startDataAuditScheduler } from './services/dataAudit';
 import { footballNews, newsStatus, startNewsScheduler } from './services/news';
 import { bbGet, bbStatus, bbSyncNow, startBasketballScheduler } from './services/basketball';
+import { bbPublic, bbLeagues, bbGames, bbGame, bbStandings, bbTeam } from './services/bbSite';
+import { bbBacktest, bbRecord } from './services/bbModel';
 import { highlightsFor, highlightsStatus, lastCandidates } from './services/highlights';
 import { rebuildPlayerQuality, playerQualityTable } from './services/playerQuality';
 import { db } from './db';
@@ -257,7 +259,7 @@ app.use('/api', rateLimit('api', 600, 60000)); // ~10 a second, far above a pers
 app.use(['/api/team-page', '/api/player-page'], rateLimit('pages', 60, 10 * 60000));
 app.use('/api/unlocks', (req, res, next) => (req.method === 'POST' ? rateLimit('unlock', 30, 60000, r => String(r.user?.id || r.ip))(req, res, next) : next()));
 
-const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|public\/(summary|results|record)$|unlocks(\/|$)|billing\/)/;
+const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|basketball\/|public\/(summary|results|record)$|unlocks(\/|$)|billing\/)/;
 const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|history\/status|clv|draw-alerts)$/; // past seasons and backtests are admin only (Oct 2026)
 
 app.use('/api', (req, res, next) => {
@@ -1202,6 +1204,71 @@ app.get('/api/af/raw', async (req, res) => {
     res.status(502).json({ error: e.message });
   }
 });
+
+// ---------- Basketball site (Oct 2026) ----------
+// Open API, but until BASKETBALL_PUBLIC=1 only admins get data (everyone else sees the "coming soon" page).
+// Paid plans see percentages, spread, total and predicted score; everyone else the pick (finished games in full).
+app.use('/api/basketball', (req, res, next) => {
+  if (req.path === '/config' || bbPublic() || req.access === 'admin') return next();
+  res.status(404).json({ error: 'Not found' });
+});
+app.get('/api/basketball/config', (req, res) => {
+  res.json({ data: { public: bbPublic(), open: bbPublic() || req.access === 'admin', leagues: bbLeagues() } });
+});
+app.get('/api/basketball/games', (req, res) => {
+  try {
+    const now = Date.now();
+    const day = 86400000;
+    const code = typeof req.query.league === 'string' && /^[A-Z]{2,4}$/.test(req.query.league) ? req.query.league : undefined;
+    const results = req.query.results === '1';
+    const days = Math.min(30, Math.max(1, parseInt(String(req.query.days || '3'), 10) || 3));
+    let from = results ? new Date(now - days * day) : new Date(now - 4 * 3600 * 1000);
+    let to = results ? new Date(now) : new Date(now + days * day);
+    // a calendar day picked on the site (the visitor's own midnight to midnight)
+    if (typeof req.query.from === 'string' && typeof req.query.to === 'string') {
+      const f = new Date(req.query.from), t = new Date(req.query.to);
+      if (!isNaN(f.getTime()) && !isNaN(t.getTime()) && t > f && t.getTime() - f.getTime() <= 14 * day) { from = f; to = t; }
+    }
+    res.json({ data: bbGames({ from: from.toISOString(), to: to.toISOString(), code, results, limit: 400 }, isPaid(req.access || 'anon')), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Failed to load games');
+  }
+});
+app.get('/api/basketball/game/:id(\\d+)', async (req, res) => {
+  try {
+    const data = await bbGame(parseInt(req.params.id, 10), isPaid(req.access || 'anon'));
+    if (!data) return res.status(404).json({ error: 'Game not found' });
+    res.json({ data, timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Failed to load game');
+  }
+});
+app.get('/api/basketball/standings/:code([A-Za-z]{2,4})', async (req, res) => {
+  try {
+    res.json({ data: await bbStandings(req.params.code.toUpperCase()), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Failed to load standings');
+  }
+});
+app.get('/api/basketball/team/:id(\\d+)', (req, res) => {
+  try {
+    const data = bbTeam(parseInt(req.params.id, 10), isPaid(req.access || 'anon'));
+    if (!data) return res.status(404).json({ error: 'Team not found' });
+    res.json({ data, timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Failed to load team');
+  }
+});
+app.get('/api/basketball/record', (req, res) => {
+  try {
+    const code = typeof req.query.league === 'string' && /^[A-Z]{2,4}$/.test(req.query.league) ? req.query.league : undefined;
+    res.json({ data: bbRecord(Math.min(3650, parseInt(String(req.query.days || '3650'), 10) || 3650), code), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Failed to load record');
+  }
+});
+// Admin: how the model did on past seasons it never saw (internal, like football's past seasons)
+app.get('/api/bb/backtest', (_req, res) => res.json({ data: bbBacktest(), timestamp: new Date().toISOString() }));
 
 // Admin: basketball data (API-Basketball, same API-Sports key). Not in OPEN_API → admin only.
 app.get('/api/bb/status', async (_req, res) => {

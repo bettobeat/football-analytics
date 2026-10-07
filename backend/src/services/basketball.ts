@@ -10,6 +10,7 @@
  */
 import logger from '../utils/logger';
 import { db } from '../db';
+import { buildAll, recordBbPredictions } from './bbModel';
 
 const BASE = 'https://v1.basketball.api-sports.io';
 const KEY = () => process.env.API_BASKETBALL_KEY || process.env.API_FOOTBALL_KEY || '';
@@ -122,21 +123,24 @@ async function syncLeague(l: (typeof BB_LEAGUES)[number]) {
 
 const FINISHED = new Set(['FT', 'AOT']);
 
-/** Every game of a league season (one request). */
-async function syncSeason(code: string, leagueId: number, season: string) {
-  const json = await bb('/games', { league: leagueId, season });
+/** Store games from API-Basketball (insert or update; the box-score flag of a stored game is kept). */
+function upsertGames(code: string, leagueId: number, season: string, list: any[]) {
   const up = db.prepare(`
-    INSERT OR REPLACE INTO bb_games (game_id, code, league_id, season, stage, kickoff, status, home_id, home_name, home_logo,
+    INSERT INTO bb_games (game_id, code, league_id, season, stage, kickoff, status, home_id, home_name, home_logo,
       away_id, away_name, away_logo, hs, as_, quarters, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(game_id) DO UPDATE SET code = excluded.code, league_id = excluded.league_id, season = excluded.season, stage = excluded.stage,
+      kickoff = excluded.kickoff, status = excluded.status, home_id = excluded.home_id, home_name = excluded.home_name, home_logo = excluded.home_logo,
+      away_id = excluded.away_id, away_name = excluded.away_name, away_logo = excluded.away_logo, hs = excluded.hs, as_ = excluded.as_,
+      quarters = excluded.quarters, updated_at = excluded.updated_at`);
   const now = new Date().toISOString();
   let n = 0, done = 0;
   db.exec('BEGIN');
   try {
-    for (const g of json.response || []) {
+    for (const g of list) {
       if (!g.id || !g.teams?.home?.id || !g.teams?.away?.id) continue;
       const st = g.status?.short || null;
-      const q = (s: any) => [s?.quarter_1, s?.quarter_2, s?.quarter_3, s?.quarter_4, s?.over_time].map((x: any) => (x == null ? null : Number(x)));
+      const q = (x: any) => [x?.quarter_1, x?.quarter_2, x?.quarter_3, x?.quarter_4, x?.over_time].map((v: any) => (v == null ? null : Number(v)));
       up.run(
         g.id, code, leagueId, season, g.stage || g.week || null, new Date(g.date).toISOString(), st,
         g.teams.home.id, g.teams.home.name, g.teams.home.logo || null, g.teams.away.id, g.teams.away.name, g.teams.away.logo || null,
@@ -151,8 +155,39 @@ async function syncSeason(code: string, leagueId: number, season: string) {
     db.exec('ROLLBACK');
     throw e;
   }
+  return { n, done };
+}
+
+/** Every game of a league season (one request). */
+async function syncSeason(code: string, leagueId: number, season: string) {
+  const json = await bb('/games', { league: leagueId, season });
+  const { n, done } = upsertGames(code, leagueId, season, json.response || []);
   markSync(`games|${code}|${season}`, { n, done });
   return n;
+}
+
+/**
+ * Live scores: once a minute while one of our games is on (from 10 minutes before tip-off until it is final),
+ * that day's games of that league (one request per league and day).
+ */
+let liveRunning = false;
+async function liveTick() {
+  if (liveRunning || !KEY()) return;
+  liveRunning = true;
+  try {
+    const now = Date.now();
+    const rows = db.prepare(`SELECT DISTINCT code, league_id, season, substr(kickoff, 1, 10) AS day FROM bb_games
+      WHERE kickoff BETWEEN ? AND ? AND (status IS NULL OR status NOT IN ('FT','AOT','CANC','POST','ABD','AWD'))`)
+      .all(new Date(now - 4 * 3600 * 1000).toISOString(), new Date(now + 10 * 60 * 1000).toISOString()) as any[];
+    for (const r of rows) {
+      const json = await bb('/games', { league: r.league_id, season: r.season, date: r.day });
+      upsertGames(r.code, r.league_id, r.season, json.response || []);
+    }
+  } catch (e: any) {
+    logger.warn(`API-Basketball live: ${e.message}`);
+  } finally {
+    liveRunning = false;
+  }
 }
 
 const num = (x: any) => (x === null || x === undefined || x === '' ? null : Number(x));
@@ -234,6 +269,12 @@ async function bbTickInner() {
     }
   }
   try {
+    buildAll(BB_LEAGUES.map(l => l.code));
+    recordBbPredictions();
+  } catch (e: any) {
+    logger.warn(`Basketball model: ${e.message}`);
+  }
+  try {
     await syncBoxScores();
   } catch (e: any) {
     lastError = `box scores: ${e.message}`;
@@ -245,8 +286,13 @@ let started = false;
 export function startBasketballScheduler() {
   if (started || !KEY()) return;
   started = true;
+  // ratings from the stored games right away, so the site has predictions before the first sync finishes
+  setTimeout(() => {
+    try { buildAll(BB_LEAGUES.map(l => l.code)); recordBbPredictions(); } catch (e: any) { logger.warn(`Basketball model: ${e.message}`); }
+  }, 15 * 1000).unref();
   setTimeout(() => void bbTick(), 45 * 1000).unref();
   setInterval(() => void bbTick(), 30 * 60 * 1000).unref();
+  setInterval(() => void liveTick(), 60 * 1000).unref();
 }
 
 /** Admin: quota and how many games we hold per league and season. */

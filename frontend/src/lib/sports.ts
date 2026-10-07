@@ -18,7 +18,7 @@ export const SPORTS: Sport[] = [
   { id: 'american-football', name: t('American football'), icon: '🏈', path: '/american-football', live: false }
 ]
 
-/** The sport a page belongs to (everything that is not a coming sport's section is football). */
+/** The sport a page belongs to (everything outside another sport's section is football). */
 export function sportOfPath(pathname: string): Sport {
-  return SPORTS.find(s => !s.live && (pathname === s.path || pathname.startsWith(s.path + '/'))) || SPORTS[0]
+  return SPORTS.find(s => s.id !== 'football' && (pathname === s.path || pathname.startsWith(s.path + '/'))) || SPORTS[0]
 }

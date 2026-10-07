@@ -2,11 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { SPORTS, sportOfPath } from '../lib/sports'
 import { t } from '../lib/i18n'
+import { useBbConfig } from '../lib/bb'
 
 /** Sport picker next to the logo: Football now, the other sports as "soon". */
 export default function SportSwitch() {
   const loc = useLocation()
   const current = sportOfPath(loc.pathname)
+  const bb = useBbConfig()
+  // basketball is open for admins before launch, for everyone after
+  const isLive = (id: string, live: boolean) => live || (id === 'basketball' && !!bb?.open)
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement | null>(null)
 
@@ -49,8 +53,8 @@ export default function SportSwitch() {
               >
                 <span className="text-lg leading-none" aria-hidden>{s.icon}</span>
                 <span className="flex-1">{s.name}</span>
-                {!s.live && <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-surface2 text-muted">{t('Soon')}</span>}
-                {active && s.live && <span className="w-1.5 h-1.5 rounded-full bg-accent" aria-hidden />}
+                {!isLive(s.id, s.live) && <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-surface2 text-muted">{t('Soon')}</span>}
+                {active && isLive(s.id, s.live) && <span className="w-1.5 h-1.5 rounded-full bg-accent" aria-hidden />}
               </Link>
             )
           })}
