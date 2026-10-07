@@ -368,8 +368,12 @@ async function refresh() {
 }
 
 function refreshNow(): Promise<void> {
-  if (!refreshing) refreshing = refresh().catch(e => logger.warn('News refresh failed', { message: e.message })).finally(() => { refreshing = null; });
-  return refreshing;
+  if (!refreshing) {
+    refreshing = refresh()
+      .catch((e: any) => { logger.warn('News refresh failed', { message: e?.message }); })
+      .finally(() => { refreshing = null; });
+  }
+  return refreshing as Promise<void>;
 }
 
 let started = false;
