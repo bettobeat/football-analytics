@@ -53,7 +53,9 @@ export const CALENDAR_DIVS = new Set(['BRA', 'ARG', 'USA', 'JPN', 'NOR', 'SWE'])
  */
 export function seasonForDivision(division: string, date: string): string {
   const d = new Date(date);
-  const y = CALENDAR_DIVS.has(division) ? d.getUTCFullYear() : d.getUTCMonth() >= 6 ? d.getUTCFullYear() : d.getUTCFullYear() - 1;
+  // Japan's J1 moved to an August–May season from 2026-27: calendar years before that, the July rollover after
+  const calendar = CALENDAR_DIVS.has(division) && !(division === 'JPN' && date.slice(0, 10) >= '2026-07-01');
+  const y = calendar ? d.getUTCFullYear() : d.getUTCMonth() >= 6 ? d.getUTCFullYear() : d.getUTCFullYear() - 1;
   return `${String(y).slice(2)}${String(y + 1).slice(2)}`;
 }
 
@@ -393,7 +395,16 @@ export const ALIASES: Record<string, string> = {
   'st johnstone': 'st johnstone',
   'olympiakos': 'olympiakos piraeus',
   'paok': 'paok',
-  'aek': 'aek athens fc'
+  'aek': 'aek athens fc',
+  // Oct 2026 leagues (football-data.co.uk → API-Football spelling); a few spellings each, extra keys are harmless
+  'athletico-pr': 'atletico paranaense',
+  'atletico-pr': 'atletico paranaense',
+  'athletico pr': 'atletico paranaense',
+  'rakow': 'rakow czestochowa',
+  'queens park': "queen's park",
+  "queen's park": "queen's park",
+  'sociedad b': 'real sociedad ii',
+  'real sociedad b': 'real sociedad ii'
 };
 
 // Club-name filler that carries no identity. Distinguishing words such as "Real",
