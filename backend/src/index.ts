@@ -1,6 +1,6 @@
 import express from 'express';
 import { slimForList } from './services/predCache';
-import { perfStatus, setJob } from './services/perf';
+import { perfStatus, setJob, yieldLoop } from './services/perf';
 import cors from 'cors';
 import helmet from 'helmet';
 import { Server } from 'socket.io';
@@ -1611,15 +1611,24 @@ server.listen(PORT, () => {
   logger.info(`Server running on http://localhost:${PORT}`);
   logger.info(`WebSocket server ready (CORS: ${isDev ? 'any origin [dev]' : allowedOrigins.join(', ')})`);
   // Save/refresh predictions every time the fixture window is refreshed
-  footballDataAPI.onWindowRefreshed = matches => recordPredictions(matches);
+  footballDataAPI.onWindowRefreshed = matches => { setJob('record predictions (main leagues)'); try { recordPredictions(matches); } finally { setJob(null); } };
   // Same for API-Football competitions (national teams, UEFA cups, extra leagues)
-  onAfWindow(matches => {
-    recordPredictions(afWithPredictions(matches));
+  onAfWindow(matches => { void (async () => {
+    // ~700 matches: predict 40 at a time with a pause between, so visitors are not kept waiting
+    const withP: any[] = [];
+    for (let i = 0; i < matches.length; i += 40) {
+      setJob('predict more-leagues window');
+      withP.push(...afWithPredictions(matches.slice(i, i + 40)));
+      setJob(null);
+      await yieldLoop();
+    }
+    setJob('record predictions (more leagues)');
+    try { recordPredictions(withP); } finally { setJob(null); }
     // then the bookmaker odds for matches starting soon, so every tracked game can be compared with the market
     withAfOdds(matches)
       .then(ms => { if (ms.length) recordPredictions(afWithPredictions(ms)); })
       .catch(err => logger.warn('AF odds for tracking failed', { message: err.message }));
-  });
+  })().catch(err => logger.warn('AF window predictions failed', { message: err.message })); });
   // Warm the fixture window now and keep it fresh in the background
   footballDataAPI.startBackgroundRefresh();
   // Settle finished matches every 10 minutes (first run after 1 minute)

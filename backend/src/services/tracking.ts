@@ -50,6 +50,19 @@ const lockStmt = db.prepare(
 
 /** Save/refresh predictions for a batch of matches (with .prediction attached). */
 export function recordPredictions(matches: any[]) {
+  // One transaction for the whole batch (Oct 2026): ~2,000 separate writes every 5 minutes froze the server for seconds
+  db.exec('BEGIN');
+  try {
+    const r = recordPredictionsTx(matches);
+    db.exec('COMMIT');
+    return r;
+  } catch (e) {
+    try { db.exec('ROLLBACK'); } catch { /* already closed */ }
+    throw e;
+  }
+}
+
+function recordPredictionsTx(matches: any[]) {
   const now = new Date().toISOString();
   let saved = 0;
   let locked = 0;

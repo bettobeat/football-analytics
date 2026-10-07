@@ -1,6 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import { cachedPredictions, clearPredictionCache, mainPrediction } from './predCache';
-import { timed } from './perf';
+import { timed, setJob, yieldLoop } from './perf';
 import { freezePredictions } from './tracking';
 import logger from '../utils/logger';
 import { db } from '../db';
@@ -198,7 +198,14 @@ class FootballDataAPI {
         await this.refreshStandings();
         if (this.onWindowRefreshed) {
           try {
-            this.onWindowRefreshed(this.withPredictions(matches));
+            const withP: any[] = [];
+            for (let i = 0; i < matches.length; i += 40) {
+              setJob('predict main-league window');
+              withP.push(...this.withPredictions(matches.slice(i, i + 40)));
+              setJob(null);
+              await yieldLoop();
+            }
+            this.onWindowRefreshed(withP);
           } catch (error: any) {
             logger.error('onWindowRefreshed failed', { message: error.message });
           }
