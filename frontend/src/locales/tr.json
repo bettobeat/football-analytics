@@ -1013,5 +1013,7 @@
  "{0} d": "{0} g",
  "Before this match": "Bu maçtan önce",
  "After this match": "Bu maçtan sonra",
- "{0} games in the last 30 days, {1} of them away.": "Son 30 günde {0} maç, {1} tanesi deplasmanda."
+ "{0} games in the last 30 days, {1} of them away.": "Son 30 günde {0} maç, {1} tanesi deplasmanda.",
+ "{0} news": "{0} haberleri",
+ "No news about this league in the last two weeks.": "Son iki haftada bu lig hakkında haber yok."
 }

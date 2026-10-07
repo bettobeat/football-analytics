@@ -58,6 +58,12 @@ interface Record_ { n: number; hitRate: number | null }
 const MAIN = ['grid-v3', 'elo-intl', 'elo-euro']
 const LIVE = new Set(['IN_PLAY', 'PAUSED', 'LIVE'])
 const tn = (t: Team) => t.shortName || t.name
+interface NewsItem { title: string; link: string; source: string; published: string | null; image?: string | null }
+const ago = (iso: string | null) => {
+  if (!iso) return ''
+  const m = Math.max(1, Math.round((Date.now() - new Date(iso).getTime()) / 60000))
+  return m < 60 ? tt("{0} min ago", { 0: m }) : m < 1440 ? tt("{0} h ago", { 0: Math.round(m / 60) }) : tt("{0} d ago", { 0: Math.round(m / 1440) })
+}
 const mainPred = (m: Match) => m.predictions?.find(p => MAIN.includes(p.model)) || m.prediction || null
 // the years the games were played in ("2026", or "2024–25"), not the provider's season number
 const editionYears = (e: Edition) => {
@@ -118,6 +124,7 @@ function League() {
   const [record, setRecord] = useState<Record_ | null>(null)
   const [edition, setEdition] = useState<Edition | null>(null)
   const [leaders, setLeaders] = useState<'goals' | 'assists'>('goals')
+  const [news, setNews] = useState<NewsItem[] | null>(null)
   useRevealState()
 
   useEffect(() => {
@@ -128,6 +135,11 @@ function League() {
     setMatches(null)
     setRecord(null)
     setEdition(null)
+    setNews(null)
+    axios
+      .get(`${API_URL}/news`, { params: { league: code, limit: 12 } })
+      .then(r => !cancelled && setNews(r.data.data || []))
+      .catch(() => !cancelled && setNews([]))
     // competitions from our second data source: the latest played edition (a cup between editions is never empty)
     if (/^AF\d+$/.test(code)) {
       axios
@@ -373,6 +385,34 @@ function League() {
                 {upcoming.map(m => (
                   <li key={m.id}>
                     <FixtureRow m={m} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+
+          <Card title={tt("{0} news", { 0: comp?.name || tt("League") })}>
+            {!news ? (
+              <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 rounded-xl bg-surface2/60 animate-pulse" />)}</div>
+            ) : news.length === 0 ? (
+              <p className="text-sm text-faint">{tt("No news about this league in the last two weeks.")}</p>
+            ) : (
+              <ul className="max-h-[520px] overflow-y-auto overscroll-contain pr-1 space-y-1">
+                {news.map(n => (
+                  <li key={n.link}>
+                    <a href={n.link} target="_blank" rel="noreferrer" className="flex gap-3 p-2 rounded-xl hover:bg-surface2/60 transition-colors">
+                      <span className="w-20 h-14 rounded-lg overflow-hidden bg-surface2 flex-shrink-0 grid place-items-center">
+                        {n.image ? (
+                          <img src={n.image} alt="" loading="lazy" className="w-full h-full object-cover" onError={e => { e.currentTarget.style.display = 'none' }} />
+                        ) : (
+                          <span className="text-[9px] font-extrabold uppercase tracking-wide text-faint px-1 text-center">{n.source}</span>
+                        )}
+                      </span>
+                      <span className="min-w-0 flex flex-col gap-1">
+                        <span className="text-[13px] font-bold leading-snug text-ink line-clamp-2">{n.title}</span>
+                        <span className="text-[11px] text-faint">{n.source}{n.published ? ` · ${ago(n.published)}` : ''}</span>
+                      </span>
+                    </a>
                   </li>
                 ))}
               </ul>

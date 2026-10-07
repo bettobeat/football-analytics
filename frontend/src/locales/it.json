@@ -1013,5 +1013,7 @@
  "{0} d": "{0} g",
  "Before this match": "Prima di questa partita",
  "After this match": "Dopo questa partita",
- "{0} games in the last 30 days, {1} of them away.": "{0} partite negli ultimi 30 giorni, {1} in trasferta."
+ "{0} games in the last 30 days, {1} of them away.": "{0} partite negli ultimi 30 giorni, {1} in trasferta.",
+ "{0} news": "Notizie: {0}",
+ "No news about this league in the last two weeks.": "Nessuna notizia su questo campionato nelle ultime due settimane."
 }

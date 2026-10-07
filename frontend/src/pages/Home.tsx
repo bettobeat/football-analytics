@@ -30,7 +30,9 @@ interface Summary {
   v3: { games: number; hitRate: number | null; strong60: { n: number; hitRate: number | null } | null }
   drawAlerts: { picks: number } | null
 }
-interface News { title: string; link: string; source: string; published: string | null; summary: string; image?: string | null }
+interface News { title: string; link: string; source: string; published: string | null; summary: string; image?: string | null; leagues?: { code: string; name: string }[] }
+/** "BBC Sport · Premier League": the outlet and the first league the story is filed under */
+const srcLine = (n: News) => [n.source, n.leagues?.[0]?.name].filter(Boolean).join(' · ')
 interface Alert { matchId: number; league: string; date: string; home: string; away: string; ourDraw: number }
 
 const LIVE = new Set(['IN_PLAY', 'PAUSED', 'LIVE'])
@@ -507,7 +509,7 @@ export default function Home() {
                           </span>
                           <span className="min-w-0 flex flex-col gap-1">
                             <span className="text-sm font-bold leading-snug text-ink line-clamp-2">{n.title}</span>
-                            <span className="text-[11px] text-faint">{n.source}{n.published ? ` · ${ago(n.published)}` : ''}</span>
+                            <span className="text-[11px] text-faint">{srcLine(n)}{n.published ? ` · ${ago(n.published)}` : ''}</span>
                           </span>
                         </a>
                       ))}
@@ -576,7 +578,7 @@ function NewsRail({ news }: { news: News[] }) {
               </span>
               <span className="min-w-0 flex flex-col gap-1">
                 <span className="text-[13px] font-bold leading-snug text-ink line-clamp-2">{n.title}</span>
-                <span className="text-[11px] text-faint">{n.source}{n.published ? ` · ${ago(n.published)}` : ''}</span>
+                <span className="text-[11px] text-faint">{srcLine(n)}{n.published ? ` · ${ago(n.published)}` : ''}</span>
               </span>
             </a>
           ))}

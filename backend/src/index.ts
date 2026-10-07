@@ -46,7 +46,7 @@ import { playerPage, findPlayer } from './services/playerPage';
 import { unlockStatus, unlockMatch, unlockedIds, isFinished, testCheckout, PLANS, billingTestMode, unlockStats, REFUND_DAYS, FREE_WEEKLY_UNLOCKS } from './services/billing';
 import { goalsCalibration } from './services/goalsCalibration';
 import { runDataAudit, lastDataAudit, startDataAuditScheduler } from './services/dataAudit';
-import { footballNews } from './services/news';
+import { footballNews, newsStatus, startNewsScheduler } from './services/news';
 import { highlightsFor, highlightsStatus, lastCandidates } from './services/highlights';
 import { rebuildPlayerQuality, playerQualityTable } from './services/playerQuality';
 import { db } from './db';
@@ -432,6 +432,7 @@ app.post('/api/waitlist', rateLimit('waitlist', 10, 15 * 60000), jsonOnly, (req,
   }
 });
 app.get('/api/admin/waitlist', (_req, res) => res.json({ data: waitlistStats() }));
+app.get('/api/admin/news', (_req, res) => res.json({ data: newsStatus() }));
 
 app.post('/api/auth/login', jsonOnly, (req, res) => {
   try {
@@ -901,7 +902,10 @@ app.get('/api/search', async (req, res) => {
 
 app.get('/api/news', async (req, res) => {
   try {
-    res.json({ data: await footballNews(Math.min(30, parseInt(String(req.query.limit || '12'), 10) || 12)), timestamp: new Date().toISOString() });
+    // ?league=PL → that league's news; no league → every league combined (home page)
+    const league = typeof req.query.league === 'string' && /^[A-Z0-9]{2,8}$/i.test(req.query.league) ? req.query.league : undefined;
+    res.set('Cache-Control', 'public, max-age=120');
+    res.json({ data: await footballNews(Math.min(30, parseInt(String(req.query.limit || '12'), 10) || 12), league), timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'News failed');
   }
@@ -1680,6 +1684,7 @@ server.listen(PORT, () => {
   startClvScheduler();
   // Extra competitions (national teams, Europa/Conference League, Israel, Saudi, more European leagues)
   startAfMatchesScheduler();
+  startNewsScheduler();
   // Match-page tabs (averages, expected XI, H2H) prepared ahead for the next 48h, every 2 hours
   const warmExtras = async () => {
     const fd = await footballDataAPI.getUpcomingMatches(3).catch(() => [] as any[]);
