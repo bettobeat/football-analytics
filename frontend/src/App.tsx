@@ -30,13 +30,7 @@ import { useUnlocks, resetDay } from './lib/unlocks'
 import { t as tt, basename, applyHeadLang, LANGS, lang, setLang, type Lang } from './lib/i18n'
 
 export function LogoMark({ size = 36 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 36 36" aria-hidden className="flex-shrink-0">
-      <rect width="36" height="36" rx="10" fill="#C8FF3D" />
-      <path d="M23 13.2c-.9-1.6-2.6-2.4-4.8-2.4H16a3.8 3.8 0 0 0 0 7.6h3.4a3.8 3.8 0 0 1 0 7.6h-2.6c-2.3 0-4-.9-4.9-2.6" fill="none" stroke="#07090D" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M24 14l3-3m0 0h-3m3 0v3" fill="none" stroke="#07090D" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
+  return <img src="/logo-mark.png" width={size} height={size} alt="" aria-hidden className="flex-shrink-0 rounded-[10px]" />
 }
 
 function Logo() {
