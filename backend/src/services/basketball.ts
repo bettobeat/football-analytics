@@ -62,6 +62,42 @@ db.exec(`
 `);
 // box scores fetched? 0 = not yet, 1 = stored, 2 = the provider has none
 try { db.exec(`ALTER TABLE bb_games ADD COLUMN stats INTEGER NOT NULL DEFAULT 0`); } catch { /* column exists */ }
+// field goals checked against the score? 0 = not yet, 1 = fine, 2 = corrected (see fixFieldGoals)
+try { db.exec(`ALTER TABLE bb_team_stats ADD COLUMN fg_checked INTEGER NOT NULL DEFAULT 0`); } catch { /* column exists */ }
+
+/**
+ * API-Basketball changed its box scores during 2025-26: "field goals" became 2-point field goals only (3-pointers
+ * separate). Every stored team line is checked against the final score once: when 2·FGM + 3·3PM + FTM matches the
+ * score better than 2·FGM + 3PM + FTM, the 3-pointers are added back into FGM/FGA (team line and its players), so
+ * shooting % and possessions mean the same in every season.
+ */
+export function fixFieldGoals() {
+  const rows = db.prepare(`
+    SELECT t.game_id, t.team_id, t.fgm, t.fga, t.tpm, t.tpa, t.ftm, g.home_id, g.hs, g.as_
+    FROM bb_team_stats t JOIN bb_games g ON g.game_id = t.game_id
+    WHERE t.fg_checked = 0 AND g.hs IS NOT NULL AND t.fgm IS NOT NULL`).all() as any[];
+  if (!rows.length) return 0;
+  const mark = db.prepare(`UPDATE bb_team_stats SET fg_checked = ? WHERE game_id = ? AND team_id = ?`);
+  const fixT = db.prepare(`UPDATE bb_team_stats SET fgm = fgm + COALESCE(tpm, 0), fga = fga + COALESCE(tpa, 0), fg_checked = 2 WHERE game_id = ? AND team_id = ?`);
+  const fixP = db.prepare(`UPDATE bb_player_stats SET fgm = COALESCE(fgm, 0) + COALESCE(tpm, 0), fga = COALESCE(fga, 0) + COALESCE(tpa, 0) WHERE game_id = ? AND team_id = ?`);
+  let fixed = 0;
+  db.exec('BEGIN');
+  try {
+    for (const r of rows) {
+      const score = r.team_id === r.home_id ? r.hs : r.as_;
+      const tpm = r.tpm || 0, ftm = r.ftm || 0;
+      const included = Math.abs(2 * r.fgm + tpm + ftm - score), separate = Math.abs(2 * r.fgm + 3 * tpm + ftm - score);
+      if (separate < included) { fixT.run(r.game_id, r.team_id); fixP.run(r.game_id, r.team_id); fixed++; }
+      else mark.run(1, r.game_id, r.team_id);
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+  if (fixed) logger.info(`API-Basketball: field goals corrected in ${fixed} of ${rows.length} team box scores (3-pointers were counted separately)`);
+  return fixed;
+}
 
 let lastCall = 0;
 let remainingDay: number | null = null;
@@ -240,6 +276,7 @@ async function syncBoxScores(maxBatches = 400) {
     games += ids.length;
   }
   if (games) logger.info(`API-Basketball: box scores for ${games} games`);
+  fixFieldGoals();
   return games;
 }
 
@@ -269,6 +306,7 @@ async function bbTickInner() {
     }
   }
   try {
+    fixFieldGoals();
     buildAll(BB_LEAGUES.map(l => l.code));
     recordBbPredictions();
   } catch (e: any) {
@@ -288,7 +326,7 @@ export function startBasketballScheduler() {
   started = true;
   // ratings from the stored games right away, so the site has predictions before the first sync finishes
   setTimeout(() => {
-    try { buildAll(BB_LEAGUES.map(l => l.code)); recordBbPredictions(); } catch (e: any) { logger.warn(`Basketball model: ${e.message}`); }
+    try { fixFieldGoals(); buildAll(BB_LEAGUES.map(l => l.code)); recordBbPredictions(); } catch (e: any) { logger.warn(`Basketball model: ${e.message}`); }
   }, 15 * 1000).unref();
   setTimeout(() => void bbTick(), 45 * 1000).unref();
   setInterval(() => void bbTick(), 30 * 60 * 1000).unref();

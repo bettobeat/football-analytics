@@ -13,7 +13,7 @@
 import logger from '../utils/logger';
 import { db } from '../db';
 
-export const BB_MODEL = 'bb-v1';
+export const BB_MODEL = 'bb-v2';
 const FINISHED = ['FT', 'AOT'];
 
 type Game = {
@@ -110,6 +110,97 @@ class League {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* bb-v2 (Oct 2026): ratings per 100 possessions + pace, from box scores */
+/* ------------------------------------------------------------------ */
+// Backtest (browser research, 7 Oct 2026, seasons 2024-25 + 2025-26 never seen when the settings were chosen):
+//   log loss v1 → v2: NBA 0.607 → 0.603, ACB 0.587 → 0.586, Serie A 0.602 → 0.599, EuroLeague 0.627 → 0.629 (blend wins there)
+type P2 = { k: number; kp: number; r: number; rp: number; rh: number; b2b: number; clip: number; early: number; kh: number };
+const P2_DEFAULT: P2 = { k: 0.05, kp: 0.05, r: 0.9, rp: 0.7, rh: 0.8, b2b: 1.5, clip: 40, early: 1.5, kh: 0.01 };
+const P2_LEAGUE: Record<string, Partial<P2>> = { NBA: { b2b: 3 } };
+type T2 = { o: number; d: number; p: number; h: number; season: string; n: number };
+
+class LeagueV2 {
+  teams = new Map<number, T2>();
+  ppp = 105; pace = 90; hca = 3; sigma = 12; sigmaT = 17; n = 0; first = true;
+  constructor(public p: P2) {}
+  team(id: number, season: string): T2 {
+    let t = this.teams.get(id);
+    if (!t) { t = { o: 0, d: 0, p: 0, h: 0, season, n: 0 }; this.teams.set(id, t); }
+    else if (t.season !== season) { t.o *= this.p.r; t.d *= this.p.r; t.p *= this.p.rp; t.h *= this.p.rh; t.season = season; t.n = 0; }
+    return t;
+  }
+  predict(g: Game, restH: number | null, restA: number | null) {
+    const H = this.team(g.home_id, g.season), A = this.team(g.away_id, g.season);
+    const hca = this.hca + H.h;
+    const b2bHome = restH !== null && restH < 1.4, b2bAway = restA !== null && restA < 1.4;
+    const fh = b2bHome ? this.p.b2b : 0, fa = b2bAway ? this.p.b2b : 0;
+    const pace = Math.max(55, this.pace + H.p + A.p);
+    const per = 100 / this.pace;
+    const ph = (this.ppp + H.o + A.d + (hca / 2) * per - fh * per) / 100;
+    const pa = (this.ppp + A.o + H.d - (hca / 2) * per - fa * per) / 100;
+    const home = pace * ph, away = pace * pa, margin = home - away;
+    return {
+      pHome: Math.min(0.995, Math.max(0.005, normCdf(margin / this.sigma))), margin, total: home + away, home, away, hca, b2bHome, b2bAway,
+      restHome: restH === null ? null : Math.round(restH * 10) / 10, restAway: restA === null ? null : Math.round(restA * 10) / 10,
+      _ph: ph, _pa: pa, _pace: pace
+    };
+  }
+  update(g: Game, pr: ReturnType<LeagueV2['predict']>, poss: number | null) {
+    const w = isPreseason(g) ? 0.3 : 1;
+    if (this.first && poss) { this.pace = poss; this.ppp = (100 * (g.hs! + g.as_!)) / 2 / poss; this.first = false; }
+    const H = this.team(g.home_id, g.season), A = this.team(g.away_id, g.season);
+    const pz = poss || pr._pace;
+    const clip = (x: number) => Math.max(-this.p.clip, Math.min(this.p.clip, x));
+    const ah = (100 * g.hs!) / pz, aa = (100 * g.as_!) / pz;
+    const eH = clip(ah - pr._ph * 100), eA = clip(aa - pr._pa * 100);
+    const k = this.p.k * w * (H.n < 10 || A.n < 10 ? this.p.early : 1);
+    H.o += k * eH; A.d += k * eH; A.o += k * eA; H.d += k * eA;
+    const al = this.n < 150 ? 0.04 : 0.008;
+    if (poss) { const ep = poss - pr._pace; H.p += (this.p.kp * w * ep) / 2; A.p += (this.p.kp * w * ep) / 2; this.pace += al * w * ep; }
+    const res = g.hs! - g.as_! - pr.margin;
+    H.h += this.p.kh * w * res;
+    H.n++; A.n++;
+    this.ppp += al * w * ((ah + aa) / 2 - this.ppp);
+    this.hca += al * w * 0.5 * res;
+    this.sigma = Math.sqrt(Math.max(36, this.sigma ** 2 + al * w * (res * res - this.sigma ** 2)));
+    const et = g.hs! + g.as_! - pr.total;
+    this.sigmaT = Math.sqrt(Math.max(64, this.sigmaT ** 2 + al * w * (et * et - this.sigmaT ** 2)));
+    this.n++;
+  }
+}
+
+/** Possessions of each finished game with a box score (both teams' estimate averaged). */
+function possessionsOf(code: string): Map<number, number> {
+  const rows = db.prepare(`SELECT t.game_id, t.fgm, t.fga, t.oreb, t.tov, t.fta FROM bb_team_stats t JOIN bb_games g ON g.game_id = t.game_id WHERE g.code = ? AND t.fga > 0`).all(code) as any[];
+  const by = new Map<number, number[]>();
+  for (const r of rows) {
+    const oreb = r.oreb != null ? r.oreb : 0.27 * (r.fga - (r.fgm || 0));
+    const est = r.fga - oreb + (r.tov || 0) + 0.44 * (r.fta || 0);
+    if (!by.has(r.game_id)) by.set(r.game_id, []);
+    by.get(r.game_id)!.push(est);
+  }
+  const out = new Map<number, number>();
+  for (const [id, v] of by) if (v.length === 2) out.set(id, (v[0] + v[1]) / 2);
+  return out;
+}
+
+function runV2(games: Game[], p: P2, poss: Map<number, number>, onPred?: (g: Game, pr: ReturnType<LeagueV2['predict']>) => void) {
+  const L = new LeagueV2(p);
+  const last = new Map<number, number>();
+  for (const g of games) {
+    if (!done(g)) continue;
+    const t = new Date(g.kickoff).getTime();
+    const rh = last.has(g.home_id) ? (t - last.get(g.home_id)!) / 86400000 : null;
+    const ra = last.has(g.away_id) ? (t - last.get(g.away_id)!) / 86400000 : null;
+    const pr = L.predict(g, rh, ra);
+    onPred?.(g, pr);
+    L.update(g, pr, poss.get(g.game_id) ?? null);
+    last.set(g.home_id, t); last.set(g.away_id, t);
+  }
+  return L;
+}
+
 function gamesOf(code: string): Game[] {
   return db.prepare(`SELECT game_id, code, season, kickoff, status, home_id, away_id, hs, as_, stage AS week FROM bb_games WHERE code = ? ORDER BY kickoff, game_id`).all(code) as Game[];
 }
@@ -150,7 +241,7 @@ function run(games: Game[], p: Params, onPred?: (g: Game, pr: Pred) => void) {
 const GRID: Params[] = [];
 for (const k of [0.03, 0.05, 0.07, 0.09, 0.12]) for (const r of [0.5, 0.65, 0.8, 0.9]) for (const b2b of [0, 1.5, 3]) GRID.push({ k, r, b2b });
 
-type LeagueModel = { code: string; params: Params; L: League; tuneSeason: string | null; testSeasons: string[]; test: any; tune: any; builtAt: string };
+type LeagueModel = { code: string; params: Params; L: League; L2: LeagueV2 | null; w2: number; tuneSeason: string | null; testSeasons: string[]; test: any; tune: any; compare?: any; builtAt: string };
 const models = new Map<string, LeagueModel>();
 
 /** Choose k, r, b2b on the tuning season; test on the seasons after it; keep the final ratings for predictions. */
@@ -169,20 +260,46 @@ export function buildLeague(code: string): LeagueModel | null {
     if (!best || ll < best.ll) best = { p, ll };
   }
   const params = best!.p;
-  const tune = emptyM(), test = emptyM();
+  // v1 and v2 predictions of every finished game, then the blend weight of v2 chosen on the tuning season
+  const p1 = new Map<number, Pred>(), p2 = new Map<number, Pred>();
+  const L = run(games, params, (g, pr) => { p1.set(g.game_id, pr); });
+  const poss = possessionsOf(code);
+  const P2v: P2 = { ...P2_DEFAULT, ...(P2_LEAGUE[code] || {}) };
+  const L2 = poss.size >= 200 ? runV2(games, P2v, poss, (g, pr) => { p2.set(g.game_id, pr); }) : null;
+  const blend = (a: Pred, b: Pred | undefined, w: number): Pred => !b || !w ? a : {
+    ...b, pHome: w * b.pHome + (1 - w) * a.pHome, margin: w * b.margin + (1 - w) * a.margin, total: w * b.total + (1 - w) * a.total,
+    home: w * b.home + (1 - w) * a.home, away: w * b.away + (1 - w) * a.away
+  };
+  const fin2 = done;
+  const tuneGames = games.filter(g => fin2(g) && g.season === tuneSeason && !isPreseason(g));
+  let w2 = 0;
+  if (L2) {
+    let bestLL = Infinity;
+    for (const w of [0, 0.5, 1]) {
+      const m = emptyM();
+      for (const g of tuneGames) addM(m, blend(p1.get(g.game_id)!, p2.get(g.game_id), w), g);
+      const ll = m.n ? m.logLoss / m.n : Infinity;
+      if (ll < bestLL - 1e-4) { bestLL = ll; w2 = w; }
+    }
+  }
+  const tune = emptyM(), test = emptyM(), t1 = emptyM(), t2 = emptyM();
   const bySeason = new Map<string, Metrics>();
-  const L = run(games, params, (g, pr) => {
-    if (isPreseason(g)) return;
+  for (const g of games) {
+    if (!fin2(g) || isPreseason(g) || !p1.has(g.game_id)) continue;
+    const pr = blend(p1.get(g.game_id)!, p2.get(g.game_id), w2);
     if (g.season === tuneSeason) addM(tune, pr, g);
     if (testSeasons.includes(g.season)) {
       addM(test, pr, g);
+      addM(t1, p1.get(g.game_id)!, g);
+      if (p2.has(g.game_id)) addM(t2, p2.get(g.game_id)!, g);
       if (!bySeason.has(g.season)) bySeason.set(g.season, emptyM());
       addM(bySeason.get(g.season)!, pr, g);
     }
-  });
+  }
   const model: LeagueModel = {
-    code, params, L, tuneSeason, testSeasons,
+    code, params, L, L2, w2, tuneSeason, testSeasons,
     tune: fin(tune), test: { all: fin(test), bySeason: Object.fromEntries([...bySeason.entries()].map(([s, m]) => [s, fin(m)])) },
+    compare: { v1: fin(t1), v2: fin(t2), v2Weight: w2 },
     builtAt: new Date().toISOString()
   };
   models.set(code, model);
@@ -220,7 +337,17 @@ export function predictGame(g: Game): Pred | null {
   const pr = L.predict(g);
   for (const [id, t] of keep) { if (t) L.teams.set(id, t); else L.teams.delete(id); }
   L.lastPlayed = saved;
-  return pr;
+  if (!m.L2 || !m.w2) return pr;
+  // bb-v2: possession ratings, blended with v1 by the weight chosen on the tuning season
+  const ko = new Date(g.kickoff).getTime();
+  const keep2 = [g.home_id, g.away_id].map(id => [id, m.L2!.teams.get(id) ? { ...m.L2!.teams.get(id)! } : null] as const);
+  const p2 = m.L2.predict(g, ph ? (ko - ph) / 86400000 : null, pa ? (ko - pa) / 86400000 : null);
+  for (const [id, t] of keep2) { if (t) m.L2.teams.set(id, t); else m.L2.teams.delete(id); }
+  const w = m.w2;
+  return {
+    ...pr, pHome: w * p2.pHome + (1 - w) * pr.pHome, margin: w * p2.margin + (1 - w) * pr.margin, total: w * p2.total + (1 - w) * pr.total,
+    home: w * p2.home + (1 - w) * pr.home, away: w * p2.away + (1 - w) * pr.away, hca: w * p2.hca + (1 - w) * pr.hca
+  };
 }
 
 /** Every team's ratings in a league (this season's teams), ranked: attack 1 = scores most, defence 1 = allows least. */
@@ -243,7 +370,7 @@ export function teamRating(code: string, teamId: number) {
 /** Admin: how each league's model did on seasons it never saw. */
 export function bbBacktest() {
   return [...models.values()].map(m => ({
-    code: m.code, params: m.params, tuneSeason: m.tuneSeason, testSeasons: m.testSeasons, tune: m.tune, test: m.test,
+    code: m.code, params: m.params, tuneSeason: m.tuneSeason, testSeasons: m.testSeasons, tune: m.tune, test: m.test, compare: m.compare,
     now: { avgPoints: Math.round(m.L.mu * 10) / 10, homeEdge: Math.round(m.L.hca * 10) / 10, sigma: Math.round(m.L.sigma * 10) / 10, sigmaTotal: Math.round(m.L.sigmaT * 10) / 10 },
     builtAt: m.builtAt
   }));
