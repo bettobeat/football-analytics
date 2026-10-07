@@ -576,12 +576,12 @@ function MatchDetail() {
   const tableTotals = (tables || []).filter(t => t.type === 'TOTAL')
   const tableInvolving = tableTotals.filter(t => t.table.some(r => r.team.id === home.id || r.team.id === away.id))
   const tableShow = tableInvolving.length ? tableInvolving : tableTotals
-  const tabs: { id: TabId; label: string; hint: string; live?: boolean }[] = [
+  const tabs: { id: TabId; label: string; short?: string; hint: string; live?: boolean }[] = [
     { id: 'prediction', label: tt('Prediction'), hint: '' },
-    { id: 'stats', label: tt('Statistics'), hint: live ? tt("Live stats, match events and averages") : done ? tt("Match stats, events and averages") : tt("Averages from the last 10 games"), live },
+    { id: 'stats', label: tt('Statistics'), short: tt('Stats'), hint: live ? tt("Live stats, match events and averages") : done ? tt("Match stats, events and averages") : tt("Averages from the last 10 games"), live },
     { id: 'lineups', label: tt('Lineups'), hint: hasLineups ? tt("Official lineups") : done ? tt('Lineups') : tt("Expected XI from the last 5 games") },
     { id: 'h2h', label: tt('H2H'), hint: tt("Last 10 meetings and recent form") },
-    ...(tables === null || tableShow.length ? [{ id: 'table' as TabId, label: tt('Standings'), hint: tt('{0} table', { 0: m.competition.name }) }] : [])
+    ...(tables === null || tableShow.length ? [{ id: 'table' as TabId, label: tt('Standings'), short: tt('Table'), hint: tt('{0} table', { 0: m.competition.name }) }] : [])
   ]
 
   return (
@@ -672,7 +672,7 @@ function MatchDetail() {
                 tab === t.id ? 'bg-accent text-bg shadow' : 'text-muted hover:text-ink'
               }`}
             >
-              {t.label}
+              {t.short ? (<><span className="sm:hidden">{t.short}</span><span className="hidden sm:inline">{t.label}</span></>) : t.label}
               {t.live && <span className={`w-1.5 h-1.5 rounded-full animate-pulseDot ${tab === t.id ? 'bg-bg' : 'bg-live'}`} />}
             </button>
           ))}
@@ -1113,7 +1113,7 @@ function TeamHero({ team, align, code }: { team: Team; align: 'left' | 'right'; 
         <span className="w-14 h-14 sm:w-[72px] sm:h-[72px] rounded-full bg-surface2 flex-shrink-0" />
       )}
       <div className="min-w-0 w-full sm:w-auto">
-        <div className="font-display font-extrabold text-base sm:text-2xl text-ink leading-tight break-words sm:truncate">{team.shortName || team.name}</div>
+        <div className="font-sans font-extrabold text-[15px] sm:font-display sm:text-2xl text-ink leading-tight break-words sm:truncate">{team.shortName || team.name}</div>
         {team.coach?.name && <div className="hidden sm:block text-xs text-faint mt-0.5 truncate">{team.coach.name}</div>}
         <div className={`flex items-center justify-center gap-1 mt-1 sm:mt-0.5 ${align === 'right' ? 'sm:justify-end' : 'sm:justify-start'}`}>
           <span className="text-[11px] text-accent font-semibold whitespace-nowrap">{tt("Team page →")}</span>
