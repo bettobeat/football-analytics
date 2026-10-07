@@ -243,9 +243,9 @@ function Dashboard() {
     <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 py-6 lg:py-8 ${league === 'ALL' ? '2xl:max-w-[1760px]' : ''}`}>
       <div className={`grid grid-cols-1 gap-6 lg:gap-8 items-start ${league === 'ALL' ? 'lg:grid-cols-[250px_1fr] 2xl:grid-cols-[250px_1fr_340px]' : favMode ? 'lg:grid-cols-[250px_1fr]' : 'lg:grid-cols-[250px_1fr] xl:grid-cols-[250px_1fr_320px]'}`}>
         {/* ---------- Sidebar ---------- */}
-        <aside className="lg:sticky lg:top-20 space-y-6">
+        <aside className="lg:sticky lg:top-20 flex flex-col gap-6 lg:max-h-[calc(100vh-6.5rem)]">
           {/* Live */}
-          <section className="card p-4">
+          <section className="card p-4 shrink-0">
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-display font-bold text-ink flex items-center gap-2">
                 <span className={`w-2 h-2 rounded-full ${live.length ? 'bg-live animate-pulseDot' : 'bg-faint'}`} />
@@ -255,7 +255,7 @@ function Dashboard() {
             {live.length === 0 ? (
               <p className="text-xs text-faint">{tt("No matches in play right now.")}</p>
             ) : (
-              <ul className="space-y-1">
+              <ul className="space-y-1 max-h-60 overflow-y-auto">
                 {live.map(m => (
                   <li key={m.id}>
                     <LiveRow match={m} />
@@ -265,8 +265,8 @@ function Dashboard() {
             )}
           </section>
 
-          {/* Leagues */}
-          <section className="card p-2">
+          {/* Leagues: scrolls inside its own box on wide screens, like Latest results */}
+          <section className="card p-2 lg:flex-1 lg:min-h-[180px] lg:overflow-y-auto overscroll-contain">
             <div className="px-2 pt-2 pb-1 label">{tt("Leagues")}</div>
             <ul className="space-y-0.5">
               <li>
@@ -331,7 +331,7 @@ function Dashboard() {
 
           {/* Latest results (medium screens; wide screens get the full column on the right) */}
           {league === 'ALL' && (
-            <section className="card p-3 hidden lg:block 2xl:hidden">
+            <section className="card p-3 hidden lg:block 2xl:hidden shrink-0">
               <RecentResults limit={6} compact />
             </section>
           )}
