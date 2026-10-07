@@ -1,71 +1,149 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../../lib/socket'
-import { t, LOCALE } from '../../lib/i18n'
+import { t } from '../../lib/i18n'
 import { useAuth } from '../../lib/auth'
+import { useRevealState } from '../../lib/reveal'
 import { useBbConfig, type BbGame } from '../../lib/bb'
-import { Card, GameList, Skeleton, LockedNote } from './parts'
+import { GamesByDay, LiveRow, GameRow, LockedNote } from './parts'
 
-const DAY = 86400000
-const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
+const DAY_OPTIONS = [1, 3, 7, 14]
 
-/** All games of one day (the visitor's own day), every league or one. */
+/** All games — the same layout as football's Matches page: live and leagues on the left, games by day and league. */
 export default function BbGames() {
   const cfg = useBbConfig()
   const { access } = useAuth()
   const [params, setParams] = useSearchParams()
-  const league = params.get('league') || ''
-  const offset = parseInt(params.get('day') || '0', 10) || 0
+  const league = params.get('league') || 'ALL'
+  const [days, setDays] = useState(7)
   const [games, setGames] = useState<BbGame[] | null>(null)
+  const [results, setResults] = useState<BbGame[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  useRevealState()
 
-  const day = useMemo(() => new Date(startOfDay(new Date()).getTime() + offset * DAY), [offset])
   useEffect(() => {
+    document.title = t('{0} · SportLikely', { 0: t('Games') })
     let cancelled = false
-    setGames(null)
-    const load = () =>
-      axios
-        .get(`${API_URL}/basketball/games`, { params: { from: day.toISOString(), to: new Date(day.getTime() + DAY).toISOString(), ...(league ? { league } : {}) } })
-        .then(r => !cancelled && setGames(r.data.data || []))
-        .catch(() => !cancelled && setGames([]))
+    const load = () => {
+      axios.get(`${API_URL}/basketball/games`, { params: { days: 14 } })
+        .then(r => { if (!cancelled) { setGames(r.data.data || []); setError(null) } })
+        .catch(e => !cancelled && setError(e?.message || 'error'))
+      axios.get(`${API_URL}/basketball/games`, { params: { days: 3, results: 1 } })
+        .then(r => !cancelled && setResults((r.data.data || []).filter((g: BbGame) => g.state === 'done')))
+        .catch(() => !cancelled && setResults([]))
+    }
     load()
     const iv = setInterval(load, 60000)
     return () => { cancelled = true; clearInterval(iv) }
-  }, [day, league])
+  }, [access])
 
-  const set = (k: string, v: string | null) => {
+  const setLeague = (c: string) => {
     const p = new URLSearchParams(params)
-    if (v === null || v === '' || v === '0') p.delete(k)
-    else p.set(k, v)
+    if (c === 'ALL') p.delete('league')
+    else p.set('league', c)
     setParams(p, { replace: true })
   }
-  const days = [-3, -2, -1, 0, 1, 2, 3, 4, 5, 6]
-  const label = (o: number) => (o === 0 ? t('Today') : o === -1 ? t('Yesterday') : o === 1 ? t('Tomorrow') : new Date(startOfDay(new Date()).getTime() + o * DAY).toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric' }))
-  const locked = (games || []).some(g => g.prediction?.locked && g.state === 'upcoming')
+
+  const all = games || []
+  const live = all.filter(g => g.state === 'live')
+  const horizon = Date.now() + days * 86400000
+  const upcoming = useMemo(
+    () => all.filter(g => (league === 'ALL' || g.league.code === league) && g.state !== 'done' && new Date(g.kickoff).getTime() <= horizon),
+    [all, league, days]
+  )
+  const logos = Object.fromEntries((cfg?.leagues || []).map(l => [l.code, l.logo]))
+  const leagueName = cfg?.leagues.find(l => l.code === league)?.name
+  const locked = upcoming.some(g => g.prediction?.locked)
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-4 pb-28 xl:pb-10">
-      <h1 className="font-display text-2xl sm:text-3xl font-extrabold text-ink">{t('Games')}</h1>
-      <div className="flex gap-1 overflow-x-auto no-scrollbar p-1 rounded-full bg-surface2/60 border border-line/60">
-        {days.map(o => (
-          <button key={o} onClick={() => set('day', String(o))} className={`flex-1 min-w-max px-3 py-1.5 rounded-full text-[13px] font-semibold ${o === offset ? 'bg-accent text-bg' : 'text-muted hover:text-ink'}`}>
-            {label(o)}
-          </button>
-        ))}
+    <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 py-6 lg:py-8 pb-28 xl:pb-10 ${league === 'ALL' ? '2xl:max-w-[1760px]' : ''}`}>
+      <div className={`grid grid-cols-1 gap-6 lg:gap-8 items-start lg:grid-cols-[250px_1fr] ${league === 'ALL' ? '2xl:grid-cols-[250px_1fr_340px]' : ''}`}>
+        {/* sidebar */}
+        <aside className="lg:sticky lg:top-20 flex flex-col gap-6 lg:max-h-[calc(100vh-6.5rem)]">
+          <section className="card p-4 shrink-0">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-display font-bold text-ink flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${live.length ? 'bg-live animate-pulseDot' : 'bg-faint'}`} />
+                {t('Live')}
+              </h2>
+              <span className="num text-xs text-faint">{live.length}</span>
+            </div>
+            {live.length === 0 ? (
+              <p className="text-xs text-faint">{t('No games in play right now.')}</p>
+            ) : (
+              <ul className="space-y-1 max-h-60 overflow-y-auto">{live.map(g => <li key={g.id}><LiveRow g={g} /></li>)}</ul>
+            )}
+          </section>
+
+          <section className="card p-2 lg:flex-1 lg:min-h-[180px] lg:overflow-y-auto overscroll-contain">
+            <div className="px-2 pt-2 pb-1 label">{t('Leagues')}</div>
+            <ul className="space-y-0.5">
+              <li>
+                <button onClick={() => setLeague('ALL')} className={`side-item ${league === 'ALL' ? 'side-item-active' : ''}`}>
+                  <span className="w-5 h-5 rounded-md bg-surface2 grid place-items-center text-[10px] font-bold text-muted">∞</span>
+                  {t('All leagues')}<span className="ml-auto num text-xs text-faint">{all.filter(g => g.state !== 'done').length}</span>
+                </button>
+              </li>
+              {(cfg?.leagues || []).map(l => (
+                <li key={l.code}>
+                  <button onClick={() => setLeague(l.code)} className={`side-item ${league === l.code ? 'side-item-active' : ''}`}>
+                    {l.logo ? <img src={l.logo} alt="" className="w-5 h-5 object-contain" /> : <span className="w-5 h-5 rounded-md bg-surface2" />}
+                    <span className="truncate">{l.name}</span>
+                    <span className="ml-auto num text-xs text-faint">{all.filter(g => g.league.code === l.code && g.state !== 'done').length}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          {league === 'ALL' && results && results.length > 0 && (
+            <section className="card p-3 hidden lg:block 2xl:hidden shrink-0">
+              <div className="px-2 pb-1 label">{t('Latest results')}</div>
+              <div className="divide-y divide-line/50 -mx-3">{results.slice(0, 6).map(g => <GameRow key={g.id} g={g} compact />)}</div>
+            </section>
+          )}
+        </aside>
+
+        {/* main */}
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
+            <div>
+              <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">{league === 'ALL' ? t('Games') : leagueName || t('Games')}</h1>
+              <p className="mt-1 text-sm text-muted">
+                {t('{0} games in the next {1} days', { 0: upcoming.length, 1: days })}
+                {league !== 'ALL' && <Link to={`/basketball/league/${league}`} className="ml-3 font-bold text-accent">{t('League page →')}</Link>}
+              </p>
+            </div>
+            <div className="seg">
+              {DAY_OPTIONS.map(d => (
+                <button key={d} onClick={() => setDays(d)} className={`seg-btn ${days === d ? 'seg-btn-active' : ''}`}>{d}d</button>
+              ))}
+            </div>
+          </div>
+
+          {locked && access !== 'admin' && <div className="mb-6"><LockedNote /></div>}
+          {!games && !error && (
+            <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="card h-36 animate-pulse bg-surface2/60" />)}</div>
+          )}
+          {error && <div className="card p-5 border-loss/40 text-loss">{t('Failed to load games:')} {error}</div>}
+          {games && <GamesByDay games={upcoming} logos={logos} empty={t('No games for this selection.')} />}
+        </div>
+
+        {/* latest results (wide screens) */}
+        {league === 'ALL' && (
+          <aside className="hidden 2xl:block 2xl:sticky 2xl:top-20">
+            <section className="card p-3">
+              <div className="px-2 pt-1 pb-2 font-display text-lg font-bold">{t('Latest results')}</div>
+              {!results ? <p className="px-2 text-sm text-muted">{t('Loading…')}</p> : results.length === 0 ? (
+                <p className="px-2 text-sm text-faint">{t('No results in the last three days.')}</p>
+              ) : (
+                <div className="max-h-[calc(100vh-12rem)] overflow-y-auto overscroll-contain divide-y divide-line/50 -mx-3">{results.map(g => <GameRow key={g.id} g={g} showLeague compact />)}</div>
+              )}
+            </section>
+          </aside>
+        )}
       </div>
-      <div className="flex flex-wrap gap-2">
-        <button onClick={() => set('league', null)} className={`px-3 py-1.5 rounded-full text-xs font-bold border ${!league ? 'bg-ink text-bg border-ink' : 'border-line/80 text-muted hover:text-ink'}`}>{t('All leagues')}</button>
-        {(cfg?.leagues || []).map(l => (
-          <button key={l.code} onClick={() => set('league', l.code)} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${league === l.code ? 'bg-ink text-bg border-ink' : 'border-line/80 text-muted hover:text-ink'}`}>
-            {l.logo && <img src={l.logo} alt="" className="w-4 h-4 object-contain" />}
-            {l.name}
-          </button>
-        ))}
-      </div>
-      {locked && access !== 'admin' && <LockedNote />}
-      <Card>
-        {!games ? <Skeleton rows={8} /> : <GameList games={games} showLeague={!league} empty={t('No games on this day.')} />}
-      </Card>
     </div>
   )
 }
