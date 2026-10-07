@@ -47,7 +47,7 @@ interface Match {
   group?: string | null
   venue?: string | null
   attendance?: number | null
-  competition: { id: number; name: string; code: string; emblem?: string }
+  competition: { id: number; name: string; code: string; emblem?: string; trial?: boolean }
   season?: { startDate: string; endDate: string }
   homeTeam: Team
   awayTeam: Team
@@ -607,6 +607,14 @@ function MatchDetail() {
             {m.matchday && <span className="text-faint">{tt("· Matchday")}{' '}{m.matchday}</span>}
             {m.stage && m.stage !== 'REGULAR_SEASON' && <span className="text-faint">· {m.stage.replace(/_/g, ' ').toLowerCase().replace(/\b([a-z])/g, c => c.toUpperCase()).replace(/ - /g, ' · ')}</span>}
             {m.group && <span className="text-faint">· {m.group.replace(/_/g, ' ')}</span>}
+            {m.competition.trial && (
+              <span
+                className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-draw/15 text-draw"
+                title={tt("We added this league recently. Its predictions are being tested and don’t count in our public record yet.")}
+              >
+                {tt("New league · in testing")}
+              </span>
+            )}
           </div>
           <div className="text-faint">{fmtDate(m.utcDate)}</div>
         </div>

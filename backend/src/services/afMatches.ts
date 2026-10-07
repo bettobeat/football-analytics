@@ -7,6 +7,7 @@
  * Budget (Pro 7,500/day): fixture window every 30 min (~15 leagues), live scores every 60 s only while one of
  * these matches is in play, match details / tables / scorers / odds on demand with caching.
  */
+import { isTrialCompetition } from './trial';
 import logger from '../utils/logger';
 import { markFresh } from './freshness';
 import { freezePredictions } from './tracking';
@@ -46,7 +47,23 @@ export const EXTRA_COMPETITIONS: { id: number; kind: Kind; name?: string }[] = [
   { id: 179, kind: 'league' }, // Scotland — Premiership
   { id: 197, kind: 'league' }, // Greece — Super League 1
   { id: 218, kind: 'league' }, // Austria — Bundesliga
-  { id: 207, kind: 'league' } // Switzerland — Super League
+  { id: 207, kind: 'league' }, // Switzerland — Super League
+  // Oct 2026: 15 more leagues, tracked as "new" until v3 has proven itself on each (see services/trial.ts)
+  { id: 79, kind: 'league' }, // Germany — 2. Bundesliga
+  { id: 136, kind: 'league' }, // Italy — Serie B
+  { id: 141, kind: 'league' }, // Spain — LaLiga 2
+  { id: 62, kind: 'league' }, // France — Ligue 2
+  { id: 180, kind: 'league' }, // Scotland — Championship
+  { id: 41, kind: 'league' }, // England — League One
+  { id: 71, kind: 'league' }, // Brazil — Série A
+  { id: 128, kind: 'league' }, // Argentina — Liga Profesional
+  { id: 253, kind: 'league' }, // USA — MLS
+  { id: 262, kind: 'league' }, // Mexico — Liga MX
+  { id: 98, kind: 'league' }, // Japan — J1 League
+  { id: 119, kind: 'league' }, // Denmark — Superliga
+  { id: 106, kind: 'league' }, // Poland — Ekstraklasa
+  { id: 103, kind: 'league' }, // Norway — Eliteserien
+  { id: 113, kind: 'league' } // Sweden — Allsvenskan
 ];
 const KIND_RANK: Record<Kind, number> = { cup: 1, league: 2, national: 3 };
 /** Senior men's teams only: API-Football's "Friendlies" also carries U17–U23 and women's sides. */
@@ -105,6 +122,7 @@ function competitionOf(league: any) {
   return {
     id: AF_OFFSET + league.id,
     code: `AF${league.id}`,
+    ...(isTrialCompetition(`AF${league.id}`) ? { trial: true } : {}),
     name: country && kind === 'league' ? `${league.name} (${country})` : league.name,
     emblem: league.logo,
     type: kind === 'national' ? 'NATIONAL' : kind === 'cup' ? 'CUP' : 'LEAGUE',
@@ -493,7 +511,7 @@ export async function getAfStandings(code: string) {
       if (group) {
         const teams = new Map<number, any>();
         for (const t of s.standings) for (const r of t.table) teams.set(r.team.id, { id: r.team.id, name: r.team.name, shortName: r.team.shortName });
-        try { buildTeamMap(group, [...teams.values()]); } catch (e: any) { logger.warn(`AF team map ${group}: ${e.message}`); }
+        try { buildTeamMap(group, [...teams.values()], `AF${id}`); } catch (e: any) { logger.warn(`AF team map ${group}: ${e.message}`); }
       }
     }
     return s;

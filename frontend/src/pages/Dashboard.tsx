@@ -25,6 +25,7 @@ export interface Competition {
   emblem?: string
   type?: string // NATIONAL / CUP / LEAGUE (extra competitions from API-Football)
   rank?: number // 0 = core leagues, 1 = European cups, 2 = more leagues, 3 = national teams
+  trial?: boolean // new league, predictions still being tested (not in the public record yet)
 }
 
 const GROUP_TITLE: Record<number, string> = { 0: tt('Top leagues'), 1: tt('European cups'), 2: tt('More leagues'), 3: tt('National teams') }

@@ -21,7 +21,7 @@
 import { db } from '../db';
 import logger from '../utils/logger';
 import { markFresh } from './freshness';
-import { GROUPS, groupForCompetition, loadGroupMatches, fdNameFor, HistoryMatch } from './history';
+import { GROUPS, groupForCompetition, loadGroupMatches, fdNameFor, HistoryMatch, seasonForDivision } from './history';
 import { Prediction } from './predictionModel';
 import { squadValueFor, squadValueAt } from './squadValues';
 import { availabilityFor, xgByMatch } from './apiFootball';
@@ -357,8 +357,9 @@ export const weekDivs = (week: HistoryMatch[]) => {
 
 export function buildState(group: string, all: HistoryMatch[], asOf: string, divHint?: Map<string, string>): GroupState {
   const past = all.filter(m => m.date < asOf);
-  const season = seasonOf(asOf);
   const divisions = GROUPS[group]?.divisions || [];
+  // calendar-year leagues (Brazil, MLS, Japan, Nordics …) change season in winter, not in July
+  const season = divisions.length ? seasonForDivision(divisions[0], asOf) : seasonOf(asOf);
   const teams = new Map<string, TeamFeat>();
 
   // --- which division is each team in this season? (last division seen this season, else last ever)

@@ -19,9 +19,43 @@ export const GROUPS: Record<string, { divisions: string[]; competitions: string[
   // Extra leagues served from API-Football (codes AF<league id>); history from the same football-data.co.uk CSVs
   B: { divisions: ['B1'], competitions: ['AF144'] }, // Belgium — Jupiler Pro League
   T: { divisions: ['T1'], competitions: ['AF203'] }, // Turkey — Süper Lig
-  SC: { divisions: ['SC0', 'SC1'], competitions: ['AF179'] }, // Scotland — Premiership (+ Championship for promoted teams)
-  G: { divisions: ['G1'], competitions: ['AF197'] } // Greece — Super League 1
+  SC: { divisions: ['SC0', 'SC1'], competitions: ['AF179', 'AF180'] }, // Scotland — Premiership + Championship
+  G: { divisions: ['G1'], competitions: ['AF197'] }, // Greece — Super League 1
+  // Oct 2026: leagues outside Europe's top tier. football-data.co.uk keeps them in one file per country
+  // (https://www.football-data.co.uk/new/BRA.csv …), every season in it, closing odds only.
+  BRA: { divisions: ['BRA'], competitions: ['AF71'] }, // Brazil — Série A
+  ARG: { divisions: ['ARG'], competitions: ['AF128'] }, // Argentina — Liga Profesional
+  USA: { divisions: ['USA'], competitions: ['AF253'] }, // USA — MLS
+  MEX: { divisions: ['MEX'], competitions: ['AF262'] }, // Mexico — Liga MX
+  JPN: { divisions: ['JPN'], competitions: ['AF98'] }, // Japan — J1 League
+  DNK: { divisions: ['DNK'], competitions: ['AF119'] }, // Denmark — Superliga
+  POL: { divisions: ['POL'], competitions: ['AF106'] }, // Poland — Ekstraklasa
+  NOR: { divisions: ['NOR'], competitions: ['AF103'] }, // Norway — Eliteserien
+  SWE: { divisions: ['SWE'], competitions: ['AF113'] } // Sweden — Allsvenskan
 };
+// Second divisions served from API-Football (Oct 2026), next to the Football-Data.org top flights
+GROUPS.E.divisions.push('E2');
+GROUPS.E.competitions.push('AF41'); // England — League One
+GROUPS.D.competitions.push('AF79'); // 2. Bundesliga
+GROUPS.SP.competitions.push('AF141'); // LaLiga 2
+GROUPS.I.competitions.push('AF136'); // Serie B
+GROUPS.F.competitions.push('AF62'); // Ligue 2
+
+/** Divisions kept by football-data.co.uk in one "new format" file per country (all seasons, different columns). */
+export const NEW_FORMAT_DIVS = new Set(['BRA', 'ARG', 'USA', 'MEX', 'JPN', 'DNK', 'POL', 'NOR', 'SWE']);
+/** Leagues played within a calendar year (spring to autumn) rather than August to May. */
+export const CALENDAR_DIVS = new Set(['BRA', 'ARG', 'USA', 'JPN', 'NOR', 'SWE']);
+
+/**
+ * Season code for a match date in a division. August–May leagues roll over in July ("2627" = 2026/27);
+ * calendar-year leagues use the code that starts in their year (the 2026 season = "2627"), so the season
+ * that is being played now has the same code in every league.
+ */
+export function seasonForDivision(division: string, date: string): string {
+  const d = new Date(date);
+  const y = CALENDAR_DIVS.has(division) ? d.getUTCFullYear() : d.getUTCMonth() >= 6 ? d.getUTCFullYear() : d.getUTCFullYear() - 1;
+  return `${String(y).slice(2)}${String(y + 1).slice(2)}`;
+}
 
 export function groupForCompetition(code: string): string | null {
   for (const [g, cfg] of Object.entries(GROUPS)) if (cfg.competitions.includes(code)) return g;
@@ -74,6 +108,13 @@ db.exec(`
     PRIMARY KEY (grp, team_id)
   );
 `);
+
+// Schema upgrade (Oct 2026): which competition a team-map row came from, so two competitions of one group
+// (Bundesliga from Football-Data.org, 2. Bundesliga from API-Football) keep their own rows
+{
+  const tm = (db.prepare(`PRAGMA table_info(team_map)`).all() as any[]).map(c => c.name);
+  if (!tm.includes('source')) db.exec(`ALTER TABLE team_map ADD COLUMN source TEXT NOT NULL DEFAULT ''`);
+}
 
 // Schema upgrade: best price across bookmakers (Max*) and market average (Avg*), early and closing
 {
@@ -143,7 +184,7 @@ const upsertSync = db.prepare(
 );
 
 async function fetchCSV(division: string, season: string): Promise<string> {
-  const url = `${BASE}/${season}/${division}.csv`;
+  const url = NEW_FORMAT_DIVS.has(division) ? `https://www.football-data.co.uk/new/${division}.csv` : `${BASE}/${season}/${division}.csv`;
   const res = await fetch(url, { headers: { 'User-Agent': 'SportLikely/1.0' } });
   if (!res.ok) throw new Error(`${url} → HTTP ${res.status}`);
   return res.text();
@@ -155,28 +196,36 @@ const int = (v: string | undefined) => {
   return Number.isFinite(n) ? n : null;
 };
 
-export async function syncDivision(division: string, season: string) {
+export async function syncDivision(division: string, season: string, keepSeasons?: Set<string>) {
   const text = await fetchCSV(division, season);
   const rows = parseCSV(text);
+  const newFormat = NEW_FORMAT_DIVS.has(division);
   let stored = 0;
+  const perSeason = new Map<string, number>();
   db.exec('BEGIN');
   try {
     for (const r of rows) {
       const date = parseDate(r.Date);
-      const hg = parseInt(r.FTHG, 10);
-      const ag = parseInt(r.FTAG, 10);
-      if (!date || !r.HomeTeam || !r.AwayTeam || Number.isNaN(hg) || Number.isNaN(ag)) continue;
-      // Pre-match odds preference: Pinnacle (PSH), Bet365 (B365H), market average (AvgH)
-      const oh = num(r.PSH) ?? num(r.B365H) ?? num(r.AvgH);
-      const od = num(r.PSD) ?? num(r.B365D) ?? num(r.AvgD);
-      const oa = num(r.PSA) ?? num(r.B365A) ?? num(r.AvgA);
+      // new-format files: Home / Away / HG / AG and a Season column; one file holds every season
+      const homeName = r.HomeTeam || r.Home;
+      const awayName = r.AwayTeam || r.Away;
+      const hg = parseInt(r.FTHG ?? r.HG, 10);
+      const ag = parseInt(r.FTAG ?? r.AG, 10);
+      if (!date || !homeName || !awayName || Number.isNaN(hg) || Number.isNaN(ag)) continue;
+      const rowSeason = newFormat ? seasonForDivision(division, date) : season;
+      if (keepSeasons && !keepSeasons.has(rowSeason)) continue;
+      // Pre-match odds preference: Pinnacle (PSH), Bet365 (B365H), market average (AvgH); new-format files
+      // only carry closing prices, which then stand in for the pre-match price too
+      const oh = num(r.PSH) ?? num(r.B365H) ?? num(r.AvgH) ?? (newFormat ? num(r.PSCH) ?? num(r.B365CH) ?? num(r.AvgCH) : null);
+      const od = num(r.PSD) ?? num(r.B365D) ?? num(r.AvgD) ?? (newFormat ? num(r.PSCD) ?? num(r.B365CD) ?? num(r.AvgCD) : null);
+      const oa = num(r.PSA) ?? num(r.B365A) ?? num(r.AvgA) ?? (newFormat ? num(r.PSCA) ?? num(r.B365CA) ?? num(r.AvgCA) : null);
       // Closing odds: Pinnacle closing (PSCH), else Bet365 closing, else market avg closing
       const ch = num(r.PSCH) ?? num(r.B365CH) ?? num(r.AvgCH);
       const cd = num(r.PSCD) ?? num(r.B365CD) ?? num(r.AvgCD);
       const ca = num(r.PSCA) ?? num(r.B365CA) ?? num(r.AvgCA);
       // Best price across bookmakers and market average (early), best price at close
       insertMatch.run(
-        division, season, date, r.HomeTeam, r.AwayTeam, hg, ag, oh, od, oa, ch, cd, ca,
+        division, rowSeason, date, homeName, awayName, hg, ag, oh, od, oa, ch, cd, ca,
         num(r.MaxH) ?? num(r.BbMxH), num(r.MaxD) ?? num(r.BbMxD), num(r.MaxA) ?? num(r.BbMxA),
         num(r.AvgH) ?? num(r.BbAvH), num(r.AvgD) ?? num(r.BbAvD), num(r.AvgA) ?? num(r.BbAvA),
         num(r.MaxCH), num(r.MaxCD), num(r.MaxCA),
@@ -184,8 +233,10 @@ export async function syncDivision(division: string, season: string) {
         (r.Referee || '').trim() || null
       );
       stored++;
+      perSeason.set(rowSeason, (perSeason.get(rowSeason) || 0) + 1);
     }
-    upsertSync.run(division, season, stored, new Date().toISOString());
+    if (newFormat) perSeason.forEach((n, sc) => upsertSync.run(division, sc, n, new Date().toISOString()));
+    else upsertSync.run(division, season, stored, new Date().toISOString());
     db.exec('COMMIT');
   } catch (e) {
     db.exec('ROLLBACK');
@@ -200,6 +251,21 @@ export async function syncAll(seasons: string[] = seasonCodes(3), force: boolean
   const summary: { division: string; season: string; rows: number; skipped?: boolean; error?: string }[] = [];
   for (const cfg of Object.values(GROUPS)) {
     for (const division of cfg.divisions) {
+      if (NEW_FORMAT_DIVS.has(division)) {
+        // one file per country with every season: download it once and keep the seasons asked for
+        try {
+          // calendar-year leagues start their next season in February, before the July rollover: keep it too
+          const y = parseInt(current.slice(2), 10);
+          const next = `${String(y).padStart(2, '0')}${String((y + 1) % 100).padStart(2, '0')}`;
+          const rows = await syncDivision(division, current, new Set([...seasons, next]));
+          summary.push({ division, season: seasons.join(','), rows });
+          console.log(`  📥 ${division} (${seasons.join(', ')}): ${rows} matches`);
+        } catch (error: any) {
+          summary.push({ division, season: seasons.join(','), rows: 0, error: error.message });
+          console.log(`  ⚠️  ${division}: ${error.message}`);
+        }
+        continue;
+      }
       for (const season of seasons) {
         const existing: any = db.prepare(`SELECT rows, synced_at FROM history_sync WHERE division = ? AND season = ?`).get(division, season);
         const stale = !existing || season === current || force;
@@ -383,19 +449,31 @@ export interface ApiTeam {
  * Map Football-Data.org teams (from standings) to football-data.co.uk names for a group.
  * Returns the mapping and the API teams that could not be matched.
  */
-export function buildTeamMap(group: string, apiTeams: ApiTeam[]) {
+/**
+ * source: where the teams come from — '' for the Football-Data.org competitions of the group (mapped together),
+ * 'AF<league id>' for an API-Football competition. Each source keeps its own rows, and names another source
+ * already uses are not offered again (a League One side can't take a Championship club's name).
+ */
+export function buildTeamMap(group: string, apiTeams: ApiTeam[], source = '') {
   const divs = GROUPS[group]?.divisions || [];
   if (!divs.length) return { mapped: 0, unmatched: apiTeams.map(t => t.name) };
   const placeholders = divs.map(() => '?').join(',');
+  const ids = new Set(apiTeams.map(t => t.id));
+  const takenElsewhere = new Set(
+    (db.prepare(`SELECT team_id, fd_name FROM team_map WHERE grp = ? AND source != ?`).all(group, source) as any[])
+      .filter(r => !ids.has(r.team_id))
+      .map(r => r.fd_name)
+  );
   const fdNames: string[] = db
     .prepare(`SELECT DISTINCT home AS n FROM history_matches WHERE division IN (${placeholders})`)
     .all(...divs)
-    .map((r: any) => r.n);
+    .map((r: any) => r.n)
+    .filter((n: string) => !takenElsewhere.has(n));
 
   const upsert = db.prepare(
-    `INSERT OR REPLACE INTO team_map (grp, team_id, fd_name, api_name, score) VALUES (?, ?, ?, ?, ?)`
+    `INSERT OR REPLACE INTO team_map (grp, team_id, fd_name, api_name, score, source) VALUES (?, ?, ?, ?, ?, ?)`
   );
-  db.prepare(`DELETE FROM team_map WHERE grp = ?`).run(group);
+  db.prepare(`DELETE FROM team_map WHERE grp = ? AND source = ?`).run(group, source);
 
   // Score every (api team, fd name) pair, then assign greedily by best score so
   // that a strong match always beats a weaker one for the same name.
@@ -420,7 +498,7 @@ export function buildTeamMap(group: string, apiTeams: ApiTeam[]) {
   for (const p of pairs) {
     if (!bestSeen.has(p.t.id)) bestSeen.set(p.t.id, { fd: p.fd, score: p.score });
     if (assignedTeam.has(p.t.id) || assignedName.has(p.fd)) continue;
-    upsert.run(group, p.t.id, p.fd, p.t.name, p.score);
+    upsert.run(group, p.t.id, p.fd, p.t.name, p.score, source);
     assignedTeam.add(p.t.id);
     assignedName.add(p.fd);
     mapped++;
