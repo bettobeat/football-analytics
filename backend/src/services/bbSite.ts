@@ -5,7 +5,7 @@
  */
 import { db } from '../db';
 import { BB_LEAGUES, bbGet } from './basketball';
-import { predictGame, teamRating, isPreseason, BB_MODEL } from './bbModel';
+import { predictGame, teamRating, isPreseason, leagueRatings, BB_MODEL } from './bbModel';
 
 export const bbPublic = () => process.env.BASKETBALL_PUBLIC === '1';
 
@@ -224,10 +224,126 @@ export async function bbGame(id: number, full: boolean) {
     ratings,
     stats: { home: averages(g.home_id, g.kickoff), away: averages(g.away_id, g.kickoff) },
     schedule: { home: schedule(g.home_id, g.kickoff), away: schedule(g.away_id, g.kickoff) },
+    preview: preview(g),
     h2h: h2h.map(x => ({ id: x.game_id, kickoff: x.kickoff, home: x.home_name, away: x.away_name, homeId: x.home_id, score: [x.hs, x.as_], league: x.code })),
     box,
     standings
   };
+}
+
+/* ---------- analysis (game preview and team page) ---------- */
+
+/** A team's finished games of one season in its league (pre-season left out), oldest first. */
+function seasonGames(teamId: number, code: string, season: string, before: string) {
+  return (db.prepare(`${SELECT} WHERE code = ? AND season = ? AND (home_id = ? OR away_id = ?) AND status IN ('FT','AOT') AND kickoff < ? ORDER BY kickoff`)
+    .all(code, season, teamId, teamId, before) as Row[]).filter(g => !isPreseason({ code: g.code, kickoff: g.kickoff }))
+}
+/** The season to describe: the game's season, or last season when this one has barely started (fewer than 5 games). */
+function seasonFor(teamId: number, code: string, season: string, before: string) {
+  const now = seasonGames(teamId, code, season, before)
+  if (now.length >= 5) return { season, games: now, previous: false }
+  const prev: any = db.prepare(`SELECT MAX(season) AS s FROM bb_games WHERE code = ? AND season < ?`).get(code, season)
+  if (!prev?.s) return { season, games: now, previous: false }
+  return { season: prev.s as string, games: seasonGames(teamId, code, prev.s, before), previous: true }
+}
+
+function splits(teamId: number, games: Row[]) {
+  const r = { won: 0, lost: 0, homeWon: 0, homeLost: 0, awayWon: 0, awayLost: 0, b2bWon: 0, b2bLost: 0, marginHome: 0, marginAway: 0, closeWon: 0, closeLost: 0 }
+  let prevTs = 0
+  for (const g of games) {
+    const home = g.home_id === teamId
+    const m = home ? g.hs - g.as_ : g.as_ - g.hs
+    const won = m > 0
+    const ts = new Date(g.kickoff).getTime()
+    const b2b = prevTs && ts - prevTs < 1.4 * 86400000
+    prevTs = ts
+    if (won) r.won++; else r.lost++
+    if (home) { won ? r.homeWon++ : r.homeLost++; r.marginHome += m } else { won ? r.awayWon++ : r.awayLost++; r.marginAway += m }
+    if (b2b) won ? r.b2bWon++ : r.b2bLost++
+    if (Math.abs(m) <= 5) won ? r.closeWon++ : r.closeLost++
+  }
+  const hg = r.homeWon + r.homeLost, ag = r.awayWon + r.awayLost
+  const r1 = (x: number) => Math.round(x * 10) / 10
+  return { ...r, games: games.length, marginHome: hg ? r1(r.marginHome / hg) : null, marginAway: ag ? r1(r.marginAway / ag) : null }
+}
+
+function streakOf(teamId: number, games: Row[]) {
+  let n = 0, kind: 'W' | 'L' | null = null
+  for (const g of [...games].reverse()) {
+    const w = (g.home_id === teamId ? g.hs > g.as_ : g.as_ > g.hs) ? 'W' : 'L'
+    if (!kind) kind = w
+    if (w !== kind) break
+    n++
+  }
+  return kind ? { kind, n } : null
+}
+
+/** Season box-score averages of a team and of its league, for "better / worse than average". */
+function profile(teamId: number, code: string, season: string, before: string) {
+  const one = (where: string, args: any[]) => db.prepare(`
+    SELECT COUNT(*) AS n, SUM(t.fgm) fgm, SUM(t.fga) fga, SUM(t.tpm) tpm, SUM(t.tpa) tpa, SUM(t.ftm) ftm, SUM(t.fta) fta,
+      AVG(t.reb) reb, AVG(t.ast) ast, AVG(t.tov) tov, AVG(t.stl) stl, AVG(t.blk) blk
+    FROM bb_team_stats t JOIN bb_games g ON g.game_id = t.game_id
+    WHERE g.code = ? AND g.season = ? AND g.kickoff < ? AND t.fga > 0 ${where}`).get(code, season, before, ...args) as any
+  const shape = (x: any) => !x || !x.n ? null : {
+    games: x.n,
+    fgPct: x.fga ? Math.round((x.fgm / x.fga) * 1000) / 10 : null,
+    threePct: x.tpa ? Math.round((x.tpm / x.tpa) * 1000) / 10 : null,
+    threeAttempts: Math.round((x.tpa / x.n) * 10) / 10,
+    ftPct: x.fta ? Math.round((x.ftm / x.fta) * 1000) / 10 : null,
+    rebounds: x.reb != null ? Math.round(x.reb * 10) / 10 : null,
+    assists: x.ast != null ? Math.round(x.ast * 10) / 10 : null,
+    turnovers: x.tov != null ? Math.round(x.tov * 10) / 10 : null,
+    steals: x.stl != null ? Math.round(x.stl * 10) / 10 : null,
+    blocks: x.blk != null ? Math.round(x.blk * 10) / 10 : null
+  }
+  return { team: shape(one('AND t.team_id = ?', [teamId])), league: shape(one('', [])) }
+}
+
+/** Everything the written preview of a game is built from (the site turns it into sentences). */
+function preview(g: Row) {
+  const ranks = new Map(leagueRatings(g.code).map(x => [x.id, x]))
+  const side = (teamId: number) => {
+    const s = seasonFor(teamId, g.code, g.season, g.kickoff)
+    const pts = s.games.map(x => (x.home_id === teamId ? [x.hs, x.as_] : [x.as_, x.hs]))
+    const r = ranks.get(teamId)
+    return {
+      season: s.season, previousSeason: s.previous,
+      splits: splits(teamId, s.games),
+      streak: streakOf(teamId, s.games),
+      last10: (() => { const l = s.games.slice(-10); const w = l.filter(x => (x.home_id === teamId ? x.hs > x.as_ : x.as_ > x.hs)).length; return { won: w, lost: l.length - w } })(),
+      pointsFor: pts.length ? Math.round((pts.reduce((a, p) => a + p[0], 0) / pts.length) * 10) / 10 : null,
+      pointsAgainst: pts.length ? Math.round((pts.reduce((a, p) => a + p[1], 0) / pts.length) * 10) / 10 : null,
+      ranks: r ? { attack: r.attackRank, defence: r.defenceRank, overall: r.netRank, of: r.of } : null,
+      profile: profile(teamId, g.code, s.season, g.kickoff)
+    }
+  }
+  const h2h = db.prepare(`${SELECT} WHERE ((home_id = ? AND away_id = ?) OR (home_id = ? AND away_id = ?)) AND status IN ('FT','AOT') AND kickoff < ? ORDER BY kickoff DESC LIMIT 10`)
+    .all(g.home_id, g.away_id, g.away_id, g.home_id, g.kickoff) as Row[]
+  const homeWins = h2h.filter(x => (x.home_id === g.home_id ? x.hs > x.as_ : x.as_ > x.hs)).length
+  return { home: side(g.home_id), away: side(g.away_id), h2h: { games: h2h.length, homeWins, awayWins: h2h.length - homeWins } }
+}
+
+/** Team page analysis: season splits, ranks, stat profile against the league, the last 20 games. */
+function teamAnalysis(teamId: number, code: string) {
+  const latest: any = db.prepare(`SELECT MAX(season) AS s FROM bb_games WHERE code = ? AND kickoff < ?`).get(code, new Date().toISOString())
+  if (!latest?.s) return null
+  const now = new Date().toISOString()
+  const s = seasonFor(teamId, code, latest.s, now)
+  const r = leagueRatings(code).find(x => x.id === teamId)
+  const last = db.prepare(`${SELECT} WHERE (home_id = ? OR away_id = ?) AND status IN ('FT','AOT') AND kickoff < ? ORDER BY kickoff DESC LIMIT 20`).all(teamId, teamId, now) as Row[]
+  return {
+    season: s.season, previousSeason: s.previous,
+    splits: splits(teamId, s.games),
+    streak: streakOf(teamId, s.games),
+    ranks: r ? { attack: r.attackRank, defence: r.defenceRank, overall: r.netRank, of: r.of } : null,
+    profile: profile(teamId, code, s.season, now),
+    last20: last.reverse().map(x => {
+      const home = x.home_id === teamId
+      const f = home ? x.hs : x.as_, a = home ? x.as_ : x.hs
+      return { id: x.game_id, kickoff: x.kickoff, home, opponent: home ? x.away_name : x.home_name, for: f, against: a, margin: f - a }
+    })
+  }
 }
 
 /** A team's page data: recent and next games. */
@@ -238,5 +354,5 @@ export function bbTeam(teamId: number, full: boolean) {
   const any = recent[0] || next[0];
   if (!any) return null;
   const name = any.home_id === teamId ? any.home_name : any.away_name, logo = any.home_id === teamId ? any.home_logo : any.away_logo;
-  return { team: { id: teamId, name, logo, league: any.code }, rating: full ? teamRating(any.code, teamId) : null, averages: averages(teamId, now), recent: recent.map(r => shape(r, full)), next: next.map(r => shape(r, full)) };
+  return { team: { id: teamId, name, logo, league: any.code }, rating: full ? teamRating(any.code, teamId) : null, averages: averages(teamId, now), analysis: teamAnalysis(teamId, any.code), recent: recent.map(r => shape(r, full)), next: next.map(r => shape(r, full)) };
 }

@@ -223,6 +223,18 @@ export function predictGame(g: Game): Pred | null {
   return pr;
 }
 
+/** Every team's ratings in a league (this season's teams), ranked: attack 1 = scores most, defence 1 = allows least. */
+export function leagueRatings(code: string) {
+  const m = models.get(code);
+  if (!m) return [];
+  const latest = [...m.L.teams.values()].reduce((a, t) => (t.season > a ? t.season : a), '');
+  const list = [...m.L.teams.entries()].filter(([, t]) => t.season === latest && t.games > 0)
+    .map(([id, t]) => ({ id, attack: t.o, defence: -t.d, net: t.o - t.d }));
+  const rank = (key: 'attack' | 'defence' | 'net') => new Map([...list].sort((a, b) => b[key] - a[key]).map((x, i) => [x.id, i + 1]));
+  const ra = rank('attack'), rd = rank('defence'), rn = rank('net');
+  return list.map(x => ({ ...x, attackRank: ra.get(x.id)!, defenceRank: rd.get(x.id)!, netRank: rn.get(x.id)!, of: list.length }));
+}
+
 export function teamRating(code: string, teamId: number) {
   const t = models.get(code)?.L.teams.get(teamId);
   return t ? { attack: Math.round(t.o * 10) / 10, defence: Math.round(-t.d * 10) / 10, net: Math.round((t.o - t.d) * 10) / 10, games: t.games } : null;

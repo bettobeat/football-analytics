@@ -6,6 +6,7 @@ import { t } from '../../lib/i18n'
 import { useBbConfig, bbLeagueFav, type BbGame } from '../../lib/bb'
 import { FavStar } from '../../lib/favorites'
 import { Card, GameList, Skeleton, TeamLogo } from './parts'
+import { useNews, NewsRows } from '../../components/NewsList'
 
 export interface StandRow { position: number; team: { id: number; name: string; logo: string | null }; played: number; won: number; lost: number; pct: number | null; pointsFor: number | null; pointsAgainst: number | null }
 export interface Standings { season: string; groups: { name: string | null; stage: string | null; rows: StandRow[] }[] }
@@ -63,6 +64,7 @@ export default function BbLeague() {
   const [table, setTable] = useState<Standings | null | undefined>(undefined)
   const [next, setNext] = useState<BbGame[] | null>(null)
   const [results, setResults] = useState<BbGame[] | null>(null)
+  const news = useNews({ sport: 'basketball', league: code.toUpperCase(), limit: 10 })
 
   useEffect(() => {
     const c = code.toUpperCase()
@@ -95,6 +97,9 @@ export default function BbLeague() {
           </Card>
           <Card title={t('Latest results')}>
             {!results ? <Skeleton rows={5} /> : <div className="max-h-[520px] overflow-y-auto overscroll-contain pr-1"><GameList games={results} empty={t('No results in the last three weeks.')} /></div>}
+          </Card>
+          <Card title={t('{0} news', { 0: league?.name || code.toUpperCase() })}>
+            {news === null ? <Skeleton rows={3} h="h-14" /> : news.length ? <div className="-mx-2 max-h-[520px] overflow-y-auto overscroll-contain"><NewsRows items={news} /></div> : <p className="text-sm text-faint">{t('No news about this league in the last two weeks.')}</p>}
           </Card>
         </div>
       </div>

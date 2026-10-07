@@ -46,7 +46,7 @@ import { playerPage, findPlayer } from './services/playerPage';
 import { unlockStatus, unlockMatch, unlockedIds, isFinished, testCheckout, PLANS, billingTestMode, unlockStats, REFUND_DAYS, FREE_WEEKLY_UNLOCKS } from './services/billing';
 import { goalsCalibration } from './services/goalsCalibration';
 import { runDataAudit, lastDataAudit, startDataAuditScheduler } from './services/dataAudit';
-import { footballNews, newsStatus, startNewsScheduler } from './services/news';
+import { newsFor, newsStatus, startNewsScheduler, bbTeamNames, footballTeamNames } from './services/news';
 import { bbGet, bbStatus, bbSyncNow, startBasketballScheduler } from './services/basketball';
 import { bbPublic, bbLeagues, bbGames, bbGame, bbStandings, bbTeam } from './services/bbSite';
 import { bbBacktest, bbRecord } from './services/bbModel';
@@ -906,9 +906,20 @@ app.get('/api/search', async (req, res) => {
 app.get('/api/news', async (req, res) => {
   try {
     // ?league=PL → that league's news; no league → every league combined (home page)
+    // ?sport=basketball → basketball news; ?team=<name>&short=<short name> (football) or ?teamId=<id> (basketball) → one team's news
+    const sport = req.query.sport === 'basketball' ? 'basketball' : 'football';
     const league = typeof req.query.league === 'string' && /^[A-Z0-9]{2,8}$/i.test(req.query.league) ? req.query.league : undefined;
+    const limit = Math.min(30, parseInt(String(req.query.limit || '12'), 10) || 12);
+    let team: string[] | undefined;
+    if (sport === 'basketball' && /^\d+$/.test(String(req.query.teamId || ''))) {
+      const id = parseInt(String(req.query.teamId), 10);
+      const r: any = db.prepare(`SELECT code, CASE WHEN home_id = ? THEN home_name ELSE away_name END AS name FROM bb_games WHERE home_id = ? OR away_id = ? ORDER BY kickoff DESC LIMIT 1`).get(id, id, id);
+      team = r ? bbTeamNames(r.name, r.code) : [];
+    } else if (typeof req.query.team === 'string' && req.query.team.length >= 3 && req.query.team.length <= 80) {
+      team = footballTeamNames(req.query.team, typeof req.query.short === 'string' ? req.query.short.slice(0, 60) : undefined);
+    }
     res.set('Cache-Control', 'public, max-age=120');
-    res.json({ data: await footballNews(Math.min(30, parseInt(String(req.query.limit || '12'), 10) || 12), league), timestamp: new Date().toISOString() });
+    res.json({ data: await newsFor({ sport, league, limit, team }), timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'News failed');
   }

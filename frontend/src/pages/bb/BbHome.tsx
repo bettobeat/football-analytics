@@ -9,6 +9,7 @@ import CountUp from '../../components/CountUp'
 import { RevealChip } from '../../components/Reveal'
 import { useBbConfig, useBbFavorites, BB_STATUS, type BbGame } from '../../lib/bb'
 import { TeamLogo, LockIcon, GameRow, rid, rstatus } from './parts'
+import { useNews, NewsLead } from '../../components/NewsList'
 
 interface Rec { n: number; hits: number; hitRate: number | null; strongN: number; strongHits: number; strongHitRate: number | null }
 interface RecordData { since: string | null; total: Rec }
@@ -126,6 +127,7 @@ export default function BbHome() {
   const [games, setGames] = useState<BbGame[]>([])
   const [results, setResults] = useState<BbGame[] | null>(null)
   const [record, setRecord] = useState<RecordData | null>(null)
+  const news = useNews({ sport: 'basketball', limit: 10 })
   useRevealState()
 
   useEffect(() => {
@@ -302,6 +304,13 @@ export default function BbHome() {
         {next.length > 0 && (
           <Section title={t('Next games')} action={<Link to="/basketball/games" className="text-sm font-bold text-accent">{t('All games →')}</Link>}>
             <div className="rail flex gap-3.5 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 snap-x">{next.map(g => nextCard(g))}</div>
+          </Section>
+        )}
+
+        {/* basketball news */}
+        {news && news.length > 0 && (
+          <Section title={t('Basketball news')}>
+            <NewsLead items={news} />
           </Section>
         )}
 

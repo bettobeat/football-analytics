@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useNews, NewsRows } from '../components/NewsList'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
@@ -127,6 +128,9 @@ export default function Team() {
     for (const p of data?.squad || []) (g[p.pos] ||= []).push(p)
     return Object.entries(g)
   }, [data])
+
+  // the team's news (stories that name it) — national teams too
+  const news = useNews({ team: data?.team.name, short: sp.get('n') || undefined, limit: 8 }, !!data)
 
   if (error) return <div className="max-w-5xl mx-auto px-4 py-16 text-center text-muted">{error}</div>
   if (!data)
@@ -311,6 +315,10 @@ export default function Team() {
           <Card title={t("Results and fixtures")}>
             {data.next.slice(0, 3).map(f => <FixtureRow key={`n${f.date}`} f={f} teamId={team.id} />)}
             {data.last.slice(0, 8).map(f => <FixtureRow key={`l${f.date}`} f={f} teamId={team.id} />)}
+          </Card>
+
+          <Card title={t("{0} news", { 0: team.name })}>
+            {news === null ? <div className="h-24 rounded-xl bg-surface2/60 animate-pulse" /> : news.length ? <div className="-mx-2"><NewsRows items={news} showLeague /></div> : <p className="text-sm text-faint">{t("No news about this team in the last month.")}</p>}
           </Card>
         </div>
       </div>

@@ -31,6 +31,17 @@ interface Detail {
   h2h: { id: number; kickoff: string; home: string; away: string; homeId: number; score: [number, number]; league: string }[]
   box: { home: BoxSide; away: BoxSide } | null
   standings: Standings | null
+  preview?: { home: PreviewSide; away: PreviewSide; h2h: { games: number; homeWins: number; awayWins: number } }
+}
+interface Profile { games: number; fgPct: number | null; threePct: number | null; threeAttempts: number | null; ftPct: number | null; rebounds: number | null; assists: number | null; turnovers: number | null; steals: number | null; blocks: number | null }
+interface PreviewSide {
+  season: string; previousSeason: boolean
+  splits: { won: number; lost: number; homeWon: number; homeLost: number; awayWon: number; awayLost: number; b2bWon: number; b2bLost: number; marginHome: number | null; marginAway: number | null; closeWon: number; closeLost: number; games: number }
+  streak: { kind: 'W' | 'L'; n: number } | null
+  last10: { won: number; lost: number }
+  pointsFor: number | null; pointsAgainst: number | null
+  ranks: { attack: number; defence: number; overall: number; of: number } | null
+  profile: { team: Profile | null; league: Profile | null }
 }
 type Tab = 'prediction' | 'stats' | 'rest' | 'h2h' | 'table' | 'box'
 
@@ -151,6 +162,7 @@ export default function BbGame() {
         {tab === 'prediction' && (
           <>
             <PredictionSection d={d} />
+            <AnalysisCard d={d} />
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {tabs.filter(x => x.id !== 'prediction').map(x => (
                 <button key={x.id} type="button" onClick={() => pickTab(x.id)} className="card p-4 text-left hover:border-accent/50 transition-colors">
@@ -348,6 +360,70 @@ function PredictionSection({ d }: { d: Detail }) {
           )}
         </>
       )}
+    </Card>
+  )
+}
+
+/** Written preview: form, home/away record, ratings, rest, shooting, meetings and our verdict — in plain sentences. */
+function AnalysisCard({ d }: { d: Detail }) {
+  const g = d.game
+  const pv = d.preview
+  const { hidden } = useReveal(rid(g), rstatus(g), !!g.prediction && !g.prediction.locked)
+  if (!pv) return null
+  const H = g.home.name, A = g.away.name
+  const paras: string[] = []
+  const rec = (side: PreviewSide, name: string, home: boolean) => {
+    const s = side.splits
+    if (!s.games) return null
+    const where = home ? t('{0}–{1} at home', { 0: s.homeWon, 1: s.homeLost }) : t('{0}–{1} on the road', { 0: s.awayWon, 1: s.awayLost })
+    return side.previousSeason
+      ? t('Last season {0} went {1}–{2} ({3}).', { 0: name, 1: s.won, 2: s.lost, 3: where })
+      : t('{0} are {1}–{2} this season ({3}) and have won {4} of their last {5}.', { 0: name, 1: s.won, 2: s.lost, 3: where, 4: side.last10.won, 5: side.last10.won + side.last10.lost })
+  }
+  const form = [rec(pv.home, H, true), rec(pv.away, A, false)].filter(Boolean).join(' ')
+  if (form) paras.push(form)
+  const streaks = ([[pv.home, H], [pv.away, A]] as const)
+    .filter(([s]) => !s.previousSeason && s.streak && s.streak.n >= 3)
+    .map(([s, n]) => (s.streak!.kind === 'W' ? t('{0} have won {1} in a row.', { 0: n, 1: s.streak!.n }) : t('{0} have lost {1} in a row.', { 0: n, 1: s.streak!.n })))
+  if (streaks.length) paras.push(streaks.join(' '))
+  const rh = pv.home.ranks, ra = pv.away.ranks
+  if (rh && ra) {
+    paras.push(t('In our ratings {0} rank {1} in attack and {2} in defence out of {3} teams; {4} rank {5} and {6}.', { 0: H, 1: rh.attack, 2: rh.defence, 3: rh.of, 4: A, 5: ra.attack, 6: ra.defence }))
+    // the key matchup: the bigger gap between one side's attack and the other side's defence
+    const gapH = ra.defence - rh.attack, gapA = rh.defence - ra.attack
+    const [att, def, ar, dr] = gapH >= gapA ? [H, A, rh.attack, ra.defence] : [A, H, ra.attack, rh.defence]
+    if (Math.abs(gapH - gapA) >= 3) paras.push(t('The key matchup: {0}’s attack (rank {1}) against {2}’s defence (rank {3}).', { 0: att, 1: ar, 2: def, 3: dr }))
+  }
+  const sh = d.schedule.home, sa = d.schedule.away
+  if (sh.backToBack || sa.backToBack) {
+    paras.push([sh.backToBack ? t('{0} played last night (second game of a back-to-back).', { 0: H }) : '', sa.backToBack ? t('{0} played last night (second game of a back-to-back).', { 0: A }) : ''].filter(Boolean).join(' '))
+  } else if (sh.restDays !== null && sa.restDays !== null && Math.abs(Math.floor(sh.restDays) - Math.floor(sa.restDays)) >= 2) {
+    const fresher = sh.restDays > sa.restDays ? H : A
+    paras.push(t('{0} are fresher, with {1} more days of rest.', { 0: fresher, 1: Math.abs(Math.floor(sh.restDays) - Math.floor(sa.restDays)) }))
+  }
+  const ph = pv.home.profile, pa = pv.away.profile
+  if (ph.team && pa.team && ph.league && ph.team.threePct !== null && pa.team.threePct !== null && ph.league.threePct !== null) {
+    const lg = ph.league.threePct
+    const best = ph.team.threePct - lg >= pa.team.threePct - lg ? [H, ph.team.threePct] as const : [A, pa.team.threePct] as const
+    if (Math.abs(best[1] - lg) >= 1.5) paras.push(best[1] > lg
+      ? t('{0} shoot {1}% from three, above the league average of {2}%.', { 0: best[0], 1: best[1], 2: lg })
+      : t('Both teams shoot below the league average from three ({0}%).', { 0: lg }))
+  }
+  if (pv.h2h.games > 0) paras.push(t('In their last {0} meetings {1} won {2} and {3} won {4}.', { 0: pv.h2h.games, 1: H, 2: pv.h2h.homeWins, 3: A, 4: pv.h2h.awayWins }))
+  const p = g.prediction
+  if (p?.pick && !hidden) {
+    const team = p.pick === 'H' ? H : A
+    paras.push(!p.locked && typeof p.pHome === 'number'
+      ? t('Our verdict: {0} with {1}%, by about {2} points, with around {3} points in total.', { 0: team, 1: Math.round(p.pick === 'H' ? p.pHome : p.pAway!), 2: Math.abs(p.spread || 0).toFixed(1), 3: (p.total || 0).toFixed(0) })
+      : t('Our pick: {0}.', { 0: team }))
+  }
+  if (!paras.length) return null
+  return (
+    <Card title={g.state === 'upcoming' ? t('Our analysis') : t('Our analysis before the game')}>
+      <div className="space-y-3 text-[15px] leading-relaxed text-ink/90">
+        {paras.map((x, i) => <p key={i}>{x}</p>)}
+      </div>
+      <p className="mt-4 text-[11px] text-faint">{t('Written from the numbers: this season’s results, our team ratings, the schedule and box scores.')}</p>
     </Card>
   )
 }

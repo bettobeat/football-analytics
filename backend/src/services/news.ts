@@ -13,7 +13,8 @@
 import logger from '../utils/logger';
 import { db } from '../db';
 
-type Feed = { source: string; url: string; league?: string };
+type Sport = 'football' | 'basketball';
+type Feed = { source: string; url: string; league?: string; sport?: Sport };
 
 const UA = { 'User-Agent': 'SportLikely/1.0 (+https://sportlikely.com)' };
 const BBC = (path: string) => `https://feeds.bbci.co.uk/sport/football/${path}/rss.xml`;
@@ -46,8 +47,26 @@ const FEEDS: Feed[] = [
   { source: 'The Guardian', url: GDN('championsleague'), league: 'CL' },
   { source: 'BBC Sport', url: BBC('europa-league'), league: 'AF3' },
   { source: 'The Guardian', url: GDN('uefa-europa-league'), league: 'AF3' },
-  { source: 'The Guardian', url: GDN('europa-conference-league'), league: 'AF848' }
+  { source: 'The Guardian', url: GDN('europa-conference-league'), league: 'AF848' },
+  // basketball (Oct 2026): NBA and the European leagues; stories are filed by league names and team names
+  { source: 'ESPN', url: 'https://www.espn.com/espn/rss/nba/news', league: 'NBA', sport: 'basketball' },
+  { source: 'The Guardian', url: 'https://www.theguardian.com/sport/nba/rss', league: 'NBA', sport: 'basketball' },
+  { source: 'CBS Sports', url: 'https://www.cbssports.com/rss/headlines/nba/', league: 'NBA', sport: 'basketball' },
+  { source: 'Yahoo Sports', url: 'https://sports.yahoo.com/nba/rss.xml', league: 'NBA', sport: 'basketball' },
+  { source: 'BBC Sport', url: 'https://feeds.bbci.co.uk/sport/basketball/rss.xml', sport: 'basketball' },
+  { source: 'The Guardian', url: 'https://www.theguardian.com/sport/basketball/rss', sport: 'basketball' },
+  { source: 'Eurohoops', url: 'https://www.eurohoops.net/en/feed/', sport: 'basketball' },
+  { source: 'Sportando', url: 'https://sportando.basketball/en/feed/', sport: 'basketball' }
 ];
+
+/** Basketball leagues for filing stories (team names come from bb_games). */
+const BB_NEWS_LEAGUES: { code: string; name: string; phrases: string[]; not?: string[] }[] = [
+  { code: 'NBA', name: 'NBA', phrases: ['NBA'], not: ['ex-', 'former'] },
+  { code: 'EL', name: 'EuroLeague', phrases: ['EuroLeague', 'Euroleague', 'Turkish Airlines EuroLeague'] },
+  { code: 'ACB', name: 'Liga ACB', phrases: ['Liga ACB', 'Liga Endesa', 'ACB'] },
+  { code: 'LBA', name: 'Lega Basket Serie A', phrases: ['Lega Basket', 'LBA', 'Serie A'] }
+];
+const BB_LEAGUE_NAME = new Map(BB_NEWS_LEAGUES.map(l => [l.code, l.name]));
 
 /**
  * Our leagues: name, API-Football league id (its current teams tag stories) and the phrases that name the league.
@@ -152,6 +171,7 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_news_seen ON news_items(seen_at);
 `);
+try { db.exec(`ALTER TABLE news_items ADD COLUMN sport TEXT NOT NULL DEFAULT 'football'`); } catch { /* column exists */ }
 
 const decode = (s: string) =>
   s
@@ -170,7 +190,7 @@ const tag = (block: string, name: string) => {
   return m ? decode(m[1]) : '';
 };
 
-type Raw = Omit<NewsItem, 'leagues'> & { feedLeague?: string };
+type Raw = Omit<NewsItem, 'leagues'> & { feedLeague?: string; sport: Sport };
 
 async function fetchFeed(f: Feed): Promise<Raw[]> {
   const res = await fetch(f.url, { signal: AbortSignal.timeout(8000), headers: UA });
@@ -182,8 +202,8 @@ async function fetchFeed(f: Feed): Promise<Raw[]> {
     const title = tag(b, 'title');
     const link = tag(b, 'link') || (b.match(/<guid[^>]*>(https?:[^<]+)<\/guid>/i)?.[1] ?? '');
     if (!title || !/^https:\/\//.test(link)) continue;
-    // football only: some feeds mix in other sports (tennis, F1, cricket…)
-    if (/\/(tennis|f1|formula-1|cricket|golf|boxing|rugby-union|rugby-league|nfl|nba|darts|racing|cycling|snooker|netball|athletics)\//i.test(link)) continue;
+    // football feeds: football only (some feeds mix in other sports: tennis, F1, cricket…)
+    if (f.sport !== 'basketball' && /\/(tennis|f1|formula-1|cricket|golf|boxing|rugby-union|rugby-league|nfl|nba|darts|racing|cycling|snooker|netball|athletics)\//i.test(link)) continue;
     const pub = tag(b, 'pubDate') || tag(b, 'dc:date');
     const d = pub ? new Date(pub) : null;
     // picture the feed ships with the story (media:content / media:thumbnail / enclosure) — the largest one
@@ -201,7 +221,7 @@ async function fetchFeed(f: Feed): Promise<Raw[]> {
     if (image && /ichef\.bbci\.co\.uk\/.*\/240\//.test(image)) image = image.replace('/240/', '/480/');
     const summary = tag(b, 'description').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(); // some feeds escape their HTML
     items.push({
-      title, link, source: f.source, feedLeague: f.league,
+      title, link, source: f.source, feedLeague: f.league, sport: f.sport || 'football',
       published: d && !isNaN(d.getTime()) && d.getTime() <= Date.now() + 5 * 60000 ? d.toISOString() : null,
       summary: summary.length > 180 ? summary.slice(0, 177) + '…' : summary, image
     });
@@ -277,6 +297,44 @@ function buildMatcher() {
   matcherAt = Date.now();
 }
 
+/* basketball: the current season's teams of each league (NBA nicknames too: "Lakers", "Celtics") */
+let bbMatcher: { re: RegExp; leaguesOf: Map<string, Set<string>> } | null = null;
+const BB_RISKY = new Set(['real', 'union', 'olympia', 'partizan mozzart', 'virtus', 'reggiana']);
+/** Names a basketball team goes by in headlines. */
+export function bbTeamNames(full: string, code: string): string[] {
+  const out = new Set<string>([full]);
+  const words = full.split(/\s+/);
+  if (code === 'NBA' && words.length > 1) {
+    out.add(words[words.length - 1]);                                       // "Lakers", "76ers"
+    if (/^(Trail Blazers)$/.test(words.slice(-2).join(' '))) out.add('Trail Blazers');
+  } else if (words.length > 1) {
+    // European clubs carry sponsors ("Partizan Mozzart Bet", "Crvena Zvezda Meridianbet"): the club part too
+    out.add(words.slice(0, 2).join(' '));
+    if (words[0].length >= 6 && !BB_RISKY.has(words[0].toLowerCase())) out.add(words[0]);
+  }
+  return [...out].filter(n => n.length >= 3);
+}
+function buildBbMatcher() {
+  const leaguesOf = new Map<string, Set<string>>();
+  let rows: any[] = [];
+  try {
+    rows = db.prepare(`SELECT DISTINCT g.code, g.home_name AS n FROM bb_games g
+      WHERE g.season = (SELECT MAX(season) FROM bb_games x WHERE x.code = g.code) `).all() as any[];
+  } catch { /* basketball tables not ready */ }
+  for (const r of rows) for (const n of bbTeamNames(r.n, r.code)) {
+    const k = norm(n).trim();
+    if (!leaguesOf.has(k)) leaguesOf.set(k, new Set());
+    leaguesOf.get(k)!.add(r.code);
+  }
+  const alts = [...leaguesOf.keys()].sort((a, b) => b.length - a.length).map(esc);
+  bbMatcher = { re: alts.length ? new RegExp(`(?<![\\p{L}\\p{N}])(?:${alts.join('|')})(?![\\p{L}\\p{N}])`, 'gu') : /(?!)/g, leaguesOf };
+}
+const bbPhraseRes = BB_NEWS_LEAGUES.map(l => ({
+  code: l.code,
+  re: new RegExp(`(?<![\\p{L}\\p{N}])(?:${l.phrases.map(p => esc(norm(p))).join('|')})(?![\\p{L}\\p{N}])`, 'gu'),
+  not: (l.not || []).map(n => norm(n))
+}));
+
 const phraseRes = NEWS_LEAGUES.map(l => ({
   code: l.code,
   re: new RegExp(`(?<![\\p{L}\\p{N}])(?:${l.phrases.map(p => esc(norm(p))).join('|')})(?![\\p{L}\\p{N}])`, 'gu'),
@@ -284,21 +342,23 @@ const phraseRes = NEWS_LEAGUES.map(l => ({
 }));
 
 /** League codes a story belongs to. */
-export function leaguesFor(title: string, summary: string, feedLeague?: string): string[] {
+export function leaguesFor(title: string, summary: string, feedLeague?: string, sport: Sport = 'football'): string[] {
   if (!matcher || Date.now() - matcherAt > 6 * 3600 * 1000) buildMatcher();
+  if (sport === 'basketball' && !bbMatcher) buildBbMatcher();
+  const M = sport === 'basketball' ? bbMatcher! : matcher!;
   const text = norm(`${title} . ${summary}`);
   const out = new Set<string>(feedLeague ? [feedLeague] : []);
-  for (const p of phraseRes) {
+  for (const p of sport === 'basketball' ? bbPhraseRes : phraseRes) {
     for (const m of text.matchAll(p.re)) {
       const before = text.slice(Math.max(0, m.index! - 20), m.index!).trimEnd();
       if (!p.not.some(n => before.endsWith(n))) { out.add(p.code); break; }
     }
   }
-  for (const m of text.matchAll(matcher!.re)) {
+  for (const m of text.matchAll(M.re)) {
     const hit = m[0];
     // names are proper nouns: skip a match that starts lower-case ("forest fire")
     if (hit[0] !== hit[0].toUpperCase()) continue;
-    for (const c of matcher!.leaguesOf.get(hit) || []) out.add(c);
+    for (const c of M.leaguesOf.get(hit) || []) out.add(c);
   }
   return [...out];
 }
@@ -335,8 +395,9 @@ async function refresh() {
     }
   });
   buildMatcher(); // team lists can change (new season, promotions)
+  buildBbMatcher();
   const get = db.prepare(`SELECT leagues, image FROM news_items WHERE link = ?`);
-  const ins = db.prepare(`INSERT INTO news_items (link, title, source, published, summary, image, leagues, seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+  const ins = db.prepare(`INSERT INTO news_items (link, title, source, published, summary, image, leagues, seen_at, sport) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   const upd = db.prepare(`UPDATE news_items SET leagues = ?, image = COALESCE(image, ?), published = COALESCE(published, ?) WHERE link = ?`);
   const fresh: string[] = [];
   const titles = new Set<string>();
@@ -344,7 +405,7 @@ async function refresh() {
   try {
     for (const it of raws) {
       const tkey = it.title.toLowerCase().slice(0, 60);
-      const codes = leaguesFor(it.title, it.summary, it.feedLeague);
+      const codes = leaguesFor(it.title, it.summary, it.feedLeague, it.sport);
       const old: any = get.get(it.link);
       if (old) {
         // the same story in another feed (league section) adds that league
@@ -354,7 +415,7 @@ async function refresh() {
       }
       if (titles.has(tkey)) continue; // same story twice in one refresh under two links
       titles.add(tkey);
-      ins.run(it.link, it.title, it.source, it.published, it.summary, it.image, codes.length ? `,${codes.join(',')},` : '', now);
+      ins.run(it.link, it.title, it.source, it.published, it.summary, it.image, codes.length ? `,${codes.join(',')},` : '', now, it.sport);
       if (!it.image) fresh.push(it.link);
     }
     db.prepare(`DELETE FROM news_items WHERE seen_at < ? AND (leagues = '' OR seen_at < ?)`)
@@ -395,7 +456,7 @@ export function startNewsScheduler() {
 function toItem(r: any): NewsItem {
   return {
     title: r.title, link: r.link, source: r.source, published: r.published, summary: r.summary, image: r.image,
-    leagues: String(r.leagues || '').split(',').filter(Boolean).map((c: string) => ({ code: c, name: LEAGUE_NAME.get(c) || c }))
+    leagues: String(r.leagues || '').split(',').filter(Boolean).map((c: string) => ({ code: c, name: (r.sport === 'basketball' ? BB_LEAGUE_NAME.get(c) : LEAGUE_NAME.get(c)) || c }))
   };
 }
 const when = (r: any) => r.published || r.seen_at;
@@ -417,31 +478,59 @@ function mix(rows: any[], limit: number): any[] {
 /**
  * Home page: every story of the last 3 days, all leagues combined (outlets interleaved).
  * League page (`league` = competition code): that league's stories of the last 14 days, newest first.
+ * Team page (`team` = names the team goes by): stories that name the team, last 30 days.
  */
-export async function footballNews(limit = 12, league?: string): Promise<NewsItem[]> {
+export async function newsFor(opts: { sport?: Sport; limit?: number; league?: string; team?: string[] }): Promise<NewsItem[]> {
+  const sport = opts.sport || 'football';
+  const limit = opts.limit || 12;
   const have: any = db.prepare(`SELECT COUNT(*) AS n FROM news_items`).get();
   if (!have.n) await refreshNow(); // first boot: wait for the first fill
   else if (!lastRefresh) void refreshNow();
-  if (league) {
+  if (opts.team && opts.team.length) {
+    const names = [...new Set(opts.team.map(n => norm(n).trim()).filter(n => n.length >= 3))].sort((a, b) => b.length - a.length);
+    if (!names.length) return [];
+    const re = new RegExp(`(?<![\\p{L}\\p{N}])(?:${names.map(esc).join('|')})(?![\\p{L}\\p{N}])`, 'u');
+    const rows = db.prepare(`SELECT * FROM news_items WHERE sport = ? AND COALESCE(published, seen_at) >= ? ORDER BY COALESCE(published, seen_at) DESC LIMIT 3000`)
+      .all(sport, new Date(Date.now() - 30 * 86400000).toISOString()) as any[];
+    return rows.filter(r => re.test(norm(`${r.title} . ${r.summary}`))).slice(0, limit).map(toItem);
+  }
+  if (opts.league) {
     // the last 14 days; a quiet league (fewer than 8 stories) also gets its older stories, up to 60 days back
-    const code = league.toUpperCase();
+    const code = opts.league.toUpperCase();
     const q = db.prepare(`
-      SELECT * FROM news_items WHERE leagues LIKE ? AND COALESCE(published, seen_at) >= ?
+      SELECT * FROM news_items WHERE sport = ? AND leagues LIKE ? AND COALESCE(published, seen_at) >= ?
       ORDER BY COALESCE(published, seen_at) DESC LIMIT ?`);
-    let rows = q.all(`%,${code},%`, new Date(Date.now() - 14 * 86400000).toISOString(), limit);
-    if (rows.length < Math.min(8, limit)) rows = q.all(`%,${code},%`, new Date(Date.now() - 60 * 86400000).toISOString(), Math.min(limit, 8));
+    let rows = q.all(sport, `%,${code},%`, new Date(Date.now() - 14 * 86400000).toISOString(), limit);
+    if (rows.length < Math.min(8, limit)) rows = q.all(sport, `%,${code},%`, new Date(Date.now() - 60 * 86400000).toISOString(), Math.min(limit, 8));
     return rows.map(toItem);
   }
-  const rows = db.prepare(`SELECT * FROM news_items WHERE COALESCE(published, seen_at) >= ? ORDER BY COALESCE(published, seen_at) DESC LIMIT 300`)
-    .all(new Date(Date.now() - 3 * 86400000).toISOString());
+  const rows = db.prepare(`SELECT * FROM news_items WHERE sport = ? AND COALESCE(published, seen_at) >= ? ORDER BY COALESCE(published, seen_at) DESC LIMIT 300`)
+    .all(sport, new Date(Date.now() - (sport === 'basketball' ? 5 : 3) * 86400000).toISOString());
   return mix(rows, limit).map(toItem);
+}
+
+/** Football news (home / league page). */
+export function footballNews(limit = 12, league?: string): Promise<NewsItem[]> {
+  return newsFor({ sport: 'football', limit, league });
+}
+
+/** The names a football team goes by in headlines ("Manchester United" → "Man Utd", "Man United"). */
+export function footballTeamNames(name: string, shortName?: string): string[] {
+  const out = new Set<string>([name]);
+  if (shortName) out.add(shortName);
+  for (const n of [name, shortName || '']) {
+    const short = n.replace(GENERIC, '').trim();
+    if (short && !RISKY.has(norm(short).toLowerCase())) out.add(short);
+    for (const a of TEAM_ALIASES[norm(n).toLowerCase()] || TEAM_ALIASES[norm(short).toLowerCase()] || []) out.add(a);
+  }
+  return [...out].filter(n => n.length >= 3 && !RISKY.has(norm(n).toLowerCase()));
 }
 
 /** Admin: every feed's last result and how many stories each league has. */
 export function newsStatus() {
   const counts = new Map<string, number>();
   const since = new Date(Date.now() - 14 * 86400000).toISOString();
-  for (const r of db.prepare(`SELECT leagues FROM news_items WHERE COALESCE(published, seen_at) >= ?`).all(since) as any[])
+  for (const r of db.prepare(`SELECT leagues FROM news_items WHERE sport = 'football' AND COALESCE(published, seen_at) >= ?`).all(since) as any[])
     for (const c of String(r.leagues).split(',').filter(Boolean)) counts.set(c, (counts.get(c) || 0) + 1);
   const total: any = db.prepare(`SELECT COUNT(*) AS n FROM news_items`).get();
   return {
@@ -449,6 +538,8 @@ export function newsStatus() {
     stored: total.n,
     teamNames: matcher?.leaguesOf.size || 0,
     feeds: FEEDS.map(f => ({ url: f.url, ...(feedStatus.get(f.url) || { source: f.source, league: f.league || null, ok: null, items: 0, error: null, at: null }) })),
-    leagues: NEWS_LEAGUES.map(l => ({ code: l.code, name: l.name, stories14d: counts.get(l.code) || 0 }))
+    leagues: NEWS_LEAGUES.map(l => ({ code: l.code, name: l.name, stories14d: counts.get(l.code) || 0 })),
+    basketball: BB_NEWS_LEAGUES.map(l => ({ code: l.code, name: l.name, stories14d: (db.prepare(`SELECT COUNT(*) AS n FROM news_items WHERE sport = 'basketball' AND leagues LIKE ? AND COALESCE(published, seen_at) >= ?`).get(`%,${l.code},%`, since) as any).n })),
+    bbTeamNames: bbMatcher?.leaguesOf.size || 0
   };
 }
