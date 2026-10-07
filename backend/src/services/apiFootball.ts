@@ -29,12 +29,12 @@ const KEY = () => process.env.API_FOOTBALL_KEY || '';
 const RESERVE = parseInt(process.env.API_FOOTBALL_RESERVE || '3000', 10);
 const MIN_GAP_MS = 350; // ≤ ~170 requests/minute
 const TICK_MS = 10 * 60 * 1000;
-const BACKFILL_PER_TICK = parseInt(process.env.API_FOOTBALL_BACKFILL_PER_TICK || '250', 10);
-const XG_PER_TICK = parseInt(process.env.API_FOOTBALL_XG_PER_TICK || '150', 10);
+const BACKFILL_PER_TICK = parseInt(process.env.API_FOOTBALL_BACKFILL_PER_TICK || '600', 10); // Oct 2026: 15 leagues to fill; the daily reserve still applies
+const XG_PER_TICK = parseInt(process.env.API_FOOTBALL_XG_PER_TICK || '400', 10);
 const REGULAR_WINDOW = 10; // last N lineups define a team's regulars
 
 /** API-Football league ids for our model groups (football-data.co.uk division codes). */
-export const AF_LEAGUES: { id: number; group: string; division: string; top: boolean }[] = [
+export const AF_LEAGUES: { id: number; group: string; division: string; top: boolean; seasons?: number[] }[] = [
   { id: 39, group: 'E', division: 'E0', top: true },
   { id: 40, group: 'E', division: 'E1', top: false },
   { id: 140, group: 'SP', division: 'SP1', top: true },
@@ -46,8 +46,28 @@ export const AF_LEAGUES: { id: number; group: string; division: string; top: boo
   { id: 61, group: 'F', division: 'F1', top: true },
   { id: 62, group: 'F', division: 'F2', top: false },
   { id: 88, group: 'N', division: 'N1', top: true },
-  { id: 94, group: 'P', division: 'P1', top: true }
+  { id: 94, group: 'P', division: 'P1', top: true },
+  // Oct 2026: every other league we predict — lineups, injuries and match stats for v3 rows #12/#13 and xG.
+  // "top" = collect lineups (upcoming and past); second divisions now get them too.
+  { id: 144, group: 'B', division: 'B1', top: true },
+  { id: 203, group: 'T', division: 'T1', top: true },
+  { id: 179, group: 'SC', division: 'SC0', top: true },
+  { id: 180, group: 'SC', division: 'SC1', top: true },
+  { id: 197, group: 'G', division: 'G1', top: true },
+  { id: 41, group: 'E', division: 'E2', top: true },
+  { id: 71, group: 'BRA', division: 'BRA', top: true },
+  { id: 128, group: 'ARG', division: 'ARG', top: true },
+  { id: 253, group: 'USA', division: 'USA', top: true },
+  { id: 262, group: 'MEX', division: 'MEX', top: true },
+  // J1 moved to August–May in 2026-27; API-Football files that season as 2027 and the spring 2026 half-season as 2026
+  { id: 98, group: 'JPN', division: 'JPN', top: true, seasons: [2027, 2026, 2025, 2024] },
+  { id: 119, group: 'DNK', division: 'DNK', top: true },
+  { id: 106, group: 'POL', division: 'POL', top: true },
+  { id: 103, group: 'NOR', division: 'NOR', top: true },
+  { id: 113, group: 'SWE', division: 'SWE', top: true }
 ];
+// second divisions that were fixtures/injuries only: collect their lineups too
+for (const l of AF_LEAGUES) if (['E1', 'SP2', 'I2', 'D2', 'F2'].includes(l.division)) l.top = true;
 
 /** Extra name hints for API-Football spellings (lowercased fd name → hint). */
 const AF_ALIASES: Record<string, string> = {
@@ -543,11 +563,12 @@ export async function afTick(force = false) {
     const seasons = seasonCodes(3).map(afSeason); // e.g. 2026, 2025, 2024
     // 1) fixtures + injuries: past seasons once, current season every 6 h
     for (const lg of AF_LEAGUES)
-      for (const s of seasons) {
+      for (const s of lg.seasons || seasons) {
         if (budgetLeft() < 5) { notes.push('daily budget reserve reached'); break; }
         const stale = (key: string) => {
           const t = syncedAt(key);
-          return force && s === cur ? true : t === null || (s === cur && Date.now() - t > 6 * 3600 * 1000);
+          const isCur = s === cur || s === (lg.seasons || [])[0];
+          return force && isCur ? true : t === null || (isCur && Date.now() - t > 6 * 3600 * 1000);
         };
         try {
           if (stale(`fixtures|${lg.id}|${s}`)) await syncFixtures(lg, s);
