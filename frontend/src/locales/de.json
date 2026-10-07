@@ -1141,5 +1141,13 @@
  "TIP-OFF": "SPRUNGBALL",
  "The next games appear here as soon as they are scheduled.": "Die nächsten Spiele erscheinen hier, sobald sie angesetzt sind.",
  "Updated until tip-off": "Aktualisiert bis zum Spielbeginn",
- "{0} games in the next {1} days": "{0} Spiele in den nächsten {1} Tagen"
+ "{0} games in the next {1} days": "{0} Spiele in den nächsten {1} Tagen",
+ "No game in the next 14 days": "Kein Spiel in den nächsten 14 Tagen",
+ "Remove": "Entfernen",
+ "Saved to your account, on every device.": "In deinem Konto gespeichert, auf jedem Gerät.",
+ "Star a league on its page or in the Games list.": "Markiere eine Liga mit dem Stern auf ihrer Seite oder in der Spieleliste.",
+ "Star a team on its page or on a game page.": "Markiere ein Team mit dem Stern auf seiner Seite oder auf einer Spielseite.",
+ "Star a team or a league and its games show up here.": "Markiere ein Team oder eine Liga, dann erscheinen ihre Spiele hier.",
+ "Tap the star next to a league here, or on any team or game page. Their games then show up in this list.": "Tippe auf den Stern neben einer Liga hier oder auf einer Team- oder Spielseite. Ihre Spiele erscheinen dann in dieser Liste.",
+ "to keep them on every device.": "um sie auf jedem Gerät zu haben."
 }

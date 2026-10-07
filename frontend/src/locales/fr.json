@@ -1141,5 +1141,13 @@
  "TIP-OFF": "ENTRE-DEUX",
  "The next games appear here as soon as they are scheduled.": "Les prochains matchs apparaîtront ici dès qu'ils seront programmés.",
  "Updated until tip-off": "Mis à jour jusqu'au coup d'envoi",
- "{0} games in the next {1} days": "{0} matchs dans les {1} prochains jours"
+ "{0} games in the next {1} days": "{0} matchs dans les {1} prochains jours",
+ "No game in the next 14 days": "Aucun match dans les 14 prochains jours",
+ "Remove": "Retirer",
+ "Saved to your account, on every device.": "Enregistré dans votre compte, sur tous vos appareils.",
+ "Star a league on its page or in the Games list.": "Ajoutez un championnat avec l'étoile sur sa page ou dans la liste des matchs.",
+ "Star a team on its page or on a game page.": "Ajoutez une équipe avec l'étoile sur sa page ou sur la page d'un match.",
+ "Star a team or a league and its games show up here.": "Ajoutez une équipe ou un championnat et leurs matchs apparaîtront ici.",
+ "Tap the star next to a league here, or on any team or game page. Their games then show up in this list.": "Touchez l'étoile à côté d'un championnat ici, ou sur une page d'équipe ou de match. Leurs matchs apparaîtront dans cette liste.",
+ "to keep them on every device.": "pour les retrouver sur tous vos appareils."
 }

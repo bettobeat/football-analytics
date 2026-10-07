@@ -33,6 +33,7 @@ import BbLeague from './pages/bb/BbLeague'
 import BbTeam from './pages/bb/BbTeam'
 import BbAccuracy from './pages/bb/BbAccuracy'
 import BbPast from './pages/bb/BbPast'
+import BbFavorites from './pages/bb/BbFavorites'
 import { useBbConfig } from './lib/bb'
 import { sportOfPath } from './lib/sports'
 import { socket } from './lib/socket'
@@ -180,13 +181,14 @@ function VerifyBanner() {
   )
 }
 
-/** Basketball menu (Oct 2026): Home · Games · Accuracy · Past seasons (admin). */
+/** Basketball menu (Oct 2026): Home · Games · Favorites · Accuracy · Past seasons (admin). */
 function BbNavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
   const { access } = useAuth()
   return (
     <>
       <NavLink to="/basketball" end className={cls}>{tt("Home")}</NavLink>
       <NavLink to="/basketball/games" className={cls}>{tt("Games")}</NavLink>
+      <NavLink to="/basketball/favorites" className={cls}>{tt("Favorites")}</NavLink>
       <NavLink to="/basketball/accuracy" className={cls}>{tt("Accuracy")}</NavLink>
       {access !== 'pro' && access !== 'admin' && <NavLink to="/premium" className={cls}>{access === 'premium' ? tt("Go Pro") : tt("Premium")}</NavLink>}
       {access === 'admin' && <NavLink to="/basketball/past" className={cls}>{tt("Past seasons")}</NavLink>}
@@ -283,9 +285,9 @@ function BottomTabs() {
           <>
             {tab('/basketball', 'Home', true)}
             {tab('/basketball/games', 'Games')}
+            {tab('/basketball/favorites', 'Favorites')}
             {tab('/basketball/accuracy', 'Accuracy')}
             {tab('/', 'Football', true)}
-            {tab('/premium', 'Premium')}
           </>
         ) : (
           <>
@@ -482,6 +484,7 @@ function BbRoutes() {
       <Route path="game/:id" element={<BbGame />} />
       <Route path="league/:code" element={<BbLeague />} />
       <Route path="team/:id" element={<BbTeam />} />
+      <Route path="favorites" element={<BbFavorites />} />
       <Route path="accuracy" element={<BbAccuracy />} />
       <Route path="past" element={<AdminOnly><BbPast /></AdminOnly>} />
       <Route path="*" element={<NotFound />} />

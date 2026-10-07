@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { t, LOCALE } from '../../lib/i18n'
 import { useReveal, justRevealed } from '../../lib/reveal'
 import CountUp from '../../components/CountUp'
-import { BB_STATUS, timeOf, type BbGame, type BbSide } from '../../lib/bb'
+import { BB_STATUS, timeOf, useBbFavorites, type BbGame, type BbSide } from '../../lib/bb'
 
 /** Shared pieces of the basketball pages — the same look as the football pages. */
 
@@ -74,11 +74,17 @@ export function GameRow({ g, showLeague = false, showDay = false, compact = fals
   const pickName = pick === 'H' ? g.home.name : pick === 'A' ? g.away.name : null
   const roll = justRevealed(rid(g))
   const won = (side: 'H' | 'A') => done && g.score ? (side === 'H' ? g.score.home > g.score.away : g.score.away > g.score.home) : false
+  const favWhy = useBbFavorites().reasons(g)
 
   return (
     <Link to={`/basketball/game/${g.id}`} className={`group flex items-center gap-3 px-3 sm:px-4 py-2.5 hover:bg-surface2/50 transition-colors ${isLive ? 'bg-live/5' : ''}`}>
       {/* time / status */}
-      <div className="w-11 flex-shrink-0 text-center">
+      <div className="relative w-11 flex-shrink-0 text-center">
+        {favWhy.length > 0 && (
+          <span className="absolute -left-2.5 sm:-left-3 top-1/2 -translate-y-1/2 text-accent" title={t('Favorite: {0}', { 0: favWhy.map(f => f.name).join(', ') })}>
+            <svg viewBox="0 0 24 24" className="w-3 h-3" fill="currentColor" aria-hidden><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5z" /></svg>
+          </span>
+        )}
         {isLive ? (
           <span className="inline-flex items-center gap-1 text-[11px] font-bold text-live">
             <span className="w-1.5 h-1.5 rounded-full bg-live animate-pulseDot" />

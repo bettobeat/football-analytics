@@ -1141,5 +1141,13 @@
  "TIP-OFF": "INÍCIO",
  "The next games appear here as soon as they are scheduled.": "Os próximos jogos aparecem aqui assim que forem marcados.",
  "Updated until tip-off": "Atualizado até o início",
- "{0} games in the next {1} days": "{0} jogos nos próximos {1} dias"
+ "{0} games in the next {1} days": "{0} jogos nos próximos {1} dias",
+ "No game in the next 14 days": "Sem jogos nos próximos 14 dias",
+ "Remove": "Remover",
+ "Saved to your account, on every device.": "Salvo na sua conta, em todos os dispositivos.",
+ "Star a league on its page or in the Games list.": "Marque uma liga com a estrela na página dela ou na lista de jogos.",
+ "Star a team on its page or on a game page.": "Marque um time com a estrela na página dele ou na página de um jogo.",
+ "Star a team or a league and its games show up here.": "Marque um time ou uma liga e os jogos aparecem aqui.",
+ "Tap the star next to a league here, or on any team or game page. Their games then show up in this list.": "Toque na estrela ao lado de uma liga aqui, ou em qualquer página de time ou jogo. Os jogos aparecem nesta lista.",
+ "to keep them on every device.": "para tê-los em todos os dispositivos."
 }

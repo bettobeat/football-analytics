@@ -8,7 +8,7 @@ import SearchBox from '../components/SearchBox'
 import { MatchRow, SectionTitle, dayKey, dayLabel, LIVE, ENDED, type APIMatch } from './Dashboard'
 import { t, LOCALE } from '../lib/i18n'
 
-const TITLES: Record<FavKind, string> = { league: t('Leagues'), team: t('Teams'), player: t('Players') }
+const TITLES: Record<FavKind, string> = { league: t('Leagues'), team: t('Teams'), player: t('Players'), 'bb-league': t('Leagues'), 'bb-team': t('Teams') }
 
 function hrefOf(f: Favorite) {
   if (f.kind === 'league') return `/league/${f.code || f.ref}`

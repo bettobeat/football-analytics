@@ -5,8 +5,9 @@ import { API_URL } from '../../lib/socket'
 import { t } from '../../lib/i18n'
 import { useAuth } from '../../lib/auth'
 import { useRevealState } from '../../lib/reveal'
-import { useBbConfig, type BbGame } from '../../lib/bb'
-import { GamesByDay, LiveRow, GameRow, LockedNote } from './parts'
+import { useBbConfig, useBbFavorites, bbLeagueFav, type BbGame } from '../../lib/bb'
+import { FavStar } from '../../lib/favorites'
+import { GamesByDay, LiveRow, GameRow, LockedNote, SectionTitle } from './parts'
 
 const DAY_OPTIONS = [1, 3, 7, 14]
 
@@ -48,9 +49,16 @@ export default function BbGames() {
   const all = games || []
   const live = all.filter(g => g.state === 'live')
   const horizon = Date.now() + days * 86400000
+  const favs = useBbFavorites()
+  const favMode = league === 'FAV'
   const upcoming = useMemo(
-    () => all.filter(g => (league === 'ALL' || g.league.code === league) && g.state !== 'done' && new Date(g.kickoff).getTime() <= horizon),
-    [all, league, days]
+    () => all.filter(g => (league === 'ALL' || g.league.code === league || (favMode && favs.reasons(g).length > 0)) && g.state !== 'done' && new Date(g.kickoff).getTime() <= horizon),
+    [all, league, days, favs.all.length]
+  )
+  // your favorites' next games, pinned on top of the full list
+  const favUpcoming = useMemo(
+    () => (league === 'ALL' ? all.filter(g => g.state === 'upcoming' && favs.reasons(g).length > 0).slice(0, 8) : []),
+    [all, league, favs.all.length]
   )
   const logos = Object.fromEntries((cfg?.leagues || []).map(l => [l.code, l.logo]))
   const leagueName = cfg?.leagues.find(l => l.code === league)?.name
@@ -85,13 +93,22 @@ export default function BbGames() {
                   {t('All leagues')}<span className="ml-auto num text-xs text-faint">{all.filter(g => g.state !== 'done').length}</span>
                 </button>
               </li>
+              <li>
+                <button onClick={() => setLeague('FAV')} className={`side-item ${favMode ? 'side-item-active' : ''}`}>
+                  <span className="w-5 h-5 rounded-md bg-accent/15 grid place-items-center text-accent">
+                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="currentColor" aria-hidden><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5z" /></svg>
+                  </span>
+                  {t('My favorites')}<span className="ml-auto num text-xs text-faint">{favs.all.length ? all.filter(g => g.state !== 'done' && favs.reasons(g).length > 0).length : ''}</span>
+                </button>
+              </li>
               {(cfg?.leagues || []).map(l => (
-                <li key={l.code}>
-                  <button onClick={() => setLeague(l.code)} className={`side-item ${league === l.code ? 'side-item-active' : ''}`}>
+                <li key={l.code} className="relative">
+                  <button onClick={() => setLeague(l.code)} className={`side-item pr-9 ${league === l.code ? 'side-item-active' : ''}`}>
                     {l.logo ? <img src={l.logo} alt="" className="w-5 h-5 object-contain" /> : <span className="w-5 h-5 rounded-md bg-surface2" />}
                     <span className="truncate">{l.name}</span>
                     <span className="ml-auto num text-xs text-faint">{all.filter(g => g.league.code === l.code && g.state !== 'done').length}</span>
                   </button>
+                  <span className="absolute right-1.5 top-1/2 -translate-y-1/2"><FavStar size="sm" fav={bbLeagueFav(l)} /></span>
                 </li>
               ))}
             </ul>
@@ -109,10 +126,10 @@ export default function BbGames() {
         <div className="min-w-0">
           <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
             <div>
-              <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">{league === 'ALL' ? t('Games') : leagueName || t('Games')}</h1>
+              <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">{league === 'ALL' ? t('Games') : favMode ? t('My favorites') : leagueName || t('Games')}</h1>
               <p className="mt-1 text-sm text-muted">
                 {t('{0} games in the next {1} days', { 0: upcoming.length, 1: days })}
-                {league !== 'ALL' && <Link to={`/basketball/league/${league}`} className="ml-3 font-bold text-accent">{t('League page →')}</Link>}
+                {league !== 'ALL' && !favMode && <Link to={`/basketball/league/${league}`} className="ml-3 font-bold text-accent">{t('League page →')}</Link>}
               </p>
             </div>
             <div className="seg">
@@ -127,7 +144,21 @@ export default function BbGames() {
             <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="card h-36 animate-pulse bg-surface2/60" />)}</div>
           )}
           {error && <div className="card p-5 border-loss/40 text-loss">{t('Failed to load games:')} {error}</div>}
-          {games && <GamesByDay games={upcoming} logos={logos} empty={t('No games for this selection.')} />}
+          {favUpcoming.length > 0 && (
+            <section className="mb-8">
+              <SectionTitle label={t('Your favorites')} sub={t('their next games')} />
+              <div className="card overflow-hidden border-accent/25 divide-y divide-line/50">
+                {favUpcoming.map(g => <GameRow key={g.id} g={g} showLeague showDay />)}
+              </div>
+              <button type="button" onClick={() => setLeague('FAV')} className="mt-2 text-xs font-bold text-accent">{t('Show only my favorites →')}</button>
+            </section>
+          )}
+          {favMode && !favs.all.length ? (
+            <div className="card p-10 text-center space-y-3">
+              <p className="text-ink font-semibold">{t('You have no favorites yet.')}</p>
+              <p className="text-sm text-muted max-w-md mx-auto">{t('Tap the star next to a league here, or on any team or game page. Their games then show up in this list.')}</p>
+            </div>
+          ) : games && <GamesByDay games={upcoming} logos={logos} empty={favMode ? t('None of your favorites play in this period.') : t('No games for this selection.')} />}
         </div>
 
         {/* latest results (wide screens) */}

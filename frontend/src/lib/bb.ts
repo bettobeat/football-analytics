@@ -3,6 +3,7 @@ import axios from 'axios'
 import { API_URL } from './socket'
 import { t, LOCALE } from './i18n'
 import { useAuth } from './auth'
+import { useFavorites, type Favorite } from './favorites'
 
 /** Basketball site (Oct 2026): types and helpers shared by the /basketball pages. */
 
@@ -85,4 +86,21 @@ export function spreadText(g: BbGame) {
   if (s === undefined || s === null) return null
   const fav = s >= 0 ? g.home : g.away
   return `${fav.name} −${Math.abs(s).toFixed(1)}`
+}
+
+/* ---------- favorites (basketball teams and leagues, in the same account list as football's) ---------- */
+
+export const bbTeamFav = (team: BbSide, league?: string): Favorite => ({ kind: 'bb-team', ref: String(team.id), name: team.name, img: team.logo, code: league || null, ids: [team.id] })
+export const bbLeagueFav = (l: { code: string; name: string; logo: string | null }): Favorite => ({ kind: 'bb-league', ref: l.code, name: l.name, img: l.logo, code: l.code })
+
+/** Basketball favorites and why a game is one of them. */
+export function useBbFavorites() {
+  const { list } = useFavorites()
+  const teams = list.filter(f => f.kind === 'bb-team')
+  const leagues = list.filter(f => f.kind === 'bb-league')
+  const reasons = (g: BbGame) => [
+    ...leagues.filter(f => f.ref === g.league.code),
+    ...teams.filter(f => f.ref === String(g.home.id) || f.ref === String(g.away.id))
+  ]
+  return { teams, leagues, all: [...teams, ...leagues], reasons }
 }

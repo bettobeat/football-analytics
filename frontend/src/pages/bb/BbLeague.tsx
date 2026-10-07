@@ -3,7 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../../lib/socket'
 import { t } from '../../lib/i18n'
-import { useBbConfig, type BbGame } from '../../lib/bb'
+import { useBbConfig, bbLeagueFav, type BbGame } from '../../lib/bb'
+import { FavStar } from '../../lib/favorites'
 import { Card, GameList, Skeleton, TeamLogo } from './parts'
 
 export interface StandRow { position: number; team: { id: number; name: string; logo: string | null }; played: number; won: number; lost: number; pct: number | null; pointsFor: number | null; pointsAgainst: number | null }
@@ -77,7 +78,10 @@ export default function BbLeague() {
       <div className="flex items-center gap-3">
         {league?.logo && <img src={league.logo} alt="" className="w-12 h-12 object-contain" />}
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-extrabold text-ink">{league?.name || code.toUpperCase()}</h1>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="font-display text-2xl sm:text-3xl font-extrabold text-ink">{league?.name || code.toUpperCase()}</h1>
+            {league && <FavStar label fav={bbLeagueFav(league)} />}
+          </div>
           {league && <p className="text-sm text-muted">{t(league.country)}{table?.season ? ` · ${table.season}` : ''}</p>}
         </div>
       </div>

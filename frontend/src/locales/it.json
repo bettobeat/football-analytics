@@ -1141,5 +1141,13 @@
  "TIP-OFF": "PALLA A DUE",
  "The next games appear here as soon as they are scheduled.": "Le prossime partite appariranno qui appena saranno in calendario.",
  "Updated until tip-off": "Aggiornato fino alla palla a due",
- "{0} games in the next {1} days": "{0} partite nei prossimi {1} giorni"
+ "{0} games in the next {1} days": "{0} partite nei prossimi {1} giorni",
+ "No game in the next 14 days": "Nessuna partita nei prossimi 14 giorni",
+ "Remove": "Rimuovi",
+ "Saved to your account, on every device.": "Salvato nel tuo account, su ogni dispositivo.",
+ "Star a league on its page or in the Games list.": "Aggiungi un campionato con la stella nella sua pagina o nell'elenco partite.",
+ "Star a team on its page or on a game page.": "Aggiungi una squadra con la stella nella sua pagina o in quella di una partita.",
+ "Star a team or a league and its games show up here.": "Aggiungi una squadra o un campionato e le loro partite appariranno qui.",
+ "Tap the star next to a league here, or on any team or game page. Their games then show up in this list.": "Tocca la stella accanto a un campionato qui, o in una pagina squadra o partita. Le loro partite appariranno in questo elenco.",
+ "to keep them on every device.": "per averli su ogni dispositivo."
 }

@@ -7,7 +7,7 @@ import { useAuth } from '../../lib/auth'
 import { isCovered, revealMatch, useRevealState, justRevealed } from '../../lib/reveal'
 import CountUp from '../../components/CountUp'
 import { RevealChip } from '../../components/Reveal'
-import { useBbConfig, BB_STATUS, type BbGame } from '../../lib/bb'
+import { useBbConfig, useBbFavorites, BB_STATUS, type BbGame } from '../../lib/bb'
 import { TeamLogo, LockIcon, GameRow, rid, rstatus } from './parts'
 
 interface Rec { n: number; hits: number; hitRate: number | null; strongN: number; strongHits: number; strongHitRate: number | null }
@@ -154,12 +154,15 @@ export default function BbHome() {
     )[0]
   }, [notStarted])
 
+  const favs = useBbFavorites()
+  const favNext = useMemo(() => notStarted.filter(g => favs.reasons(g).length > 0).slice(0, 10), [notStarted, favs.all.length])
+
   const soonest = useMemo(() => notStarted.filter(g => g.id !== featured?.id).slice(0, 5), [notStarted, featured])
   const next = useMemo(() => {
-    const rest = notStarted.filter(g => g.id !== featured?.id)
+    const rest = notStarted.filter(g => g.id !== featured?.id && !favNext.includes(g))
     return [...rest].sort((a, b) => (RANK[a.league.code] ?? 9) - (RANK[b.league.code] ?? 9) || a.kickoff.localeCompare(b.kickoff)).slice(0, 12)
       .sort((a, b) => a.kickoff.localeCompare(b.kickoff))
-  }, [notStarted, featured])
+  }, [notStarted, featured, favNext])
 
   const nextCard = (g: BbGame) => {
     const p = g.prediction
@@ -287,6 +290,13 @@ export default function BbHome() {
             )}
           </div>
         </div>
+
+        {/* your favorites (first) */}
+        {favNext.length > 0 && (
+          <Section title={t('Your favorites')} action={<Link to="/basketball/favorites" className="text-sm font-bold text-accent">{t('All favorites →')}</Link>}>
+            <div className="rail flex gap-3.5 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 snap-x">{favNext.map(g => nextCard(g))}</div>
+          </Section>
+        )}
 
         {/* next games */}
         {next.length > 0 && (

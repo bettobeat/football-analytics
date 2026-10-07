@@ -1141,5 +1141,13 @@
  "TIP-OFF": "BAŞLAMA",
  "The next games appear here as soon as they are scheduled.": "Sıradaki maçlar programlandığında burada görünür.",
  "Updated until tip-off": "Başlama saatine kadar güncellenir",
- "{0} games in the next {1} days": "Önümüzdeki {1} günde {0} maç"
+ "{0} games in the next {1} days": "Önümüzdeki {1} günde {0} maç",
+ "No game in the next 14 days": "Önümüzdeki 14 günde maç yok",
+ "Remove": "Kaldır",
+ "Saved to your account, on every device.": "Hesabına kaydedildi, tüm cihazlarında.",
+ "Star a league on its page or in the Games list.": "Bir ligi sayfasında veya maç listesinde yıldızla.",
+ "Star a team on its page or on a game page.": "Bir takımı sayfasında veya bir maç sayfasında yıldızla.",
+ "Star a team or a league and its games show up here.": "Bir takımı veya ligi yıldızla, maçları burada görünsün.",
+ "Tap the star next to a league here, or on any team or game page. Their games then show up in this list.": "Buradaki bir ligin yanındaki ya da herhangi bir takım veya maç sayfasındaki yıldıza dokun. Maçları bu listede görünür.",
+ "to keep them on every device.": "tüm cihazlarında görmek için."
 }

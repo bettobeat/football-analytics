@@ -7,7 +7,8 @@ import { useAuth } from '../../lib/auth'
 import { useReveal, justRevealed, guessFirstOn, hideMatch } from '../../lib/reveal'
 import CountUp from '../../components/CountUp'
 import { RevealCover } from '../../components/Reveal'
-import { BB_STATUS, spreadText, type BbGame as Game } from '../../lib/bb'
+import { BB_STATUS, spreadText, bbTeamFav, bbLeagueFav, useBbConfig, type BbGame as Game } from '../../lib/bb'
+import { FavStar } from '../../lib/favorites'
 import { Card, TeamLogo, LockedNote, rid, rstatus } from './parts'
 import { StandingsTable, type Standings } from './BbLeague'
 
@@ -92,6 +93,7 @@ export default function BbGame() {
         <div className="relative flex flex-wrap items-center justify-between gap-2 text-sm text-muted mb-6">
           <div className="flex items-center gap-2">
             <Link to={`/basketball/league/${g.league.code}`} className="font-medium text-ink/90 hover:underline">{g.league.name}</Link>
+            <LeagueStar code={g.league.code} name={g.league.name} />
             {g.round && <span className="text-faint">· {g.round}</span>}
             {g.preseason && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-draw/15 text-draw">{t('Pre-season')}</span>}
           </div>
@@ -99,7 +101,7 @@ export default function BbGame() {
         </div>
 
         <div className="relative grid grid-cols-[1fr_auto_1fr] items-start sm:items-center gap-2 sm:gap-8">
-          <TeamHero team={g.home} align="right" />
+          <TeamHero team={g.home} align="right" league={g.league.code} />
           <div className="text-center min-w-[96px] sm:min-w-[170px] self-center">
             {showScore ? (
               <div className="num text-5xl sm:text-6xl font-extrabold text-ink tracking-tight">{g.score!.home}<span className="text-faint mx-2 font-light">:</span>{g.score!.away}</div>
@@ -111,7 +113,7 @@ export default function BbGame() {
               {live ? (BB_STATUS[g.status] || t('Live')).toUpperCase() : done ? (BB_STATUS[g.status] || t('Final')).toUpperCase() : g.state === 'off' ? (BB_STATUS[g.status] || g.status).toUpperCase() : t('TIP-OFF')}
             </div>
           </div>
-          <TeamHero team={g.away} align="left" />
+          <TeamHero team={g.away} align="left" league={g.league.code} />
         </div>
 
         {showQ && (
@@ -196,13 +198,22 @@ export default function BbGame() {
 
 const TABS: Tab[] = ['prediction', 'box', 'stats', 'rest', 'h2h', 'table']
 
-function TeamHero({ team, align }: { team: Game['home']; align: 'left' | 'right' }) {
+function LeagueStar({ code, name }: { code: string; name: string }) {
+  const cfg = useBbConfig()
+  const logo = cfg?.leagues.find(l => l.code === code)?.logo || null
+  return <FavStar size="sm" fav={bbLeagueFav({ code, name, logo })} />
+}
+
+function TeamHero({ team, align, league }: { team: Game['home']; align: 'left' | 'right'; league: string }) {
   return (
     <Link to={`/basketball/team/${team.id}`} className={`flex flex-col items-center text-center gap-2 sm:gap-4 min-w-0 hover:opacity-90 ${align === 'right' ? 'sm:flex-row-reverse sm:text-right' : 'sm:flex-row sm:text-left'}`}>
       <TeamLogo team={team} size={72} />
       <div className="min-w-0 w-full sm:w-auto">
         <div className="font-sans font-extrabold text-[15px] sm:font-display sm:text-2xl text-ink leading-tight break-words sm:truncate">{team.name}</div>
-        <div className="mt-1 sm:mt-0.5 text-[11px] text-accent font-semibold whitespace-nowrap">{t('Team page →')}</div>
+        <div className={`flex items-center justify-center gap-1 mt-1 sm:mt-0.5 ${align === 'right' ? 'sm:justify-end' : 'sm:justify-start'}`}>
+          <span className="text-[11px] text-accent font-semibold whitespace-nowrap">{t('Team page →')}</span>
+          <FavStar size="sm" fav={bbTeamFav(team, league)} />
+        </div>
       </div>
     </Link>
   )

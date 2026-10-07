@@ -3,7 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../../lib/socket'
 import { t } from '../../lib/i18n'
-import { useBbConfig, type BbGame } from '../../lib/bb'
+import { useBbConfig, bbTeamFav, type BbGame } from '../../lib/bb'
+import { FavStar } from '../../lib/favorites'
 import { Card, GameList, Skeleton, TeamLogo } from './parts'
 
 interface TeamData {
@@ -34,7 +35,10 @@ export default function BbTeam() {
       <div className="card p-5 sm:p-7 flex items-center gap-4">
         <TeamLogo team={d.team} size={64} />
         <div className="min-w-0">
-          <h1 className="font-display text-2xl sm:text-3xl font-extrabold text-ink">{d.team.name}</h1>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="font-display text-2xl sm:text-3xl font-extrabold text-ink">{d.team.name}</h1>
+            <FavStar label fav={bbTeamFav(d.team, d.team.league)} />
+          </div>
           {league && <Link to={`/basketball/league/${league.code}`} className="text-sm text-muted hover:text-ink">{league.name}</Link>}
           {a && (
             <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted">
