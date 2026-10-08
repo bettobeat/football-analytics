@@ -77,9 +77,12 @@ export default function LeagueSidebar({
   })
   const byCode = new Map(leagues.map(l => [l.code, l]))
   const pins = pinned.map(c => byCode.get(c)).filter(Boolean) as SideLeague[]
-  const intl = leagues.filter(l => INTL.has(l.country))
+  // a pinned league shows only once, at the top (not again under International / its country)
+  const pinnedSet = new Set(pins.map(l => l.code))
+  const rest = leagues.filter(l => !pinnedSet.has(l.code))
+  const intl = rest.filter(l => INTL.has(l.country))
   const countries = new Map<string, SideLeague[]>()
-  for (const l of leagues) if (!INTL.has(l.country)) { if (!countries.has(l.country)) countries.set(l.country, []); countries.get(l.country)!.push(l) }
+  for (const l of rest) if (!INTL.has(l.country)) { if (!countries.has(l.country)) countries.set(l.country, []); countries.get(l.country)!.push(l) }
   const countryList = [...countries.entries()].sort((a, b) => countryName(a[0]).localeCompare(countryName(b[0]), LOCALE))
 
   const Row = ({ l, indent }: { l: SideLeague; indent?: boolean }) => (
@@ -145,7 +148,7 @@ export default function LeagueSidebar({
         <ul className="space-y-0.5">{intl.map(l => <Row key={`i${l.code}`} l={l} />)}</ul>
       </>}
 
-      {/* countries */}
+      {countryList.length > 0 && <Head icon={null}>{t('Countries')}</Head>}
       <Head icon={null}>{t('Countries')}</Head>
       <ul className="space-y-0.5 pb-1">
         {countryList.map(([c, list]) => {
