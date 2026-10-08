@@ -379,6 +379,20 @@ export function predictGame(g: Game): Pred | null {
   }, w * m.L2.sigma + (1 - w) * L.sigma);
 }
 
+/** The league numbers behind a prediction (for the game page's markets and model table). */
+export function leagueModelInfo(code: string) {
+  const m = models.get(code);
+  if (!m) return null;
+  const w = m.L2 && m.w2 ? m.w2 : 0;
+  return {
+    version: w ? 'bb-v2' : 'bb-v1', v2Weight: w, avgPoints: m.L.mu, homeEdge: m.L.hca,
+    sigma: w ? w * m.L2!.sigma + (1 - w) * m.L.sigma : m.L.sigma,
+    sigmaTotal: w ? w * m.L2!.sigmaT + (1 - w) * m.L.sigmaT : m.L.sigmaT,
+    b2b: m.params.b2b, gamesRated: m.L.n
+  };
+}
+export { normCdf, normInv };
+
 /** Every team's ratings in a league (this season's teams), ranked: attack 1 = scores most, defence 1 = allows least. */
 export function leagueRatings(code: string) {
   const m = models.get(code);

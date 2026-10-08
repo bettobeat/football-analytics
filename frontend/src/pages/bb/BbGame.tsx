@@ -11,6 +11,7 @@ import { BB_STATUS, spreadText, bbTeamFav, bbLeagueFav, useBbConfig, type BbGame
 import { FavStar } from '../../lib/favorites'
 import { Card, TeamLogo, LockedNote, rid, rstatus } from './parts'
 import { StandingsTable, type Standings } from './BbLeague'
+import { MarketsCard, CompareCard, PlayersCard, ModelTable, type Markets, type ModelInfo, type GamePlayer } from './GameExtras'
 
 interface Avg {
   games: number; won: number; lost: number; pointsFor: number; pointsAgainst: number
@@ -24,7 +25,7 @@ interface BoxPlayer { id: number; name: string; starter: boolean; minutes: numbe
 interface BoxSide { team: any; players: BoxPlayer[] }
 interface Detail {
   game: Game
-  why: { kind: 'strength' | 'home' | 'b2b' | 'injuries'; side: 'H' | 'A'; points: number }[]
+  why: { kind: 'strength' | 'home' | 'b2b' | 'injuries' | 'attack'; side: 'H' | 'A'; points: number }[]
   injuries?: { home: Injury[]; away: Injury[] } | null
   ratings: { home: { attack: number; defence: number; net: number } | null; away: { attack: number; defence: number; net: number } | null } | null
   stats: { home: Avg | null; away: Avg | null }
@@ -33,6 +34,9 @@ interface Detail {
   box: { home: BoxSide; away: BoxSide } | null
   standings: Standings | null
   preview?: { home: PreviewSide; away: PreviewSide; h2h: { games: number; homeWins: number; awayWins: number } }
+  markets?: Markets | null
+  model?: ModelInfo | null
+  players?: { home: GamePlayer[]; away: GamePlayer[] }
 }
 interface Profile { games: number; fgPct: number | null; threePct: number | null; threeAttempts: number | null; ftPct: number | null; rebounds: number | null; assists: number | null; turnovers: number | null; steals: number | null; blocks: number | null }
 interface PreviewSide {
@@ -45,7 +49,7 @@ interface PreviewSide {
   profile: { team: Profile | null; league: Profile | null }
 }
 interface Injury { name: string; status: string; weight: number; comment: string | null; minutes: number | null; playerId: number | null }
-type Tab = 'prediction' | 'stats' | 'injuries' | 'rest' | 'h2h' | 'table' | 'box'
+type Tab = 'prediction' | 'stats' | 'players' | 'rest' | 'h2h' | 'table' | 'box'
 
 /** A game page — laid out like football's match page: hero, tabs, prediction first. */
 export default function BbGame() {
@@ -54,7 +58,8 @@ export default function BbGame() {
   const [d, setD] = useState<Detail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>(() => {
-    const h = (typeof window !== 'undefined' ? window.location.hash.slice(1) : '') as Tab
+    const raw = typeof window !== 'undefined' ? window.location.hash.slice(1) : ''
+    const h = (raw === 'injuries' ? 'players' : raw) as Tab
     return TABS.includes(h) ? h : 'prediction'
   })
   const pickTab = (x: Tab) => {
@@ -89,7 +94,7 @@ export default function BbGame() {
     { id: 'prediction', label: t('Prediction'), hint: '' },
     ...(d.box ? [{ id: 'box' as Tab, label: t('Box score'), short: t('Box'), hint: live ? t('Live player stats') : t('Every player: points, shooting, rebounds, assists'), live }] : []),
     { id: 'stats', label: t('Statistics'), short: t('Stats'), hint: t('Averages from the last 10 games') },
-    ...(d.injuries ? [{ id: 'injuries' as Tab, label: t('Injuries'), hint: t('Players out or doubtful, from the NBA injury reports') }] : []),
+    { id: 'players' as Tab, label: d.injuries ? t('Players & injuries') : t('Players'), short: t('Players'), hint: d.injuries ? t('Key players and the NBA injury reports') : t('Each team’s key players this season') },
     { id: 'rest', label: t('Schedule & rest'), short: t('Rest'), hint: t('Back-to-backs, rest days and the next game') },
     { id: 'h2h', label: t('H2H'), hint: t('Last meetings and recent form') },
     ...(d.standings ? [{ id: 'table' as Tab, label: t('Standings'), short: t('Table'), hint: t('{0} table', { 0: g.league.name }) }] : [])
@@ -165,6 +170,9 @@ export default function BbGame() {
         {tab === 'prediction' && (
           <>
             <PredictionSection d={d} />
+            <MarketsGate d={d} />
+            {d.preview && <CompareCard g={g} home={d.preview.home} away={d.preview.away} table={d.standings ? d.standings.groups.flatMap(x => x.rows) : null} form={d.stats.home && d.stats.away ? { home: d.stats.home.form, away: d.stats.away.form } : null} />}
+            {d.players && <PlayersCard g={g} home={d.players.home} away={d.players.away} limit={4} title={t('Players to watch')} />}
             <AnalysisCard d={d} />
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {tabs.filter(x => x.id !== 'prediction').map(x => (
@@ -178,7 +186,12 @@ export default function BbGame() {
         )}
         {tab === 'box' && d.box && <BoxTab d={d} />}
         {tab === 'stats' && <StatsTab d={d} />}
-        {tab === 'injuries' && d.injuries && <InjuriesCard d={d} />}
+        {tab === 'players' && (
+          <>
+            {d.injuries && <InjuriesCard d={d} />}
+            {d.players && <PlayersCard g={g} home={d.players.home} away={d.players.away} limit={10} title={t('Key players')} />}
+          </>
+        )}
         {tab === 'rest' && <RestTab d={d} />}
         {tab === 'h2h' && (
           <Card title={t('Last meetings')}>
@@ -212,7 +225,7 @@ export default function BbGame() {
   )
 }
 
-const TABS: Tab[] = ['prediction', 'box', 'stats', 'injuries', 'rest', 'h2h', 'table']
+const TABS: Tab[] = ['prediction', 'box', 'stats', 'players', 'rest', 'h2h', 'table']
 
 function LeagueStar({ code, name }: { code: string; name: string }) {
   const cfg = useBbConfig()
@@ -258,7 +271,7 @@ function PredictionSection({ d }: { d: Detail }) {
   const { hidden, reveal } = useReveal(rid(g), rstatus(g), !!p && !p.locked)
   const [anim, setAnim] = useState(false)
   const roll = justRevealed(rid(g))
-  const note = p ? ['bb-v1', g.state === 'upcoming' ? t('Updated until tip-off') : t('Saved before tip-off')].join(' · ') : undefined
+  const note = p ? [p.model || 'bb-v1', g.state === 'upcoming' ? t('Updated until tip-off') : t('Saved before tip-off')].join(' · ') : undefined
   return (
     <Card title={t('Prediction')} action={note ? <span className="text-xs text-faint">{note}</span> : undefined}>
       {!p ? (
@@ -324,6 +337,15 @@ function PredictionSection({ d }: { d: Detail }) {
               <ul className="space-y-2">
                 {d.why.map((w, i) => {
                   const team = w.side === 'H' ? g.home : g.away
+                  if (w.kind === 'attack') {
+                    const other = w.side === 'H' ? g.away : g.home
+                    return (
+                      <li key={i} className="flex items-center gap-3 text-sm pl-5">
+                        <span className="text-muted flex-1">{t('{0} attack against {1} defence', { 0: team.name, 1: other.name })}</span>
+                        <span className={`num text-xs font-bold ${w.points > 0 ? 'text-win' : 'text-loss'}`}>{w.points > 0 ? '+' : '−'}{Math.abs(w.points).toFixed(1)} {t('pts')}</span>
+                      </li>
+                    )
+                  }
                   return (
                     <li key={i} className="flex items-center gap-3 text-sm">
                       <span className={`w-2 h-2 rounded-full ${w.side === 'H' ? 'bg-home' : 'bg-away'}`} />
@@ -338,23 +360,12 @@ function PredictionSection({ d }: { d: Detail }) {
                   )
                 })}
               </ul>
-              {d.ratings?.home && d.ratings?.away && (
+              {d.model ? (
                 <details className="mt-3">
                   <summary className="cursor-pointer text-xs text-muted hover:text-ink select-none">{t('How this was calculated')}</summary>
-                  <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-muted">
-                    {(['home', 'away'] as const).map(s => {
-                      const r = d.ratings![s]!
-                      return (
-                        <span key={s} className="contents">
-                          <span>{(s === 'home' ? g.home : g.away).name} {t('attack / defence')}</span>
-                          <span className="num text-ink">{r.attack > 0 ? '+' : ''}{r.attack} / {r.defence > 0 ? '+' : ''}{r.defence}</span>
-                        </span>
-                      )
-                    })}
-                  </div>
-                  <p className="mt-3 text-xs text-faint">{t('points per game compared with an average team')}</p>
+                  <ModelTable g={g} model={d.model} ratings={d.ratings} />
                 </details>
-              )}
+              ) : null}
             </div>
           )}
 
@@ -631,4 +642,12 @@ function BoxTab({ d }: { d: Detail }) {
       {side(g.away, d.box!.away)}
     </div>
   )
+}
+
+/** Points markets, shown once the prediction is uncovered (never under the reveal cover). */
+function MarketsGate({ d }: { d: Detail }) {
+  const g = d.game
+  const { hidden } = useReveal(rid(g), rstatus(g), !!g.prediction && !g.prediction.locked)
+  if (!d.markets || hidden) return null
+  return <MarketsCard g={g} m={d.markets} />
 }

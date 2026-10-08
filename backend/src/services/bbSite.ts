@@ -5,7 +5,7 @@
  */
 import { db } from '../db';
 import { BB_LEAGUES, bbGet } from './basketball';
-import { predictGame, teamRating, isPreseason, leagueRatings, BB_MODEL } from './bbModel';
+import { predictGame, teamRating, isPreseason, leagueRatings, BB_MODEL, leagueModelInfo, normCdf, normInv } from './bbModel';
 import { nbaInjuries } from './bbInjuries';
 import { bbSquad, nbaBoxExtras } from './bbPlayers';
 import { personKey } from './bdl';
@@ -155,18 +155,59 @@ function schedule(teamId: number, kickoff: string) {
 /** Why we think so: the reasons behind the pick, in points of expected margin (kind is translated on the site). */
 function reasons(g: Row, pr: any, full: boolean) {
   if (!pr || !full) return [];
-  const out: { kind: 'strength' | 'home' | 'b2b' | 'injuries'; side: 'H' | 'A'; points: number }[] = [];
+  const out: { kind: 'strength' | 'home' | 'b2b' | 'injuries' | 'attack'; side: 'H' | 'A'; points: number }[] = [];
   // injuries: the side that loses fewer points to injured regulars gains the difference
   const inj = (pr.injHome || 0) - (pr.injAway || 0);
   if (Math.abs(inj) >= 0.5) out.push({ kind: 'injuries', side: inj > 0 ? 'A' : 'H', points: Math.round(Math.abs(inj) * 10) / 10 });
   const rh = teamRating(g.code, g.home_id), ra = teamRating(g.code, g.away_id);
   const strength = rh && ra ? rh.net - ra.net : 0;
   if (rh && ra) out.push({ kind: 'strength', side: strength >= 0 ? 'H' : 'A', points: Math.round(Math.abs(strength) * 10) / 10 });
+  // where the strength gap comes from: each attack against the other side's defence (points vs an average matchup)
+  const extra: { kind: 'attack'; side: 'H' | 'A'; points: number }[] = [];
+  if (rh && ra) {
+    const hx = Math.round((rh.attack - ra.defence) * 10) / 10, ax = Math.round((ra.attack - rh.defence) * 10) / 10;
+    if (Math.abs(hx) >= 0.5) extra.push({ kind: 'attack', side: 'H', points: hx });
+    if (Math.abs(ax) >= 0.5) extra.push({ kind: 'attack', side: 'A', points: ax });
+  }
   if (pr.b2bHome) out.push({ kind: 'b2b', side: 'A', points: 0 });
   if (pr.b2bAway) out.push({ kind: 'b2b', side: 'H', points: 0 });
   const home = typeof pr.hca === 'number' ? pr.hca : !pr.b2bHome && !pr.b2bAway ? pr.margin - strength : 0;
   if (Math.abs(home) >= 0.5) out.push({ kind: 'home', side: home >= 0 ? 'H' : 'A', points: Math.round(Math.abs(home) * 10) / 10 });
-  return out.sort((a, b) => b.points - a.points);
+  const sorted = out.sort((a, b) => b.points - a.points);
+  const at = sorted.findIndex(x => x.kind === 'strength');
+  if (at >= 0) sorted.splice(at + 1, 0, ...extra);
+  return sorted;
+}
+
+/**
+ * Points markets from the prediction (normal model on the margin and the total, the same one behind the win %):
+ * winning margin bands, alternative spreads, total points lines, each team's points, overtime and the first half.
+ */
+function markets(code: string, pHome: number, margin: number, total: number, home: number, away: number) {
+  const info = leagueModelInfo(code);
+  if (!info) return null;
+  // the margin spread implied by the win % (so every number agrees with it), within sane bounds
+  const sm = Math.abs(margin) > 0.5 && pHome > 0.02 && pHome < 0.98 ? Math.max(6, Math.min(25, margin / normInv(pHome))) : info.sigma;
+  const sT = info.sigmaTotal;
+  const pct = (x: number) => Math.round(Math.max(0, Math.min(1, x)) * 1000) / 10;
+  const inMargin = (lo: number, hi: number) => normCdf((hi - margin) / sm) - normCdf((lo - margin) / sm);
+  const band = (lo: number, hi: number) => ({ lo, hi, home: pct(inMargin(lo - 0.5, hi + 0.5)), away: pct(inMargin(-hi - 0.5, -lo + 0.5)) });
+  const base = Math.round(total);
+  const sTeam = Math.sqrt(sT * sT + sm * sm) / 2;
+  const over = (line: number, mean: number, sd: number) => ({ line, over: pct(1 - normCdf((line - mean) / sd)) });
+  const m1 = margin * 0.5, s1 = sm * 0.68, t1 = total * 0.49;
+  return {
+    bands: [band(1, 5), band(6, 10), band(11, 15), band(16, 99)],
+    overtime: pct(inMargin(-0.5, 0.5)),
+    spreads: [2.5, 5.5, 7.5, 10.5].map(x => ({ line: x, home: pct(1 - normCdf((x - margin) / sm)), away: pct(normCdf((-x - margin) / sm)) })),
+    totals: [base - 10.5, base - 5.5, base - 0.5, base + 4.5, base + 9.5].map(l => over(l, total, sT)),
+    teamTotals: {
+      home: [Math.round(home) - 5.5, Math.round(home) - 0.5, Math.round(home) + 4.5].map(l => over(l, home, sTeam)),
+      away: [Math.round(away) - 5.5, Math.round(away) - 0.5, Math.round(away) + 4.5].map(l => over(l, away, sTeam))
+    },
+    firstHalf: { home: pct(1 - normCdf((0.5 - m1) / s1)), away: pct(normCdf((-0.5 - m1) / s1)), margin: Math.round(m1 * 10) / 10, total: Math.round(t1 * 10) / 10 },
+    sigma: Math.round(sm * 10) / 10, sigmaTotal: Math.round(sT * 10) / 10
+  };
 }
 
 /** API-Basketball standings of a league's current season (cached 1 hour). */
@@ -231,6 +272,16 @@ export async function bbGame(id: number, full: boolean) {
   let standings: any = null;
   try { standings = await bbStandings(g.code); } catch { /* table not available */ }
   const ratings = full ? { home: teamRating(g.code, g.home_id), away: teamRating(g.code, g.away_id) } : null;
+  // markets and model numbers: whoever sees the full prediction (and everyone once the game is over)
+  const gp: any = game.prediction;
+  const open = !!gp && !gp.locked && typeof gp.pHome === 'number';
+  const info = open ? leagueModelInfo(g.code) : null;
+  const mk = open && gp.score ? markets(g.code, gp.pHome / 100, gp.spread, gp.total, gp.score.home, gp.score.away) : null;
+  // players to watch: each team's top players this season (or last season before the first games)
+  const top = async (teamId: number, name: string) => {
+    try { return (await bbSquad(teamId, name, g.code, g.season)).filter(p => p.gp > 0).sort((a, b) => (b.pts || 0) - (a.pts || 0)).slice(0, 8); } catch { return []; }
+  };
+  const players = { home: await top(g.home_id, g.home_name), away: await top(g.away_id, g.away_name) };
   return {
     game,
     why: reasons(g, pr || (game.prediction && (game.prediction as any).spread != null ? { margin: (game.prediction as any).spread, b2bHome: (game.prediction as any).b2bHome, b2bAway: (game.prediction as any).b2bAway } : null), full || game.state === 'done'),
@@ -241,7 +292,10 @@ export async function bbGame(id: number, full: boolean) {
     injuries: g.code === 'NBA' ? { home: nbaInjuries(g.home_id, g.home_name, g.kickoff), away: nbaInjuries(g.away_id, g.away_name, g.kickoff) } : null,
     h2h: h2h.map(x => ({ id: x.game_id, kickoff: x.kickoff, home: x.home_name, away: x.away_name, homeId: x.home_id, score: [x.hs, x.as_], league: x.code })),
     box,
-    standings
+    standings,
+    markets: mk,
+    model: info ? { version: info.version, avgPoints: Math.round(info.avgPoints * 10) / 10, homeEdge: Math.round(((pr as any)?.hca ?? info.homeEdge) * 10) / 10, b2b: info.b2b, gamesRated: info.gamesRated } : null,
+    players
   };
 }
 
