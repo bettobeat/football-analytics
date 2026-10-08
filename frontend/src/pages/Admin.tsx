@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { errorText, useAuth, type User } from '../lib/auth'
@@ -11,13 +12,16 @@ function fmt(iso: string | null) {
   return iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' }) : '–'
 }
 
-/** Admin: users, and a manual Premium switch until payments are connected. */
+/** Admin panel: an overview (visitors, accounts, data health) and, on its own tab, the users list (the future CRM). */
 export default function Admin() {
   const { access, loading } = useAuth()
   const [rows, setRows] = useState<Row[]>([])
   const [stats, setStats] = useState<{ total: number; premium: number; verified: number; optIn: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [q, setQ] = useState('')
+  const [params, setParams] = useSearchParams()
+  const tab: 'overview' | 'users' = params.get('tab') === 'users' ? 'users' : 'overview'
+  const go = (x: 'overview' | 'users') => setParams(x === 'overview' ? {} : { tab: x }, { replace: true })
 
   const load = () =>
     axios
@@ -66,13 +70,50 @@ export default function Admin() {
 
   const shown = rows.filter(r => !q || r.email.includes(q.toLowerCase()) || (r.name || '').toLowerCase().includes(q.toLowerCase()))
 
+  const tile = (label: string, value: number | undefined, onClick?: () => void) => (
+    <button type="button" onClick={onClick} className="text-left rounded-xl border border-line/60 bg-surface2/50 px-4 py-3 hover:border-accent/40 transition-colors">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-faint">{label}</div>
+      <div className="num text-2xl font-extrabold text-ink leading-none mt-1.5">{value ?? '–'}</div>
+    </button>
+  )
+
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
-      <VisitorsCard />
-      <DataHealth />
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink">Admin</h1>
+        <nav className="flex gap-1 rounded-full border border-line/60 bg-surface p-1">
+          {(['overview', 'users'] as const).map(x => (
+            <button key={x} type="button" onClick={() => go(x)} aria-current={tab === x ? 'page' : undefined}
+              className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${tab === x ? 'bg-accent text-bg' : 'text-muted hover:text-ink'}`}>
+              {x === 'overview' ? 'Overview' : `Users${stats ? ` · ${stats.total}` : ''}`}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {tab === 'overview' && (
+        <>
+          <VisitorsCard />
+          <section className="card p-5 sm:p-6 mb-8">
+            <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+              <h2 className="font-display text-lg font-bold text-ink">Accounts</h2>
+              <button type="button" onClick={() => go('users')} className="text-xs font-semibold text-accent">Open users →</button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {tile('Accounts', stats?.total, () => go('users'))}
+              {tile('Confirmed email', stats?.verified, () => go('users'))}
+              {tile('Premium / Pro', stats?.premium, () => go('users'))}
+              {tile('Want updates', stats?.optIn, () => go('users'))}
+            </div>
+          </section>
+          <DataHealth />
+        </>
+      )}
+
+      {tab === 'users' && (<>
       <div className="flex flex-wrap items-end justify-between gap-3 mb-5">
         <div>
-          <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink">Users</h1>
+          <h2 className="font-display text-2xl font-extrabold tracking-tight text-ink">Users</h2>
           {stats && (
             <p className="text-sm text-muted">
               <span className="num">{stats.total}</span> accounts · <span className="num">{stats.verified}</span> confirmed ·{' '}
@@ -163,6 +204,7 @@ export default function Admin() {
           </tbody>
         </table>
       </div>
+      </>)}
     </div>
   )
 }

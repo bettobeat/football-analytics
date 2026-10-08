@@ -1174,6 +1174,13 @@ export async function fixtureInjuries(fid: number, homeAf: number, awayAf: numbe
           out: r.player.type !== 'Questionable',
           reason: r.player.reason || null
         }))
+        // API-Football often lists the same player twice for one fixture: keep one row (out wins over doubtful)
+        .reduce((acc: any[], p: any) => {
+          const i = acc.findIndex(x => (p.id && x.id === p.id) || x.name === p.name);
+          if (i < 0) acc.push(p);
+          else if (p.out && !acc[i].out) acc[i] = p;
+          return acc;
+        }, [])
         .sort((a: any, b: any) => Number(b.out) - Number(a.out) || a.name.localeCompare(b.name));
     return { home: side(homeAf), away: side(awayAf) };
   });

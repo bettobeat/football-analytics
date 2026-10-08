@@ -1982,7 +1982,7 @@ function LeagueTable({ tables: show, name, home, away }: { tables: StandingsTabl
       <div className="mt-5 space-y-5">
         {show.map((t, i) => (
           <div key={i}>
-            {t.group && <div className="label pb-2">{t.group.replace(/_/g, ' ')}</div>}
+            {t.group && show.length > 1 && <div className="label pb-2">{t.group.replace(/_/g, ' ')}</div>}
             <table className="w-full table-fixed text-xs sm:text-sm">
               <thead>
                 <tr className="text-faint text-[10px] uppercase tracking-wide">
@@ -2006,7 +2006,7 @@ function LeagueTable({ tables: show, name, home, away }: { tables: StandingsTabl
                     <tr key={r.team.id} className={`border-t border-line/40 ${side === 'H' ? 'bg-home/10' : side === 'A' ? 'bg-away/10' : 'hover:bg-surface2/40'}`}>
                       <td className="py-1.5 relative">
                         {side && <span className={`absolute left-0 inset-y-1 w-[3px] rounded-full ${SIDE_BG[side]}`} />}
-                        <span className={`ml-1.5 inline-grid place-items-center w-5 h-5 rounded-md num text-[10px] font-bold ${r.position <= 4 && !t.group ? 'bg-accent/15 text-accent' : 'text-faint'}`}>{r.position}</span>
+                        <span className={`ml-1.5 inline-grid place-items-center w-5 h-5 rounded-md num text-[10px] font-bold ${r.position <= 4 && show.length === 1 ? 'bg-accent/15 text-accent' : 'text-faint'}`}>{r.position}</span>
                       </td>
                       <td className="py-1.5 pr-2">
                         <span className="flex items-center gap-2 min-w-0">
