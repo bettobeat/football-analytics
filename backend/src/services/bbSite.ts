@@ -361,12 +361,12 @@ function teamAnalysis(teamId: number, code: string) {
 }
 
 /** A team's page data: recent and next games. */
-export function bbTeam(teamId: number, full: boolean) {
+export async function bbTeam(teamId: number, full: boolean) {
   const now = new Date().toISOString();
   const recent = db.prepare(`${SELECT} WHERE (home_id = ? OR away_id = ?) AND kickoff < ? ORDER BY kickoff DESC LIMIT 15`).all(teamId, teamId, now) as Row[];
   const next = db.prepare(`${SELECT} WHERE (home_id = ? OR away_id = ?) AND kickoff >= ? ORDER BY kickoff ASC LIMIT 8`).all(teamId, teamId, now) as Row[];
   const any = recent[0] || next[0];
   if (!any) return null;
   const name = any.home_id === teamId ? any.home_name : any.away_name, logo = any.home_id === teamId ? any.home_logo : any.away_logo;
-  return { team: { id: teamId, name, logo, league: any.code }, rating: full ? teamRating(any.code, teamId) : null, averages: averages(teamId, now), analysis: teamAnalysis(teamId, any.code), squad: bbSquad(teamId, name, any.code), recent: recent.map(r => shape(r, full)), next: next.map(r => shape(r, full)) };
+  return { team: { id: teamId, name, logo, league: any.code }, rating: full ? teamRating(any.code, teamId) : null, averages: averages(teamId, now), analysis: teamAnalysis(teamId, any.code), squad: await bbSquad(teamId, name, any.code, (next[0] || recent[0]).season), recent: recent.map(r => shape(r, full)), next: next.map(r => shape(r, full)) };
 }

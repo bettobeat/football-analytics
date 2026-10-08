@@ -1264,9 +1264,9 @@ app.get('/api/basketball/standings/:code([A-Za-z]{2,4})', async (req, res) => {
     sendError(res, error, 'Failed to load standings');
   }
 });
-app.get('/api/basketball/team/:id(\\d+)', (req, res) => {
+app.get('/api/basketball/team/:id(\\d+)', async (req, res) => {
   try {
-    const data = bbTeam(parseInt(req.params.id, 10), isPaid(req.access || 'anon'));
+    const data = await bbTeam(parseInt(req.params.id, 10), isPaid(req.access || 'anon'));
     if (!data) return res.status(404).json({ error: 'Team not found' });
     res.json({ data, timestamp: new Date().toISOString() });
   } catch (error: any) {

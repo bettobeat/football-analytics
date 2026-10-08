@@ -1251,5 +1251,12 @@
  "vs": "vs",
  "{0} GP": "{0} J",
  "{0} season": "Temporada {0}",
- "{0}, round {1}, pick {2}": "{0}, rodada {1}, escolha {2}"
+ "{0}, round {1}, pick {2}": "{0}, rodada {1}, escolha {2}",
+ "Grey tag: no games this season yet, so the numbers are from his last season in our leagues. Tap a player for his page.": "Etiqueta cinza: ainda não jogou nesta temporada, então os números são da última temporada dele nas nossas ligas. Toque num jogador para ver a página dele.",
+ "No games in our leagues yet. His numbers appear here after his first game.": "Ainda sem jogos nas nossas ligas. Os números dele aparecem aqui após o primeiro jogo.",
+ "No games this season yet: his last season in our leagues": "Ainda sem jogos nesta temporada: a última temporada dele nas nossas ligas",
+ "Per game": "Por jogo",
+ "averages per game this season": "médias por jogo nesta temporada",
+ "{0} years": "{0} anos",
+ "Games in our leagues, pre-season not counted.": "Jogos nas nossas ligas, sem contar a pré-temporada."
 }

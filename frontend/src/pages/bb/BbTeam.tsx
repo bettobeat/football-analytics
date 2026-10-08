@@ -27,7 +27,7 @@ interface TeamData {
   next: BbGame[]
 }
 
-interface SquadPlayer { id: number; name: string; position: string | null; jersey: string | null; injury: string | null; gp: number; starts: number; min: number | null; pts: number | null; reb: number | null; ast: number | null; fgPct: number | null; tpPct: number | null; pie: number | null; usg: number | null; net: number | null }
+interface SquadPlayer { id: number; name: string; number: string | null; position: string | null; country: string | null; age: number | null; injury: string | null; statsFrom: 'current' | { season: string; league: string | null } | null; gp: number; starts: number; min: number | null; pts: number | null; reb: number | null; ast: number | null; fgPct: number | null; tpPct: number | null; pie: number | null; usg: number | null; net: number | null }
 
 /** A team: strengths and weaknesses, form chart, splits, news, next games and results. */
 export default function BbTeam() {
@@ -214,12 +214,13 @@ function SquadCard({ players }: { players: SquadPlayer[] }) {
   const adv = players.some(p => p.pie !== null)
   const n = (x: number | null, suf = '') => (x === null ? '–' : `${x}${suf}`)
   return (
-    <Card title={t('Players')} action={<span className="text-xs text-faint">{t('last {0} games', { 0: 15 })}</span>}>
+    <Card title={t('Squad')} action={<span className="text-xs text-faint">{t('averages per game this season')}</span>}>
       <div className="overflow-x-auto -mx-2">
         <table className="w-full text-xs num">
           <thead>
             <tr className="text-faint">
-              <th className="text-left font-semibold py-1 px-2">{t('Player')}</th>
+              <th className="text-left font-semibold py-1 px-2 w-7">#</th>
+              <th className="text-left font-semibold py-1 pr-2">{t('Player')}</th>
               <th className="text-right font-semibold px-1">{t('GP')}</th>
               <th className="text-right font-semibold px-1">{t('MIN')}</th>
               <th className="text-right font-semibold px-1">{t('PTS')}</th>
@@ -233,12 +234,14 @@ function SquadCard({ players }: { players: SquadPlayer[] }) {
           <tbody>
             {players.map(p => (
               <tr key={p.id} className="border-t border-line/40 hover:bg-surface2/40">
-                <td className="py-1.5 px-2 font-sans whitespace-nowrap">
+                <td className="py-1.5 px-2 text-faint">{p.number ?? ''}</td>
+                <td className="py-1.5 pr-2 font-sans whitespace-nowrap">
                   <Link to={`/basketball/player/${p.id}`} className="text-ink font-semibold hover:text-accent">{p.name}</Link>
                   {p.position && <span className="ml-1.5 text-[10px] text-faint">{p.position}</span>}
                   {p.injury && <span className="ml-1.5 rounded px-1 text-[9px] font-bold bg-loss/15 text-loss">{p.injury}</span>}
+                  {p.statsFrom && p.statsFrom !== 'current' && <span className="ml-1.5 rounded px-1 text-[9px] font-semibold bg-surface2 text-faint" title={t('No games this season yet: his last season in our leagues')}>{p.statsFrom.league ? `${p.statsFrom.league} ` : ''}{p.statsFrom.season}</span>}
                 </td>
-                <td className="text-right px-1 text-muted">{p.gp}</td>
+                <td className="text-right px-1 text-muted">{p.gp || '–'}</td>
                 <td className="text-right px-1 text-muted">{n(p.min)}</td>
                 <td className="text-right px-1 text-ink font-bold">{n(p.pts)}</td>
                 <td className="text-right px-1 text-muted">{n(p.reb)}</td>
@@ -255,7 +258,7 @@ function SquadCard({ players }: { players: SquadPlayer[] }) {
           </tbody>
         </table>
       </div>
-      {adv && <p className="mt-3 text-[11px] text-faint">{t('PIE, usage and net rating: season figures from the NBA (last season until the new one starts).')}</p>}
+      <p className="mt-3 text-[11px] text-faint">{t('Grey tag: no games this season yet, so the numbers are from his last season in our leagues. Tap a player for his page.')}{adv ? ' ' + t('PIE, usage and net rating: season figures from the NBA (last season until the new one starts).') : ''}</p>
     </Card>
   )
 }

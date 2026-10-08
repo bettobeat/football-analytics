@@ -5,10 +5,47 @@
  * season averages with league ranks, injury status and contract.
  */
 import { db } from '../db';
-import { BB_LEAGUES } from './basketball';
+import { BB_LEAGUES, bbGet } from './basketball';
+import logger from '../utils/logger';
 import { isPreseason } from './bbModel';
 import { nbaKey } from './bbInjuries';
 import { bdlPlayerOf, bdlTeamOf, bdlSeasonNow, bdlContract, personKey } from './bdl';
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS bb_roster (
+    team_id INTEGER NOT NULL, season TEXT NOT NULL, player_id INTEGER NOT NULL, name TEXT NOT NULL,
+    number TEXT, country TEXT, position TEXT, age INTEGER, updated_at TEXT NOT NULL,
+    PRIMARY KEY (team_id, season, player_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_bb_roster_player ON bb_roster(player_id);
+`);
+
+/** A team's current squad from API-Basketball (refreshed once a day; on failure the last stored list is used). */
+async function rosterOf(teamId: number, season: string) {
+  const read = () => db.prepare(`SELECT * FROM bb_roster WHERE team_id = ? AND season = ? ORDER BY name`).all(teamId, season) as any[];
+  const have = read();
+  const fresh = have.length && Date.now() - Date.parse(have[0].updated_at) < 24 * 3600000;
+  if (fresh) return have;
+  try {
+    const j = await bbGet('/players', { team: teamId, season });
+    const list = (j.response || []) as any[];
+    if (list.length) {
+      const now = new Date().toISOString();
+      const up = db.prepare(`INSERT OR REPLACE INTO bb_roster (team_id, season, player_id, name, number, country, position, age, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      db.exec('BEGIN');
+      try {
+        db.prepare(`DELETE FROM bb_roster WHERE team_id = ? AND season = ?`).run(teamId, season);
+        for (const x of list) if (x.id && x.name) up.run(teamId, season, x.id, x.name, x.number ?? null, x.country ?? null, x.position ?? null, x.age ?? null, now);
+        db.exec('COMMIT');
+      } catch (e) { db.exec('ROLLBACK'); throw e; }
+    } else if (have.length) {
+      db.prepare(`UPDATE bb_roster SET updated_at = ? WHERE team_id = ? AND season = ?`).run(new Date().toISOString(), teamId, season);
+    }
+  } catch (e: any) {
+    logger.warn(`Basketball roster ${teamId}/${season}: ${e.message}`);
+  }
+  return read();
+}
 
 const r1 = (x: number | null | undefined) => (x == null || !isFinite(x) ? null : Math.round(x * 10) / 10);
 const pct = (m: number, a: number) => (a > 0 ? Math.round((1000 * m) / a) / 10 : null);
@@ -53,6 +90,20 @@ function nbaSeason(bdlId: number, season: number) {
   return seasonLine(base, adv);
 }
 
+async function nbaPart(bdl: any, teamName: string, rawName: string) {
+  const now = bdlSeasonNow();
+  const cur = nbaSeason(bdl.id, now), prev = nbaSeason(bdl.id, now - 1);
+  let contract: any = null;
+  try { contract = await bdlContract(bdl.id); } catch { /* optional */ }
+  return {
+    bio: { position: bdl.position, height: bdl.height, weight: bdl.weight, jersey: bdl.jersey, college: bdl.college, country: bdl.country, draft: bdl.draft_year ? { year: bdl.draft_year, round: bdl.draft_round, pick: bdl.draft_number } : null },
+    season: cur ? { label: `${now}-${String(now + 1).slice(2)}`, ...cur } : null,
+    lastSeason: prev ? { label: `${now - 1}-${String(now).slice(2)}`, ...prev } : null,
+    injury: injuryOf(teamName, displayName(rawName, bdl)),
+    contract: Array.isArray(contract) ? contract.map((c: any) => ({ season: c.season, team: c.team, amount: c.amount, type: c.type, status: c.status })).slice(0, 8) : null
+  };
+}
+
 /** Injury report line for a player (NBA). */
 function injuryOf(teamName: string, name: string) {
   const list = db.prepare(`SELECT player, status, comment, reported FROM bb_injuries WHERE team = ?`).all(nbaKey(teamName)) as any[];
@@ -66,12 +117,24 @@ export async function bbPlayer(id: number) {
     SELECT ps.*, g.kickoff, g.code, g.season, g.status, g.home_id, g.away_id, g.home_name, g.away_name, g.home_logo, g.away_logo, g.hs, g.as_
     FROM bb_player_stats ps JOIN bb_games g ON g.game_id = ps.game_id
     WHERE ps.player_id = ? ORDER BY g.kickoff DESC`).all(id) as any[];
-  if (!rows.length) return null;
+  const ros = db.prepare(`SELECT r.*, g.code, g.home_id, g.home_name, g.home_logo, g.away_name, g.away_logo FROM bb_roster r
+    LEFT JOIN bb_games g ON g.game_id = (SELECT game_id FROM bb_games WHERE home_id = r.team_id OR away_id = r.team_id ORDER BY kickoff DESC LIMIT 1)
+    WHERE r.player_id = ? ORDER BY r.updated_at DESC LIMIT 1`).get(id) as any;
+  const rosterBio = ros ? { number: ros.number, country: ros.country, position: ros.position, age: ros.age } : null;
+  if (!rows.length) {
+    if (!ros) return null;
+    // on a squad, no games in our data yet
+    const team = { id: ros.team_id, name: ros.home_id === ros.team_id ? ros.home_name : ros.away_name, logo: ros.home_id === ros.team_id ? ros.home_logo : ros.away_logo };
+    const isNbaR = ros.code === 'NBA';
+    const b = isNbaR ? bdlPlayerOf(ros.name, team.name) : null;
+    return { player: { id, name: displayName(ros.name, b), team, league: { code: ros.code, name: leagueName(ros.code) } }, bio: rosterBio, current: null, seasons: [], form: [], log: [], nba: b ? await nbaPart(b, team.name, ros.name) : null };
+  }
   const last = rows[0];
   const teamOf = (r: any) => (r.team_id === r.home_id ? { id: r.home_id, name: r.home_name, logo: r.home_logo } : { id: r.away_id, name: r.away_name, logo: r.away_logo });
   const team = teamOf(last);
   const isNba = rows.some(r => r.code === 'NBA');
-  const nbaTeamName = isNba ? teamOf(rows.find(r => r.code === 'NBA')).name : null;
+  const rosName = ros ? (ros.home_id === ros.team_id ? ros.home_name : ros.away_name) : null;
+  const nbaTeamName = ros?.code === 'NBA' && rosName ? rosName : isNba ? teamOf(rows.find(r => r.code === 'NBA')).name : null;
   const bdl = isNba ? bdlPlayerOf(last.name, nbaTeamName) : null;
 
   // seasons per league (regular season: pre-season left out)
@@ -114,23 +177,13 @@ export async function bbPlayer(id: number) {
   // last 10 games' form: points and minutes, oldest first (for the chart)
   const form = played.slice(0, 10).reverse().map(r => ({ gameId: r.game_id, kickoff: r.kickoff, pts: r.pts ?? 0, min: r1(r.minutes) }));
 
-  let nba: any = null;
-  if (bdl) {
-    const now = bdlSeasonNow();
-    const cur = nbaSeason(bdl.id, now), prev = nbaSeason(bdl.id, now - 1);
-    let contract: any = null;
-    try { contract = await bdlContract(bdl.id); } catch { /* optional */ }
-    nba = {
-      bio: { position: bdl.position, height: bdl.height, weight: bdl.weight, jersey: bdl.jersey, college: bdl.college, country: bdl.country, draft: bdl.draft_year ? { year: bdl.draft_year, round: bdl.draft_round, pick: bdl.draft_number } : null },
-      season: cur ? { label: `${now}-${String(now + 1).slice(2)}`, ...cur } : null,
-      lastSeason: prev ? { label: `${now - 1}-${String(now).slice(2)}`, ...prev } : null,
-      injury: nbaTeamName ? injuryOf(nbaTeamName, displayName(last.name, bdl)) : null,
-      contract: Array.isArray(contract) ? contract.map((c: any) => ({ season: c.season, team: c.team, amount: c.amount, type: c.type, status: c.status })).slice(0, 8) : null
-    };
-  }
+  const nba = bdl ? await nbaPart(bdl, nbaTeamName || team.name, last.name) : null;
 
+  // the team he is on now (roster) if it differs from his last game's team (a transfer)
+  const nowTeam = ros && ros.team_id !== team.id ? { id: ros.team_id, name: ros.home_id === ros.team_id ? ros.home_name : ros.away_name, logo: ros.home_id === ros.team_id ? ros.home_logo : ros.away_logo } : team;
   return {
-    player: { id, name: displayName(last.name, bdl), team, league: { code: last.code, name: leagueName(last.code) } },
+    player: { id, name: displayName(last.name, bdl), team: nowTeam?.name ? nowTeam : team, league: { code: ros?.code || last.code, name: leagueName(ros?.code || last.code) } },
+    bio: rosterBio,
     current: seasons[0] || null,
     seasons,
     form,
@@ -139,27 +192,47 @@ export async function bbPlayer(id: number) {
   };
 }
 
-/** A team's players from its last 15 games (who plays, how much, what they produce); NBA adds PIE / usage / net rating. */
-export function bbSquad(teamId: number, teamName: string, code: string) {
-  const games = db.prepare(`SELECT game_id FROM bb_games WHERE (home_id = ? OR away_id = ?) AND status IN ('FT','AOT') AND stats = 1 ORDER BY kickoff DESC LIMIT 15`).all(teamId, teamId) as any[];
-  if (!games.length) return [];
-  const ids = games.map(g => g.game_id);
-  const rows = db.prepare(`SELECT * FROM bb_player_stats WHERE team_id = ? AND game_id IN (${ids.map(() => '?').join(',')})`).all(teamId, ...ids) as any[];
+/**
+ * A team's squad: the current roster (API-Basketball) with each player's averages this season, or his last season in our
+ * leagues when he hasn't played yet (new signings, start of the season). Without a roster: the players of the last 15 games.
+ * NBA adds position, PIE, usage and net rating from balldontlie.
+ */
+export async function bbSquad(teamId: number, teamName: string, code: string, season: string) {
+  const roster = await rosterOf(teamId, season);
+  let ids: number[] = roster.map(r => r.player_id);
+  if (!ids.length) {
+    const games = db.prepare(`SELECT game_id FROM bb_games WHERE (home_id = ? OR away_id = ?) AND status IN ('FT','AOT') AND stats = 1 ORDER BY kickoff DESC LIMIT 15`).all(teamId, teamId) as any[];
+    if (!games.length) return [];
+    ids = (db.prepare(`SELECT DISTINCT player_id FROM bb_player_stats WHERE team_id = ? AND game_id IN (${games.map(() => '?').join(',')})`).all(teamId, ...games.map(g => g.game_id)) as any[]).map(r => r.player_id);
+  }
+  if (!ids.length) return [];
+  const rows = db.prepare(`SELECT ps.*, g.season, g.code, g.kickoff FROM bb_player_stats ps JOIN bb_games g ON g.game_id = ps.game_id
+    WHERE ps.player_id IN (${ids.map(() => '?').join(',')}) AND g.status IN ('FT','AOT') ORDER BY g.kickoff DESC`).all(...ids) as any[];
   const by = new Map<number, any[]>();
-  for (const r of rows) { if (!by.has(r.player_id)) by.set(r.player_id, []); by.get(r.player_id)!.push(r); }
-  const season = bdlSeasonNow();
+  for (const r of rows) { if (isPreseason({ code: r.code, kickoff: r.kickoff })) continue; if (!by.has(r.player_id)) by.set(r.player_id, []); by.get(r.player_id)!.push(r); }
+  const bdlSeason = bdlSeasonNow();
   const injured = code === 'NBA' ? new Map((db.prepare(`SELECT player, status FROM bb_injuries WHERE team = ?`).all(nbaKey(teamName)) as any[]).map(x => [personKey(x.player), x.status])) : new Map();
-  return [...by.entries()].map(([pid, list]) => {
-    const s = sums(list);
-    const bdl = code === 'NBA' ? bdlPlayerOf(list[0].name, teamName) : null;
-    const line = bdl ? (nbaSeason(bdl.id, season) || nbaSeason(bdl.id, season - 1)) : null;
-    const name = displayName(list[0].name, bdl);
+  const out = ids.map(pid => {
+    const r = roster.find(x => x.player_id === pid);
+    const list = by.get(pid) || [];
+    const nameRaw = r?.name || list[0]?.name || '';
+    // this season (any of our leagues); otherwise his latest season with games
+    const cur = list.filter(x => x.season === season);
+    const lastSeason = cur.length ? null : list[0]?.season ?? null;
+    const use = cur.length ? cur : lastSeason ? list.filter(x => x.season === lastSeason && x.code === list[0].code) : [];
+    const s = sums(use);
+    const bdl = code === 'NBA' ? bdlPlayerOf(nameRaw, teamName) : null;
+    const line = bdl ? (nbaSeason(bdl.id, bdlSeason) || nbaSeason(bdl.id, bdlSeason - 1)) : null;
+    const name = displayName(nameRaw, bdl);
     return {
-      id: pid, name, position: bdl?.position || null, jersey: bdl?.jersey || null, injury: injured.get(personKey(name)) || null,
+      id: pid, name, number: r?.number ?? bdl?.jersey ?? null, position: bdl?.position || r?.position || null, country: r?.country ?? bdl?.country ?? null, age: r?.age ?? null,
+      injury: injured.get(personKey(name)) || null,
+      statsFrom: cur.length ? 'current' : lastSeason ? { season: lastSeason, league: use[0]?.code || null } : null,
       gp: s.gp, starts: s.starts, min: s.min, pts: s.pts, reb: s.reb, ast: s.ast, fgPct: s.fgPct, tpPct: s.tpPct,
       pie: line?.pie ?? null, usg: line?.usg ?? null, net: line?.net ?? null
     };
-  }).filter(p => p.gp > 0).sort((a, b) => (b.min || 0) - (a.min || 0));
+  }).filter(p => p.name);
+  return out.sort((a, b) => (b.statsFrom === 'current' ? 1 : 0) - (a.statsFrom === 'current' ? 1 : 0) || (b.min || 0) - (a.min || 0) || a.name.localeCompare(b.name));
 }
 
 /** NBA box score extras (steals, blocks, turnovers, plus-minus) for one of our games, matched by date, teams and name. */

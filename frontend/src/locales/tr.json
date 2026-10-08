@@ -1251,5 +1251,12 @@
  "vs": "vs",
  "{0} GP": "{0} O",
  "{0} season": "{0} sezonu",
- "{0}, round {1}, pick {2}": "{0}, {1}. tur, {2}. sıra"
+ "{0}, round {1}, pick {2}": "{0}, {1}. tur, {2}. sıra",
+ "Grey tag: no games this season yet, so the numbers are from his last season in our leagues. Tap a player for his page.": "Gri etiket: bu sezon henüz maç yok, rakamlar liglerimizdeki son sezonundan. Sayfası için bir oyuncuya dokunun.",
+ "No games in our leagues yet. His numbers appear here after his first game.": "Liglerimizde henüz maçı yok. Rakamları ilk maçından sonra burada görünür.",
+ "No games this season yet: his last season in our leagues": "Bu sezon henüz maç yok: liglerimizdeki son sezonu",
+ "Per game": "Maç başına",
+ "averages per game this season": "bu sezon maç başına ortalamalar",
+ "{0} years": "{0} yaşında",
+ "Games in our leagues, pre-season not counted.": "Liglerimizdeki maçlar, hazırlık maçları hariç."
 }

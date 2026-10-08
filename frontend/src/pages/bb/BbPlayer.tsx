@@ -21,6 +21,7 @@ interface NbaLine {
 }
 interface PlayerData {
   player: { id: number; name: string; team: Side; league: { code: string; name: string } }
+  bio?: { number: string | null; country: string | null; position: string | null; age: number | null } | null
   current: SeasonRow | null
   seasons: SeasonRow[]
   form: { gameId: number; kickoff: string; pts: number; min: number | null }[]
@@ -54,6 +55,8 @@ export default function BbPlayer() {
   const line = nba?.season || nba?.lastSeason || null
   const cur = d.current
   const bio = nba?.bio
+  const rb = d.bio || null
+  const jersey = bio?.jersey || rb?.number || null
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6 pb-28 xl:pb-10">
@@ -62,15 +65,17 @@ export default function BbPlayer() {
         {d.player.team.logo && <img src={d.player.team.logo} alt="" aria-hidden className="pointer-events-none absolute -right-16 top-1/2 -translate-y-1/2 w-72 h-72 object-contain blur-3xl opacity-25" />}
         <div className="relative flex flex-col sm:flex-row sm:items-center gap-5">
           <div className="relative w-20 h-20 rounded-2xl bg-surface2 grid place-items-center shrink-0">
-            {bio?.jersey ? <span className="font-display text-3xl font-extrabold text-ink num">{bio.jersey}</span> : <TeamLogo team={d.player.team} size={56} />}
-            {bio?.jersey && <span className="absolute -bottom-2 -right-2"><TeamLogo team={d.player.team} size={28} /></span>}
+            {jersey ? <span className="font-display text-3xl font-extrabold text-ink num">{jersey}</span> : <TeamLogo team={d.player.team} size={56} />}
+            {jersey && <span className="absolute -bottom-2 -right-2"><TeamLogo team={d.player.team} size={28} /></span>}
           </div>
           <div className="min-w-0 flex-1">
             <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">{d.player.name}</h1>
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
               <Link to={`/basketball/team/${d.player.team.id}`} className="hover:text-ink font-semibold">{d.player.team.name}</Link>
               <Link to={`/basketball/league/${d.player.league.code}`} className="hover:text-ink">{d.player.league.name}</Link>
-              {bio?.position && <span>{bio.position}</span>}
+              {(bio?.position || rb?.position) && <span>{bio?.position || rb?.position}</span>}
+              {!bio && rb?.country && <span>{rb.country}</span>}
+              {rb?.age ? <span>{t('{0} years', { 0: rb.age })}</span> : null}
             </div>
             {nba?.injury && (
               <div className="mt-3 inline-flex items-start gap-2 rounded-xl bg-loss/10 border border-loss/25 px-3 py-2 text-sm max-w-xl">
@@ -80,10 +85,13 @@ export default function BbPlayer() {
             )}
           </div>
           {(line || cur) && (
-            <div className="grid grid-cols-3 gap-2 sm:w-[340px]">
+            <div className="sm:w-[340px]">
+            <div className="mb-1 text-right text-[11px] text-faint">{t('Per game')} · {line?.label || (cur ? `${cur.code} ${cur.season}` : '')}</div>
+            <div className="grid grid-cols-3 gap-2">
               <Big label={t('Points')} value={v(line?.pts ?? cur?.pts)} />
               <Big label={t('Rebounds')} value={v(line?.reb ?? cur?.reb)} />
               <Big label={t('Assists')} value={v(line?.ast ?? cur?.ast)} />
+            </div>
             </div>
           )}
         </div>
@@ -132,6 +140,7 @@ export default function BbPlayer() {
 
           {/* game log */}
           {d.log.length > 0 && <GameLog log={d.log} />}
+          {!line && d.seasons.length === 0 && <Card><p className="text-sm text-muted">{t('No games in our leagues yet. His numbers appear here after his first game.')}</p></Card>}
         </div>
 
         <div className="space-y-6 min-w-0">
@@ -194,7 +203,7 @@ export default function BbPlayer() {
                   </tbody>
                 </table>
               </div>
-              <p className="mt-3 text-[11px] text-faint">{t('Regular season games in our leagues.')}</p>
+              <p className="mt-3 text-[11px] text-faint">{t('Games in our leagues, pre-season not counted.')}</p>
             </Card>
           )}
         </div>

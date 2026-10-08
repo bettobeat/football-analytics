@@ -1251,5 +1251,12 @@
  "vs": "vs",
  "{0} GP": "{0} MJ",
  "{0} season": "Saison {0}",
- "{0}, round {1}, pick {2}": "{0}, tour {1}, choix {2}"
+ "{0}, round {1}, pick {2}": "{0}, tour {1}, choix {2}",
+ "Grey tag: no games this season yet, so the numbers are from his last season in our leagues. Tap a player for his page.": "Étiquette grise : pas encore de match cette saison, les chiffres viennent de sa dernière saison dans nos championnats. Touchez un joueur pour voir sa page.",
+ "No games in our leagues yet. His numbers appear here after his first game.": "Pas encore de match dans nos championnats. Ses chiffres apparaîtront ici après son premier match.",
+ "No games this season yet: his last season in our leagues": "Pas encore de match cette saison : sa dernière saison dans nos championnats",
+ "Per game": "Par match",
+ "averages per game this season": "moyennes par match cette saison",
+ "{0} years": "{0} ans",
+ "Games in our leagues, pre-season not counted.": "Matchs dans nos championnats, hors présaison."
 }
