@@ -335,6 +335,17 @@ export function buildLeague(code: string): LeagueModel | null {
   return model;
 }
 
+/** Admin research export: every game of a league in compact rows, with box-score possessions. */
+export function bbExport(code: string) {
+  const poss = possessionsOf(code);
+  const rows = db.prepare(`SELECT game_id, season, kickoff, status, home_id, away_id, hs, as_, stage FROM bb_games WHERE code = ? ORDER BY kickoff, game_id`).all(code) as any[];
+  return {
+    code,
+    cols: ['id', 'season', 'ms', 'status', 'h', 'a', 'hs', 'as', 'stage', 'poss'],
+    games: rows.map(r => [r.game_id, r.season, Date.parse(r.kickoff), r.status, r.home_id, r.away_id, r.hs, r.as_, r.stage || null, poss.has(r.game_id) ? Math.round(poss.get(r.game_id)! * 10) / 10 : null])
+  };
+}
+
 export function buildAll(codes: string[]) {
   for (const c of codes) {
     try {

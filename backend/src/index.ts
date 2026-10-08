@@ -52,7 +52,7 @@ import { bdlGet, refreshNbaInjuries, nbaInjuryStatus } from './services/bbInjuri
 import { bbPublic, bbLeagues, bbGames, bbGame, bbStandings, bbTeam } from './services/bbSite';
 import { bbPlayer, nbaLeaders, bbSearch } from './services/bbPlayers';
 import { bdlStatus, startBdlScheduler } from './services/bdl';
-import { bbBacktest, bbRecord } from './services/bbModel';
+import { bbBacktest, bbRecord, bbExport } from './services/bbModel';
 import { highlightsFor, highlightsStatus, lastCandidates } from './services/highlights';
 import { rebuildPlayerQuality, playerQualityTable } from './services/playerQuality';
 import { db } from './db';
@@ -1302,6 +1302,12 @@ app.get('/api/basketball/record', (req, res) => {
 });
 // Admin: how the model did on past seasons it never saw (internal, like football's past seasons)
 app.get('/api/bb/backtest', (_req, res) => res.json({ data: bbBacktest(), timestamp: new Date().toISOString() }));
+// Admin: research export of one league's games (model research in the browser)
+app.get('/api/bb/export', (req, res) => {
+  const code = String(req.query.code || '').toUpperCase();
+  if (!/^[A-Z]{2,4}$/.test(code)) return res.status(400).json({ error: 'code' });
+  res.json({ data: bbExport(code), timestamp: new Date().toISOString() });
+});
 
 // Admin: basketball data (API-Basketball, same API-Sports key). Not in OPEN_API → admin only.
 app.get('/api/bb/status', async (_req, res) => {
