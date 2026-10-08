@@ -148,8 +148,8 @@ export default function LeagueSidebar({
         <ul className="space-y-0.5">{intl.map(l => <Row key={`i${l.code}`} l={l} />)}</ul>
       </>}
 
+      {/* countries */}
       {countryList.length > 0 && <Head icon={null}>{t('Countries')}</Head>}
-      <Head icon={null}>{t('Countries')}</Head>
       <ul className="space-y-0.5 pb-1">
         {countryList.map(([c, list]) => {
           const isOpen = open.has(c) || list.some(l => l.code === selected)
@@ -168,5 +168,74 @@ export default function LeagueSidebar({
         })}
       </ul>
     </section>
+  )
+}
+
+type SidebarProps = Parameters<typeof LeagueSidebar>[0]
+
+/**
+ * Phones and small tablets (below lg): the games come first. A live strip (when games are on), a row of chips
+ * (all, favorites, pinned leagues) and a "Leagues" button that opens the full menu as a bottom sheet.
+ */
+export function MobileLeagueBar({ side, live, liveCount }: { side: SidebarProps; live?: ReactNode[]; liveCount?: number }) {
+  const [sheet, setSheet] = useState(false)
+  const byCode = new Map(side.leagues.map(l => [l.code, l]))
+  const pins = side.pinned.map(c => byCode.get(c)).filter(Boolean) as SideLeague[]
+  const current = side.selected !== 'ALL' && side.selected !== 'FAV' && !side.pinned.includes(side.selected) ? byCode.get(side.selected) : null
+  const chip = (active: boolean) => `shrink-0 inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full text-sm font-semibold border transition-colors ${active ? 'bg-accent text-bg border-accent' : 'bg-surface2/70 text-ink border-line/70 hover:border-accent/50'}`
+  const pick = (c: string) => { side.onSelect(c); setSheet(false) }
+  return (
+    <div className="lg:hidden -mx-4 sm:-mx-6 mb-5">
+      {!!liveCount && live && live.length > 0 && (
+        <div className="mb-3">
+          <div className="flex items-center gap-2 px-4 sm:px-6 mb-2">
+            <span className="w-2 h-2 rounded-full bg-live animate-pulseDot" />
+            <span className="font-display font-bold text-ink">{t('Live')}</span>
+            <span className="num text-xs text-faint">{liveCount}</span>
+          </div>
+          <div className="flex gap-2 overflow-x-auto no-scrollbar px-4 sm:px-6 pb-1">
+            {live.map((n, i) => <div key={i} className="shrink-0 w-56 card p-1.5">{n}</div>)}
+          </div>
+        </div>
+      )}
+      <div className="flex gap-2 overflow-x-auto no-scrollbar px-4 sm:px-6 pb-1">
+        <button type="button" onClick={() => setSheet(true)} className={chip(false) + ' !border-accent/50'} aria-haspopup="dialog">
+          <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M4 6h16M4 12h16M4 18h10" /></svg>
+          {t('Leagues')}
+        </button>
+        <button type="button" onClick={() => pick('ALL')} className={chip(side.selected === 'ALL')}>{t('All')}<span className="num text-[11px] opacity-70">{side.total || ''}</span></button>
+        <button type="button" onClick={() => pick('FAV')} className={chip(side.selected === 'FAV')}>
+          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="currentColor" aria-hidden><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5z" /></svg>
+          {t('Favorites')}
+        </button>
+        {current && (
+          <button type="button" onClick={() => pick(current.code)} className={chip(true)}>
+            {current.logo ? <img src={current.logo} alt="" className="w-4 h-4 object-contain" /> : <Flag code={current.country} size={16} />}{current.short || current.name}
+          </button>
+        )}
+        {pins.map(l => (
+          <button key={l.code} type="button" onClick={() => pick(l.code)} className={chip(side.selected === l.code)}>
+            {l.logo ? <img src={l.logo} alt="" className="w-4 h-4 object-contain" /> : <Flag code={l.country} size={16} />}
+            <span className="max-w-[140px] truncate">{l.name}</span>
+          </button>
+        ))}
+      </div>
+
+      {sheet && (
+        <div className="fixed inset-0 z-[70] flex flex-col justify-end" role="dialog" aria-modal="true" aria-label={t('Leagues')}>
+          <button type="button" className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setSheet(false)} aria-label={t('Close')} />
+          <div className="relative max-h-[85vh] overflow-y-auto overscroll-contain rounded-t-3xl bg-bg border-t border-line shadow-2xl pb-[env(safe-area-inset-bottom)]">
+            <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-3 bg-bg/95 backdrop-blur border-b border-line/60">
+              <span className="mx-auto absolute left-1/2 -translate-x-1/2 top-1.5 w-10 h-1 rounded-full bg-line" aria-hidden />
+              <span className="font-display text-lg font-bold text-ink">{t('Leagues')}</span>
+              <button type="button" onClick={() => setSheet(false)} className="h-9 px-3 rounded-full text-sm font-semibold text-muted hover:text-ink">{t('Close')}</button>
+            </div>
+            <div className="p-3">
+              <LeagueSidebar {...side} onSelect={pick} />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }

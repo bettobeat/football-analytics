@@ -201,7 +201,14 @@ function BbNavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
 function useBbOpen() {
   const loc = useLocation()
   const cfg = useBbConfig()
-  return sportOfPath(loc.pathname).id === 'basketball' && !!cfg?.open
+  // while the config loads on a basketball page, show the basketball menus (no flash of the football ones)
+  return sportOfPath(loc.pathname).id === 'basketball' && (cfg === null ? true : !!cfg.open)
+}
+
+/** Footer data line for the sport on screen. */
+function DataLine() {
+  const bb = sportOfPath(useLocation().pathname).id === 'basketball'
+  return <p>{bb ? tt("Data: API-Basketball, balldontlie (NBA players and injuries).") : tt("Data: Football-Data.org, API-Football, football-data.co.uk, Transfermarkt (squad values).")}</p>
 }
 
 function NavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
@@ -461,7 +468,7 @@ function Shell() {
             {tt("SportLikely · predictions are probabilities, not promises. Information only, not betting advice. 18+. If gambling stops being fun, stop and")}{' '}
             <a href="https://www.begambleaware.org" target="_blank" rel="noreferrer" className="underline hover:text-ink">{tt("get help")}</a>.
           </p>
-          <p>{tt("Data: Football-Data.org, API-Football, football-data.co.uk, Transfermarkt (squad values).")}</p>
+          <DataLine />
         </footer>
         <BottomTabs />
         <Assistant />
@@ -476,7 +483,8 @@ export default App
 /** Basketball section: the full site for admins (before launch) and everyone once BASKETBALL_PUBLIC is on. */
 function BbRoutes() {
   const cfg = useBbConfig()
-  if (!cfg) return null
+  // keep the page's height while the config loads (no footer jumping up into an empty page)
+  if (!cfg) return <div className="min-h-[80vh] grid place-items-center"><span className="w-8 h-8 rounded-full border-2 border-line border-t-accent animate-spin" aria-label={tt('Loading…')} /></div>
   if (!cfg.open) return <SportSoon sport="basketball" />
   return (
     <Routes>

@@ -1322,5 +1322,6 @@
  "Injuries hurt {0} more: they are missing about {1} points of production.": "Gli infortuni pesano di più su {0}: mancano circa {1} punti di produzione.",
  "{0} min left": "mancano {0} min",
  "in testing": "in prova",
- "{0} have more talent on the floor right now (the players they used in their latest games): about {1} points.": "{0} ha più talento in campo in questo momento (i giocatori usati nelle ultime partite): circa {1} punti."
+ "{0} have more talent on the floor right now (the players they used in their latest games): about {1} points.": "{0} ha più talento in campo in questo momento (i giocatori usati nelle ultime partite): circa {1} punti.",
+ "Data: API-Basketball, balldontlie (NBA players and injuries).": "Dati: API-Basketball, balldontlie (giocatori e infortuni NBA)."
 }

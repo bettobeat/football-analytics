@@ -30,8 +30,9 @@ function Section({ title, action, children }: { title: string; action?: ReactNod
 }
 
 /** Big featured game: the two logos, blown up and blurred, paint the background in the teams' colours; a court below. */
-function FeaturedHero({ g }: { g: BbGame | null }) {
+function FeaturedHero({ g, loading = false }: { g: BbGame | null; loading?: boolean }) {
   useRevealState()
+  if (!g && loading) return <div className="rounded-[32px] border border-white/10 min-h-[360px] sm:min-h-[460px] bg-surface2/40 animate-pulse" />
   if (!g)
     return (
       <div className="relative overflow-hidden rounded-[32px] border border-white/10 min-h-[360px] sm:min-h-[460px] bg-[linear-gradient(160deg,#0F1A2B_0%,#0A0F17_60%,#07090D_100%)] p-10 flex flex-col justify-center gap-3 text-[#EEF1F6]">
@@ -124,6 +125,7 @@ export default function BbHome() {
   const cfg = useBbConfig()
   const { access } = useAuth()
   const [games, setGames] = useState<BbGame[]>([])
+  const [loaded, setLoaded] = useState(false)
   const [results, setResults] = useState<BbGame[] | null>(null)
   const [record, setRecord] = useState<RecordData | null>(null)
   const news = useNews({ sport: 'basketball', limit: 10 })
@@ -132,7 +134,7 @@ export default function BbHome() {
   useEffect(() => {
     document.title = t('{0} · SportLikely', { 0: t('Basketball') })
     const load = () => {
-      axios.get(`${API_URL}/basketball/games`, { params: { days: 7 } }).then(r => setGames(r.data.data || [])).catch(() => undefined)
+      axios.get(`${API_URL}/basketball/games`, { params: { days: 7 } }).then(r => setGames(r.data.data || [])).catch(() => undefined).finally(() => setLoaded(true))
       axios.get(`${API_URL}/basketball/games`, { params: { days: 7, results: 1 } }).then(r => setResults((r.data.data || []).filter((g: BbGame) => g.state === 'done'))).catch(() => setResults([]))
     }
     load()
@@ -232,7 +234,7 @@ export default function BbHome() {
 
         {/* hero: featured game + live / next tip-offs */}
         <div className="grid gap-5 lg:grid-cols-[1.75fr_1fr]">
-          <FeaturedHero g={featured} />
+          <FeaturedHero g={featured} loading={!loaded} />
 
           <div className="card p-5 sm:p-6 flex flex-col gap-4">
             <div className="flex items-center justify-between">
@@ -286,6 +288,8 @@ export default function BbHome() {
                 ))}
                 <Link to="/basketball/games" className="mt-1 px-2 text-sm font-bold text-accent">{t('All games →')}</Link>
               </div>
+            ) : !loaded ? (
+              <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-12 rounded-xl bg-surface2/50 animate-pulse" />)}</div>
             ) : (
               <div className="flex-1 grid place-items-center text-center text-sm text-muted py-6">{t('No games scheduled yet.')}</div>
             )}

@@ -6,7 +6,7 @@ import { t } from '../../lib/i18n'
 import { useAuth } from '../../lib/auth'
 import { useRevealState } from '../../lib/reveal'
 import { useBbConfig, useBbFavorites, bbLeagueFav, BB_COUNTRY, type BbGame } from '../../lib/bb'
-import LeagueSidebar from '../../components/LeagueSidebar'
+import LeagueSidebar, { MobileLeagueBar } from '../../components/LeagueSidebar'
 import { GamesByDay, LiveRow, GameRow, LockedNote, SectionTitle } from './parts'
 
 const DAY_OPTIONS = [1, 3, 7, 14]
@@ -76,11 +76,25 @@ export default function BbGames() {
   const leagueName = cfg?.leagues.find(l => l.code === league)?.name
   const locked = upcoming.some(g => g.prediction?.locked)
 
+  const side = {
+    leagues: (cfg?.leagues || []).map(l => ({
+      code: l.code, name: l.name, logo: l.logo, country: BB_COUNTRY[l.code] || 'world',
+      count: all.filter(g => g.league.code === l.code && g.state !== 'done').length, fav: bbLeagueFav(l)
+    })),
+    selected: league,
+    onSelect: setLeague,
+    pinned: favs.leagues.length ? favs.leagues.map(f => f.ref) : ['NBA', 'EL', 'ACB', 'BSL', 'EC'],
+    teams: favs.teams.map(f => ({ key: f.ref, name: f.name, logo: f.img || null, to: `/basketball/team/${f.ref}` })),
+    total: all.filter(g => g.state !== 'done').length,
+    favCount: favs.all.length ? all.filter(g => g.state !== 'done' && favs.reasons(g).length > 0).length : null,
+    addTeamTo: '/basketball/favorites'
+  }
+
   return (
     <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 py-6 lg:py-8 pb-28 xl:pb-10 ${league === 'ALL' ? '2xl:max-w-[1760px]' : ''}`}>
       <div className={`grid grid-cols-1 gap-6 lg:gap-8 items-start lg:grid-cols-[250px_1fr] ${league === 'ALL' ? '2xl:grid-cols-[250px_1fr_340px]' : ''}`}>
         {/* sidebar */}
-        <aside className="lg:sticky lg:top-20 flex flex-col gap-6 lg:max-h-[calc(100vh-6.5rem)]">
+        <aside className="hidden lg:flex lg:sticky lg:top-20 flex-col gap-6 lg:max-h-[calc(100vh-6.5rem)]">
           <section className="card p-4 shrink-0">
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-display font-bold text-ink flex items-center gap-2">
@@ -96,19 +110,7 @@ export default function BbGames() {
             )}
           </section>
 
-          <LeagueSidebar
-            leagues={(cfg?.leagues || []).map(l => ({
-              code: l.code, name: l.name, logo: l.logo, country: BB_COUNTRY[l.code] || 'world',
-              count: all.filter(g => g.league.code === l.code && g.state !== 'done').length, fav: bbLeagueFav(l)
-            }))}
-            selected={league}
-            onSelect={setLeague}
-            pinned={favs.leagues.length ? favs.leagues.map(f => f.ref) : ['NBA', 'EL', 'ACB', 'BSL', 'EC']}
-            teams={favs.teams.map(f => ({ key: f.ref, name: f.name, logo: f.img || null, to: `/basketball/team/${f.ref}` }))}
-            total={all.filter(g => g.state !== 'done').length}
-            favCount={favs.all.length ? all.filter(g => g.state !== 'done' && favs.reasons(g).length > 0).length : null}
-            addTeamTo="/basketball/favorites"
-          />
+          <LeagueSidebar {...side} />
 
           {league === 'ALL' && results && results.length > 0 && (
             <section className="card p-3 hidden lg:block 2xl:hidden shrink-0">
@@ -120,6 +122,7 @@ export default function BbGames() {
 
         {/* main */}
         <div className="min-w-0">
+          <MobileLeagueBar side={side} liveCount={live.length} live={live.map(g => <LiveRow key={g.id} g={g} />)} />
           <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
             <div>
               <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">{league === 'ALL' ? t('Games') : favMode ? t('My favorites') : leagueName || t('Games')}</h1>

@@ -8,7 +8,7 @@ import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
 import { pickOfPrediction, type Prediction } from '../lib/predict'
 import { useFavorites } from '../lib/favorites'
-import LeagueSidebar from '../components/LeagueSidebar'
+import LeagueSidebar, { MobileLeagueBar } from '../components/LeagueSidebar'
 import { footballCountry, leagueShortName } from '../lib/leagueCountry'
 import { t as tt, LOCALE } from '../lib/i18n'
 
@@ -220,11 +220,29 @@ function Dashboard() {
     return Array.from(groups.entries()).sort((a, b) => a[0] - b[0])
   }, [upcoming, spotlightIds])
 
+  const side = {
+    leagues: competitions.map(c => ({
+      code: c.code, name: c.name, short: leagueShortName(c.name), logo: c.emblem || null, country: footballCountry(c),
+      count: matches.filter(m => m.competition.code === c.code).length,
+      fav: { kind: 'league' as const, ref: c.code, code: c.code, name: c.name, img: c.emblem || null }
+    })),
+    selected: league,
+    onSelect: setLeague,
+    pinned: (() => {
+      const mine = favList.filter(f => f.kind === 'league').map(f => f.code || f.ref).filter(c => competitions.some(x => x.code === c))
+      return mine.length ? mine : DEFAULT_PINNED.filter(c => competitions.some(x => x.code === c))
+    })(),
+    teams: favList.filter(f => f.kind === 'team').map(f => ({ key: f.ref, name: f.name, logo: f.img || null, to: f.ids?.[0] ? `/team/${f.ids[0]}?${new URLSearchParams({ n: f.name }).toString()}` : '/favorites' })),
+    total: matches.length,
+    favCount: favList.length ? favCount : null,
+    addTeamTo: '/favorites'
+  }
+
   return (
     <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 py-6 lg:py-8 ${league === 'ALL' ? '2xl:max-w-[1760px]' : ''}`}>
       <div className={`grid grid-cols-1 gap-6 lg:gap-8 items-start ${league === 'ALL' ? 'lg:grid-cols-[250px_1fr] 2xl:grid-cols-[250px_1fr_340px]' : favMode ? 'lg:grid-cols-[250px_1fr]' : 'lg:grid-cols-[250px_1fr] xl:grid-cols-[250px_1fr_320px]'}`}>
         {/* ---------- Sidebar ---------- */}
-        <aside className="lg:sticky lg:top-20 flex flex-col gap-6 lg:max-h-[calc(100vh-6.5rem)]">
+        <aside className="hidden lg:flex lg:sticky lg:top-20 flex-col gap-6 lg:max-h-[calc(100vh-6.5rem)]">
           {/* Live */}
           <section className="card p-4 shrink-0">
             <div className="flex items-center justify-between mb-3">
@@ -247,23 +265,7 @@ function Dashboard() {
           </section>
 
           {/* Leagues: pinned, my teams, international, countries (Flashscore style) */}
-          <LeagueSidebar
-            leagues={competitions.map(c => ({
-              code: c.code, name: c.name, short: leagueShortName(c.name), logo: c.emblem || null, country: footballCountry(c),
-              count: matches.filter(m => m.competition.code === c.code).length,
-              fav: { kind: 'league', ref: c.code, code: c.code, name: c.name, img: c.emblem || null }
-            }))}
-            selected={league}
-            onSelect={setLeague}
-            pinned={(() => {
-              const mine = favList.filter(f => f.kind === 'league').map(f => f.code || f.ref).filter(c => competitions.some(x => x.code === c))
-              return mine.length ? mine : DEFAULT_PINNED.filter(c => competitions.some(x => x.code === c))
-            })()}
-            teams={favList.filter(f => f.kind === 'team').map(f => ({ key: f.ref, name: f.name, logo: f.img || null, to: f.ids?.[0] ? `/team/${f.ids[0]}?${new URLSearchParams({ n: f.name }).toString()}` : '/favorites' }))}
-            total={matches.length}
-            favCount={favList.length ? favCount : null}
-            addTeamTo="/favorites"
-          />
+          <LeagueSidebar {...side} />
 
           {/* Latest results (medium screens; wide screens get the full column on the right) */}
           {league === 'ALL' && (
@@ -275,6 +277,7 @@ function Dashboard() {
 
         {/* ---------- Main ---------- */}
         <div className="min-w-0">
+          <MobileLeagueBar side={side} liveCount={live.length} live={live.map(m => <LiveRow key={m.id} match={m} />)} />
           <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
             <div>
               <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">
