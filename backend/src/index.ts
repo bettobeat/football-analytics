@@ -48,6 +48,7 @@ import { goalsCalibration } from './services/goalsCalibration';
 import { runDataAudit, lastDataAudit, startDataAuditScheduler } from './services/dataAudit';
 import { newsFor, newsStatus, startNewsScheduler, bbTeamNames, footballTeamNames } from './services/news';
 import { bbGet, bbStatus, bbSyncNow, startBasketballScheduler } from './services/basketball';
+import { bdlGet, refreshNbaInjuries, nbaInjuryStatus } from './services/bbInjuries';
 import { bbPublic, bbLeagues, bbGames, bbGame, bbStandings, bbTeam } from './services/bbSite';
 import { bbBacktest, bbRecord } from './services/bbModel';
 import { highlightsFor, highlightsStatus, lastCandidates } from './services/highlights';
@@ -90,7 +91,7 @@ const tokenKind = (t: unknown): 'read' | 'job' | null =>
 
 // GET endpoints that DO something (start a job, spend API calls, change data). The read token may not call them,
 // and a browser may not call them from another website (see the cross-site guard below).
-const ACTION_GET = /^\/api\/(model\/v3\/player-quality\/rebuild|data-audit\/run|history\/(sync-season|refit)|af\/(odds-backfill|sync|raw)|bb\/(sync|raw)|clv\/(tick|probe)|model\/v3\/(backfill|squad\/sync|league-tune|league-conv)|backtest\/(run|sweep)|model\/elo\/tune)$/;
+const ACTION_GET = /^\/api\/(model\/v3\/player-quality\/rebuild|data-audit\/run|history\/(sync-season|refit)|af\/(odds-backfill|sync|raw)|bb\/(sync|raw|bdl|injuries-refresh)|clv\/(tick|probe)|model\/v3\/(backfill|squad\/sync|league-tune|league-conv)|backtest\/(run|sweep)|model\/elo\/tune)$/;
 const isActionGet = (req: express.Request) =>
   req.method === 'GET' && (ACTION_GET.test(req.path) || (req.path === '/api/team-overrides' && !!req.query.field));
 
@@ -1306,6 +1307,22 @@ app.get('/api/bb/raw', async (req, res) => {
   } catch (e: any) {
     res.status(502).json({ error: e.message });
   }
+});
+app.get('/api/bb/bdl', async (req, res) => {
+  // admin: raw balldontlie calls (testing what the GOAT plan gives us); the key never leaves the server
+  const pathQ = String(req.query.path || '/v1/player_injuries');
+  if (!/^\/(v1\/(player_injuries|lineups|games|teams|players|box_scores|stats|season_averages\/[a-z_]+|standings|leaders|plays)|nba\/v[12]\/stats\/advanced)$/.test(pathQ)) return res.status(400).json({ error: 'path not allowed' });
+  const params: Record<string, string | string[]> = {};
+  for (const [k, v] of Object.entries(req.query)) if (!['path', 'token', 'c'].includes(k)) { if (Array.isArray(v)) params[k.endsWith('[]') ? k : `${k}[]`] = v.map(String); else params[k] = String(v); } // Express turns ids[]=1 into ids: ['1']
+  try {
+    res.json({ data: await bdlGet(pathQ, params), timestamp: new Date().toISOString() });
+  } catch (e: any) {
+    res.status(502).json({ error: e.message });
+  }
+});
+app.get('/api/bb/injuries-refresh', async (_req, res) => {
+  const n = await refreshNbaInjuries();
+  res.json({ data: { players: n, status: nbaInjuryStatus() }, timestamp: new Date().toISOString() });
 });
 
 // Admin: fill bookmaker odds for tracked national-team / cup matches saved without them (last 7 days)

@@ -1,6 +1,6 @@
 /**
- * NBA injuries (Oct 2026): ESPN's public injury list (built from the official NBA injury reports and team news),
- * refreshed every 15 minutes. Used two ways:
+ * NBA injuries (Oct 2026): balldontlie's player-injuries list (GOAT plan, key BALLDONTLIE_KEY in Railway),
+ * refreshed every 15 minutes. Without the key it falls back to ESPN's public list (which blocks our server). Used two ways:
  *  - the game page lists each team's injured / doubtful players;
  *  - the model takes points off a team for the regulars who will miss the game, weighted by their minutes and
  *    how much they produce (box scores of the team's last 15 games). Out = full weight, doubtful 75%,
@@ -11,6 +11,59 @@ import logger from '../utils/logger';
 import { db } from '../db';
 
 const URL = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries';
+const BDL = 'https://api.balldontlie.io';
+
+/** balldontlie GET (admin raw calls and the injury list). Throws without the key. */
+export async function bdlGet(path: string, params: Record<string, string | string[]> = {}): Promise<any> {
+  const key = process.env.BALLDONTLIE_KEY;
+  if (!key) throw new Error('BALLDONTLIE_KEY not set');
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) for (const x of Array.isArray(v) ? v : [v]) q.append(k, x);
+  const res = await fetch(`${BDL}${path}${q.toString() ? `?${q}` : ''}`, { signal: AbortSignal.timeout(20000), headers: { Authorization: key } });
+  if (!res.ok) throw new Error(`balldontlie HTTP ${res.status}`);
+  return res.json();
+}
+
+type InjRow = { team: string; player: string; status: string; comment: string | null; reported: string | null };
+
+let bdlTeams: Map<number, string> | null = null;
+async function fromBalldontlie(): Promise<InjRow[]> {
+  if (!bdlTeams) {
+    const t = await bdlGet('/v1/teams');
+    bdlTeams = new Map((t.data || []).map((x: any) => [Number(x.id), String(x.full_name || x.name)] as [number, string]));
+  }
+  const out: InjRow[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < 20; page++) {
+    const j: any = await bdlGet('/v1/player_injuries', { per_page: '100', ...(cursor ? { cursor } : {}) });
+    for (const i of j.data || []) {
+      const p = i.player || {};
+      const teamName = bdlTeams.get(Number(p.team_id)) || '';
+      const name = `${p.first_name || ''} ${p.last_name || ''}`.trim();
+      if (!teamName || !name || !i.status) continue;
+      out.push({ team: nbaKey(teamName), player: name, status: String(i.status), comment: i.description || null, reported: i.return_date ? `back ${i.return_date}` : null });
+    }
+    cursor = j.meta?.next_cursor ? String(j.meta.next_cursor) : null;
+    if (!cursor) break;
+  }
+  return out;
+}
+
+async function fromEspn(): Promise<InjRow[]> {
+  const res = await fetch(URL, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'SportLikely/1.0 (+https://sportlikely.com)' } });
+  if (!res.ok) throw new Error(`ESPN HTTP ${res.status}`);
+  const j: any = await res.json();
+  const out: InjRow[] = [];
+  for (const t of j.injuries || []) {
+    const team = nbaKey(t.displayName);
+    for (const i of t.injuries || []) {
+      const name = i.athlete?.displayName;
+      if (!team || !name || !i.status) continue;
+      out.push({ team, player: name, status: String(i.status), comment: i.shortComment || null, reported: i.date || null });
+    }
+  }
+  return out;
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS bb_injuries (
@@ -46,27 +99,18 @@ const playerKey = (name: string) => String(name || '').toLowerCase().normalize('
 
 let lastFetch: string | null = null;
 let lastError: string | null = null;
+let lastSource: string | null = null;
 
 export async function refreshNbaInjuries() {
   try {
-    const res = await fetch(URL, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'SportLikely/1.0 (+https://sportlikely.com)' } });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const j: any = await res.json();
+    const source = process.env.BALLDONTLIE_KEY ? 'balldontlie' : 'espn';
+    const rows = source === 'balldontlie' ? await fromBalldontlie() : await fromEspn();
     const now = new Date().toISOString();
     const ins = db.prepare(`INSERT OR REPLACE INTO bb_injuries (team, player, status, comment, reported, updated_at) VALUES (?, ?, ?, ?, ?, ?)`);
-    let n = 0;
     db.exec('BEGIN');
     try {
       db.exec('DELETE FROM bb_injuries'); // the list is a full snapshot: players who are back drop off it
-      for (const t of j.injuries || []) {
-        const team = nbaKey(t.displayName);
-        for (const i of t.injuries || []) {
-          const name = i.athlete?.displayName;
-          if (!team || !name || !i.status) continue;
-          ins.run(team, name, String(i.status), i.shortComment || null, i.date || null, now);
-          n++;
-        }
-      }
+      for (const r of rows) ins.run(r.team, r.player, r.status, r.comment, r.reported, now);
       db.exec('COMMIT');
     } catch (e) {
       db.exec('ROLLBACK');
@@ -74,7 +118,8 @@ export async function refreshNbaInjuries() {
     }
     lastFetch = now;
     lastError = null;
-    return n;
+    lastSource = source;
+    return rows.length;
   } catch (e: any) {
     lastError = e.message;
     logger.warn(`NBA injuries: ${e.message}`);
@@ -137,5 +182,5 @@ export function injuryLoss(teamId: number, teamName: string, before: string) {
 
 export function nbaInjuryStatus() {
   const n: any = db.prepare(`SELECT COUNT(*) AS n, COUNT(DISTINCT team) AS t FROM bb_injuries`).get();
-  return { lastFetch, lastError, players: n.n, teams: n.t };
+  return { source: lastSource, keySet: !!process.env.BALLDONTLIE_KEY, lastFetch, lastError, players: n.n, teams: n.t };
 }
