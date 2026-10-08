@@ -1344,5 +1344,13 @@
  "Not in this table": "No está en esta tabla",
  "are one place higher": "está un puesto por encima",
  "are {0} places higher": "está {0} puestos por encima",
- "Top scorer": "Máximo anotador"
+ "Top scorer": "Máximo anotador",
+ "has {0} more days of rest.": "tiene {0} días más de descanso.",
+ "wins · draws · wins": "victorias · empates · victorias",
+ "Discipline": "Disciplina",
+ "{0} points apart": "{0} puntos de diferencia",
+ "goals/game": "goles/partido",
+ "{0} wins": "{0} victorias",
+ "Last 14 days": "Últimos 14 días",
+ "Ball & keeper": "Balón y portero"
 }

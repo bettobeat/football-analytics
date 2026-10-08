@@ -1344,5 +1344,13 @@
  "Not in this table": "Bu tabloda yok",
  "are one place higher": "bir sıra yukarıda",
  "are {0} places higher": "{0} sıra yukarıda",
- "Top scorer": "En skorer"
+ "Top scorer": "En skorer",
+ "has {0} more days of rest.": "{0} gün daha fazla dinlendi.",
+ "wins · draws · wins": "galibiyet · beraberlik · galibiyet",
+ "Discipline": "Disiplin",
+ "{0} points apart": "{0} puan fark",
+ "goals/game": "gol/maç",
+ "{0} wins": "{0} galibiyet",
+ "Last 14 days": "Son 14 gün",
+ "Ball & keeper": "Top ve kaleci"
 }

@@ -3,6 +3,7 @@ import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { errorText, useAuth, type User } from '../lib/auth'
 import DataHealth from '../components/DataHealth'
+import VisitorsCard from '../components/VisitorsCard'
 
 type Row = User & { lastLoginAt: string | null }
 
@@ -67,6 +68,7 @@ export default function Admin() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
+      <VisitorsCard />
       <DataHealth />
       <div className="flex flex-wrap items-end justify-between gap-3 mb-5">
         <div>

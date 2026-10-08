@@ -1344,5 +1344,13 @@
  "Not in this table": "Não está nesta tabela",
  "are one place higher": "está um lugar acima",
  "are {0} places higher": "está {0} lugares acima",
- "Top scorer": "Cestinha"
+ "Top scorer": "Cestinha",
+ "has {0} more days of rest.": "tem mais {0} dias de descanso.",
+ "wins · draws · wins": "vitórias · empates · vitórias",
+ "Discipline": "Disciplina",
+ "{0} points apart": "{0} pontos de diferença",
+ "goals/game": "golos/jogo",
+ "{0} wins": "{0} vitórias",
+ "Last 14 days": "Últimos 14 dias",
+ "Ball & keeper": "Bola e guarda-redes"
 }

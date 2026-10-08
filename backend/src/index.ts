@@ -56,6 +56,7 @@ import { bbBacktest, bbRecord, bbExport, bbExportPlayers } from './services/bbMo
 import { highlightsFor, highlightsStatus, lastCandidates } from './services/highlights';
 import { rebuildPlayerQuality, playerQualityTable } from './services/playerQuality';
 import { db } from './db';
+import { trackVisit, visitorStats } from './services/visitors';
 import { listFavorites, addFavorites, removeFavorite, MAX_FAVORITES } from './services/favorites';
 import { tuneV3Full, tuneStatus, isTuning } from './services/v3Tuner';
 import { askAssistant, assistantConfigured, messagesToday, assistantStats } from './services/assistant';
@@ -205,6 +206,8 @@ app.use((req, _res, next) => {
   }
   next();
 });
+
+app.use('/api', trackVisit); // visitor counts for the admin page (hashed IPs only)
 
 // No bookmakers on the site (Oct 2026): odds, bookmaker names and market comparisons are internal data only.
 // For everyone except admins, every API response is cleaned of them before it leaves the server.
@@ -438,6 +441,7 @@ app.post('/api/waitlist', rateLimit('waitlist', 10, 15 * 60000), jsonOnly, (req,
   }
 });
 app.get('/api/admin/waitlist', (_req, res) => res.json({ data: waitlistStats() }));
+app.get('/api/admin/visitors', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json({ data: visitorStats() }); });
 app.get('/api/admin/news', (_req, res) => res.json({ data: newsStatus() }));
 
 app.post('/api/auth/login', jsonOnly, (req, res) => {

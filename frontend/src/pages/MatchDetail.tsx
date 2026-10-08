@@ -145,10 +145,6 @@ function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })
 }
 
-function shortDate(iso: string) {
-  return new Date(iso).toLocaleDateString(LOCALE, { day: '2-digit', month: 'short', year: 'numeric' })
-}
-
 function resultFor(teamId: number, m: Match): 'W' | 'D' | 'L' | null {
   const w = m.score?.winner
   if (!w) return null
@@ -913,7 +909,7 @@ function MatchDetail() {
               {xStats === undefined ? (
                 <div className="rounded-2xl border border-line/60 bg-surface2/30 p-10 text-sm text-muted text-center">{tt("Loading the last 10 games of both teams…")}</div>
               ) : xStats && (xStats.home.games || xStats.away.games) ? (
-                <AveragesPanel home={home} away={away} h={xStats.home} a={xStats.away} />
+                <AveragesPanel home={home} away={away} h={xStats.home} a={xStats.away} form={{ home: details.form.home.map(x => resultFor(home.id, x)).filter((r): r is 'W' | 'D' | 'L' => !!r).reverse(), away: details.form.away.map(x => resultFor(away.id, x)).filter((r): r is 'W' | 'D' | 'L' => !!r).reverse() }} />
               ) : (
                 <div className="rounded-2xl border border-line/60 bg-surface2/30 p-6 text-sm text-faint">{tt("No recent games found for these teams.")}</div>
               )}
@@ -937,8 +933,8 @@ function MatchDetail() {
 
             <Section title={tt("Form")} note={tt("Last results")}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-                <TeamPanel team={home} row={details.standings.home} recent={details.form.home} />
-                <TeamPanel team={away} row={details.standings.away} recent={details.form.away} />
+                <TeamPanel team={home} side="H" row={details.standings.home} recent={details.form.home} />
+                <TeamPanel team={away} side="A" row={details.standings.away} recent={details.form.away} />
               </div>
             </Section>
           </>
@@ -1009,8 +1005,8 @@ function MatchDetail() {
               <Section title={tt("Schedule & rest")} note={tt("All competitions")}>
                 <RestSummary home={home} away={away} h={xRest.home} a={xRest.away} />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 mt-5">
-                  <RestPanel team={home} s={xRest.home} />
-                  <RestPanel team={away} s={xRest.away} />
+                  <RestPanel team={home} side="H" s={xRest.home} />
+                  <RestPanel team={away} side="A" s={xRest.away} />
                 </div>
               </Section>
             </>
@@ -1023,7 +1019,7 @@ function MatchDetail() {
           tables === null ? (
             <p className="text-sm text-muted text-center py-10">{tt("Loading table…")}</p>
           ) : tableShow.length ? (
-            <LeagueTable tables={tableShow} name={details.match.competition.name} homeId={home.id} awayId={away.id} />
+            <LeagueTable tables={tableShow} name={details.match.competition.name} home={home} away={away} />
           ) : (
             <p className="text-sm text-faint text-center py-10">{tt("There is no league table for this competition.")}</p>
           )
@@ -1435,66 +1431,134 @@ function EventIcon({ kind }: { kind: string }) {
   return <span className="text-faint text-sm">⇄</span>
 }
 
-function FormBadge({ r }: { r: string | null }) {
-  const cls = r === 'W' ? 'bg-win text-bg' : r === 'L' ? 'bg-loss text-bg' : r === 'D' ? 'bg-faint text-bg' : 'bg-line text-muted'
-  return <span className={`inline-flex w-6 h-6 items-center justify-center rounded-md text-[11px] font-bold ${cls}`}>{r || '·'}</span>
+/* ---------- shared look of the match tabs (same style as the basketball game page) ---------- */
+
+type SideK = 'H' | 'A'
+const SIDE_TEXT = { H: 'text-home', A: 'text-away' } as const
+const SIDE_BG = { H: 'bg-home', A: 'bg-away' } as const
+const tname = (t: Team) => t.shortName || t.name
+
+function CrestBox({ team, size = 30 }: { team: { name: string; crest?: string; tla?: string }; size?: number }) {
+  return (
+    <span className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-surface2/80 border border-line/60 grid place-items-center shrink-0">
+      {team.crest ? <img src={team.crest} alt="" className="object-contain" style={{ width: size, height: size }} /> : <span className="text-[10px] font-bold text-muted">{(team.tla || team.name).slice(0, 3).toUpperCase()}</span>}
+    </span>
+  )
 }
 
-function TeamPanel({ team, row, recent }: { team: Team; row: StandingRow | null; recent: Match[] }) {
-  const formFromTable = row?.form ? row.form.split(',').map(s => s.trim()) : null
-  const formFromMatches = recent.map(m => resultFor(team.id, m)).reverse()
+function SideTitle({ team, side, right }: { team: Team; side: SideK; right?: ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 mb-3">
+      <span className={`w-1 h-6 rounded-full ${SIDE_BG[side]}`} />
+      {team.crest && <img src={team.crest} alt="" className="w-6 h-6 object-contain" />}
+      <span className="font-display font-bold text-ink truncate">{tname(team)}</span>
+      {right && <span className="ml-auto shrink-0">{right}</span>}
+    </div>
+  )
+}
+
+const FORM_CLS: Record<string, string> = { W: 'bg-win/90 text-bg', D: 'bg-muted/60 text-bg', L: 'bg-loss/90 text-bg' }
+function FormChips({ f, align = 'left' }: { f: string[]; align?: 'left' | 'right' }) {
+  if (!f.length) return null
+  return (
+    <span className={`flex gap-1 mt-1 justify-center ${align === 'right' ? 'sm:justify-end' : 'sm:justify-start'}`}>
+      {f.map((r, i) => (
+        <span key={i} className={`w-[18px] h-[18px] rounded-[5px] text-[9px] font-extrabold grid place-items-center ${FORM_CLS[r] || 'bg-line text-muted'} ${i === f.length - 1 ? 'ring-2 ring-offset-1 ring-offset-surface ring-line' : ''}`}>{r}</span>
+      ))}
+    </span>
+  )
+}
+
+function TeamsHead({ home, away, sub }: { home: Team; away: Team; sub?: (s: SideK) => ReactNode }) {
+  const side = (s: SideK) => {
+    const team = s === 'H' ? home : away
+    return (
+      <div className={`flex flex-col sm:flex-row items-center gap-2 sm:gap-3 min-w-0 text-center ${s === 'A' ? 'sm:flex-row-reverse sm:text-right' : 'sm:text-left'}`}>
+        <CrestBox team={team} />
+        <span className="min-w-0 max-w-full">
+          <span className="block font-display font-bold text-ink truncate">{tname(team)}</span>
+          {sub && <span className="block">{sub(s)}</span>}
+        </span>
+      </div>
+    )
+  }
+  return (
+    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+      {side('H')}
+      <span className="text-[10px] font-extrabold tracking-widest text-faint">VS</span>
+      {side('A')}
+    </div>
+  )
+}
+
+type Tone = 'good' | 'mid' | 'bad' | 'none'
+const TONE: Record<Tone, string> = {
+  good: 'border-win/40 bg-win/10 text-win',
+  mid: 'border-draw/40 bg-draw/10 text-draw',
+  bad: 'border-loss/40 bg-loss/10 text-loss',
+  none: 'border-line/60 bg-surface2/50 text-ink'
+}
+function ToneTile({ label, value, tone, icon }: { label: string; value: ReactNode; tone: Tone; icon?: ReactNode }) {
+  return (
+    <div className={`rounded-xl border px-3 py-2.5 ${TONE[tone]}`}>
+      <div className="flex items-start gap-1.5 opacity-80">{icon && <span className="hidden sm:inline mt-px">{icon}</span>}<span className="text-[10px] font-semibold uppercase sm:tracking-wide leading-tight">{label}</span></div>
+      <div className="num text-xl font-extrabold mt-1 leading-none">{value}</div>
+    </div>
+  )
+}
+const ICO = {
+  bed: <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 18V7M3 14h18v4M21 14v-2a3 3 0 0 0-3-3h-7v5" /><circle cx="7" cy="11" r="1.6" /></svg>,
+  cal: <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>,
+  next: <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>,
+  clock: <svg viewBox="0 0 24 24" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 7v5l3 2" /><circle cx="12" cy="12" r="9" /></svg>
+}
+const RES_CLS: Record<string, string> = { W: 'bg-win/15 text-win', D: 'bg-surface2 text-muted', L: 'bg-loss/15 text-loss' }
+
+function TeamPanel({ team, side, row, recent }: { team: Team; side: SideK; row: StandingRow | null; recent: Match[] }) {
+  const formFromTable = row?.form ? row.form.split(',').map(s => s.trim()).filter(Boolean) : null
+  const formFromMatches = recent.map(m => resultFor(team.id, m)).filter((r): r is 'W' | 'D' | 'L' => !!r).reverse()
   const form = formFromTable && formFromTable.length ? formFromTable : formFromMatches
   return (
-    <div>
-      <div className="flex items-center gap-2 mb-3">
-        {team.crest && <img src={team.crest} alt="" className="w-6 h-6 object-contain" />}
-        <span className="font-display font-bold text-ink">{team.shortName || team.name}</span>
-        {row && <span className="ml-auto num text-xs text-faint">#{row.position}{row.teamsInTable ? ` / ${row.teamsInTable}` : ''}</span>}
-      </div>
-
+    <div className="min-w-0">
+      <SideTitle team={team} side={side} right={row ? <span className={`num text-xs font-bold ${SIDE_TEXT[side]}`}>#{row.position}{row.teamsInTable ? <span className="text-faint font-medium"> / {row.teamsInTable}</span> : null}</span> : undefined} />
       {row ? (
         <div className="grid grid-cols-3 gap-2 mb-3">
-          <Mini label={tt("Points")} value={row.points} />
-          <Mini label="W-D-L" value={`${row.won}-${row.draw}-${row.lost}`} />
-          <Mini label={tt("GF-GA")} value={`${row.goalsFor}-${row.goalsAgainst}`} />
+          <ToneTile label={tt("Points")} value={row.points} tone="none" />
+          <ToneTile label="W-D-L" value={<span className="text-base">{row.won}-{row.draw}-{row.lost}</span>} tone="none" />
+          <ToneTile label={tt("GD")} value={`${row.goalDifference > 0 ? '+' : ''}${row.goalDifference}`} tone={row.goalDifference > 0 ? 'good' : row.goalDifference < 0 ? 'bad' : 'none'} />
         </div>
       ) : (
         <p className="text-xs text-faint mb-3">{tt("No league table for this competition.")}</p>
       )}
-
-      <div className="flex items-center gap-1 mb-3">
-        <span className="text-[11px] text-faint mr-1">{tt("Form")}</span>
-        {form.length ? form.map((r, i) => <FormBadge key={i} r={r as string} />) : <span className="text-xs text-faint">—</span>}
-      </div>
-
+      {form.length > 0 && (
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-faint">{tt("Form")}</span>
+          <FormChips f={form} />
+        </div>
+      )}
       {recent.length > 0 && (
-        <ul className="space-y-1 text-sm">
+        <ul>
           {recent.map(m => {
             const isHome = m.homeTeam.id === team.id
             const opp = isHome ? m.awayTeam : m.homeTeam
             const gf = isHome ? m.score.fullTime.home : m.score.fullTime.away
             const ga = isHome ? m.score.fullTime.away : m.score.fullTime.home
+            const r = resultFor(team.id, m)
             return (
-              <li key={m.id} className="flex items-center gap-2">
-                <span className="num w-[76px] flex-shrink-0 text-[11px] text-faint whitespace-nowrap">{shortDate(m.utcDate)}</span>
-                <FormBadge r={resultFor(team.id, m)} />
-                <span className="text-[10px] text-faint w-3">{isHome ? 'H' : 'A'}</span>
-                <span className="flex-1 truncate text-muted">{opp.shortName || opp.name}</span>
-                <span className="num font-semibold text-ink">{gf}–{ga}</span>
+              <li key={m.id}>
+                <div className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-xs">
+                  <span className={`w-6 h-6 rounded-md grid place-items-center text-[10px] font-extrabold shrink-0 ${r ? RES_CLS[r] : 'bg-surface2 text-faint'}`}>{r || '–'}</span>
+                  <span className="num text-faint w-14 shrink-0 whitespace-nowrap">{new Date(m.utcDate).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short' })}</span>
+                  <span className={`rounded px-1 text-[9px] font-bold shrink-0 ${isHome ? 'bg-home/15 text-home' : 'bg-surface2 text-muted'}`}>{isHome ? tt("H") : tt("A")}</span>
+                  {opp.crest ? <img src={opp.crest} alt="" className="w-4 h-4 object-contain shrink-0" loading="lazy" /> : <span className="w-4 h-4 shrink-0" />}
+                  <span className="text-ink font-medium truncate">{tname(opp)}</span>
+                  <span className="ml-auto num font-bold text-ink shrink-0">{gf}–{ga}</span>
+                </div>
               </li>
             )
           })}
         </ul>
       )}
-    </div>
-  )
-}
-
-function Mini({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-lg bg-surface2/60 border border-line/50 py-1.5 text-center">
-      <div className="num text-sm font-bold text-ink">{value}</div>
-      <div className="text-[10px] text-faint">{label}</div>
     </div>
   )
 }
@@ -1510,45 +1574,68 @@ function H2H({ h2h, home, away }: { h2h: H2HData; home: Team; away: Team }) {
   const played = h2h.matches.filter(h => DONE.has(h.status))
   // results are shown from this page's home team's side (they may have been the away side back then)
   const isHomeSide = (id: number, name: string) => id === agg.homeTeam.id || id === home.id || name === home.name || name === home.shortName
+  const lead: SideK | null = hw === aw ? null : hw > aw ? 'H' : 'A'
   return (
     <>
-      <div className="grid grid-cols-3 gap-2 mb-3">
-        <div className="rounded-lg bg-home/10 border border-home/30 py-2 text-center">
-          <div className="num text-2xl font-extrabold text-home">{hw}</div>
-          <div className="text-[11px] text-muted truncate px-1">{home.shortName || home.name} {tt("wins")}</div>
+      <div className="rounded-2xl border border-line/60 bg-surface2/40 p-4 sm:p-5">
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+          {(['H', 'A'] as const).map((s, i) => {
+            const team = s === 'H' ? home : away
+            return (
+              <div key={s} className={`flex flex-col sm:flex-row items-center gap-2 sm:gap-3 min-w-0 text-center ${i === 1 ? 'order-3 sm:flex-row-reverse sm:text-right' : 'sm:text-left'}`}>
+                <CrestBox team={team} />
+                <span className="min-w-0 max-w-full">
+                  <span className="block font-display font-bold text-ink truncate">{tname(team)}</span>
+                  <span className="block text-[11px] text-faint">{tt("{0} wins", { 0: s === 'H' ? hw : aw })}</span>
+                </span>
+              </div>
+            )
+          })}
+          <div className="order-2 text-center">
+            <div className="num font-display text-3xl sm:text-4xl font-extrabold leading-none whitespace-nowrap">
+              <span className={lead !== 'A' ? SIDE_TEXT.H : 'text-muted'}>{hw}</span>
+              <span className="text-faint text-xl sm:text-2xl mx-1.5 align-middle">{d}</span>
+              <span className={lead !== 'H' ? SIDE_TEXT.A : 'text-muted'}>{aw}</span>
+            </div>
+            <div className="text-[10px] text-faint mt-1 uppercase tracking-wide">{tt("wins · draws · wins")}</div>
+          </div>
         </div>
-        <div className="rounded-lg bg-surface2/60 border border-line/50 py-2 text-center">
-          <div className="num text-2xl font-extrabold text-ink">{d}</div>
-          <div className="text-[11px] text-muted">{tt("Draws")}</div>
+        <div className="flex h-2 gap-[3px] mt-4">
+          <div className="rounded-full bg-home" style={{ width: `${(hw / total) * 100}%` }} />
+          <div className="rounded-full bg-muted/50" style={{ width: `${(d / total) * 100}%` }} />
+          <div className="rounded-full bg-away" style={{ width: `${(aw / total) * 100}%` }} />
         </div>
-        <div className="rounded-lg bg-away/10 border border-away/30 py-2 text-center">
-          <div className="num text-2xl font-extrabold text-away">{aw}</div>
-          <div className="text-[11px] text-muted truncate px-1">{away.shortName || away.name} {tt("wins")}</div>
+        <div className="mt-2 text-center text-[11px] text-faint num">
+          {tt("{0} goals in {1} games · {2} per game", { 0: agg.totalGoals, 1: agg.numberOfMatches, 2: (agg.totalGoals / total).toFixed(1) })}
         </div>
       </div>
-      <div className="flex h-2 gap-[3px] mb-1.5">
-        <div className="rounded-full bg-home" style={{ width: `calc(${(hw / total) * 100}% - 3px)` }} />
-        <div className="rounded-full bg-faint" style={{ width: `calc(${(d / total) * 100}% - 3px)` }} />
-        <div className="rounded-full bg-away" style={{ width: `calc(${(aw / total) * 100}% - 3px)` }} />
-      </div>
-      <div className="text-[11px] text-faint mb-4 num">
-        {tt("{0} goals in {1} games · {2} per game", { 0: agg.totalGoals, 1: agg.numberOfMatches, 2: (agg.totalGoals / total).toFixed(1) })}</div>
-      <ul className="divide-y divide-line/50 text-sm">
+      <ul className="mt-4 divide-y divide-line/40">
         {played.map(h => {
           const hg = h.score.fullTime.home ?? 0
           const ag = h.score.fullTime.away ?? 0
           const ourHomeWasHome = isHomeSide(h.homeTeam.id, h.homeTeam.name)
           const ours = ourHomeWasHome ? hg - ag : ag - hg
-          const r = ours > 0 ? 'W' : ours < 0 ? 'L' : 'D'
+          const dot = ours > 0 ? 'bg-home' : ours < 0 ? 'bg-away' : 'bg-muted/50'
           return (
-            <li key={h.id} className="py-2 flex items-center gap-2">
-              <div className="w-[84px] flex-shrink-0">
-                <div className="num text-[11px] text-muted whitespace-nowrap">{shortDate(h.utcDate)}</div>
-                <div className="text-[10px] text-faint truncate" title={h.competition?.name}>{h.competition?.name}</div>
+            <li key={h.id}>
+              <div className="grid grid-cols-[3.5rem_1fr_auto_1fr_0.75rem] sm:grid-cols-[6rem_1fr_auto_1fr_1rem] items-center gap-2 sm:gap-3 py-2 px-1 text-sm">
+                <span className="text-[11px] text-faint leading-tight min-w-0">
+                  <span className="num block whitespace-nowrap">{new Date(h.utcDate).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short', year: '2-digit' })}</span>
+                  <span className="hidden sm:block text-[10px] truncate" title={h.competition?.name}>{h.competition?.name}</span>
+                </span>
+                <span className="flex items-center justify-end gap-2 min-w-0">
+                  <span className={`truncate ${hg > ag ? 'font-bold text-ink' : 'text-muted'}`}>{tname(h.homeTeam)}</span>
+                  {h.homeTeam.crest && <img src={h.homeTeam.crest} alt="" className="w-[18px] h-[18px] object-contain shrink-0" loading="lazy" />}
+                </span>
+                <span className="num font-extrabold text-ink rounded-lg bg-surface2/80 px-2.5 py-1 text-center min-w-[56px]">
+                  <span className={hg >= ag ? '' : 'text-muted'}>{hg}</span><span className="text-faint">–</span><span className={ag >= hg ? '' : 'text-muted'}>{ag}</span>
+                </span>
+                <span className="flex items-center gap-2 min-w-0">
+                  {h.awayTeam.crest && <img src={h.awayTeam.crest} alt="" className="w-[18px] h-[18px] object-contain shrink-0" loading="lazy" />}
+                  <span className={`truncate ${ag > hg ? 'font-bold text-ink' : 'text-muted'}`}>{tname(h.awayTeam)}</span>
+                </span>
+                <span className={`justify-self-end w-2 h-2 rounded-full ${dot}`} />
               </div>
-              <span className="flex-1 text-right truncate text-muted">{h.homeTeam.shortName || h.homeTeam.name}</span>
-              <span className={`num font-bold px-2 py-0.5 rounded-md text-ink ${r === 'W' ? 'bg-home/15' : r === 'L' ? 'bg-away/15' : 'bg-surface2'}`}>{hg}–{ag}</span>
-              <span className="flex-1 truncate text-muted">{h.awayTeam.shortName || h.awayTeam.name}</span>
             </li>
           )
         })}
@@ -1575,7 +1662,6 @@ interface TeamAvg {
 interface Injury { id: number | null; name: string; out: boolean; reason: string | null }
 interface Fixture1 { date: string; days: number; home: boolean; opponent: string; opponentCrest: string | null; competition: string | null; score: string | null }
 interface TeamSchedule { previous: Fixture1 | null; next: Fixture1 | null; games14: number; games30: number | null; away30: number | null; recent: Fixture1[]; upcoming: Fixture1[] }
-
 function InjuryList({ team, list }: { team: Team; list: Injury[] }) {
   return (
     <div>
@@ -1603,64 +1689,93 @@ function InjuryList({ team, list }: { team: Team; list: Injury[] }) {
 
 const daysText = (d: number) => (d < 1 ? tt("under a day") : tt("{0} days", { 0: Math.floor(d) }))
 
-/** One line comparing both teams' rest and workload. */
+/** Both teams' rest and workload, in a short banner. */
 function RestSummary({ home, away, h, a }: { home: Team; away: Team; h: TeamSchedule; a: TeamSchedule }) {
-  const lines: string[] = []
+  const lines: ReactNode[] = []
   const hr = h.previous?.days, ar = a.previous?.days
   if (hr != null && ar != null) {
     const diff = Math.floor(hr) - Math.floor(ar)
-    if (Math.abs(diff) >= 2) lines.push(tt("{0} has {1} more days of rest.", { 0: diff > 0 ? home.shortName || home.name : away.shortName || away.name, 1: Math.abs(diff) }))
-    else lines.push(tt("Similar rest for both teams."))
+    if (Math.abs(diff) >= 2) {
+      const s: SideK = diff > 0 ? 'H' : 'A'
+      lines.push(<><b className={SIDE_TEXT[s]}>{tname(s === 'H' ? home : away)}</b> {tt("has {0} more days of rest.", { 0: Math.abs(diff) })}</>)
+    } else lines.push(tt("Similar rest for both teams."))
   }
   for (const [t, s] of [[home, h], [away, a]] as const) {
-    if (s.games14 >= 4) lines.push(tt("{0} played {1} games in the last 14 days.", { 0: t.shortName || t.name, 1: s.games14 }))
-    if (s.next && s.next.days <= 4) lines.push(tt("{0} plays again {1} later ({2}).", { 0: t.shortName || t.name, 1: daysText(s.next.days), 2: s.next.competition || '' }))
+    if (s.games14 >= 4) lines.push(tt("{0} played {1} games in the last 14 days.", { 0: tname(t), 1: s.games14 }))
+    if (s.next && s.next.days <= 4) lines.push(tt("{0} plays again {1} later ({2}).", { 0: tname(t), 1: daysText(s.next.days), 2: s.next.competition || '' }))
   }
   if (!lines.length) return null
   return (
-    <div className="rounded-xl bg-surface2/50 border border-line/60 px-4 py-3 text-sm text-muted space-y-1">
-      {lines.map((l, i) => <p key={i}>{l}</p>)}
+    <div className="flex items-start gap-3 rounded-xl border border-accent/25 bg-accent/[0.07] px-4 py-3 text-sm text-ink">
+      <span className="w-8 h-8 rounded-lg bg-accent/15 text-accent grid place-items-center shrink-0">{ICO.bed}</span>
+      <div className="space-y-0.5 pt-1.5 min-w-0">{lines.map((l, i) => <p key={i}>{l}</p>)}</div>
     </div>
   )
 }
 
-function RestPanel({ team, s }: { team: Team; s: TeamSchedule }) {
-  const fx = (f: Fixture1, before: boolean, key: number) => (
-    <li key={key} className="flex items-center gap-2 text-xs">
-      <span className="num text-faint w-14 shrink-0">{new Date(f.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span>
-      <span className="text-faint w-4 shrink-0">{f.home ? tt("H") : tt("A")}</span>
-      {f.opponentCrest && <img src={f.opponentCrest} alt="" className="w-4 h-4 object-contain shrink-0" loading="lazy" />}
-      <span className="text-ink truncate">{f.opponent}</span>
-      <span className="ml-auto text-faint truncate max-w-[40%] text-right">{f.score ? <span className="num text-muted mr-1.5">{f.score}</span> : null}{f.competition}</span>
-      <span className="sr-only">{before ? tt("{0} before", { 0: daysText(f.days) }) : tt("{0} after", { 0: daysText(f.days) })}</span>
-    </li>
+function RestPanel({ team, side, s }: { team: Team; side: SideK; s: TeamSchedule }) {
+  const rest = s.previous?.days
+  const restTone: Tone = rest == null ? 'none' : rest < 3 ? 'bad' : rest < 4 ? 'mid' : 'good'
+  const loadTone: Tone = s.games14 >= 5 ? 'bad' : s.games14 === 4 ? 'mid' : 'none'
+  const nextTone: Tone = !s.next ? 'none' : s.next.days <= 3 ? 'mid' : 'none'
+  const res = (f: Fixture1) => {
+    if (!f.score) return null
+    const [x, y] = f.score.split('-').map(Number)
+    return x > y ? 'W' : x < y ? 'L' : 'D'
+  }
+  const date = (f: Fixture1) => new Date(f.date).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short' })
+  const opp = (f: Fixture1) => (
+    <>
+      <span className={`rounded px-1 text-[9px] font-bold shrink-0 ${f.home ? 'bg-home/15 text-home' : 'bg-surface2 text-muted'}`}>{f.home ? tt("H") : tt("A")}</span>
+      {f.opponentCrest ? <img src={f.opponentCrest} alt="" className="w-4 h-4 object-contain shrink-0" loading="lazy" /> : <span className="w-4 h-4 shrink-0" />}
+      <span className="min-w-0 truncate">
+        <span className="text-ink font-medium">{f.opponent}</span>
+        {f.competition && <span className="hidden sm:inline text-[10px] text-faint ml-1.5">{f.competition}</span>}
+      </span>
+    </>
   )
   return (
-    <div>
-      <div className="flex items-center gap-2 mb-3">
-        {team.crest && <img src={team.crest} alt="" className="w-6 h-6 object-contain" />}
-        <span className="font-display font-bold text-ink">{team.shortName || team.name}</span>
-      </div>
+    <div className="min-w-0">
+      <SideTitle team={team} side={side} />
       <div className="grid grid-cols-3 gap-2 mb-4">
-        <Mini label={tt("Days of rest")} value={s.previous ? (s.previous.days < 1 ? '<1' : Math.floor(s.previous.days)) : '—'} />
-        <Mini label={tt("Games, last 14 days")} value={s.games14} />
-        <Mini label={tt("Next game in")} value={s.next ? tt("{0} d", { 0: Math.floor(s.next.days) }) : '—'} />
+        <ToneTile icon={ICO.bed} label={tt("Rest")} tone={restTone} value={rest == null ? '—' : rest < 1 ? '<1 d' : tt("{0} d", { 0: Math.floor(rest) })} />
+        <ToneTile icon={ICO.cal} label={tt("Last 14 days")} tone={loadTone} value={s.games14} />
+        <ToneTile icon={ICO.next} label={tt("Next game")} tone={nextTone} value={s.next ? tt("{0} d", { 0: Math.floor(s.next.days) }) : '—'} />
       </div>
       {s.recent.length > 0 && (
         <>
-          <div className="label pb-1.5">{tt("Before this match")}</div>
-          <ul className="space-y-1.5 mb-3">{s.recent.map((f, i) => fx(f, true, i))}</ul>
+          <div className="label pb-1 px-2">{tt("Before this match")}</div>
+          <ul className="mb-3">
+            {s.recent.map((f, i) => {
+              const r = res(f)
+              return (
+                <li key={i} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-xs">
+                  <span className={`w-6 h-6 rounded-md grid place-items-center text-[10px] font-extrabold shrink-0 ${r ? RES_CLS[r] : 'bg-surface2 text-faint'}`}>{r || '–'}</span>
+                  <span className="num text-faint w-12 shrink-0">{date(f)}</span>
+                  {opp(f)}
+                  {f.score && <span className="ml-auto num font-bold text-ink shrink-0">{f.score.replace('-', '–')}</span>}
+                </li>
+              )
+            })}
+          </ul>
         </>
       )}
       {s.upcoming.length > 0 && (
         <>
-          <div className="label pb-1.5">{tt("After this match")}</div>
-          <ul className="space-y-1.5">{s.upcoming.map((f, i) => fx(f, false, i))}</ul>
+          <div className="label pb-1 px-2">{tt("After this match")}</div>
+          <ul>
+            {s.upcoming.map((f, i) => (
+              <li key={i} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-xs">
+                <span className="w-6 h-6 rounded-md grid place-items-center border border-dashed border-line text-faint shrink-0">{ICO.clock}</span>
+                <span className="num text-faint w-12 shrink-0">{date(f)}</span>
+                {opp(f)}
+                <span className="ml-auto rounded-full bg-surface2 px-2 py-0.5 text-[10px] font-semibold text-muted num shrink-0">+{tt("{0} d", { 0: Math.floor(f.days) })}</span>
+              </li>
+            ))}
+          </ul>
         </>
       )}
-      {s.games30 != null && (
-        <p className="mt-3 text-[11px] text-faint">{tt("{0} games in the last 30 days, {1} of them away.", { 0: s.games30, 1: s.away30 ?? 0 })}</p>
-      )}
+      {s.games30 != null && <p className="mt-3 px-2 text-[11px] text-faint">{tt("{0} games in the last 30 days, {1} of them away.", { 0: s.games30, 1: s.away30 ?? 0 })}</p>}
     </div>
   )
 }
@@ -1671,22 +1786,31 @@ interface XI {
   lineup: (Player & { starts: number; grid?: string | null })[]
 }
 
-const AVG_ROWS: { k: string; label: string; lowerBetter?: boolean; pct?: boolean; dec?: number }[] = [
-  { k: 'totalGoals', label: tt("Total goals") },
-  { k: 'goalsFor', label: tt("Goals scored") },
-  { k: 'goalsAgainst', label: tt("Goals conceded"), lowerBetter: true },
-  { k: 'expected_goals', label: tt("Expected goals (xG)"), dec: 2 },
-  { k: 'ball_possession', label: tt('Possession'), pct: true },
-  { k: 'shots', label: tt("Total shots") },
-  { k: 'shots_on_goal', label: tt("Shots on target") },
-  { k: 'shots_off_goal', label: tt("Shots off target") },
-  { k: 'corner_kicks', label: tt('Corners') },
-  { k: 'pass_accuracy', label: tt("Pass accuracy"), pct: true },
-  { k: 'saves', label: tt("Goalkeeper saves") },
-  { k: 'fouls', label: tt('Fouls'), lowerBetter: true },
-  { k: 'offsides', label: tt('Offsides'), lowerBetter: true },
-  { k: 'yellow_cards', label: tt("Yellow cards"), lowerBetter: true },
-  { k: 'red_cards', label: tt("Red cards"), lowerBetter: true, dec: 2 }
+type AvgRow = { k: string; label: string; lowerBetter?: boolean; pct?: boolean; dec?: number; neutral?: boolean }
+const AVG_GROUPS: { title: string; rows: AvgRow[] }[] = [
+  { title: tt("Goals"), rows: [
+    { k: 'totalGoals', label: tt("Total goals"), neutral: true },
+    { k: 'goalsFor', label: tt("Goals scored") },
+    { k: 'goalsAgainst', label: tt("Goals conceded"), lowerBetter: true },
+    { k: 'expected_goals', label: tt("Expected goals (xG)"), dec: 2 }
+  ] },
+  { title: tt("Attack"), rows: [
+    { k: 'shots', label: tt("Total shots") },
+    { k: 'shots_on_goal', label: tt("Shots on target") },
+    { k: 'shots_off_goal', label: tt("Shots off target"), neutral: true },
+    { k: 'corner_kicks', label: tt('Corners') }
+  ] },
+  { title: tt("Ball & keeper"), rows: [
+    { k: 'ball_possession', label: tt('Possession'), pct: true },
+    { k: 'pass_accuracy', label: tt("Pass accuracy"), pct: true },
+    { k: 'saves', label: tt("Goalkeeper saves"), neutral: true }
+  ] },
+  { title: tt("Discipline"), rows: [
+    { k: 'fouls', label: tt('Fouls'), lowerBetter: true },
+    { k: 'offsides', label: tt('Offsides'), lowerBetter: true },
+    { k: 'yellow_cards', label: tt("Yellow cards"), lowerBetter: true },
+    { k: 'red_cards', label: tt("Red cards"), lowerBetter: true, dec: 2 }
+  ] }
 ]
 
 function avgValue(t: TeamAvg, k: string): number | null {
@@ -1695,70 +1819,94 @@ function avgValue(t: TeamAvg, k: string): number | null {
   return typeof v === 'number' ? v : null
 }
 
-function AveragesPanel({ home, away, h, a }: { home: Team; away: Team; h: TeamAvg; a: TeamAvg }) {
-  const rows: { label: string; hv: number; av: number; text: (v: number) => string; lowerBetter?: boolean; neutral?: boolean }[] = []
-  for (const r of AVG_ROWS) {
-    const hv = avgValue(h, r.k)
-    const av = avgValue(a, r.k)
-    if (hv === null || av === null) continue
-    rows.push({
-      label: r.label,
-      hv,
-      av,
-      lowerBetter: r.lowerBetter,
-      neutral: r.k === 'totalGoals',
-      text: v => (r.pct ? `${Math.round(v)}%` : r.dec ? v.toFixed(r.dec) : String(Math.round(v * 10) / 10))
-    })
+interface CmpRow { label: string; hv: number; av: number; text: (v: number) => string; lowerBetter?: boolean; neutral?: boolean }
+
+function CmpLine({ r }: { r: CmpRow }) {
+  const sum = r.hv + r.av || 1
+  const better: SideK | null = r.neutral || r.hv === r.av ? null : (r.lowerBetter ? r.hv < r.av : r.hv > r.av) ? 'H' : 'A'
+  return (
+    <li className="py-2">
+      <div className="flex items-center justify-between gap-2 text-sm">
+        <span className={`num w-16 ${better === 'H' ? 'font-extrabold text-ink' : 'text-muted'}`}>{r.text(r.hv)}</span>
+        <span className="text-[11px] font-semibold text-faint text-center truncate">{r.label}</span>
+        <span className={`num w-16 text-right ${better === 'A' ? 'font-extrabold text-ink' : 'text-muted'}`}>{r.text(r.av)}</span>
+      </div>
+      <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+        <div className="h-2 rounded-full bg-surface2 overflow-hidden flex justify-end">
+          <div className={`h-full rounded-full transition-all duration-700 ${better === 'H' ? 'bg-home' : 'bg-home/30'}`} style={{ width: `${(r.hv / sum) * 100}%` }} />
+        </div>
+        <div className="h-2 rounded-full bg-surface2 overflow-hidden">
+          <div className={`h-full rounded-full transition-all duration-700 ${better === 'A' ? 'bg-away' : 'bg-away/30'}`} style={{ width: `${(r.av / sum) * 100}%` }} />
+        </div>
+      </div>
+    </li>
+  )
+}
+
+function AveragesPanel({ home, away, h, a, form }: { home: Team; away: Team; h: TeamAvg; a: TeamAvg; form?: { home: string[]; away: string[] } }) {
+  const groups: { title: string; rows: CmpRow[] }[] = []
+  for (const g of AVG_GROUPS) {
+    const rows: CmpRow[] = []
+    for (const r of g.rows) {
+      const hv = avgValue(h, r.k), av = avgValue(a, r.k)
+      if (hv === null || av === null) continue
+      rows.push({ label: r.label, hv, av, lowerBetter: r.lowerBetter, neutral: r.neutral, text: v => (r.pct ? `${Math.round(v)}%` : r.dec ? v.toFixed(r.dec) : String(Math.round(v * 10) / 10)) })
+    }
+    if (rows.length) groups.push({ title: g.title, rows })
   }
-  // counts over the same games, in the same style
   const n = Math.min(h.games, a.games)
   if (n) {
     const count = (v: number) => String(v)
-    rows.push({ label: tt("Wins (of {0})", { 0: n }), hv: h.record.won, av: a.record.won, text: count })
-    rows.push({ label: tt("Clean sheets"), hv: h.cleanSheets, av: a.cleanSheets, text: count })
-    rows.push({ label: tt("Both teams scored"), hv: h.btts, av: a.btts, text: count, neutral: true })
-    rows.push({ label: tt("Over 2.5 goals"), hv: h.over25, av: a.over25, text: count, neutral: true })
+    groups.push({ title: tt("Last {0} games", { 0: n }), rows: [
+      { label: tt("Wins (of {0})", { 0: n }), hv: h.record.won, av: a.record.won, text: count },
+      { label: tt("Clean sheets"), hv: h.cleanSheets, av: a.cleanSheets, text: count },
+      { label: tt("Both teams scored"), hv: h.btts, av: a.btts, text: count, neutral: true },
+      { label: tt("Over 2.5 goals"), hv: h.over25, av: a.over25, text: count, neutral: true }
+    ] })
   }
+  let he = 0, ae = 0
+  for (const g of groups) for (const r of g.rows) {
+    if (r.neutral || r.hv === r.av) continue
+    if (r.lowerBetter ? r.hv < r.av : r.hv > r.av) he++; else ae++
+  }
+  const cats = he + ae
+  const lead: SideK | null = he === ae ? null : he > ae ? 'H' : 'A'
   return (
-    <div className="rounded-2xl border border-line/60 bg-surface2/30 p-4 sm:p-6">
-      <div className="text-center text-[11px] font-bold uppercase tracking-[0.14em] text-accent mb-4">{tt("Average / match")}</div>
-      <div className="flex items-center justify-between gap-3 pb-4 border-b border-line/60">
-        <span className="flex items-center gap-2 min-w-0">
-          {home.crest && <img src={home.crest} alt="" className="w-6 h-6 object-contain flex-shrink-0" />}
-          <span className="font-semibold text-ink truncate">{home.shortName || home.name}</span>
-        </span>
-        <span className="flex items-center gap-2 min-w-0 justify-end">
-          <span className="font-semibold text-ink truncate text-right">{away.shortName || away.name}</span>
-          {away.crest && <img src={away.crest} alt="" className="w-6 h-6 object-contain flex-shrink-0" />}
-        </span>
-      </div>
-
-      <div className="divide-y divide-line/50">
-        {rows.map(r => {
-          const total = r.hv + r.av || 1
-          const better = r.neutral || r.hv === r.av ? null : (r.lowerBetter ? r.hv < r.av : r.hv > r.av) ? 'H' : 'A'
-          return (
-            <div key={r.label} className="py-3">
-              <div className="grid grid-cols-[64px_1fr_64px] items-center gap-2 mb-2">
-                <span className={`num ${better === 'H' || (!better && r.hv >= r.av) ? 'font-bold text-ink' : 'text-muted'}`}>{r.text(r.hv)}</span>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-muted text-center">{r.label}</span>
-                <span className={`num text-right ${better === 'A' || (!better && r.av >= r.hv) ? 'font-bold text-ink' : 'text-muted'}`}>{r.text(r.av)}</span>
-              </div>
-              <div className="grid grid-cols-2 gap-1">
-                <div className="h-2.5 rounded-l-full bg-surface2 flex justify-end overflow-hidden">
-                  <div className={`h-full rounded-l-sm ${better === 'H' ? 'bg-accent' : 'bg-ink/20'}`} style={{ width: `${(r.hv / total) * 100}%` }} />
-                </div>
-                <div className="h-2.5 rounded-r-full bg-surface2 overflow-hidden">
-                  <div className={`h-full rounded-r-sm ${better === 'A' ? 'bg-accent' : 'bg-ink/20'}`} style={{ width: `${(r.av / total) * 100}%` }} />
-                </div>
-              </div>
-            </div>
-          )
-        })}
+    <div className="card p-5 sm:p-6">
+      <TeamsHead home={home} away={away} sub={s => {
+        const x = s === 'H' ? h : a
+        const gd = Math.round((x.goalsFor - x.goalsAgainst) * 10) / 10
+        return (
+          <>
+            <span className="block text-[11px] text-faint num">{x.record.won}-{x.record.draw}-{x.record.lost} · <span className={gd > 0 ? 'text-win' : gd < 0 ? 'text-loss' : ''}>{gd > 0 ? '+' : ''}{gd}</span> {tt("goals/game")}</span>
+            {form && <FormChips f={s === 'H' ? form.home : form.away} align={s === 'A' ? 'right' : 'left'} />}
+          </>
+        )
+      }} />
+      {cats > 0 && (
+        <div className="mt-5 rounded-xl border border-line/60 bg-surface2/40 px-4 py-3">
+          <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
+            <span className={SIDE_TEXT.H}>{he}</span>
+            <span className="text-muted text-center">{lead ? tt("{0} lead {1} of {2} categories", { 0: tname(lead === 'H' ? home : away), 1: Math.max(he, ae), 2: cats }) : tt("Level: {0} categories each", { 0: he })}</span>
+            <span className={SIDE_TEXT.A}>{ae}</span>
+          </div>
+          <div className="flex h-2 gap-[3px]">
+            <div className="rounded-full bg-home" style={{ width: `${(he / cats) * 100}%` }} />
+            <div className="rounded-full bg-away" style={{ width: `${(ae / cats) * 100}%` }} />
+          </div>
+        </div>
+      )}
+      <div className="mt-5 space-y-5">
+        {groups.map(g => (
+          <div key={g.title}>
+            <div className="label pb-1">{g.title}</div>
+            <ul className="divide-y divide-line/40">{g.rows.map(r => <CmpLine key={r.label} r={r} />)}</ul>
+          </div>
+        ))}
       </div>
       {Math.min(h.withStats, a.withStats) < Math.min(h.games, a.games) && (
-        <p className="mt-3 text-[11px] text-faint">
-          {tt("Goals are from all {0} games. Shots, corners and cards are averaged over the games where our data provider has detailed statistics ({1}: {2}, {3}: {4}).", { 0: Math.max(h.games, a.games), 1: home.shortName || home.name, 2: h.withStats, 3: away.shortName || away.name, 4: a.withStats })}
+        <p className="mt-4 text-[11px] text-faint">
+          {tt("Goals are from all {0} games. Shots, corners and cards are averaged over the games where our data provider has detailed statistics ({1}: {2}, {3}: {4}).", { 0: Math.max(h.games, a.games), 1: tname(home), 2: h.withStats, 3: tname(away), 4: a.withStats })}
         </p>
       )}
     </div>
@@ -1776,48 +1924,94 @@ const TAB_IDS: TabId[] = ['prediction', 'stats', 'lineups', 'rest', 'h2h', 'tabl
 
 type StandingsTable = { type: string; group?: string | null; table: TableRow[] }
 
-function LeagueTable({ tables: show, name, homeId, awayId }: { tables: StandingsTable[]; name: string; homeId: number; awayId: number }) {
+function LeagueTable({ tables: show, name, home, away }: { tables: StandingsTable[]; name: string; home: Team; away: Team }) {
+  const homeId = home.id, awayId = away.id
+  const find = (id: number) => {
+    for (const t of show) { const r = t.table.find(x => x.team.id === id); if (r) return { r, of: t.table.length } }
+    return null
+  }
+  const h = find(homeId), a = find(awayId)
+  const card = (s: SideK, x: { r: TableRow; of: number } | null) => {
+    const team = s === 'H' ? home : away
+    return (
+      <div className={`relative overflow-hidden rounded-2xl border border-line/60 bg-surface2/40 p-4 ${s === 'A' ? 'text-right' : ''}`}>
+        <span className={`absolute top-0 ${s === 'H' ? 'left-0' : 'right-0'} w-1 h-full ${SIDE_BG[s]}`} />
+        <div className={`flex items-center gap-2 ${s === 'A' ? 'flex-row-reverse' : ''}`}>
+          {team.crest && <img src={team.crest} alt="" className="w-[22px] h-[22px] object-contain" />}
+          <span className="font-display font-bold text-ink truncate">{tname(team)}</span>
+        </div>
+        {x ? (
+          <div className={`mt-3 flex flex-wrap items-end gap-x-4 gap-y-2 ${s === 'A' ? 'flex-row-reverse' : ''}`}>
+            <div>
+              <div className={`num font-display text-4xl font-extrabold leading-none ${SIDE_TEXT[s]}`}>{x.r.position}<span className="text-sm text-faint font-semibold">/{x.of}</span></div>
+              <div className="text-[10px] text-faint uppercase tracking-wide mt-1">{tt("Position")}</div>
+            </div>
+            <div>
+              <div className="num text-lg font-bold text-ink leading-none">{x.r.points}</div>
+              <div className="text-[10px] text-faint uppercase tracking-wide mt-1">{tt("Pts")}</div>
+            </div>
+            <div className="hidden sm:block">
+              <div className="num text-lg font-bold text-ink leading-none">{x.r.won}-{x.r.draw}-{x.r.lost}</div>
+              <div className="text-[10px] text-faint uppercase tracking-wide mt-1">W-D-L</div>
+            </div>
+            <div>
+              <div className={`num text-lg font-bold leading-none ${x.r.goalDifference > 0 ? 'text-win' : x.r.goalDifference < 0 ? 'text-loss' : 'text-ink'}`}>{x.r.goalDifference > 0 ? '+' : ''}{x.r.goalDifference}</div>
+              <div className="text-[10px] text-faint uppercase tracking-wide mt-1">{tt("GD")}</div>
+            </div>
+          </div>
+        ) : <p className="mt-3 text-xs text-faint">{tt("Not in this table")}</p>}
+      </div>
+    )
+  }
+  const sameTable = h && a && show.some(t => t.table.some(x => x.team.id === homeId) && t.table.some(x => x.team.id === awayId))
+  const gap = h && a && sameTable ? Math.abs(h.r.position - a.r.position) : 0
+  const pts = h && a && sameTable ? Math.abs(h.r.points - a.r.points) : 0
+  const upper: SideK | null = h && a && gap ? (h.r.position < a.r.position ? 'H' : 'A') : null
+  const hasForm = show.some(t => t.table.some(r => r.form))
   return (
     <Section title={tt("Standings")} note={name}>
-      <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        {card('H', h)}
+        {card('A', a)}
+      </div>
+      {upper && (
+        <p className="mt-3 text-center text-xs text-muted">
+          <b className={SIDE_TEXT[upper]}>{tname(upper === 'H' ? home : away)}</b> {gap === 1 ? tt("are one place higher") : tt("are {0} places higher", { 0: gap })}{pts ? ` · ${tt("{0} points apart", { 0: pts })}` : ''}
+        </p>
+      )}
+      <div className="mt-5 space-y-5">
         {show.map((t, i) => (
           <div key={i}>
             {t.group && <div className="label pb-2">{t.group.replace(/_/g, ' ')}</div>}
-            <table className="w-full text-xs sm:text-sm">
+            <table className="w-full table-fixed text-xs sm:text-sm">
               <thead>
-                <tr className="text-faint text-xs">
-                  <th className="text-left font-medium py-1 pl-2 w-8">#</th>
-                  <th className="text-left font-medium py-1">{tt("Team")}</th>
-                  <th className="text-right font-medium py-1 num w-9">P</th>
-                  <th className="hidden sm:table-cell text-right font-medium py-1 num w-9">W</th>
-                  <th className="hidden sm:table-cell text-right font-medium py-1 num w-9">D</th>
-                  <th className="hidden sm:table-cell text-right font-medium py-1 num w-9">L</th>
-                  <th className="hidden sm:table-cell text-right font-medium py-1 num w-16">{tt("Goals")}</th>
-                  <th className="text-right font-medium py-1 num w-10">{tt("GD")}</th>
-                  <th className="text-right font-medium py-1 pr-2 num w-12">{tt("Pts")}</th>
+                <tr className="text-faint text-[10px] uppercase tracking-wide">
+                  <th className="text-left font-semibold py-1.5 w-9">#</th>
+                  <th className="text-left font-semibold py-1.5">{tt("Team")}</th>
+                  <th className="text-right font-semibold py-1.5 num w-8 sm:w-10">P</th>
+                  <th className="hidden sm:table-cell text-right font-semibold py-1.5 num w-10">W</th>
+                  <th className="hidden sm:table-cell text-right font-semibold py-1.5 num w-10">D</th>
+                  <th className="hidden sm:table-cell text-right font-semibold py-1.5 num w-10">L</th>
+                  <th className="hidden sm:table-cell text-right font-semibold py-1.5 num w-16">{tt("Goals")}</th>
+                  <th className="text-right font-semibold py-1.5 num w-10 sm:w-12">{tt("GD")}</th>
+                  {hasForm && <th className="hidden lg:table-cell text-center font-semibold py-1.5 w-32">{tt("Form")}</th>}
+                  <th className="text-right font-semibold py-1.5 pr-2 num w-10 sm:w-12">{tt("Pts")}</th>
                 </tr>
               </thead>
               <tbody>
                 {t.table.map(r => {
-                  const side = r.team.id === homeId ? 'home' : r.team.id === awayId ? 'away' : null
-                  const rowCls =
-                    side === 'home'
-                      ? 'bg-home/10 shadow-[inset_3px_0_0_rgb(var(--home))]'
-                      : side === 'away'
-                        ? 'bg-away/10 shadow-[inset_3px_0_0_rgb(var(--away))]'
-                        : ''
-                  const nameCls = side === 'home' ? 'text-home font-bold' : side === 'away' ? 'text-away font-bold' : 'text-ink'
+                  const side: SideK | null = r.team.id === homeId ? 'H' : r.team.id === awayId ? 'A' : null
+                  const f = r.form ? r.form.split(',').map(x => x.trim()).filter(Boolean).slice(-5) : []
                   return (
-                    <tr key={r.team.id} className={`border-t border-line/50 ${rowCls}`}>
-                      <td className={`py-1.5 pl-2 num ${side ? 'text-ink font-semibold' : 'text-faint'}`}>{r.position}</td>
-                      <td className="py-1.5">
+                    <tr key={r.team.id} className={`border-t border-line/40 ${side === 'H' ? 'bg-home/10' : side === 'A' ? 'bg-away/10' : 'hover:bg-surface2/40'}`}>
+                      <td className="py-1.5 relative">
+                        {side && <span className={`absolute left-0 inset-y-1 w-[3px] rounded-full ${SIDE_BG[side]}`} />}
+                        <span className={`ml-1.5 inline-grid place-items-center w-5 h-5 rounded-md num text-[10px] font-bold ${r.position <= 4 && !t.group ? 'bg-accent/15 text-accent' : 'text-faint'}`}>{r.position}</span>
+                      </td>
+                      <td className="py-1.5 pr-2">
                         <span className="flex items-center gap-2 min-w-0">
-                          {r.team.crest ? (
-                            <img src={r.team.crest} alt="" className="w-4 h-4 object-contain flex-shrink-0" />
-                          ) : (
-                            <span className="w-4 h-4 rounded-full bg-surface2 flex-shrink-0" />
-                          )}
-                          <span className={`truncate ${nameCls}`}>{r.team.shortName || r.team.name}</span>
+                          {r.team.crest ? <img src={r.team.crest} alt="" className="w-[18px] h-[18px] object-contain flex-shrink-0" /> : <span className="w-[18px] h-[18px] rounded-full bg-surface2 flex-shrink-0" />}
+                          <span className={`truncate ${side ? 'font-bold text-ink' : 'text-ink'}`}>{r.team.shortName || r.team.name}</span>
                         </span>
                       </td>
                       <td className="py-1.5 text-right num text-muted">{r.playedGames}</td>
@@ -1825,11 +2019,13 @@ function LeagueTable({ tables: show, name, homeId, awayId }: { tables: Standings
                       <td className="hidden sm:table-cell py-1.5 text-right num text-muted">{r.draw}</td>
                       <td className="hidden sm:table-cell py-1.5 text-right num text-muted">{r.lost}</td>
                       <td className="hidden sm:table-cell py-1.5 text-right num text-muted">{r.goalsFor}:{r.goalsAgainst}</td>
-                      <td className={`py-1.5 text-right num ${r.goalDifference > 0 ? 'text-win' : r.goalDifference < 0 ? 'text-loss' : 'text-muted'}`}>
-                        {r.goalDifference > 0 ? '+' : ''}
-                        {r.goalDifference}
-                      </td>
-                      <td className={`py-1.5 pr-2 text-right num font-bold ${side ? 'text-ink' : 'text-ink/80'}`}>{r.points}</td>
+                      <td className={`py-1.5 text-right num font-semibold ${r.goalDifference > 0 ? 'text-win' : r.goalDifference < 0 ? 'text-loss' : 'text-muted'}`}>{r.goalDifference > 0 ? '+' : ''}{r.goalDifference}</td>
+                      {hasForm && (
+                        <td className="hidden lg:table-cell py-1.5">
+                          <span className="flex justify-center gap-0.5">{f.map((x, j) => <span key={j} className={`w-4 h-4 rounded text-[8px] font-extrabold grid place-items-center ${FORM_CLS[x] || 'bg-line text-muted'}`}>{x}</span>)}</span>
+                        </td>
+                      )}
+                      <td className="py-1.5 pr-2 text-right num font-extrabold text-ink">{r.points}</td>
                     </tr>
                   )
                 })}
