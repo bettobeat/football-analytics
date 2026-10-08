@@ -65,6 +65,14 @@ export function useBbConfig(): BbConfig | null {
   return cfg
 }
 
+/** League order on the pages (biggest first) and the country of each league for the flags menu. */
+export const BB_ORDER = ['NBA', 'EL', 'ACB', 'BSL', 'EC', 'LBA', 'LNB', 'GBL', 'BBL', 'BCL', 'ABA', 'LKL', 'FEC', 'NBL', 'JBL', 'CBA', 'NBB', 'BSN']
+export const bbRank = (code: string) => { const i = BB_ORDER.indexOf(code); return i < 0 ? 99 : i }
+export const BB_COUNTRY: Record<string, string> = {
+  NBA: 'us', EL: 'eu', ACB: 'es', LBA: 'it', BSL: 'tr', LNB: 'fr', BBL: 'de', GBL: 'gr', LKL: 'lt',
+  EC: 'eu', BCL: 'eu', ABA: 'eu', FEC: 'eu', NBL: 'au', JBL: 'jp', CBA: 'cn', NBB: 'br', BSN: 'pr'
+}
+
 export const BB_STATUS: Record<string, string> = {
   Q1: t('Q1'), Q2: t('Q2'), Q3: t('Q3'), Q4: t('Q4'), OT: t('OT'), BT: t('Break'), HT: t('Half-time'),
   FT: t('Final'), AOT: t('Final (OT)'), POST: t('Postponed'), CANC: t('Cancelled'), SUSP: t('Suspended'), AWD: t('Awarded'), ABD: t('Abandoned')

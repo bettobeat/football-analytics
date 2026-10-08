@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { t, LOCALE } from '../../lib/i18n'
 import { useReveal, justRevealed } from '../../lib/reveal'
 import CountUp from '../../components/CountUp'
-import { BB_STATUS, timeOf, useBbFavorites, type BbGame, type BbSide } from '../../lib/bb'
+import { BB_STATUS, bbRank, timeOf, useBbFavorites, type BbGame, type BbSide } from '../../lib/bb'
 
 /** Shared pieces of the basketball pages — the same look as the football pages. */
 
@@ -190,12 +190,11 @@ export function GameRow({ g, showLeague = false, showDay = false, compact = fals
   )
 }
 
-const LEAGUE_ORDER = ['NBA', 'EL', 'ACB', 'LBA']
 /** A day's games grouped by league (NBA first), each league in its own card with a header — like football. */
 export function LeagueCards({ games, logos }: { games: BbGame[]; logos?: Record<string, string | null> }) {
   const by = new Map<string, BbGame[]>()
   for (const g of games) by.set(g.league.code, [...(by.get(g.league.code) || []), g])
-  const order = [...by.keys()].sort((a, b) => LEAGUE_ORDER.indexOf(a) - LEAGUE_ORDER.indexOf(b))
+  const order = [...by.keys()].sort((a, b) => bbRank(a) - bbRank(b))
   return (
     <div className="space-y-3">
       {order.map(code => {

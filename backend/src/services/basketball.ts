@@ -23,7 +23,22 @@ export const BB_LEAGUES: { code: string; id: number; name: string; country: stri
   { code: 'NBA', id: 12, name: 'NBA', country: 'USA', search: 'NBA' },
   { code: 'EL', id: 120, name: 'EuroLeague', country: 'Europe', search: 'Euroleague' },
   { code: 'ACB', id: 117, name: 'Liga ACB', country: 'Spain', search: 'ACB' },
-  { code: 'LBA', id: 52, name: 'Lega Basket Serie A', country: 'Italy', search: 'Lega A' }
+  { code: 'LBA', id: 52, name: 'Lega Basket Serie A', country: 'Italy', search: 'Lega A' },
+  // added 8 Oct 2026 (all with player box scores in API-Basketball)
+  { code: 'BSL', id: 104, name: 'Basketbol Süper Ligi', country: 'Turkey', search: 'Super Ligi' },
+  { code: 'LNB', id: 2, name: 'LNB Pro A', country: 'France', search: '^LNB$' },
+  { code: 'BBL', id: 40, name: 'Basketball Bundesliga', country: 'Germany', search: '^BBL$' },
+  { code: 'GBL', id: 45, name: 'Greek Basket League', country: 'Greece', search: '^Basket League$' },
+  { code: 'LKL', id: 60, name: 'LKL', country: 'Lithuania', search: '^LKL$' },
+  { code: 'EC', id: 194, name: 'EuroCup', country: 'Europe', search: '^Eurocup$' },
+  { code: 'BCL', id: 202, name: 'Basketball Champions League', country: 'Europe', search: '^Champions League$' },
+  { code: 'ABA', id: 198, name: 'ABA League', country: 'Europe', search: '^ABA League$' },
+  { code: 'FEC', id: 201, name: 'FIBA Europe Cup', country: 'Europe', search: '^FIBA Europe Cup$' },
+  { code: 'NBL', id: 1, name: 'NBL', country: 'Australia', search: '^NBL$' },
+  { code: 'JBL', id: 56, name: 'B.League', country: 'Japan', search: '^B League$' },
+  { code: 'CBA', id: 31, name: 'CBA', country: 'China', search: '^CBA$' },
+  { code: 'NBB', id: 26, name: 'NBB', country: 'Brazil', search: '^NBB$' },
+  { code: 'BSN', id: 76, name: 'BSN', country: 'Puerto Rico', search: '^BSN$' }
 ];
 
 db.exec(`
@@ -144,7 +159,7 @@ async function syncLeague(l: (typeof BB_LEAGUES)[number]) {
   const prev: any = db.prepare(`SELECT * FROM bb_leagues WHERE code = ?`).get(l.code);
   if (prev?.checked_at && Date.now() - new Date(prev.checked_at).getTime() < 24 * 3600 * 1000) return prev;
   let row = (await bb('/leagues', { id: prev?.league_id || l.id })).response?.[0];
-  const looksRight = (r: any) => r && (r.country?.name === l.country || (l.country === 'Europe' && /europe|world/i.test(r.country?.name || ''))) &&
+  const looksRight = (r: any) => r && (String(r.country?.name || '').replace(/-/g, ' ') === l.country || (l.country === 'Europe' && /europe|world/i.test(r.country?.name || ''))) &&
     new RegExp(l.search, 'i').test(r.name || '');
   if (!looksRight(row)) {
     const found = (await bb('/leagues', { search: l.search })).response || [];

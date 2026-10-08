@@ -5,12 +5,11 @@ import { API_URL } from '../../lib/socket'
 import { t } from '../../lib/i18n'
 import { useAuth } from '../../lib/auth'
 import { useRevealState } from '../../lib/reveal'
-import { useBbConfig, useBbFavorites, bbLeagueFav, type BbGame } from '../../lib/bb'
+import { useBbConfig, useBbFavorites, bbLeagueFav, BB_COUNTRY, type BbGame } from '../../lib/bb'
 import LeagueSidebar from '../../components/LeagueSidebar'
 import { GamesByDay, LiveRow, GameRow, LockedNote, SectionTitle } from './parts'
 
 const DAY_OPTIONS = [1, 3, 7, 14]
-const BB_COUNTRY: Record<string, string> = { NBA: 'us', EL: 'eu', ACB: 'es', LBA: 'it' }
 
 /** All games — the same layout as football's Matches page: live and leagues on the left, games by day and league. */
 export default function BbGames() {

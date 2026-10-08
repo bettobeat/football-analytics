@@ -8,7 +8,7 @@ import { SPORTS, type SportId } from '../lib/sports'
 
 const PLAN: Record<Exclude<SportId, 'football'>, { leagues: string[]; picks: string[] }> = {
   basketball: {
-    leagues: ['NBA', 'EuroLeague', 'Liga ACB (Spain)', 'Lega Basket Serie A (Italy)'],
+    leagues: ['NBA', 'EuroLeague', 'EuroCup', 'Liga ACB (Spain)', 'Basketbol Süper Ligi (Turkey)', 'Lega Basket Serie A (Italy)', 'LNB Pro A (France)', 'Greek Basket League', 'Basketball Bundesliga', 'Basketball Champions League', 'ABA League', 'LKL (Lithuania)', 'FIBA Europe Cup', 'NBL (Australia)', 'B.League (Japan)', 'CBA (China)', 'NBB (Brazil)', 'BSN (Puerto Rico)'],
     picks: [t('Who wins, with the chance of each side'), t('Point spread and total points'), t('Player form, injuries and rest days')]
   },
   tennis: {

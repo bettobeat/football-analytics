@@ -7,14 +7,13 @@ import { useAuth } from '../../lib/auth'
 import { isCovered, revealMatch, useRevealState, justRevealed } from '../../lib/reveal'
 import CountUp from '../../components/CountUp'
 import { RevealChip } from '../../components/Reveal'
-import { useBbConfig, useBbFavorites, BB_STATUS, type BbGame } from '../../lib/bb'
+import { useBbConfig, useBbFavorites, BB_STATUS, bbRank, type BbGame } from '../../lib/bb'
 import { TeamLogo, LockIcon, GameRow, rid, rstatus } from './parts'
 import { useNews, NewsLead } from '../../components/NewsList'
 
 interface Rec { n: number; hits: number; hitRate: number | null; strongN: number; strongHits: number; strongHitRate: number | null }
 interface RecordData { since: string | null; total: Rec }
 
-const RANK: Record<string, number> = { NBA: 0, EL: 1, ACB: 2, LBA: 3 }
 const hasPct = (g: BbGame) => !!g.prediction && !g.prediction.locked && typeof g.prediction.pHome === 'number'
 const top = (g: BbGame) => Math.max(g.prediction!.pHome!, g.prediction!.pAway!)
 
@@ -150,8 +149,8 @@ export default function BbHome() {
     const pool = notStarted.filter(g => g.prediction && !g.preseason)
     const list = pool.length ? pool : notStarted.filter(g => g.prediction)
     if (!list.length) return null
-    const best = Math.min(...list.map(g => RANK[g.league.code] ?? 9))
-    return [...list.filter(g => (RANK[g.league.code] ?? 9) === best)].sort((a, b) =>
+    const best = Math.min(...list.map(g => bbRank(g.league.code)))
+    return [...list.filter(g => (bbRank(g.league.code)) === best)].sort((a, b) =>
       (hasPct(a) && hasPct(b) ? top(a) - top(b) : 0) || a.kickoff.localeCompare(b.kickoff)
     )[0]
   }, [notStarted])
@@ -162,7 +161,7 @@ export default function BbHome() {
   const soonest = useMemo(() => notStarted.filter(g => g.id !== featured?.id).slice(0, 5), [notStarted, featured])
   const next = useMemo(() => {
     const rest = notStarted.filter(g => g.id !== featured?.id && !favNext.includes(g))
-    return [...rest].sort((a, b) => (RANK[a.league.code] ?? 9) - (RANK[b.league.code] ?? 9) || a.kickoff.localeCompare(b.kickoff)).slice(0, 12)
+    return [...rest].sort((a, b) => bbRank(a.league.code) - bbRank(b.league.code) || a.kickoff.localeCompare(b.kickoff)).slice(0, 12)
       .sort((a, b) => a.kickoff.localeCompare(b.kickoff))
   }, [notStarted, featured, favNext])
 
@@ -222,7 +221,7 @@ export default function BbHome() {
           <section className="rounded-3xl border border-accent/30 bg-[linear-gradient(135deg,rgb(var(--accent)/0.10),rgb(var(--surface)/0.6)_60%)] p-5 sm:p-7 flex flex-col lg:flex-row lg:items-center gap-5">
             <div className="flex-1 min-w-0 space-y-2">
               <h1 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-ink">{t('Basketball predictions')}</h1>
-              <p className="text-sm sm:text-base text-muted max-w-2xl">{t('Who wins, the point spread, total points and the predicted score for every game of the NBA, EuroLeague, Liga ACB and Lega Basket Serie A. Every prediction is saved before tip-off and checked in public.')}</p>
+              <p className="text-sm sm:text-base text-muted max-w-2xl">{t('Who wins, the point spread, total points and the predicted score for every game of the NBA, the EuroLeague and {0} more leagues in Europe, Asia and the Americas. Every prediction is saved before tip-off and checked in public.', { 0: Math.max(0, (cfg?.leagues.length || 18) - 2) })}</p>
             </div>
             <div className="flex flex-col sm:flex-row lg:flex-col gap-2 lg:w-52">
               <Link to="/signup" className="h-11 px-5 rounded-2xl bg-accent text-bg font-extrabold grid place-items-center">{t('Create a free account')}</Link>

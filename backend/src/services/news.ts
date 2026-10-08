@@ -64,7 +64,21 @@ const BB_NEWS_LEAGUES: { code: string; name: string; phrases: string[]; not?: st
   { code: 'NBA', name: 'NBA', phrases: ['NBA'], not: ['ex-', 'former'] },
   { code: 'EL', name: 'EuroLeague', phrases: ['EuroLeague', 'Euroleague', 'Turkish Airlines EuroLeague'] },
   { code: 'ACB', name: 'Liga ACB', phrases: ['Liga ACB', 'Liga Endesa', 'ACB'] },
-  { code: 'LBA', name: 'Lega Basket Serie A', phrases: ['Lega Basket', 'LBA', 'Serie A'] }
+  { code: 'LBA', name: 'Lega Basket Serie A', phrases: ['Lega Basket', 'LBA', 'Serie A'] },
+  { code: 'BSL', name: 'Basketbol Süper Ligi', phrases: ['Basketbol Süper Ligi', 'Turkish Super League', 'Turkish BSL', 'BSL'] },
+  { code: 'LNB', name: 'LNB Pro A', phrases: ['LNB', 'Pro A', 'Betclic Elite', 'Betclic ELITE'] },
+  { code: 'BBL', name: 'Basketball Bundesliga', phrases: ['easyCredit BBL', 'Basketball Bundesliga', 'BBL'] },
+  { code: 'GBL', name: 'Greek Basket League', phrases: ['Greek Basket League', 'Greek League', 'GBL'] },
+  { code: 'LKL', name: 'LKL', phrases: ['LKL', 'Lithuanian League'] },
+  { code: 'EC', name: 'EuroCup', phrases: ['EuroCup', 'Eurocup', 'BKT EuroCup'] },
+  { code: 'BCL', name: 'Basketball Champions League', phrases: ['Basketball Champions League', 'BCL'] },
+  { code: 'ABA', name: 'ABA League', phrases: ['ABA League', 'AdmiralBet ABA League', 'ABA'] },
+  { code: 'FEC', name: 'FIBA Europe Cup', phrases: ['FIBA Europe Cup'] },
+  { code: 'NBL', name: 'NBL', phrases: ['NBL'] },
+  { code: 'JBL', name: 'B.League', phrases: ['B.League', 'B League'] },
+  { code: 'CBA', name: 'CBA', phrases: ['CBA'] },
+  { code: 'NBB', name: 'NBB', phrases: ['NBB'] },
+  { code: 'BSN', name: 'BSN', phrases: ['BSN'] }
 ];
 const BB_LEAGUE_NAME = new Map(BB_NEWS_LEAGUES.map(l => [l.code, l.name]));
 
