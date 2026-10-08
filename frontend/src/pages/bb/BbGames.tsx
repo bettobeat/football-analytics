@@ -103,7 +103,7 @@ export default function BbGames() {
             }))}
             selected={league}
             onSelect={setLeague}
-            pinned={favs.leagues.length ? favs.leagues.map(f => f.ref) : (cfg?.leagues || []).map(l => l.code)}
+            pinned={favs.leagues.length ? favs.leagues.map(f => f.ref) : ['NBA', 'EL', 'ACB', 'BSL', 'EC']}
             teams={favs.teams.map(f => ({ key: f.ref, name: f.name, logo: f.img || null, to: `/basketball/team/${f.ref}` }))}
             total={all.filter(g => g.state !== 'done').length}
             favCount={favs.all.length ? all.filter(g => g.state !== 'done' && favs.reasons(g).length > 0).length : null}
