@@ -269,3 +269,74 @@ export function nbaLeaders() {
   }
   return null;
 }
+
+/* ---------- search (the site's search box) ---------- */
+
+type SearchPlayer = { id: number; name: string; tokens: string[]; teamId: number; team: string; logo: string | null; code: string; last: string };
+type SearchTeam = { id: number; name: string; tokens: string[]; logo: string | null; code: string; last: string };
+let searchCache: { at: number; players: SearchPlayer[]; teams: SearchTeam[] } | null = null;
+const tokensOf = (s: string) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(Boolean);
+
+function searchIndex() {
+  if (searchCache && Date.now() - searchCache.at < 3600000) return searchCache;
+  const since = new Date(Date.now() - 2 * 365 * 86400000).toISOString();
+  const teams = new Map<number, SearchTeam>();
+  for (const g of db.prepare(`SELECT code, kickoff, home_id, home_name, home_logo, away_id, away_name, away_logo FROM bb_games WHERE kickoff > ? AND kickoff < ? ORDER BY kickoff`).all(since, new Date(Date.now() + 30 * 86400000).toISOString()) as any[]) {
+    teams.set(g.home_id, { id: g.home_id, name: g.home_name, tokens: tokensOf(g.home_name), logo: g.home_logo, code: g.code, last: g.kickoff });
+    teams.set(g.away_id, { id: g.away_id, name: g.away_name, tokens: tokensOf(g.away_name), logo: g.away_logo, code: g.code, last: g.kickoff });
+  }
+  const players = new Map<number, SearchPlayer>();
+  // one row per player: his latest game (SQLite returns the other columns from the MAX row)
+  const rows = db.prepare(`SELECT ps.player_id, ps.name, ps.team_id, g.code, MAX(g.kickoff) AS kickoff FROM bb_player_stats ps JOIN bb_games g ON g.game_id = ps.game_id WHERE g.kickoff > ? GROUP BY ps.player_id`).all(since) as any[];
+  for (const r of rows) {
+    const t = teams.get(r.team_id);
+    players.set(r.player_id, { id: r.player_id, name: r.name, tokens: tokensOf(r.name), teamId: r.team_id, team: t?.name || '', logo: t?.logo || null, code: r.code, last: r.kickoff });
+  }
+  // current squads: new signings and moves show with their new team
+  for (const r of db.prepare(`SELECT player_id, name, team_id, updated_at FROM bb_roster`).all() as any[]) {
+    const t = teams.get(r.team_id);
+    const prev = players.get(r.player_id);
+    players.set(r.player_id, { id: r.player_id, name: prev?.name || r.name, tokens: tokensOf(prev?.name || r.name), teamId: r.team_id, team: t?.name || prev?.team || '', logo: t?.logo || prev?.logo || null, code: t?.code || prev?.code || '', last: prev && prev.last > r.updated_at ? prev.last : r.updated_at });
+  }
+  searchCache = { at: Date.now(), players: [...players.values()], teams: [...teams.values()] };
+  return searchCache;
+}
+
+/** Score a name against the query words (any order: "lebron james" finds "James LeBron"). 0 = no match. */
+function nameScore(tokens: string[], q: string[], full: string) {
+  if (!q.length) return 0;
+  let s = 0;
+  for (const w of q) {
+    const exact = tokens.includes(w), pre = tokens.some(t => t.startsWith(w)), inside = w.length >= 4 && tokens.some(t => t.includes(w));
+    if (!exact && !pre && !inside) return 0;
+    s += exact ? 3 : pre ? 2 : 1;
+  }
+  if (tokens.join(' ') === q.join(' ') || full.toLowerCase() === q.join(' ')) s += 3;
+  return s;
+}
+
+export function bbSearch(qRaw: string) {
+  const q = tokensOf(qRaw);
+  if (!q.length) return { teams: [], players: [], leagues: [], games: [] };
+  const idx = searchIndex();
+  const rank = <T extends { tokens: string[]; name: string; last: string }>(list: T[], n: number) => list
+    .map(x => ({ x, s: nameScore(x.tokens, q, x.name) }))
+    .filter(y => y.s > 0)
+    .sort((a, b) => b.s - a.s || b.x.last.localeCompare(a.x.last))
+    .slice(0, n).map(y => y.x);
+  const teams = rank(idx.teams, 6).map(t => ({ id: t.id, name: t.name, logo: t.logo, league: t.code }));
+  const players = rank(idx.players, 6).map(p => {
+    const b = p.code === 'NBA' ? bdlPlayerOf(p.name, p.team) : null;
+    return { id: p.id, name: displayName(p.name, b), team: p.team, teamLogo: p.logo, league: p.code, position: b?.position || null };
+  });
+  const leagues = BB_LEAGUES.filter(l => {
+    const toks = tokensOf(`${l.name} ${l.code} ${l.country}`);
+    return q.every(w => toks.some(t => t.startsWith(w)));
+  }).slice(0, 4).map(l => ({ code: l.code, name: l.name, country: l.country, logo: (db.prepare(`SELECT logo FROM bb_leagues WHERE code = ?`).get(l.code) as any)?.logo || null }));
+  const teamIds = new Set(teams.map(t => t.id));
+  const games = teamIds.size ? (db.prepare(`SELECT game_id, code, kickoff, status, home_id, home_name, away_id, away_name FROM bb_games WHERE kickoff BETWEEN ? AND ? ORDER BY kickoff`)
+    .all(new Date(Date.now() - 3 * 3600000).toISOString(), new Date(Date.now() + 14 * 86400000).toISOString()) as any[])
+    .filter(g => teamIds.has(g.home_id) || teamIds.has(g.away_id)).slice(0, 5)
+    .map(g => ({ id: g.game_id, kickoff: g.kickoff, status: g.status, league: g.code, home: g.home_name, away: g.away_name })) : [];
+  return { teams, players, leagues, games };
+}

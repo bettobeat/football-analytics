@@ -50,7 +50,7 @@ import { newsFor, newsStatus, startNewsScheduler, bbTeamNames, footballTeamNames
 import { bbGet, bbStatus, bbSyncNow, startBasketballScheduler } from './services/basketball';
 import { bdlGet, refreshNbaInjuries, nbaInjuryStatus } from './services/bbInjuries';
 import { bbPublic, bbLeagues, bbGames, bbGame, bbStandings, bbTeam } from './services/bbSite';
-import { bbPlayer, nbaLeaders } from './services/bbPlayers';
+import { bbPlayer, nbaLeaders, bbSearch } from './services/bbPlayers';
 import { bdlStatus, startBdlScheduler } from './services/bdl';
 import { bbBacktest, bbRecord } from './services/bbModel';
 import { highlightsFor, highlightsStatus, lastCandidates } from './services/highlights';
@@ -900,7 +900,10 @@ app.get('/api/search', async (req, res) => {
       .sort((a: any, b: any) => a.utcDate.localeCompare(b.utcDate))
       .slice(0, 6)
       .map((m: any) => ({ id: m.id, utcDate: m.utcDate, status: m.status, competition: m.competition?.name, home: m.homeTeam?.shortName || m.homeTeam?.name, away: m.awayTeam?.shortName || m.awayTeam?.name, homeCrest: m.homeTeam?.crest, awayCrest: m.awayTeam?.crest }));
-    res.json({ data: { teams, players, matches, competitions }, timestamp: new Date().toISOString() });
+    // basketball: teams, players (any order of first / last name), leagues and coming games — when the section is open to this visitor
+    let basketball: any = null;
+    if (bbPublic() || req.access === 'admin') { try { basketball = bbSearch(q); } catch { basketball = null; } }
+    res.json({ data: { teams, players, matches, competitions, basketball }, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Search failed');
   }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { sportOfPath } from '../lib/sports'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { t as tt, LOCALE } from '../lib/i18n'
@@ -7,6 +8,12 @@ import { t as tt, LOCALE } from '../lib/i18n'
 interface TeamHit { id: number; name: string; logo: string; national: boolean }
 interface CompHit { code: string; name: string; emblem: string | null; country: string | null }
 interface PlayerHit { id: number; name: string; position: string | null; team: string | null; teamLogo: string; country?: string | null }
+interface BbHits {
+  teams: { id: number; name: string; logo: string | null; league: string }[]
+  players: { id: number; name: string; team: string; teamLogo: string | null; league: string; position: string | null }[]
+  leagues: { code: string; name: string; country: string; logo: string | null }[]
+  games: { id: number; kickoff: string; status: string | null; league: string; home: string; away: string }[]
+}
 interface MatchHit { id: number; utcDate: string; status: string; competition: string; home: string; away: string; homeCrest?: string; awayCrest?: string }
 
 /** Search leagues, teams (every club and national team we track), players and upcoming / live matches. "/" focuses it. */
@@ -17,6 +24,8 @@ export default function SearchBox({ compact = false, onDone }: { compact?: boole
   const [matches, setMatches] = useState<MatchHit[]>([])
   const [comps, setComps] = useState<CompHit[]>([])
   const [players, setPlayers] = useState<PlayerHit[]>([])
+  const [bb, setBb] = useState<BbHits | null>(null)
+  const onBasketball = sportOfPath(useLocation().pathname).id === 'basketball'
   const [loading, setLoading] = useState(false)
   const input = useRef<HTMLInputElement>(null)
   const box = useRef<HTMLDivElement>(null)
@@ -38,12 +47,12 @@ export default function SearchBox({ compact = false, onDone }: { compact?: boole
 
   useEffect(() => {
     const term = q.trim()
-    if (term.length < 2) { setTeams([]); setMatches([]); setComps([]); setPlayers([]); return }
+    if (term.length < 2) { setTeams([]); setMatches([]); setComps([]); setPlayers([]); setBb(null); return }
     setLoading(true)
     const t = setTimeout(() => {
       axios.get(`${API_URL}/search`, { params: { q: term } })
-        .then(r => { setTeams(r.data.data.teams || []); setMatches(r.data.data.matches || []); setComps(r.data.data.competitions || []); setPlayers(r.data.data.players || []) })
-        .catch(() => { setTeams([]); setMatches([]); setComps([]); setPlayers([]) })
+        .then(r => { setTeams(r.data.data.teams || []); setMatches(r.data.data.matches || []); setComps(r.data.data.competitions || []); setPlayers(r.data.data.players || []); setBb(r.data.data.basketball || null) })
+        .catch(() => { setTeams([]); setMatches([]); setComps([]); setPlayers([]); setBb(null) })
         .finally(() => setLoading(false))
     }, 250)
     return () => clearTimeout(t)
@@ -51,6 +60,50 @@ export default function SearchBox({ compact = false, onDone }: { compact?: boole
 
   const done = () => { setOpen(false); setQ(''); onDone?.() }
   const show = open && q.trim().length >= 2
+  const bbAny = !!bb && (bb.teams.length + bb.players.length + bb.leagues.length + bb.games.length) > 0
+  const any = teams.length + matches.length + comps.length + players.length > 0 || bbAny
+  // basketball results: their own block, first on the basketball pages, after football elsewhere
+  const bbBlock = bbAny && bb ? (
+    <div className="py-1">
+      <div className="flex items-center gap-2 px-3 pt-1 pb-1">
+        <span className="text-[11px] font-extrabold uppercase tracking-wider text-accent">{tt("Basketball")}</span>
+        <span className="h-px flex-1 bg-line/60" />
+      </div>
+      {bb.leagues.map(l => (
+        <Link key={`bl${l.code}`} to={`/basketball/league/${l.code}`} onClick={done} className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-surface2">
+          {l.logo ? <img src={l.logo} alt="" width={24} height={24} className="w-6 h-6 object-contain" /> : <span className="w-6 h-6 rounded-full bg-surface2" />}
+          <span className="text-sm font-semibold text-ink">{l.name}</span>
+          <span className="ml-auto text-[11px] text-faint">{l.country}</span>
+        </Link>
+      ))}
+      {bb.teams.length > 0 && <div className="label px-3 pt-2 pb-1">{tt("Teams")}</div>}
+      {bb.teams.map(x => (
+        <Link key={`bt${x.id}`} to={`/basketball/team/${x.id}`} onClick={done} className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-surface2">
+          {x.logo ? <img src={x.logo} alt="" width={24} height={24} className="w-6 h-6 object-contain" /> : <span className="w-6 h-6 rounded-full bg-surface2" />}
+          <span className="text-sm font-semibold text-ink">{x.name}</span>
+          <span className="ml-auto text-[11px] text-faint">{x.league}</span>
+        </Link>
+      ))}
+      {bb.players.length > 0 && <div className="label px-3 pt-2 pb-1">{tt("Players")}</div>}
+      {bb.players.map(p => (
+        <Link key={`bp${p.id}`} to={`/basketball/player/${p.id}`} onClick={done} className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-surface2">
+          <span className="w-6 h-6 rounded-full bg-surface2 grid place-items-center text-[10px] font-bold text-muted flex-shrink-0">{p.name.split(' ').map(w => w[0]).slice(0, 2).join('')}</span>
+          <span className="text-sm font-semibold text-ink truncate">{p.name}</span>
+          <span className="ml-auto flex items-center gap-1.5 text-[11px] text-faint min-w-0">
+            {p.teamLogo && <img src={p.teamLogo} alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain flex-shrink-0" />}
+            <span className="truncate">{[p.team, p.position].filter(Boolean).join(' · ')}</span>
+          </span>
+        </Link>
+      ))}
+      {bb.games.length > 0 && <div className="label px-3 pt-2 pb-1">{tt("Games")}</div>}
+      {bb.games.map(g => (
+        <Link key={`bg${g.id}`} to={`/basketball/game/${g.id}`} onClick={done} className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-surface2">
+          <span className="text-sm text-ink font-medium truncate">{g.home} – {g.away}</span>
+          <span className="ml-auto text-[11px] text-faint whitespace-nowrap">{['Q1', 'Q2', 'Q3', 'Q4', 'OT', 'BT', 'HT'].includes(g.status || '') ? tt("Live") : new Date(g.kickoff).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short' })}</span>
+        </Link>
+      ))}
+    </div>
+  ) : null
 
   return (
     <div ref={box} className={`relative ${compact ? 'w-full' : 'w-full max-w-md'}`}>
@@ -69,6 +122,10 @@ export default function SearchBox({ compact = false, onDone }: { compact?: boole
           onKeyDown={e => {
             if (e.key === 'Escape') setOpen(false)
             if (e.key === 'Enter') {
+              const bbFirst = onBasketball || (!teams.length && !players.length && !comps.length)
+              if (bbFirst && bb?.leagues[0] && !bb.teams[0]) { nav(`/basketball/league/${bb.leagues[0].code}`); done(); return }
+              if (bbFirst && bb?.teams[0]) { nav(`/basketball/team/${bb.teams[0].id}`); done(); return }
+              if (bbFirst && bb?.players[0]) { nav(`/basketball/player/${bb.players[0].id}`); done(); return }
               if (comps[0] && !teams[0]) { nav(`/league/${comps[0].code}`); done() }
               else if (teams[0]) { nav(`/team/${teams[0].id}`); done() }
               else if (players[0]) { nav(`/player/${players[0].id}`); done() }
@@ -82,8 +139,12 @@ export default function SearchBox({ compact = false, onDone }: { compact?: boole
 
       {show && (
         <div className="absolute left-0 right-0 mt-2 z-50 card p-2 max-h-[70vh] overflow-y-auto">
-          {loading && !teams.length && !matches.length && !comps.length && !players.length && <div className="px-3 py-3 text-sm text-faint">{tt("Searching…")}</div>}
-          {!loading && !teams.length && !matches.length && !comps.length && !players.length && <div className="px-3 py-3 text-sm text-faint">{tt("Nothing found for \"")}{q.trim()}".</div>}
+          {loading && !any && <div className="px-3 py-3 text-sm text-faint">{tt("Searching…")}</div>}
+          {!loading && !any && <div className="px-3 py-3 text-sm text-faint">{tt("Nothing found for \"")}{q.trim()}".</div>}
+          {onBasketball && bbBlock}
+          {onBasketball && bbAny && (teams.length + matches.length + comps.length + players.length > 0) && (
+            <div className="flex items-center gap-2 px-3 pt-3 pb-1"><span className="text-[11px] font-extrabold uppercase tracking-wider text-accent">{tt("Football")}</span><span className="h-px flex-1 bg-line/60" /></div>
+          )}
           {comps.length > 0 && (
             <div className="py-1">
               <div className="label px-3 pb-1">{tt("Leagues and competitions")}</div>
@@ -146,6 +207,7 @@ export default function SearchBox({ compact = false, onDone }: { compact?: boole
               ))}
             </div>
           )}
+          {!onBasketball && bbBlock && <div className={teams.length + matches.length + comps.length + players.length > 0 ? 'border-t border-line/60 mt-1 pt-1' : ''}>{bbBlock}</div>}
         </div>
       )}
     </div>
