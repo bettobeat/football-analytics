@@ -1319,5 +1319,6 @@
  "Home court is worth about {0} points to {1}.": "İç saha {1} için yaklaşık {0} sayı değerinde.",
  "{0} played last night (second game of a back-to-back), which costs about {1} points.": "{0} dün gece oynadı (üst üste ikinci maç), bu yaklaşık {1} sayıya mal olur.",
  "Both teams played last night, so tiredness evens out.": "İki takım da dün gece oynadı, yorgunluk dengeleniyor.",
- "Injuries hurt {0} more: they are missing about {1} points of production.": "Sakatlıklar {0} takımını daha çok etkiliyor: yaklaşık {1} sayılık üretim eksik."
+ "Injuries hurt {0} more: they are missing about {1} points of production.": "Sakatlıklar {0} takımını daha çok etkiliyor: yaklaşık {1} sayılık üretim eksik.",
+ "{0} min left": "{0} dk kaldı"
 }

@@ -40,6 +40,8 @@ export interface BbGame {
   away: BbSide
   score: { home: number; away: number } | null
   quarters: { home: (number | null)[]; away: (number | null)[] } | null
+  /** live: minutes played / left in the current period (whole minutes) */
+  clock?: { played: number; left: number } | null
   prediction: BbPrediction | null
 }
 
@@ -76,6 +78,13 @@ export const BB_COUNTRY: Record<string, string> = {
 export const BB_STATUS: Record<string, string> = {
   Q1: t('Q1'), Q2: t('Q2'), Q3: t('Q3'), Q4: t('Q4'), OT: t('OT'), BT: t('Break'), HT: t('Half-time'),
   FT: t('Final'), AOT: t('Final (OT)'), POST: t('Postponed'), CANC: t('Cancelled'), SUSP: t('Suspended'), AWD: t('Awarded'), ABD: t('Abandoned')
+}
+
+/** "Q4 · 5 min left" (or just "Q4" / "Half-time" when there is no clock). */
+export const liveLabel = (g: { status: string; clock?: { left: number } | null }, short = false) => {
+  const base = BB_STATUS[g.status] || t('Live')
+  if (!g.clock) return base
+  return short ? `${base} · ${g.clock.left}'` : `${base} · ${t('{0} min left', { 0: g.clock.left })}`
 }
 
 export const timeOf = (iso: string) => new Date(iso).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })

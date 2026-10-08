@@ -7,7 +7,7 @@ import { useAuth } from '../../lib/auth'
 import { useReveal, justRevealed, guessFirstOn, hideMatch } from '../../lib/reveal'
 import CountUp from '../../components/CountUp'
 import { RevealCover } from '../../components/Reveal'
-import { BB_STATUS, spreadText, bbTeamFav, bbLeagueFav, useBbConfig, type BbGame as Game } from '../../lib/bb'
+import { BB_STATUS, liveLabel, spreadText, bbTeamFav, bbLeagueFav, useBbConfig, type BbGame as Game } from '../../lib/bb'
 import { FavStar } from '../../lib/favorites'
 import { Card, TeamLogo, LockedNote, rid, rstatus } from './parts'
 import { StandingsTable, type Standings } from './BbLeague'
@@ -129,7 +129,7 @@ export default function BbGame() {
             )}
             <div className={`mt-3 inline-flex items-center gap-1.5 text-[11px] font-bold tracking-wider px-3 py-1 rounded-full border ${live ? 'bg-live/10 text-live border-live/30' : done ? 'bg-surface2 text-muted border-line' : 'bg-accent/10 text-accent border-accent/30'}`}>
               {live && <span className="w-1.5 h-1.5 rounded-full bg-live animate-pulseDot" />}
-              {live ? (BB_STATUS[g.status] || t('Live')).toUpperCase() : done ? (BB_STATUS[g.status] || t('Final')).toUpperCase() : g.state === 'off' ? (BB_STATUS[g.status] || g.status).toUpperCase() : t('TIP-OFF')}
+              {live ? liveLabel(g).toUpperCase() : done ? (BB_STATUS[g.status] || t('Final')).toUpperCase() : g.state === 'off' ? (BB_STATUS[g.status] || g.status).toUpperCase() : t('TIP-OFF')}
             </div>
           </div>
           <TeamHero team={g.away} align="left" league={g.league.code} />

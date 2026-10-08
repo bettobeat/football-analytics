@@ -76,6 +76,8 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_bb_player_stats_player ON bb_player_stats(player_id);
 `);
+// live clock: minutes played in the current quarter (API-Basketball status.timer)
+try { db.exec(`ALTER TABLE bb_games ADD COLUMN timer INTEGER`); } catch { /* column exists */ }
 // box scores fetched? 0 = not yet, 1 = stored, 2 = the provider has none
 try { db.exec(`ALTER TABLE bb_games ADD COLUMN stats INTEGER NOT NULL DEFAULT 0`); } catch { /* column exists */ }
 // field goals checked against the score? 0 = not yet, 1 = fine, 2 = corrected (see fixFieldGoals)
@@ -179,12 +181,12 @@ const FINISHED = new Set(['FT', 'AOT']);
 function upsertGames(code: string, leagueId: number, season: string, list: any[]) {
   const up = db.prepare(`
     INSERT INTO bb_games (game_id, code, league_id, season, stage, kickoff, status, home_id, home_name, home_logo,
-      away_id, away_name, away_logo, hs, as_, quarters, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      away_id, away_name, away_logo, hs, as_, quarters, updated_at, timer)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(game_id) DO UPDATE SET code = excluded.code, league_id = excluded.league_id, season = excluded.season, stage = excluded.stage,
       kickoff = excluded.kickoff, status = excluded.status, home_id = excluded.home_id, home_name = excluded.home_name, home_logo = excluded.home_logo,
       away_id = excluded.away_id, away_name = excluded.away_name, away_logo = excluded.away_logo, hs = excluded.hs, as_ = excluded.as_,
-      quarters = excluded.quarters, updated_at = excluded.updated_at`);
+      quarters = excluded.quarters, updated_at = excluded.updated_at, timer = excluded.timer`);
   const now = new Date().toISOString();
   let n = 0, done = 0;
   db.exec('BEGIN');
@@ -197,7 +199,8 @@ function upsertGames(code: string, leagueId: number, season: string, list: any[]
         g.id, code, leagueId, season, g.stage || g.week || null, new Date(g.date).toISOString(), st,
         g.teams.home.id, g.teams.home.name, g.teams.home.logo || null, g.teams.away.id, g.teams.away.name, g.teams.away.logo || null,
         g.scores?.home?.total ?? null, g.scores?.away?.total ?? null,
-        JSON.stringify({ home: q(g.scores?.home), away: q(g.scores?.away) }), now
+        JSON.stringify({ home: q(g.scores?.home), away: q(g.scores?.away) }), now,
+        g.status?.timer != null && g.status.timer !== '' && Number.isFinite(Number(g.status.timer)) ? Number(g.status.timer) : null
       );
       n++;
       if (FINISHED.has(st)) done++;

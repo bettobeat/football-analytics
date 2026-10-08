@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { t, LOCALE } from '../../lib/i18n'
 import { useReveal, justRevealed } from '../../lib/reveal'
 import CountUp from '../../components/CountUp'
-import { BB_STATUS, bbRank, timeOf, useBbFavorites, type BbGame, type BbSide } from '../../lib/bb'
+import { BB_STATUS, liveLabel, bbRank, timeOf, useBbFavorites, type BbGame, type BbSide } from '../../lib/bb'
 
 /** Shared pieces of the basketball pages — the same look as the football pages. */
 
@@ -86,10 +86,13 @@ export function GameRow({ g, showLeague = false, showDay = false, compact = fals
           </span>
         )}
         {isLive ? (
-          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-live">
-            <span className="w-1.5 h-1.5 rounded-full bg-live animate-pulseDot" />
-            {BB_STATUS[g.status] || t('LIVE')}
-          </span>
+          <>
+            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-live">
+              <span className="w-1.5 h-1.5 rounded-full bg-live animate-pulseDot" />
+              {BB_STATUS[g.status] || t('LIVE')}
+            </span>
+            {g.clock && <span className="block text-[10px] font-semibold text-live/80 num whitespace-nowrap">{t('{0} min left', { 0: g.clock.left })}</span>}
+          </>
         ) : done ? (
           <span className="block text-[11px] font-bold text-faint">{BB_STATUS[g.status] || t('Final')}</span>
         ) : g.state === 'off' ? (
@@ -252,7 +255,7 @@ export function LiveRow({ g }: { g: BbGame }) {
     <Link to={`/basketball/game/${g.id}`} className="block rounded-xl px-2 py-2 hover:bg-surface2 transition-colors">
       <div className="flex items-center justify-between text-[10px] text-faint mb-1">
         <span className="truncate">{g.league.name}</span>
-        <span className="font-bold text-live tracking-wider">{BB_STATUS[g.status] || t('LIVE')}</span>
+        <span className="font-bold text-live tracking-wider">{liveLabel(g, true)}</span>
       </div>
       {(['H', 'A'] as const).map(s => {
         const team = s === 'H' ? g.home : g.away

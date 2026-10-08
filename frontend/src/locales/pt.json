@@ -1319,5 +1319,6 @@
  "Home court is worth about {0} points to {1}.": "Jogar em casa vale cerca de {0} pontos para o {1}.",
  "{0} played last night (second game of a back-to-back), which costs about {1} points.": "{0} jogou ontem à noite (segundo jogo seguido), o que custa cerca de {1} pontos.",
  "Both teams played last night, so tiredness evens out.": "Os dois times jogaram ontem à noite, então o cansaço se equilibra.",
- "Injuries hurt {0} more: they are missing about {1} points of production.": "As lesões pesam mais para o {0}: faltam cerca de {1} pontos de produção."
+ "Injuries hurt {0} more: they are missing about {1} points of production.": "As lesões pesam mais para o {0}: faltam cerca de {1} pontos de produção.",
+ "{0} min left": "faltam {0} min"
 }

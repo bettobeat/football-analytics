@@ -57,6 +57,10 @@ function shape(g: Row, full: boolean) {
     away: { id: g.away_id, name: g.away_name, logo: g.away_logo },
     score: g.hs !== null && g.as_ !== null ? { home: g.hs, away: g.as_ } : null,
     quarters: q,
+    // live clock: minutes left in the period (NBA quarters 12 min, FIBA 10, overtime 5); the provider gives whole minutes
+    clock: state === 'live' && g.timer != null && ['Q1', 'Q2', 'Q3', 'Q4', 'OT'].includes(status)
+      ? (() => { const len = status === 'OT' ? 5 : g.code === 'NBA' ? 12 : 10; return { played: g.timer, left: Math.max(0, len - g.timer) }; })()
+      : null,
     prediction: pred ? {
       model: BB_MODEL,
       pick,

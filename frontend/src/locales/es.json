@@ -1319,5 +1319,6 @@
  "Home court is worth about {0} points to {1}.": "Jugar en casa vale unos {0} puntos para {1}.",
  "{0} played last night (second game of a back-to-back), which costs about {1} points.": "{0} jugó anoche (segundo partido seguido), lo que cuesta unos {1} puntos.",
  "Both teams played last night, so tiredness evens out.": "Los dos equipos jugaron anoche, así que el cansancio se compensa.",
- "Injuries hurt {0} more: they are missing about {1} points of production.": "Las lesiones afectan más a {0}: le faltan unos {1} puntos de producción."
+ "Injuries hurt {0} more: they are missing about {1} points of production.": "Las lesiones afectan más a {0}: le faltan unos {1} puntos de producción.",
+ "{0} min left": "quedan {0} min"
 }

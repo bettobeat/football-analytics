@@ -7,7 +7,7 @@ import { useAuth } from '../../lib/auth'
 import { isCovered, revealMatch, useRevealState, justRevealed } from '../../lib/reveal'
 import CountUp from '../../components/CountUp'
 import { RevealChip } from '../../components/Reveal'
-import { useBbConfig, useBbFavorites, BB_STATUS, bbRank, type BbGame } from '../../lib/bb'
+import { useBbConfig, useBbFavorites, liveLabel, bbRank, type BbGame } from '../../lib/bb'
 import { TeamLogo, LockIcon, GameRow, rid, rstatus } from './parts'
 import { useNews, NewsLead } from '../../components/NewsList'
 
@@ -250,7 +250,7 @@ export default function BbHome() {
                     <div className="flex flex-col items-center gap-2 min-w-0"><TeamLogo team={liveMain.home} size={52} /><span className="text-sm font-bold truncate max-w-full">{liveMain.home.name}</span></div>
                     <div className="flex flex-col items-center gap-1.5">
                       <span className="font-display font-extrabold text-4xl">{liveMain.score?.home ?? 0} – {liveMain.score?.away ?? 0}</span>
-                      <span className="text-xs font-extrabold text-bg bg-win px-2.5 py-0.5 rounded-full">{BB_STATUS[liveMain.status] || t('Live')}</span>
+                      <span className="text-xs font-extrabold text-bg bg-win px-2.5 py-0.5 rounded-full">{liveLabel(liveMain)}</span>
                     </div>
                     <div className="flex flex-col items-center gap-2 min-w-0"><TeamLogo team={liveMain.away} size={52} /><span className="text-sm font-bold truncate max-w-full">{liveMain.away.name}</span></div>
                   </div>
@@ -259,7 +259,7 @@ export default function BbHome() {
                 <div className="space-y-1">
                   {live.slice(1, 6).map(g => (
                     <Link key={g.id} to={`/basketball/game/${g.id}`} className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-surface2/60 text-sm">
-                      <span className="text-[11px] font-bold text-win w-8">{BB_STATUS[g.status] || t('Live')}</span>
+                      <span className="text-[11px] font-bold text-win w-14 whitespace-nowrap">{liveLabel(g, true)}</span>
                       <span className="truncate flex-1">{g.home.name} – {g.away.name}</span>
                       <b className="font-display">{g.score?.home ?? 0}–{g.score?.away ?? 0}</b>
                     </Link>
