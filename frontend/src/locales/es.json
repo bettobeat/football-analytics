@@ -1308,5 +1308,16 @@
  "by {0}–{1}": "por {0}–{1}",
  "from our prediction": "según nuestro pronóstico",
  "per game, this season": "por partido, esta temporada",
- "{0} attack against {1} defence": "Ataque de {0} contra la defensa de {1}"
+ "{0} attack against {1} defence": "Ataque de {0} contra la defensa de {1}",
+ "{0} are the stronger team: about {1} points per game better in our ratings (overall rank {2} against {3}, out of {4}).": "{0} es el equipo más fuerte: unos {1} puntos por partido mejor en nuestros ratings (puesto general {2} frente a {3}, de {4}).",
+ "{0} are the stronger team: about {1} points per game better in our ratings.": "{0} es el equipo más fuerte: unos {1} puntos por partido mejor en nuestros ratings.",
+ "{0} should score about {1} points more than an average team against {2}’s defence (rank {3}).": "{0} debería anotar unos {1} puntos más que un equipo medio ante la defensa de {2} (puesto {3}).",
+ "{0} should score about {1} points more than an average team against {2}’s defence.": "{0} debería anotar unos {1} puntos más que un equipo medio ante la defensa de {2}.",
+ "{0}’s defence (rank {1}) should hold {2} to about {3} points below an average team.": "La defensa de {0} (puesto {1}) debería dejar a {2} unos {3} puntos por debajo de un equipo medio.",
+ "{0}’s defence should hold {1} to about {2} points below an average team.": "La defensa de {0} debería dejar a {1} unos {2} puntos por debajo de un equipo medio.",
+ "Home court is worth about {0} points to {1} (home record this season: {2}–{3}).": "Jugar en casa vale unos {0} puntos para {1} (en casa esta temporada: {2}–{3}).",
+ "Home court is worth about {0} points to {1}.": "Jugar en casa vale unos {0} puntos para {1}.",
+ "{0} played last night (second game of a back-to-back), which costs about {1} points.": "{0} jugó anoche (segundo partido seguido), lo que cuesta unos {1} puntos.",
+ "Both teams played last night, so tiredness evens out.": "Los dos equipos jugaron anoche, así que el cansancio se compensa.",
+ "Injuries hurt {0} more: they are missing about {1} points of production.": "Las lesiones afectan más a {0}: le faltan unos {1} puntos de producción."
 }

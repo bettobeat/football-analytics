@@ -25,7 +25,7 @@ interface BoxPlayer { id: number; name: string; starter: boolean; minutes: numbe
 interface BoxSide { team: any; players: BoxPlayer[] }
 interface Detail {
   game: Game
-  why: { kind: 'strength' | 'home' | 'b2b' | 'injuries' | 'attack'; side: 'H' | 'A'; points: number }[]
+  why: { kind: 'strength' | 'home' | 'b2b' | 'b2bBoth' | 'injuries' | 'attack'; side: 'H' | 'A'; points: number }[]
   injuries?: { home: Injury[]; away: Injury[] } | null
   ratings: { home: { attack: number; defence: number; net: number } | null; away: { attack: number; defence: number; net: number } | null } | null
   stats: { home: Avg | null; away: Avg | null }
@@ -337,25 +337,46 @@ function PredictionSection({ d }: { d: Detail }) {
               <ul className="space-y-2">
                 {d.why.map((w, i) => {
                   const team = w.side === 'H' ? g.home : g.away
-                  if (w.kind === 'attack') {
-                    const other = w.side === 'H' ? g.away : g.home
-                    return (
-                      <li key={i} className="flex items-center gap-3 text-sm pl-5">
-                        <span className="text-muted flex-1">{t('{0} attack against {1} defence', { 0: team.name, 1: other.name })}</span>
-                        <span className={`num text-xs font-bold ${w.points > 0 ? 'text-win' : 'text-loss'}`}>{w.points > 0 ? '+' : '−'}{Math.abs(w.points).toFixed(1)} {t('pts')}</span>
-                      </li>
-                    )
+                  const other = w.side === 'H' ? g.away : g.home
+                  const pv = d.preview
+                  const mine = pv ? (w.side === 'H' ? pv.home : pv.away) : null
+                  const theirs = pv ? (w.side === 'H' ? pv.away : pv.home) : null
+                  const pts = Math.abs(w.points).toFixed(1)
+                  let text: string
+                  let tone: 'H' | 'A' | 'N' = w.side
+                  if (w.kind === 'strength') {
+                    text = mine?.ranks && theirs?.ranks
+                      ? t('{0} are the stronger team: about {1} points per game better in our ratings (overall rank {2} against {3}, out of {4}).', { 0: team.name, 1: pts, 2: mine.ranks.overall, 3: theirs.ranks.overall, 4: mine.ranks.of })
+                      : t('{0} are the stronger team: about {1} points per game better in our ratings.', { 0: team.name, 1: pts })
+                  } else if (w.kind === 'attack') {
+                    const dr = theirs?.ranks?.defence
+                    text = w.points > 0
+                      ? (dr ? t('{0} should score about {1} points more than an average team against {2}’s defence (rank {3}).', { 0: team.name, 1: pts, 2: other.name, 3: dr }) : t('{0} should score about {1} points more than an average team against {2}’s defence.', { 0: team.name, 1: pts, 2: other.name }))
+                      : (dr ? t('{0}’s defence (rank {1}) should hold {2} to about {3} points below an average team.', { 0: other.name, 1: dr, 2: team.name, 3: pts }) : t('{0}’s defence should hold {1} to about {2} points below an average team.', { 0: other.name, 1: team.name, 2: pts }))
+                    tone = w.points > 0 ? w.side : (w.side === 'H' ? 'A' : 'H')
+                  } else if (w.kind === 'home') {
+                    const sp = mine?.splits
+                    text = sp && sp.homeWon + sp.homeLost > 0 && !mine?.previousSeason
+                      ? t('Home court is worth about {0} points to {1} (home record this season: {2}–{3}).', { 0: pts, 1: team.name, 2: sp.homeWon, 3: sp.homeLost })
+                      : t('Home court is worth about {0} points to {1}.', { 0: pts, 1: team.name })
+                  } else if (w.kind === 'b2b') {
+                    text = t('{0} played last night (second game of a back-to-back), which costs about {1} points.', { 0: other.name, 1: pts })
+                  } else if (w.kind === 'b2bBoth') {
+                    text = t('Both teams played last night, so tiredness evens out.')
+                    tone = 'N'
+                  } else {
+                    text = t('Injuries hurt {0} more: they are missing about {1} points of production.', { 0: other.name, 1: pts })
                   }
+                  const sub = w.kind === 'attack'
                   return (
-                    <li key={i} className="flex items-center gap-3 text-sm">
-                      <span className={`w-2 h-2 rounded-full ${w.side === 'H' ? 'bg-home' : 'bg-away'}`} />
-                      <span className="text-ink flex-1">
-                        {w.kind === 'strength' ? t('{0} is the stronger team this season', { 0: team.name })
-                          : w.kind === 'home' ? t('Home court for {0}', { 0: team.name })
-                          : w.kind === 'injuries' ? t('Injuries hurt {0} less', { 0: team.name })
-                          : t('{0} is fresher: the other team played last night', { 0: team.name })}
-                      </span>
-                      {w.points > 0 && <span className="num text-xs font-bold text-muted">+{w.points.toFixed(1)} {t('pts')}</span>}
+                    <li key={i} className={`flex items-start gap-3 text-sm ${sub ? 'pl-5' : ''}`}>
+                      <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${tone === 'H' ? 'bg-home' : tone === 'A' ? 'bg-away' : 'bg-faint'} ${sub ? 'opacity-60' : ''}`} />
+                      <span className={`flex-1 leading-snug ${sub ? 'text-muted' : 'text-ink'}`}>{text}</span>
+                      {w.points !== 0 && w.kind !== 'b2bBoth' && (
+                        <span className={`num text-xs font-bold whitespace-nowrap ${tone === 'H' ? 'text-home' : tone === 'A' ? 'text-away' : 'text-muted'}`}>
+                          {tone === 'N' ? '' : '+'}{pts} {t('pts')}
+                        </span>
+                      )}
                     </li>
                   )
                 })}

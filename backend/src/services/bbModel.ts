@@ -397,8 +397,9 @@ export { normCdf, normInv };
 export function leagueRatings(code: string) {
   const m = models.get(code);
   if (!m) return [];
-  const latest = [...m.L.teams.values()].reduce((a, t) => (t.season > a ? t.season : a), '');
-  const list = [...m.L.teams.entries()].filter(([, t]) => t.season === latest && t.games > 0)
+  // every team that played in the last ~13 months (ratings carry over between seasons, so this also works in pre-season)
+  const since = Date.now() - 400 * 86400000;
+  const list = [...m.L.teams.entries()].filter(([id]) => (m.L.lastPlayed.get(id) || 0) > since)
     .map(([id, t]) => ({ id, attack: t.o, defence: -t.d, net: t.o - t.d }));
   const rank = (key: 'attack' | 'defence' | 'net') => new Map([...list].sort((a, b) => b[key] - a[key]).map((x, i) => [x.id, i + 1]));
   const ra = rank('attack'), rd = rank('defence'), rn = rank('net');

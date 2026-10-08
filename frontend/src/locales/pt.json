@@ -1308,5 +1308,16 @@
  "by {0}–{1}": "por {0}–{1}",
  "from our prediction": "pela nossa previsão",
  "per game, this season": "por jogo, nesta temporada",
- "{0} attack against {1} defence": "Ataque do {0} contra a defesa do {1}"
+ "{0} attack against {1} defence": "Ataque do {0} contra a defesa do {1}",
+ "{0} are the stronger team: about {1} points per game better in our ratings (overall rank {2} against {3}, out of {4}).": "{0} é o time mais forte: cerca de {1} pontos por jogo melhor nos nossos ratings (posição geral {2} contra {3}, de {4}).",
+ "{0} are the stronger team: about {1} points per game better in our ratings.": "{0} é o time mais forte: cerca de {1} pontos por jogo melhor nos nossos ratings.",
+ "{0} should score about {1} points more than an average team against {2}’s defence (rank {3}).": "{0} deve marcar cerca de {1} pontos a mais que um time médio contra a defesa do {2} (posição {3}).",
+ "{0} should score about {1} points more than an average team against {2}’s defence.": "{0} deve marcar cerca de {1} pontos a mais que um time médio contra a defesa do {2}.",
+ "{0}’s defence (rank {1}) should hold {2} to about {3} points below an average team.": "A defesa do {0} (posição {1}) deve segurar o {2} cerca de {3} pontos abaixo de um time médio.",
+ "{0}’s defence should hold {1} to about {2} points below an average team.": "A defesa do {0} deve segurar o {1} cerca de {2} pontos abaixo de um time médio.",
+ "Home court is worth about {0} points to {1} (home record this season: {2}–{3}).": "Jogar em casa vale cerca de {0} pontos para o {1} (em casa nesta temporada: {2}–{3}).",
+ "Home court is worth about {0} points to {1}.": "Jogar em casa vale cerca de {0} pontos para o {1}.",
+ "{0} played last night (second game of a back-to-back), which costs about {1} points.": "{0} jogou ontem à noite (segundo jogo seguido), o que custa cerca de {1} pontos.",
+ "Both teams played last night, so tiredness evens out.": "Os dois times jogaram ontem à noite, então o cansaço se equilibra.",
+ "Injuries hurt {0} more: they are missing about {1} points of production.": "As lesões pesam mais para o {0}: faltam cerca de {1} pontos de produção."
 }

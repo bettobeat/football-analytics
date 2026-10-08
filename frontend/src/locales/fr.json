@@ -1308,5 +1308,16 @@
  "by {0}–{1}": "de {0} à {1}",
  "from our prediction": "d'après notre pronostic",
  "per game, this season": "par match, cette saison",
- "{0} attack against {1} defence": "Attaque de {0} contre défense de {1}"
+ "{0} attack against {1} defence": "Attaque de {0} contre défense de {1}",
+ "{0} are the stronger team: about {1} points per game better in our ratings (overall rank {2} against {3}, out of {4}).": "{0} est l'équipe la plus forte : environ {1} points par match de mieux dans nos ratings (rang général {2} contre {3}, sur {4}).",
+ "{0} are the stronger team: about {1} points per game better in our ratings.": "{0} est l'équipe la plus forte : environ {1} points par match de mieux dans nos ratings.",
+ "{0} should score about {1} points more than an average team against {2}’s defence (rank {3}).": "{0} devrait marquer environ {1} points de plus qu'une équipe moyenne face à la défense de {2} (rang {3}).",
+ "{0} should score about {1} points more than an average team against {2}’s defence.": "{0} devrait marquer environ {1} points de plus qu'une équipe moyenne face à la défense de {2}.",
+ "{0}’s defence (rank {1}) should hold {2} to about {3} points below an average team.": "La défense de {0} (rang {1}) devrait tenir {2} environ {3} points sous une équipe moyenne.",
+ "{0}’s defence should hold {1} to about {2} points below an average team.": "La défense de {0} devrait tenir {1} environ {2} points sous une équipe moyenne.",
+ "Home court is worth about {0} points to {1} (home record this season: {2}–{3}).": "Jouer à domicile vaut environ {0} points pour {1} (à domicile cette saison : {2}–{3}).",
+ "Home court is worth about {0} points to {1}.": "Jouer à domicile vaut environ {0} points pour {1}.",
+ "{0} played last night (second game of a back-to-back), which costs about {1} points.": "{0} a joué hier soir (deuxième match d'affilée), ce qui coûte environ {1} points.",
+ "Both teams played last night, so tiredness evens out.": "Les deux équipes ont joué hier soir, la fatigue s'équilibre.",
+ "Injuries hurt {0} more: they are missing about {1} points of production.": "Les blessures pèsent plus sur {0} : il manque environ {1} points de production."
 }

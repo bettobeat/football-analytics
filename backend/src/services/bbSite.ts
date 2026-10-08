@@ -155,7 +155,7 @@ function schedule(teamId: number, kickoff: string) {
 /** Why we think so: the reasons behind the pick, in points of expected margin (kind is translated on the site). */
 function reasons(g: Row, pr: any, full: boolean) {
   if (!pr || !full) return [];
-  const out: { kind: 'strength' | 'home' | 'b2b' | 'injuries' | 'attack'; side: 'H' | 'A'; points: number }[] = [];
+  const out: { kind: 'strength' | 'home' | 'b2b' | 'b2bBoth' | 'injuries' | 'attack'; side: 'H' | 'A'; points: number }[] = [];
   // injuries: the side that loses fewer points to injured regulars gains the difference
   const inj = (pr.injHome || 0) - (pr.injAway || 0);
   if (Math.abs(inj) >= 0.5) out.push({ kind: 'injuries', side: inj > 0 ? 'A' : 'H', points: Math.round(Math.abs(inj) * 10) / 10 });
@@ -169,8 +169,11 @@ function reasons(g: Row, pr: any, full: boolean) {
     if (Math.abs(hx) >= 0.5) extra.push({ kind: 'attack', side: 'H', points: hx });
     if (Math.abs(ax) >= 0.5) extra.push({ kind: 'attack', side: 'A', points: ax });
   }
-  if (pr.b2bHome) out.push({ kind: 'b2b', side: 'A', points: 0 });
-  if (pr.b2bAway) out.push({ kind: 'b2b', side: 'H', points: 0 });
+  // back-to-back: only the side that is fresher gains; when both played last night it cancels out
+  const b2bPts = Math.round((leagueModelInfo(g.code)?.b2b || 0) * 10) / 10;
+  if (pr.b2bHome && pr.b2bAway) out.push({ kind: 'b2bBoth', side: 'H', points: 0 });
+  else if (pr.b2bHome) out.push({ kind: 'b2b', side: 'A', points: b2bPts });
+  else if (pr.b2bAway) out.push({ kind: 'b2b', side: 'H', points: b2bPts });
   const home = typeof pr.hca === 'number' ? pr.hca : !pr.b2bHome && !pr.b2bAway ? pr.margin - strength : 0;
   if (Math.abs(home) >= 0.5) out.push({ kind: 'home', side: home >= 0 ? 'H' : 'A', points: Math.round(Math.abs(home) * 10) / 10 });
   const sorted = out.sort((a, b) => b.points - a.points);

@@ -1308,5 +1308,16 @@
  "by {0}–{1}": "{0}–{1} farkla",
  "from our prediction": "tahminimize göre",
  "per game, this season": "maç başına, bu sezon",
- "{0} attack against {1} defence": "{0} hücumu, {1} savunmasına karşı"
+ "{0} attack against {1} defence": "{0} hücumu, {1} savunmasına karşı",
+ "{0} are the stronger team: about {1} points per game better in our ratings (overall rank {2} against {3}, out of {4}).": "{0} daha güçlü takım: reytinglerimizde maç başına yaklaşık {1} sayı daha iyi (genel sıra {2}'ye karşı {3}, {4} takım içinde).",
+ "{0} are the stronger team: about {1} points per game better in our ratings.": "{0} daha güçlü takım: reytinglerimizde maç başına yaklaşık {1} sayı daha iyi.",
+ "{0} should score about {1} points more than an average team against {2}’s defence (rank {3}).": "{0}, {2} savunmasına (sıra {3}) karşı ortalama bir takımdan yaklaşık {1} sayı fazla atmalı.",
+ "{0} should score about {1} points more than an average team against {2}’s defence.": "{0}, {2} savunmasına karşı ortalama bir takımdan yaklaşık {1} sayı fazla atmalı.",
+ "{0}’s defence (rank {1}) should hold {2} to about {3} points below an average team.": "{0} savunması (sıra {1}), {2} takımını ortalama bir takımın yaklaşık {3} sayı altında tutmalı.",
+ "{0}’s defence should hold {1} to about {2} points below an average team.": "{0} savunması, {1} takımını ortalama bir takımın yaklaşık {2} sayı altında tutmalı.",
+ "Home court is worth about {0} points to {1} (home record this season: {2}–{3}).": "İç saha {1} için yaklaşık {0} sayı değerinde (bu sezon iç sahada: {2}–{3}).",
+ "Home court is worth about {0} points to {1}.": "İç saha {1} için yaklaşık {0} sayı değerinde.",
+ "{0} played last night (second game of a back-to-back), which costs about {1} points.": "{0} dün gece oynadı (üst üste ikinci maç), bu yaklaşık {1} sayıya mal olur.",
+ "Both teams played last night, so tiredness evens out.": "İki takım da dün gece oynadı, yorgunluk dengeleniyor.",
+ "Injuries hurt {0} more: they are missing about {1} points of production.": "Sakatlıklar {0} takımını daha çok etkiliyor: yaklaşık {1} sayılık üretim eksik."
 }

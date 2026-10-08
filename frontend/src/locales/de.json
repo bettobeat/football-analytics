@@ -1308,5 +1308,16 @@
  "by {0}–{1}": "mit {0}–{1}",
  "from our prediction": "aus unserer Prognose",
  "per game, this season": "pro Spiel, diese Saison",
- "{0} attack against {1} defence": "{0}-Angriff gegen {1}-Defensive"
+ "{0} attack against {1} defence": "{0}-Angriff gegen {1}-Defensive",
+ "{0} are the stronger team: about {1} points per game better in our ratings (overall rank {2} against {3}, out of {4}).": "{0} ist das stärkere Team: rund {1} Punkte pro Spiel besser in unseren Ratings (Gesamtrang {2} gegen {3}, von {4}).",
+ "{0} are the stronger team: about {1} points per game better in our ratings.": "{0} ist das stärkere Team: rund {1} Punkte pro Spiel besser in unseren Ratings.",
+ "{0} should score about {1} points more than an average team against {2}’s defence (rank {3}).": "{0} sollte gegen die Defensive von {2} (Rang {3}) rund {1} Punkte mehr erzielen als ein Durchschnittsteam.",
+ "{0} should score about {1} points more than an average team against {2}’s defence.": "{0} sollte gegen die Defensive von {2} rund {1} Punkte mehr erzielen als ein Durchschnittsteam.",
+ "{0}’s defence (rank {1}) should hold {2} to about {3} points below an average team.": "Die Defensive von {0} (Rang {1}) sollte {2} rund {3} Punkte unter einem Durchschnittsteam halten.",
+ "{0}’s defence should hold {1} to about {2} points below an average team.": "Die Defensive von {0} sollte {1} rund {2} Punkte unter einem Durchschnittsteam halten.",
+ "Home court is worth about {0} points to {1} (home record this season: {2}–{3}).": "Der Heimvorteil ist rund {0} Punkte wert für {1} (Heimbilanz diese Saison: {2}–{3}).",
+ "Home court is worth about {0} points to {1}.": "Der Heimvorteil ist rund {0} Punkte wert für {1}.",
+ "{0} played last night (second game of a back-to-back), which costs about {1} points.": "{0} hat gestern Abend gespielt (zweites Spiel in Folge), das kostet rund {1} Punkte.",
+ "Both teams played last night, so tiredness evens out.": "Beide Teams haben gestern Abend gespielt, die Müdigkeit gleicht sich aus.",
+ "Injuries hurt {0} more: they are missing about {1} points of production.": "Verletzungen treffen {0} stärker: es fehlen rund {1} Punkte Produktion."
 }
