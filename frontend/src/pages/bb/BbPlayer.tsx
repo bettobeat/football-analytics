@@ -63,13 +63,13 @@ export default function BbPlayer() {
       {/* header */}
       <div className="card relative overflow-hidden p-5 sm:p-8">
         {d.player.team.logo && <img src={d.player.team.logo} alt="" aria-hidden className="pointer-events-none absolute -right-16 top-1/2 -translate-y-1/2 w-72 h-72 object-contain blur-3xl opacity-25" />}
-        <div className="relative flex flex-col sm:flex-row sm:items-center gap-5">
+        <div className="relative flex flex-col lg:flex-row lg:items-center gap-5">
           <div className="relative w-20 h-20 rounded-2xl bg-surface2 grid place-items-center shrink-0">
             {jersey ? <span className="font-display text-3xl font-extrabold text-ink num">{jersey}</span> : <TeamLogo team={d.player.team} size={56} />}
             {jersey && <span className="absolute -bottom-2 -right-2"><TeamLogo team={d.player.team} size={28} /></span>}
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">{d.player.name}</h1>
+            <h1 className="font-display text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-ink break-words">{d.player.name}</h1>
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
               <Link to={`/basketball/team/${d.player.team.id}`} className="hover:text-ink font-semibold">{d.player.team.name}</Link>
               <Link to={`/basketball/league/${d.player.league.code}`} className="hover:text-ink">{d.player.league.name}</Link>
@@ -85,7 +85,7 @@ export default function BbPlayer() {
             )}
           </div>
           {(line || cur) && (
-            <div className="sm:w-[340px]">
+            <div className="w-full lg:w-[340px] shrink-0">
             <div className="mb-1 text-right text-[11px] text-faint">{t('Per game')} · {line?.label || (cur ? `${cur.code} ${cur.season}` : '')}</div>
             <div className="grid grid-cols-3 gap-2">
               <Big label={t('Points')} value={v(line?.pts ?? cur?.pts)} />
@@ -116,7 +116,7 @@ export default function BbPlayer() {
                 <RankTile label={t('True shooting')} hint={t('Shooting efficiency counting 3-pointers and free throws')} value={v(line.ts, '%')} rank={line.ranks.ts} />
                 <RankTile label={t('Usage')} hint={t('Share of team plays he finishes while on the court')} value={v(line.usg, '%')} rank={line.ranks.usg} />
               </div>
-              <dl className="mt-5 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-sm">
+              <dl className="mt-5 grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
                 <Stat k={t('Games')} val={v(line.gp)} />
                 <Stat k={t('Minutes')} val={v(line.min)} />
                 <Stat k={t('Plus-minus')} val={signed(line.plusMinus)} />
@@ -146,7 +146,7 @@ export default function BbPlayer() {
         <div className="space-y-6 min-w-0">
           {bio && (
             <Card title={t('Profile')}>
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              <dl className="grid grid-cols-2 gap-2 text-sm">
                 {bio.position && <Stat k={t('Position')} val={bio.position} />}
                 {bio.height && <Stat k={t('Height')} val={bio.height.replace('-', "'") + '"'} />}
                 {bio.weight && <Stat k={t('Weight')} val={`${bio.weight} lb`} />}
@@ -233,7 +233,12 @@ function RankTile({ label, value, rank, hint }: { label: string; value: string; 
 }
 
 function Stat({ k, val }: { k: string; val: string }) {
-  return <><dt className="text-muted">{k}</dt><dd className="text-right num text-ink">{val}</dd></>
+  return (
+    <div className="rounded-lg bg-surface2/40 px-3 py-2 min-w-0">
+      <dt className="text-[11px] text-faint truncate">{k}</dt>
+      <dd className="num text-ink font-semibold truncate">{val}</dd>
+    </div>
+  )
 }
 
 function PointsChart({ form }: { form: PlayerData['form'] }) {
