@@ -413,10 +413,10 @@ export function bbExport(code: string) {
 
 /** Admin research export: player lines (minutes and game score) of a league's games. */
 export function bbExportPlayers(code: string) {
-  const rows = db.prepare(`SELECT ps.game_id, ps.team_id, ps.player_id, ps.minutes, ps.pts, ps.fgm, ps.fga, ps.ftm, ps.fta, ps.reb, ps.ast
+  const rows = db.prepare(`SELECT ps.game_id, ps.team_id, ps.player_id, ps.minutes, ps.pts, ps.fgm, ps.fga, ps.tpm, ps.ftm, ps.fta, ps.reb, ps.ast, ps.starter
     FROM bb_player_stats ps JOIN bb_games g ON g.game_id = ps.game_id WHERE g.code = ? AND ps.minutes > 0`).all(code) as any[];
   const gs = (r: any) => (r.pts || 0) + 0.4 * (r.fgm || 0) - 0.7 * (r.fga || 0) - 0.4 * ((r.fta || 0) - (r.ftm || 0)) + 0.5 * (r.reb || 0) + 0.7 * (r.ast || 0);
-  return { code, cols: ['game', 'team', 'player', 'min', 'gs'], rows: rows.map(r => [r.game_id, r.team_id, r.player_id, Math.round(r.minutes * 10) / 10, Math.round(gs(r) * 10) / 10]) };
+  return { code, cols: ['game', 'team', 'player', 'min', 'gs', 'pts', 'fgm', 'fga', 'tpm', 'ftm', 'fta', 'reb', 'ast', 'starter'], rows: rows.map(r => [r.game_id, r.team_id, r.player_id, Math.round(r.minutes * 10) / 10, Math.round(gs(r) * 10) / 10, r.pts, r.fgm, r.fga, r.tpm, r.ftm, r.fta, r.reb, r.ast, r.starter]) };
 }
 
 export function buildAll(codes: string[]) {
