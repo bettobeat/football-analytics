@@ -29,7 +29,7 @@ export interface BbPrediction {
 }
 export interface BbGame {
   id: number
-  league: { code: string; name: string }
+  league: { code: string; name: string; trial?: boolean }
   season: string
   round: string | null
   preseason: boolean

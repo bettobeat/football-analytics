@@ -115,6 +115,7 @@ export default function BbGame() {
             <LeagueStar code={g.league.code} name={g.league.name} />
             {g.round && <span className="text-faint">· {g.round}</span>}
             {g.preseason && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-draw/15 text-draw">{t('Pre-season')}</span>}
+            {g.league.trial && <span title={t("We added this league recently. Its predictions are being tested and don’t count in our public record yet.")} className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-accent/15 text-accent">{t("New league · in testing")}</span>}
           </div>
           <div className="text-faint">{new Date(g.kickoff).toLocaleString(LOCALE, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
         </div>

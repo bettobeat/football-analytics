@@ -26,6 +26,12 @@ type Params = { k: number; r: number; b2b: number };
 type Team = { o: number; d: number; season: string; games: number; last: number };
 type Pred = { pHome: number; margin: number; total: number; home: number; away: number; hca: number; b2bHome: boolean; b2bAway: boolean; restHome: number | null; restAway: number | null; injHome?: number; injAway?: number; injPlayersHome?: string[]; injPlayersAway?: string[] };
 
+/**
+ * Leagues "in testing" (8 Oct 2026 backtest): the model does not yet beat the simple "home team wins" rate there,
+ * so their picks are shown with a badge and kept out of the overall record. Override with BB_TRIAL_LEAGUES=BSN,XYZ (or "none").
+ */
+export const BB_TRIAL = new Set((process.env.BB_TRIAL_LEAGUES ?? 'BSN').split(',').map(x => x.trim().toUpperCase()).filter(x => x && x !== 'NONE'));
+
 /** NBA games before 19 October are pre-season (they count less and are left out of the record). */
 export const isPreseason = (g: { code: string; kickoff: string }) => {
   if (g.code !== 'NBA') return false;
@@ -480,7 +486,8 @@ export function bbRecord(days = 3650, code?: string) {
   for (const r of list) {
     const hit = (r.p_home >= 0.5) === (r.hs > r.as_);
     const strong = Math.max(r.p_home, 1 - r.p_home) >= 0.7;
-    for (const b of [tot, by.get(r.code) || (by.set(r.code, { n: 0, hits: 0, strongN: 0, strongHits: 0 }), by.get(r.code)!)]) {
+    const lg = by.get(r.code) || (by.set(r.code, { n: 0, hits: 0, strongN: 0, strongHits: 0 }), by.get(r.code)!);
+    for (const b of BB_TRIAL.has(r.code) && !code ? [lg] : [tot, lg]) {
       b.n++; if (hit) b.hits++;
       if (strong) { b.strongN++; if (hit) b.strongHits++; }
     }
@@ -509,7 +516,7 @@ export function bbRecord(days = 3650, code?: string) {
     pending,
     since: list.length ? list[list.length - 1].kickoff : null,
     total: { ...tot, hitRate: pct(tot.hits, tot.n), strongHitRate: pct(tot.strongHits, tot.strongN) },
-    leagues: [...by.entries()].map(([c, b]) => ({ code: c, ...b, hitRate: pct(b.hits, b.n), strongHitRate: pct(b.strongHits, b.strongN) })),
+    leagues: [...by.entries()].map(([c, b]) => ({ code: c, trial: BB_TRIAL.has(c), ...b, hitRate: pct(b.hits, b.n), strongHitRate: pct(b.strongHits, b.strongN) })),
     recent: list.slice(0, 50).map(r => ({
       gameId: r.game_id, code: r.code, kickoff: r.kickoff, home: r.home_name, away: r.away_name, homeLogo: r.home_logo, awayLogo: r.away_logo,
       score: [r.hs, r.as_], pick: r.p_home >= 0.5 ? 'H' : 'A', pHome: r.p_home, hit: (r.p_home >= 0.5) === (r.hs > r.as_)

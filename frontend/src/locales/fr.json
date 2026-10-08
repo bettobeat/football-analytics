@@ -1320,5 +1320,6 @@
  "{0} played last night (second game of a back-to-back), which costs about {1} points.": "{0} a joué hier soir (deuxième match d'affilée), ce qui coûte environ {1} points.",
  "Both teams played last night, so tiredness evens out.": "Les deux équipes ont joué hier soir, la fatigue s'équilibre.",
  "Injuries hurt {0} more: they are missing about {1} points of production.": "Les blessures pèsent plus sur {0} : il manque environ {1} points de production.",
- "{0} min left": "encore {0} min"
+ "{0} min left": "encore {0} min",
+ "in testing": "en test"
 }

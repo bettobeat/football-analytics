@@ -5,7 +5,7 @@
  */
 import { db } from '../db';
 import { BB_LEAGUES, bbGet } from './basketball';
-import { predictGame, teamRating, isPreseason, leagueRatings, BB_MODEL, leagueModelInfo, normCdf, normInv } from './bbModel';
+import { predictGame, teamRating, isPreseason, leagueRatings, BB_MODEL, leagueModelInfo, normCdf, normInv, BB_TRIAL } from './bbModel';
 import { nbaInjuries } from './bbInjuries';
 import { bbSquad, nbaBoxExtras } from './bbPlayers';
 import { personKey } from './bdl';
@@ -47,7 +47,7 @@ function shape(g: Row, full: boolean) {
   const showAll = full || state === 'done';
   return {
     id: g.game_id,
-    league: { code: g.code, name: leagueName(g.code) },
+    league: { code: g.code, name: leagueName(g.code), ...(BB_TRIAL.has(g.code) ? { trial: true } : {}) },
     season: g.season,
     round: g.stage || null,
     preseason: isPreseason({ code: g.code, kickoff: g.kickoff }),

@@ -14,7 +14,7 @@ interface RecordData {
   pending?: Pending[]
   since: string | null
   total: Rec
-  leagues: (Rec & { code: string })[]
+  leagues: (Rec & { code: string; trial?: boolean })[]
   recent: { gameId: number; code: string; kickoff: string; home: string; away: string; homeLogo: string | null; awayLogo: string | null; score: [number, number]; pick: 'H' | 'A'; pHome: number; hit: boolean }[]
 }
 
@@ -49,7 +49,7 @@ export default function BbAccuracy() {
               <tbody>
                 {d.leagues.map(l => (
                   <tr key={l.code} className="border-t border-line/50">
-                    <td className="py-2"><Link to={`/basketball/league/${l.code}`} className="text-ink hover:text-accent">{name(l.code)}</Link></td>
+                    <td className="py-2"><Link to={`/basketball/league/${l.code}`} className="text-ink hover:text-accent">{name(l.code)}</Link>{l.trial && <span className="ml-2 text-[10px] font-bold uppercase text-accent" title={t("We added this league recently. Its predictions are being tested and don’t count in our public record yet.")}>{t('in testing')}</span>}</td>
                     <td className="text-right num text-muted">{l.n}</td>
                     <td className="text-right num text-ink font-bold">{l.hitRate}%</td>
                     <td className="text-right num text-muted">{l.strongHitRate !== null ? `${l.strongHitRate}% (${l.strongN})` : '–'}</td>
