@@ -18,16 +18,16 @@ export function StandingsTable({ data, mark = [], colors }: { data: Standings; m
       {data.groups.map((g, i) => (
         <div key={i}>
           {data.groups.length > 1 && g.name && <div className="label pb-2">{g.name}</div>}
-          <table className="w-full text-xs sm:text-sm">
+          <table className="w-full table-fixed text-xs sm:text-sm">
             <thead>
               <tr className="text-faint text-[10px] uppercase tracking-wide">
-                <th className="text-left font-semibold py-1.5 w-8">#</th>
+                <th className="text-left font-semibold py-1.5 w-9">#</th>
                 <th className="text-left font-semibold py-1.5">{t('Team')}</th>
-                <th className="text-right font-semibold py-1.5 w-8">{t('P')}</th>
-                <th className="text-right font-semibold py-1.5 w-8">{t('W')}</th>
-                <th className="text-right font-semibold py-1.5 w-8">{t('L')}</th>
-                <th className="text-right font-semibold py-1.5 w-12 sm:w-28">%</th>
-                <th className="text-right font-semibold py-1.5 w-14 hidden sm:table-cell">{t('+/−')}</th>
+                <th className="text-right font-semibold py-1.5 w-8 sm:w-10">{t('P')}</th>
+                <th className="text-right font-semibold py-1.5 w-8 sm:w-10">{t('W')}</th>
+                <th className="text-right font-semibold py-1.5 w-8 sm:w-10">{t('L')}</th>
+                <th className="text-right font-semibold py-1.5 w-14 sm:w-32">%</th>
+                <th className="text-right font-semibold py-1.5 w-16 hidden sm:table-cell">{t('+/−')}</th>
               </tr>
             </thead>
             <tbody>
@@ -41,7 +41,7 @@ export function StandingsTable({ data, mark = [], colors }: { data: Standings; m
                       {(c || on) && <span className={`absolute left-0 inset-y-1 w-[3px] rounded-full ${c === 'H' ? 'bg-home' : c === 'A' ? 'bg-away' : 'bg-accent'}`} />}
                       <span className={`ml-1.5 inline-grid place-items-center w-5 h-5 rounded-md num text-[10px] font-bold ${r.position <= 3 ? 'bg-accent/15 text-accent' : 'text-faint'}`}>{r.position}</span>
                     </td>
-                    <td className="py-1.5 max-w-0 w-full">
+                    <td className="py-1.5 pr-2">
                       <Link to={`/basketball/team/${r.team.id}`} className={`flex items-center gap-2 hover:text-accent ${on ? 'font-bold text-ink' : 'text-ink'}`}>
                         <TeamLogo team={r.team} size={18} /><span className="truncate">{r.team.name}</span>
                       </Link>

@@ -236,24 +236,24 @@ export function PlayersCard({ g, home, away, limit, title }: { g: Game; home: Ga
                 </span>
               </Link>
             )}
-            <div className="grid grid-cols-[1fr_5.5rem_2.25rem_2.25rem] sm:grid-cols-[1fr_6.5rem_2.25rem_2.25rem_2.5rem] gap-x-2 text-[10px] font-semibold uppercase tracking-wide text-faint px-1 pb-1">
-              <span>{t('Player')}</span><span>{t('PTS')}</span><span className="text-right">{t('REB')}</span><span className="text-right">{t('AST')}</span><span className="text-right hidden sm:block">{adv ? 'PIE' : t('MIN')}</span>
+            <div className="grid grid-cols-[1fr_2.5rem_2rem_2rem] sm:grid-cols-[1fr_6.5rem_2.25rem_2.25rem_2.5rem] gap-x-2 text-[10px] font-semibold uppercase tracking-wide text-faint px-1 pb-1">
+              <span>{t('Player')}</span><span className="text-right sm:text-left">{t('PTS')}</span><span className="text-right">{t('REB')}</span><span className="text-right">{t('AST')}</span><span className="text-right hidden sm:block">{adv ? 'PIE' : t('MIN')}</span>
             </div>
             <ul className="divide-y divide-line/40">
               {rows.map(p => (
                 <li key={p.id}>
-                  <Link to={`/basketball/player/${p.id}`} className="grid grid-cols-[1fr_5.5rem_2.25rem_2.25rem] sm:grid-cols-[1fr_6.5rem_2.25rem_2.25rem_2.5rem] gap-x-2 items-center px-1 py-1.5 rounded-lg hover:bg-surface2/50 text-xs">
+                  <Link to={`/basketball/player/${p.id}`} className="grid grid-cols-[1fr_2.5rem_2rem_2rem] sm:grid-cols-[1fr_6.5rem_2.25rem_2.25rem_2.5rem] gap-x-2 items-center px-1 py-1.5 rounded-lg hover:bg-surface2/50 text-xs">
                     <span className="flex items-center gap-2 min-w-0">
                       <span className="w-6 h-6 rounded-md bg-surface2 grid place-items-center num text-[10px] font-bold text-muted shrink-0">{p.number ?? '–'}</span>
                       <span className="min-w-0 truncate">
                         <span className="font-semibold text-ink">{p.name}</span>
-                        {p.position && <span className="ml-1.5 text-[10px] text-faint">{p.position}</span>}
+                        {p.position && <span className="hidden sm:inline ml-1.5 text-[10px] text-faint">{p.position}</span>}
                         {tag(p)}
                       </span>
                     </span>
                     <span className="flex items-center gap-1.5">
-                      <span className="flex-1 h-1.5 rounded-full bg-surface2 overflow-hidden"><span className={`block h-full rounded-full ${tone.bg} opacity-80`} style={{ width: `${((p.pts ?? 0) / max) * 100}%` }} /></span>
-                      <span className="num font-bold text-ink w-7 text-right">{p.pts ?? '–'}</span>
+                      <span className="hidden sm:block flex-1 h-1.5 rounded-full bg-surface2 overflow-hidden"><span className={`block h-full rounded-full ${tone.bg} opacity-80`} style={{ width: `${((p.pts ?? 0) / max) * 100}%` }} /></span>
+                      <span className="num font-bold text-ink w-full sm:w-7 text-right">{p.pts ?? '–'}</span>
                     </span>
                     <span className="num text-right text-muted">{p.reb ?? '–'}</span>
                     <span className="num text-right text-muted">{p.ast ?? '–'}</span>
@@ -269,7 +269,7 @@ export function PlayersCard({ g, home, away, limit, title }: { g: Game; home: Ga
   }
   return (
     <Card title={title} action={<span className="text-xs text-faint">{t('per game, this season')}</span>}>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
         {side('H', g.home, home)}
         {side('A', g.away, away)}
       </div>

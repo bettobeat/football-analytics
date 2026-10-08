@@ -18,9 +18,9 @@ function TeamsHead({ g, sub }: { g: Game; sub?: (s: Side) => ReactNode }) {
   const side = (s: Side) => {
     const team = s === 'H' ? g.home : g.away
     return (
-      <Link to={`/basketball/team/${team.id}`} className={`flex items-center gap-3 min-w-0 group ${s === 'A' ? 'flex-row-reverse text-right' : ''}`}>
+      <Link to={`/basketball/team/${team.id}`} className={`flex flex-col sm:flex-row items-center gap-2 sm:gap-3 min-w-0 group text-center ${s === 'A' ? 'sm:flex-row-reverse sm:text-right' : 'sm:text-left'}`}>
         <span className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-surface2/80 border border-line/60 grid place-items-center shrink-0"><TeamLogo team={team} size={30} /></span>
-        <span className="min-w-0">
+        <span className="min-w-0 max-w-full">
           <span className="block font-display font-bold text-ink truncate group-hover:text-accent">{team.name}</span>
           {sub && <span className="block">{sub(s)}</span>}
         </span>
@@ -38,7 +38,7 @@ function TeamsHead({ g, sub }: { g: Game; sub?: (s: Side) => ReactNode }) {
 
 function FormChips({ f, align = 'left' }: { f: ('W' | 'L')[]; align?: 'left' | 'right' }) {
   return (
-    <span className={`flex gap-1 mt-1 ${align === 'right' ? 'justify-end' : ''}`}>
+    <span className={`flex gap-1 mt-1 justify-center ${align === 'right' ? 'sm:justify-end' : 'sm:justify-start'}`}>
       {f.map((r, i) => (
         <span key={i} className={`w-[18px] h-[18px] rounded-[5px] text-[9px] font-extrabold grid place-items-center ${r === 'W' ? 'bg-win/90 text-bg' : 'bg-loss/90 text-bg'} ${i === f.length - 1 ? 'ring-2 ring-offset-1 ring-offset-surface ring-line' : ''}`}>
           {r === 'W' ? t('W') : t('L')}
@@ -146,8 +146,8 @@ const TONE: Record<Tone, string> = {
 function Tile({ label, value, tone, icon }: { label: string; value: ReactNode; tone: Tone; icon: ReactNode }) {
   return (
     <div className={`rounded-xl border px-3 py-2.5 ${TONE[tone]}`}>
-      <div className="flex items-center gap-1.5 opacity-80">{icon}<span className="text-[10px] font-semibold uppercase tracking-wide truncate">{label}</span></div>
-      <div className="num text-xl font-extrabold mt-0.5 leading-none">{value}</div>
+      <div className="flex items-start gap-1.5 opacity-80"><span className="hidden sm:inline mt-px">{icon}</span><span className="text-[10px] font-semibold uppercase sm:tracking-wide leading-tight">{label}</span></div>
+      <div className="num text-xl font-extrabold mt-1 leading-none">{value}</div>
     </div>
   )
 }
@@ -220,7 +220,7 @@ export function RestTab({ g, home, away }: { g: Game; home: Sched; away: Sched }
         <div className="grid grid-cols-3 gap-2 mb-4">
           <Tile icon={Ico.bed} label={t('Rest')} tone={restTone(x)} value={x.restDays === null ? '–' : x.backToBack ? t('B2B') : t('{0} d', { 0: Math.floor(x.restDays) })} />
           <Tile icon={Ico.cal} label={t('Last 7 days')} tone={loadTone(x)} value={x.games7} />
-          <Tile icon={Ico.next} label={t('Next game')} tone={nextTone(x)} value={x.nextIn === null ? '–' : t('{0} d', { 0: Math.floor(x.nextIn) })} />
+          <Tile icon={Ico.next} label={t('Next game')} tone={nextTone(x)} value={x.nextIn === null ? '–' : t('{0} d', { 0: Math.round(x.nextIn) })} />
         </div>
         {x.recent.length > 0 && (
           <>
@@ -275,9 +275,9 @@ export function H2HTab({ g, list }: { g: Game; list: H2H[] }) {
           <div className="rounded-2xl border border-line/60 bg-surface2/40 p-4 sm:p-5">
             <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
               {(['H', 'A'] as const).map((s, i) => (
-                <div key={s} className={`flex items-center gap-3 min-w-0 ${i === 1 ? 'order-3 flex-row-reverse text-right' : ''}`}>
+                <div key={s} className={`flex flex-col sm:flex-row items-center gap-2 sm:gap-3 min-w-0 text-center ${i === 1 ? 'order-3 sm:flex-row-reverse sm:text-right' : 'sm:text-left'}`}>
                   <span className="w-12 h-12 rounded-2xl bg-surface border border-line/60 grid place-items-center shrink-0"><TeamLogo team={teamOf(s)} size={30} /></span>
-                  <span className="min-w-0">
+                  <span className="min-w-0 max-w-full">
                     <span className="block font-display font-bold text-ink truncate">{teamOf(s).name}</span>
                     <span className="block text-[11px] text-faint num">{t('{0} pts a game', { 0: avg(s === 'H' ? hp : ap) })}</span>
                   </span>
