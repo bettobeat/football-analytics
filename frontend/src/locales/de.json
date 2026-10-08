@@ -1199,5 +1199,12 @@
  "For {0}, {1} may not play.": "Bei {0} könnte {1} fehlen.",
  "{0} results in the last {1} days": "{0} Ergebnisse in den letzten {1} Tagen",
  "No results for this selection.": "Keine Ergebnisse für diese Auswahl.",
- "No results in the last two weeks.": "Keine Ergebnisse in den letzten zwei Wochen."
+ "No results in the last two weeks.": "Keine Ergebnisse in den letzten zwei Wochen.",
+ "No official games checked yet: the first regular-season games with a saved pick are in the list below and count as soon as they finish.": "Noch keine offiziellen Spiele geprüft: die ersten Saisonspiele mit gespeichertem Tipp stehen unten und zählen, sobald sie vorbei sind.",
+ "Waiting for the result": "Warten auf das Ergebnis",
+ "picks saved before tip-off": "vor dem Spiel gespeicherte Tipps",
+ "Bold = our pick. Each game is checked automatically after the final buzzer.": "Fett = unser Tipp. Jedes Spiel wird nach der Schlusssirene automatisch geprüft.",
+ "Pre-season (not counted)": "Vorbereitung (zählt nicht)",
+ "{0} of {1} right": "{0} von {1} richtig",
+ "In pre-season teams rest their stars and try young players, so these games are shown but kept out of the official record.": "In der Vorbereitung schonen Teams ihre Stars und testen junge Spieler, deshalb werden diese Spiele gezeigt, aber nicht in der offiziellen Bilanz gezählt."
 }

@@ -460,7 +460,27 @@ export function bbRecord(days = 3650, code?: string) {
     }
   }
   const pct = (a: number, b: number) => (b ? Math.round((a / b) * 1000) / 10 : null);
+  const row = (r: any) => ({
+    gameId: r.game_id, code: r.code, kickoff: r.kickoff, home: r.home_name, away: r.away_name, homeLogo: r.home_logo, awayLogo: r.away_logo,
+    score: [r.hs, r.as_], pick: r.p_home >= 0.5 ? 'H' : 'A', pHome: r.p_home, hit: (r.p_home >= 0.5) === (r.hs > r.as_)
+  });
+  // pre-season: shown apart, never counted
+  const pre = rows.filter(r => isPreseason({ code: r.code, kickoff: r.kickoff }));
+  const preHits = pre.filter(r => (r.p_home >= 0.5) === (r.hs > r.as_)).length;
+  // picks already saved and waiting for the result (live now or tipping off in the next 36 hours) — the pick only
+  const pending = (db.prepare(`
+    SELECT p.game_id, p.code, p.kickoff, p.p_home, g.home_name, g.away_name, g.home_logo, g.away_logo, g.status, g.hs, g.as_
+    FROM bb_predictions p JOIN bb_games g ON g.game_id = p.game_id
+    WHERE (g.status IS NULL OR g.status NOT IN ('FT','AOT','CANC','POST','ABD','AWD')) AND p.kickoff BETWEEN ? AND ? ${code ? 'AND p.code = ?' : ''}
+    ORDER BY p.kickoff LIMIT 60`).all(...[new Date(Date.now() - 4 * 3600000).toISOString(), new Date(Date.now() + 36 * 3600000).toISOString(), ...(code ? [code] : [])]) as any[])
+    .map(r => ({
+      gameId: r.game_id, code: r.code, kickoff: r.kickoff, home: r.home_name, away: r.away_name, homeLogo: r.home_logo, awayLogo: r.away_logo,
+      status: r.status, live: !!r.status && r.status !== 'NS' && Date.parse(r.kickoff) <= Date.now(), score: r.hs != null ? [r.hs, r.as_] : null,
+      pick: r.p_home >= 0.5 ? 'H' : 'A', preseason: isPreseason({ code: r.code, kickoff: r.kickoff })
+    }));
   return {
+    preseason: { n: pre.length, hits: preHits, hitRate: pct(preHits, pre.length), recent: pre.slice(0, 30).map(row) },
+    pending,
     since: list.length ? list[list.length - 1].kickoff : null,
     total: { ...tot, hitRate: pct(tot.hits, tot.n), strongHitRate: pct(tot.strongHits, tot.strongN) },
     leagues: [...by.entries()].map(([c, b]) => ({ code: c, ...b, hitRate: pct(b.hits, b.n), strongHitRate: pct(b.strongHits, b.strongN) })),

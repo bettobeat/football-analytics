@@ -1199,5 +1199,12 @@
  "For {0}, {1} may not play.": "{0} tarafında {1} oynamayabilir.",
  "{0} results in the last {1} days": "Son {1} günde {0} sonuç",
  "No results for this selection.": "Bu seçim için sonuç yok.",
- "No results in the last two weeks.": "Son iki haftada sonuç yok."
+ "No results in the last two weeks.": "Son iki haftada sonuç yok.",
+ "No official games checked yet: the first regular-season games with a saved pick are in the list below and count as soon as they finish.": "Henüz kontrol edilmiş resmi maç yok: tahmini kaydedilmiş ilk normal sezon maçları aşağıdaki listede ve biter bitmez sayılır.",
+ "Waiting for the result": "Sonuç bekleniyor",
+ "picks saved before tip-off": "maç öncesi kaydedilen tahminler",
+ "Bold = our pick. Each game is checked automatically after the final buzzer.": "Kalın = tahminimiz. Her maç son düdükten sonra otomatik kontrol edilir.",
+ "Pre-season (not counted)": "Hazırlık maçları (sayılmaz)",
+ "{0} of {1} right": "{1} maçta {0} doğru",
+ "In pre-season teams rest their stars and try young players, so these games are shown but kept out of the official record.": "Hazırlık döneminde takımlar yıldızlarını dinlendirir ve gençleri dener; bu yüzden bu maçlar gösterilir ama resmi kayda girmez."
 }
