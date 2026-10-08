@@ -38,9 +38,10 @@ export const BB_TRIAL = new Set((process.env.BB_TRIAL_LEAGUES ?? 'BSN').split(',
  *  - v2 (possessions): faster early learning
  *  - v1 and v2 blended 50/50 (was a weight chosen on one season), then stretched ×1.05 on the probit scale (calibration)
  *  - player talent: the value (game score per minute, all our leagues) of the players a team used in its last game
- *    (NBA: last 5 games, injuries are handled by the injury report), shift = 0.15 × talent gap / 13 on the probit scale
+ *    (NBA: last 5 games, injuries are handled by the injury report), shift = 0.12 × talent gap / 13 on the probit scale
+ *  - round 2: player value shrunk toward 0 with 800 minutes (unproven players count little): 0.5765 → 0.5751, 69.2% → 69.3%
  */
-export const V3 = { kEarly: 1.5, earlyN: 10, kha: 0.01, rha: 0.7, w2: 0.5, stretch: 1.05, talent: 0.15, decay: 0.995, priorMin: 400 };
+export const V3 = { kEarly: 1.5, earlyN: 10, kha: 0.01, rha: 0.7, w2: 0.5, stretch: 1.05, talent: 0.12, decay: 0.995, priorMin: 800, priorRate: 0 };
 
 /** NBA games before 19 October are pre-season (they count less and are left out of the record). */
 export const isPreseason = (g: { code: string; kickoff: string }) => {
@@ -296,7 +297,8 @@ const talentState = { rates: new Map<number, { m: number; g: number }>(), roster
 const gsOf = (r: any) => (r.pts || 0) + 0.4 * (r.fgm || 0) - 0.7 * (r.fga || 0) - 0.4 * ((r.fta || 0) - (r.ftm || 0)) + 0.5 * (r.reb || 0) + 0.7 * (r.ast || 0);
 function playerRate(pid: number) {
   const x = talentState.rates.get(pid);
-  return x ? (x.g + 0.35 * V3.priorMin) / (x.m + V3.priorMin) : null;
+  // shrunk toward 0 (8 Oct 2026 round 2): a player we have seen little of counts as little — proven production matters
+  return x ? (x.g + V3.priorRate * V3.priorMin) / (x.m + V3.priorMin) : null;
 }
 /** A team's talent: minutes-weighted value of the players it used in its last `lastN` games (game score per 200 minutes). */
 export function teamTalent(teamId: number, lastN = 1) {
