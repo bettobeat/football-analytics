@@ -239,3 +239,18 @@ export function MobileLeagueBar({ side, live, liveCount }: { side: SidebarProps;
     </div>
   )
 }
+
+/** Flashscore-style thin league bar over a block of games: flag · COUNTRY: League · count. */
+export function LeagueBar({ country, name, logo, to, count }: { country: string; name: string; logo?: string | null; to: string; count: number }) {
+  return (
+    <Link to={to} className="flex items-center gap-2 h-8 px-3 sm:px-4 bg-surface2/60 border-b border-line/60 hover:bg-surface2 transition-colors min-w-0">
+      <Flag code={country} size={16} />
+      <span className="min-w-0 truncate text-[11px] leading-none">
+        <span className="uppercase tracking-wide font-semibold text-faint">{countryName(country)}: </span>
+        <span className="font-bold text-ink">{name}</span>
+      </span>
+      {logo && <img src={logo} alt="" className="w-3.5 h-3.5 object-contain opacity-80 shrink-0" />}
+      <span className="ml-auto text-[10px] font-semibold text-faint num shrink-0">{count}</span>
+    </Link>
+  )
+}

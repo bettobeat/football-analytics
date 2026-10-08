@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { t, LOCALE } from '../../lib/i18n'
 import { useReveal, justRevealed } from '../../lib/reveal'
 import CountUp from '../../components/CountUp'
-import { BB_STATUS, liveLabel, bbRank, timeOf, useBbFavorites, type BbGame, type BbSide } from '../../lib/bb'
+import { LeagueBar } from '../../components/LeagueSidebar'
+import { BB_STATUS, BB_COUNTRY, liveLabel, bbRank, timeOf, useBbFavorites, type BbGame, type BbSide } from '../../lib/bb'
 
 /** Shared pieces of the basketball pages — the same look as the football pages. */
 
@@ -77,9 +78,10 @@ export function GameRow({ g, showLeague = false, showDay = false, compact = fals
   const favWhy = useBbFavorites().reasons(g)
 
   return (
-    <Link to={`/basketball/game/${g.id}`} className={`group flex items-center gap-3 px-3 sm:px-4 py-2.5 hover:bg-surface2/50 transition-colors ${isLive ? 'bg-live/5' : ''}`}>
+    <Link to={`/basketball/game/${g.id}`} className={`group relative flex items-center gap-2.5 px-3 sm:px-4 py-1.5 hover:bg-surface2/50 transition-colors ${isLive ? 'bg-live/[0.06]' : ''}`}>
+      {isLive && <span className="absolute left-0 inset-y-0 w-0.5 bg-live" aria-hidden />}
       {/* time / status */}
-      <div className="relative w-11 flex-shrink-0 text-center">
+      <div className="relative w-10 flex-shrink-0 text-center leading-tight">
         {favWhy.length > 0 && (
           <span className="absolute -left-2.5 sm:-left-3 top-1/2 -translate-y-1/2 text-accent" title={t('Favorite: {0}', { 0: favWhy.map(f => f.name).join(', ') })}>
             <svg viewBox="0 0 24 24" className="w-3 h-3" fill="currentColor" aria-hidden><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5z" /></svg>
@@ -87,11 +89,8 @@ export function GameRow({ g, showLeague = false, showDay = false, compact = fals
         )}
         {isLive ? (
           <>
-            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-live">
-              <span className="w-1.5 h-1.5 rounded-full bg-live animate-pulseDot" />
-              {BB_STATUS[g.status] || t('LIVE')}
-            </span>
-            {g.clock && <span className="block text-[10px] font-semibold text-live/80 num whitespace-nowrap">{t('{0} min left', { 0: g.clock.left })}</span>}
+            <span className="block text-[11px] font-bold text-live">{BB_STATUS[g.status] || t('LIVE')}</span>
+            {g.clock ? <span className="block text-[10px] font-bold text-live num whitespace-nowrap">{g.clock.left}'<span className="animate-pulseDot">·</span></span> : <span className="inline-block w-1.5 h-1.5 rounded-full bg-live animate-pulseDot" />}
           </>
         ) : done ? (
           <span className="block text-[11px] font-bold text-faint">{BB_STATUS[g.status] || t('Final')}</span>
@@ -99,7 +98,7 @@ export function GameRow({ g, showLeague = false, showDay = false, compact = fals
           <span className="block text-[10px] font-bold text-loss">{BB_STATUS[g.status] || g.status}</span>
         ) : (
           <>
-            <span className="block num text-xs text-ink">{timeOf(g.kickoff)}</span>
+            <span className="block num text-[12px] text-ink/90">{timeOf(g.kickoff)}</span>
             {showDay && <span className="block text-[10px] text-faint">{new Date(g.kickoff).toLocaleDateString(LOCALE, { weekday: 'short' })}</span>}
           </>
         )}
@@ -112,10 +111,10 @@ export function GameRow({ g, showLeague = false, showDay = false, compact = fals
           const team = side === 'H' ? g.home : g.away
           const score = g.score && g.state !== 'upcoming' ? (side === 'H' ? g.score.home : g.score.away) : null
           return (
-            <div key={side} className="flex items-center gap-2 min-w-0 leading-6">
-              <TeamLogo team={team} size={18} />
-              <span className={`text-sm truncate ${pick === side || won(side) ? 'font-bold text-ink' : 'text-ink/85'}`}>{team.name}</span>
-              {score !== null && <span className={`ml-auto num text-sm font-bold ${done && !won(side) ? 'text-muted' : 'text-ink'}`}>{score}</span>}
+            <div key={side} className="flex items-center gap-2 min-w-0 h-5">
+              <TeamLogo team={team} size={15} />
+              <span className={`text-[13px] truncate ${pick === side || won(side) ? 'font-bold text-ink' : 'text-ink/85'}`}>{team.name}</span>
+              {score !== null && <span className={`ml-auto pl-2 num text-[13px] font-extrabold tabular-nums ${isLive ? 'text-live' : done && !won(side) ? 'text-muted' : 'text-ink'}`}>{score}</span>}
             </div>
           )
         })}
@@ -130,12 +129,12 @@ export function GameRow({ g, showLeague = false, showDay = false, compact = fals
           )}
         </div>
       ) : (
-      <div className="flex-shrink-0 flex items-center justify-end min-w-[92px] sm:min-w-[176px] gap-2">
+      <div className="flex-shrink-0 flex items-center justify-end min-w-[84px] sm:min-w-[150px] gap-1.5">
         {covered ? (
           <button
             type="button"
             onClick={e => { e.preventDefault(); e.stopPropagation(); reveal() }}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-bold bg-accent/10 text-accent border border-accent/30 hover:bg-accent/15"
+            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[11px] font-bold bg-accent/10 text-accent border border-accent/30 hover:bg-accent/15"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
@@ -151,8 +150,8 @@ export function GameRow({ g, showLeague = false, showDay = false, compact = fals
           <>
             {/* phones: the pick and its % */}
             <span className={`sm:hidden text-right leading-tight ${roll ? 'pop-in' : ''}`}>
-              <span className={`block text-xs font-bold truncate max-w-[92px] ${PICK_COLOR[pick]}`}>{pickName}</span>
-              <CountUp value={pct} suffix="%" animate={roll} className="block num text-[11px] text-muted" />
+              <span className={`block text-[11px] font-bold truncate max-w-[84px] ${PICK_COLOR[pick]}`}>{pickName}</span>
+              <CountUp value={pct} suffix="%" animate={roll} className="block num text-[11px] font-semibold text-ink/80" />
             </span>
             {/* wider screens: 1 · 2 with the pick highlighted, then spread and total */}
             <span className="hidden sm:flex items-center gap-1">
@@ -160,22 +159,22 @@ export function GameRow({ g, showLeague = false, showDay = false, compact = fals
                 const v = Math.round(k === 'H' ? p.pHome! : p.pAway!)
                 const on = k === pick
                 return (
-                  <span key={k} className={`w-[54px] h-9 rounded-lg grid place-items-center leading-none transition-colors duration-500 ${on ? `${PICK_BG[k]} text-bg` : 'bg-surface2/70 text-muted'} ${roll ? 'pop-in' : ''}`} style={roll ? { animationDelay: `${i * 90}ms` } : undefined}>
-                    <span className="text-[9px] font-bold opacity-80">{k === 'H' ? '1' : '2'}</span>
-                    <CountUp value={v} suffix="%" animate={roll} delay={i * 90} className="num text-xs font-bold" />
+                  <span key={k} className={`w-11 h-7 rounded-md grid place-items-center leading-none transition-colors duration-500 ${on ? `${PICK_BG[k]} text-bg` : 'bg-surface2/70 text-muted'} ${roll ? 'pop-in' : ''}`} style={roll ? { animationDelay: `${i * 90}ms` } : undefined}>
+                    <span className="text-[8px] font-bold opacity-75">{k === 'H' ? '1' : '2'}</span>
+                    <CountUp value={v} suffix="%" animate={roll} delay={i * 90} className="num text-[11px] font-bold" />
                   </span>
                 )
               })}
               {typeof p.spread === 'number' && typeof p.total === 'number' && (
                 <>
-                  <span className="hidden md:block w-px h-6 bg-line mx-1.5" aria-hidden />
-                  <span className={`hidden md:grid w-[68px] h-9 rounded-lg place-items-center leading-none border border-line/70 text-muted ${roll ? 'pop-in' : ''}`} title={t('Point spread')}>
-                    <span className="text-[9px] font-bold opacity-80">{t('Spread')}</span>
-                    <span className="num text-xs font-bold text-ink">{p.spread >= 0 ? '1' : '2'} −{Math.abs(p.spread).toFixed(1)}</span>
+                  <span className="hidden lg:block w-px h-5 bg-line mx-1" aria-hidden />
+                  <span className={`hidden lg:grid w-[60px] h-7 rounded-md place-items-center leading-none border border-line/70 text-muted ${roll ? 'pop-in' : ''}`} title={t('Point spread')}>
+                    <span className="text-[8px] font-bold opacity-75">{t('Spread')}</span>
+                    <span className="num text-[11px] font-bold text-ink">{p.spread >= 0 ? '1' : '2'} −{Math.abs(p.spread).toFixed(1)}</span>
                   </span>
-                  <span className={`hidden md:grid w-[68px] h-9 rounded-lg place-items-center leading-none border border-line/70 text-muted ${roll ? 'pop-in' : ''}`} title={t('Total points')}>
-                    <span className="text-[9px] font-bold opacity-80">{t('Total')}</span>
-                    <span className="num text-xs font-bold text-ink">{p.total.toFixed(1)}</span>
+                  <span className={`hidden lg:grid w-[60px] h-7 rounded-md place-items-center leading-none border border-line/70 text-muted ${roll ? 'pop-in' : ''}`} title={t('Total points')}>
+                    <span className="text-[8px] font-bold opacity-75">{t('Total')}</span>
+                    <span className="num text-[11px] font-bold text-ink">{p.total.toFixed(1)}</span>
                   </span>
                 </>
               )}
@@ -185,7 +184,7 @@ export function GameRow({ g, showLeague = false, showDay = false, compact = fals
           <span className="text-xs text-faint">–</span>
         )}
         {done && p?.hit !== null && p?.hit !== undefined && (
-          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${p.hit ? 'bg-win/15 text-win' : 'bg-loss/15 text-loss'}`}>{p.hit ? t('Hit') : t('Miss')}</span>
+          <span className={`w-5 h-5 rounded grid place-items-center text-[10px] font-extrabold ${p.hit ? 'bg-win/15 text-win' : 'bg-loss/15 text-loss'}`} title={p.hit ? t('Hit') : t('Miss')}>{p.hit ? '✓' : '✗'}</span>
         )}
       </div>
       )}
@@ -199,17 +198,13 @@ export function LeagueCards({ games, logos }: { games: BbGame[]; logos?: Record<
   for (const g of games) by.set(g.league.code, [...(by.get(g.league.code) || []), g])
   const order = [...by.keys()].sort((a, b) => bbRank(a) - bbRank(b))
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {order.map(code => {
         const list = by.get(code)!
         return (
           <div key={code} className="card overflow-hidden">
-            <Link to={`/basketball/league/${code}`} className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-surface2/50 border-b border-line/60 text-xs font-semibold text-muted hover:text-ink">
-              {logos?.[code] ? <img src={logos[code]!} alt="" className="w-4 h-4 object-contain" /> : <span className="w-4 h-4 rounded bg-surface2" />}
-              <span className="truncate">{list[0].league.name}</span>
-              <span className="ml-auto text-[11px] font-normal text-faint num">{list.length}</span>
-            </Link>
-            <div className="divide-y divide-line/50">{list.map(g => <GameRow key={g.id} g={g} />)}</div>
+            <LeagueBar country={BB_COUNTRY[code] || 'world'} name={list[0].league.name} logo={logos?.[code]} to={`/basketball/league/${code}`} count={list.length} />
+            <div className="divide-y divide-line/40">{list.map(g => <GameRow key={g.id} g={g} />)}</div>
           </div>
         )
       })}
@@ -230,7 +225,7 @@ export function GamesByDay({ games, logos, empty }: { games: BbGame[]; logos?: R
   return (
     <>
       {days.map(d => (
-        <section key={d.key} className="mb-8">
+        <section key={d.key} className="mb-6">
           <SectionTitle label={dayTitle(d.list[0].kickoff)} count={d.list.length} sticky />
           <LeagueCards games={d.list} logos={logos} />
         </section>

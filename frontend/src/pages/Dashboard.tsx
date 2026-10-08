@@ -8,7 +8,7 @@ import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
 import { pickOfPrediction, type Prediction } from '../lib/predict'
 import { useFavorites } from '../lib/favorites'
-import LeagueSidebar, { MobileLeagueBar } from '../components/LeagueSidebar'
+import LeagueSidebar, { MobileLeagueBar, LeagueBar } from '../components/LeagueSidebar'
 import { footballCountry, leagueShortName } from '../lib/leagueCountry'
 import { t as tt, LOCALE } from '../lib/i18n'
 
@@ -351,20 +351,13 @@ function Dashboard() {
           {/* By day, then by competition: one thin row per game */}
           {!loading &&
             grouped.map(([ts, dayMatches]) => (
-              <section key={ts} className="mb-8">
+              <section key={ts} className="mb-6">
                 <SectionTitle label={dayLabel(ts)} count={dayMatches.length} sticky />
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {byCompetition(dayMatches).map(([comp, list]) => (
                     <div key={comp.code} className="card overflow-hidden">
-                      <Link
-                        to={`/league/${comp.code}`}
-                        className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-surface2/50 border-b border-line/60 text-xs font-semibold text-muted hover:text-ink"
-                      >
-                        {comp.emblem ? <img src={comp.emblem} alt="" className="w-4 h-4 object-contain" /> : <span className="w-4 h-4 rounded bg-surface2" />}
-                        <span className="truncate">{comp.name}</span>
-                        <span className="ml-auto text-[11px] font-normal text-faint num">{list.length}</span>
-                      </Link>
-                      <div className="divide-y divide-line/50">
+                      <LeagueBar country={footballCountry(comp)} name={leagueShortName(comp.name)} logo={comp.emblem} to={`/league/${comp.code}`} count={list.length} />
+                      <div className="divide-y divide-line/40">
                         {list.map(m => (
                           <MatchRow key={m.id} match={m} />
                         ))}
@@ -632,22 +625,23 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
       : null
 
   return (
-    <Link to={`/match/${match.id}`} className={`group flex items-center gap-3 px-3 sm:px-4 py-2.5 hover:bg-surface2/50 transition-colors ${isLive ? 'bg-live/5' : ''}`}>
+    <Link to={`/match/${match.id}`} className={`group relative flex items-center gap-2.5 px-3 sm:px-4 py-1.5 hover:bg-surface2/50 transition-colors ${isLive ? 'bg-live/[0.06]' : ''}`}>
+      {isLive && <span className="absolute left-0 inset-y-0 w-0.5 bg-live" aria-hidden />}
       {/* time */}
-      <div className="relative w-11 flex-shrink-0 text-center">
+      <div className="relative w-10 flex-shrink-0 text-center leading-tight">
         {favWhy.length > 0 && (
           <span className="absolute -left-2.5 sm:-left-3 top-1/2 -translate-y-1/2 text-accent" title={tt("Favorite: {0}", { 0: favWhy.map(f => f.name).join(', ') })}>
             <svg viewBox="0 0 24 24" className="w-3 h-3" fill="currentColor" aria-hidden><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5z" /></svg>
           </span>
         )}
         {isLive ? (
-          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-live">
-            <span className="w-1.5 h-1.5 rounded-full bg-live animate-pulseDot" />
-            {match.status === 'PAUSED' ? tt("HT") : tt("LIVE")}
-          </span>
+          <>
+            <span className="block text-[11px] font-bold text-live">{match.status === 'PAUSED' ? tt("HT") : tt("LIVE")}</span>
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-live animate-pulseDot" />
+          </>
         ) : (
           <>
-            <span className="block num text-xs text-ink">{kickoff(match.utcDate)}</span>
+            <span className="block num text-[12px] text-ink/90">{kickoff(match.utcDate)}</span>
             {showDay && <span className="block text-[10px] text-faint">{new Date(match.utcDate).toLocaleDateString(LOCALE, { weekday: 'short' })}</span>}
           </>
         )}
@@ -665,15 +659,15 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
           const side: Pick = i === 0 ? 'H' : 'A'
           const score = isLive ? (i === 0 ? ft?.home : ft?.away) : null
           return (
-            <div key={t.id} className="flex items-center gap-2 min-w-0 leading-6">
-              <Crest team={t} size={18} />
-              <span className={`text-sm truncate ${pick === side ? 'font-bold text-ink' : 'text-ink/85'}`}>{name(t)}</span>
-              {score !== null && score !== undefined && <span className="ml-auto num text-sm font-bold text-ink">{score}</span>}
+            <div key={t.id} className="flex items-center gap-2 min-w-0 h-5">
+              <Crest team={t} size={15} />
+              <span className={`text-[13px] truncate ${pick === side ? 'font-bold text-ink' : 'text-ink/85'}`}>{name(t)}</span>
+              {score !== null && score !== undefined && <span className="ml-auto pl-2 num text-[13px] font-extrabold tabular-nums text-live">{score}</span>}
             </div>
           )
         })}
         {extras && (
-          <div className={`md:hidden flex gap-3 mt-0.5 text-[11px] text-muted ${roll ? 'pop-in' : ''}`} style={roll ? { animationDelay: '420ms' } : undefined}>
+          <div className={`lg:hidden flex gap-3 text-[10px] text-muted ${roll ? 'pop-in' : ''}`} style={roll ? { animationDelay: '420ms' } : undefined}>
             {extras.map(x => (
               <span key={x.k}>
                 {x.top} <CountUp value={x.v} suffix="%" animate={roll} delay={420} className={`num font-semibold ${x.v >= 60 ? 'text-accent' : 'text-ink'}`} />
@@ -684,12 +678,12 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
       </div>
 
       {/* prediction */}
-      <div className="flex-shrink-0 flex items-center justify-end min-w-[92px] sm:min-w-[176px]">
+      <div className="flex-shrink-0 flex items-center justify-end min-w-[84px] sm:min-w-[150px]">
         {covered ? (
           <button
             type="button"
             onClick={e => { e.preventDefault(); e.stopPropagation(); reveal() }}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-bold bg-accent/10 text-accent border border-accent/30 hover:bg-accent/15"
+            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[11px] font-bold bg-accent/10 text-accent border border-accent/30 hover:bg-accent/15"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
@@ -704,8 +698,8 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
           <>
             {/* phones: the pick and its % */}
             <span className={`sm:hidden text-right leading-tight ${roll ? 'pop-in' : ''}`}>
-              <span className={`block text-xs font-bold truncate max-w-[92px] ${PICK_COLOR[pick]}`}>{pickName}</span>
-              <CountUp value={pickPct} suffix="%" animate={roll} className="block num text-[11px] text-muted" />
+              <span className={`block text-[11px] font-bold truncate max-w-[84px] ${PICK_COLOR[pick]}`}>{pickName}</span>
+              <CountUp value={pickPct} suffix="%" animate={roll} className="block num text-[11px] font-semibold text-ink/80" />
             </span>
             {/* wider screens: 1 · X · 2 with the pick highlighted */}
             <span className="hidden sm:flex items-center gap-1">
@@ -715,26 +709,26 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
                 return (
                   <span
                     key={k}
-                    className={`w-[54px] h-9 rounded-lg grid place-items-center leading-none transition-colors duration-500 ${on ? `${PICK_BG[k]} text-bg` : 'bg-surface2/70 text-muted'} ${roll ? 'pop-in' : ''}`}
+                    className={`w-11 h-7 rounded-md grid place-items-center leading-none transition-colors duration-500 ${on ? `${PICK_BG[k]} text-bg` : 'bg-surface2/70 text-muted'} ${roll ? 'pop-in' : ''}`}
                     style={roll ? { animationDelay: `${i * 90}ms` } : undefined}
                   >
-                    <span className="text-[9px] font-bold opacity-80">{k === 'H' ? '1' : k === 'D' ? 'X' : '2'}</span>
-                    <CountUp value={v} suffix="%" animate={roll} delay={i * 90} className="num text-xs font-bold" />
+                    <span className="text-[8px] font-bold opacity-75">{k === 'H' ? '1' : k === 'D' ? 'X' : '2'}</span>
+                    <CountUp value={v} suffix="%" animate={roll} delay={i * 90} className="num text-[11px] font-bold" />
                   </span>
                 )
               })}
               {extras && (
                 <>
-                  <span className="hidden md:block w-px h-6 bg-line mx-1.5" aria-hidden />
+                  <span className="hidden lg:block w-px h-5 bg-line mx-1" aria-hidden />
                   {extras.map((x, i) => (
                     <span
                       key={x.k}
-                      className={`hidden md:grid w-[68px] h-9 rounded-lg place-items-center leading-none border ${x.v >= 60 ? 'border-accent/40 bg-accent/10 text-accent' : 'border-line/70 text-muted'} ${roll ? 'pop-in' : ''}`}
+                      className={`hidden lg:grid w-[60px] h-7 rounded-md place-items-center leading-none border ${x.v >= 60 ? 'border-accent/40 bg-accent/10 text-accent' : 'border-line/70 text-muted'} ${roll ? 'pop-in' : ''}`}
                       style={roll ? { animationDelay: `${300 + i * 90}ms` } : undefined}
                       title={x.k === 'o25' ? tt("Over 2.5 goals: {0}% · Under: {1}%", { 0: Math.round(p.over25), 1: Math.round(100 - p.over25) }) : tt("Both teams score: {0}% · Not both: {1}%", { 0: Math.round(p.btts), 1: Math.round(100 - p.btts) })}
                     >
-                      <span className="text-[9px] font-bold opacity-80 whitespace-nowrap">{x.top}</span>
-                      <CountUp value={x.v} suffix="%" animate={roll} delay={300 + i * 90} className="num text-xs font-bold" />
+                      <span className="text-[8px] font-bold opacity-75 whitespace-nowrap">{x.top}</span>
+                      <CountUp value={x.v} suffix="%" animate={roll} delay={300 + i * 90} className="num text-[11px] font-bold" />
                     </span>
                   ))}
                 </>
