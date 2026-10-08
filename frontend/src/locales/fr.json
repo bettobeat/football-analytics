@@ -1321,5 +1321,6 @@
  "Both teams played last night, so tiredness evens out.": "Les deux équipes ont joué hier soir, la fatigue s'équilibre.",
  "Injuries hurt {0} more: they are missing about {1} points of production.": "Les blessures pèsent plus sur {0} : il manque environ {1} points de production.",
  "{0} min left": "encore {0} min",
- "in testing": "en test"
+ "in testing": "en test",
+ "{0} have more talent on the floor right now (the players they used in their latest games): about {1} points.": "{0} a plus de talent sur le terrain en ce moment (les joueurs utilisés lors des derniers matchs) : environ {1} points."
 }

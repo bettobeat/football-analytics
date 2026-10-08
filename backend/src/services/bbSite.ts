@@ -5,7 +5,7 @@
  */
 import { db } from '../db';
 import { BB_LEAGUES, bbGet } from './basketball';
-import { predictGame, teamRating, isPreseason, leagueRatings, BB_MODEL, leagueModelInfo, normCdf, normInv, BB_TRIAL } from './bbModel';
+import { predictGame, teamRating, isPreseason, leagueRatings, BB_MODEL, leagueModelInfo, normCdf, normInv, BB_TRIAL, teamTalent, V3 } from './bbModel';
 import { nbaInjuries } from './bbInjuries';
 import { bbSquad, nbaBoxExtras } from './bbPlayers';
 import { personKey } from './bdl';
@@ -159,7 +159,7 @@ function schedule(teamId: number, kickoff: string) {
 /** Why we think so: the reasons behind the pick, in points of expected margin (kind is translated on the site). */
 function reasons(g: Row, pr: any, full: boolean) {
   if (!pr || !full) return [];
-  const out: { kind: 'strength' | 'home' | 'b2b' | 'b2bBoth' | 'injuries' | 'attack'; side: 'H' | 'A'; points: number }[] = [];
+  const out: { kind: 'strength' | 'home' | 'b2b' | 'b2bBoth' | 'injuries' | 'attack' | 'talent'; side: 'H' | 'A'; points: number }[] = [];
   // injuries: the side that loses fewer points to injured regulars gains the difference
   const inj = (pr.injHome || 0) - (pr.injAway || 0);
   if (Math.abs(inj) >= 0.5) out.push({ kind: 'injuries', side: inj > 0 ? 'A' : 'H', points: Math.round(Math.abs(inj) * 10) / 10 });
@@ -172,6 +172,13 @@ function reasons(g: Row, pr: any, full: boolean) {
     const hx = Math.round((rh.attack - ra.defence) * 10) / 10, ax = Math.round((ra.attack - rh.defence) * 10) / 10;
     if (Math.abs(hx) >= 0.5) extra.push({ kind: 'attack', side: 'H', points: hx });
     if (Math.abs(ax) >= 0.5) extra.push({ kind: 'attack', side: 'A', points: ax });
+  }
+  // bb-v3 player talent: the value of the players each team used most recently (points of margin)
+  const th = teamTalent(g.home_id, g.code === 'NBA' ? 5 : 1), ta = teamTalent(g.away_id, g.code === 'NBA' ? 5 : 1);
+  const sig = leagueModelInfo(g.code)?.sigma || 12;
+  if (th != null && ta != null) {
+    const tp = Math.round(((V3.talent * (th - ta)) / 13) * (sig / V3.stretch) * 10) / 10;
+    if (Math.abs(tp) >= 0.5) out.push({ kind: 'talent', side: tp > 0 ? 'H' : 'A', points: Math.abs(tp) });
   }
   // back-to-back: only the side that is fresher gains; when both played last night it cancels out
   const b2bPts = Math.round((leagueModelInfo(g.code)?.b2b || 0) * 10) / 10;

@@ -1321,5 +1321,6 @@
  "Both teams played last night, so tiredness evens out.": "İki takım da dün gece oynadı, yorgunluk dengeleniyor.",
  "Injuries hurt {0} more: they are missing about {1} points of production.": "Sakatlıklar {0} takımını daha çok etkiliyor: yaklaşık {1} sayılık üretim eksik.",
  "{0} min left": "{0} dk kaldı",
- "in testing": "test aşamasında"
+ "in testing": "test aşamasında",
+ "{0} have more talent on the floor right now (the players they used in their latest games): about {1} points.": "{0} şu anda sahada daha yetenekli (son maçlarda kullandığı oyuncular): yaklaşık {1} sayı."
 }

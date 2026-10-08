@@ -14,7 +14,7 @@ import logger from '../utils/logger';
 import { db } from '../db';
 import { injuryLoss } from './bbInjuries';
 
-export const BB_MODEL = 'bb-v2';
+export const BB_MODEL = 'bb-v3';
 const FINISHED = ['FT', 'AOT'];
 
 type Game = {
@@ -23,7 +23,7 @@ type Game = {
   home_name?: string; away_name?: string;
 };
 type Params = { k: number; r: number; b2b: number };
-type Team = { o: number; d: number; season: string; games: number; last: number };
+type Team = { o: number; d: number; season: string; games: number; last: number; sg: number; ha: number };
 type Pred = { pHome: number; margin: number; total: number; home: number; away: number; hca: number; b2bHome: boolean; b2bAway: boolean; restHome: number | null; restAway: number | null; injHome?: number; injAway?: number; injPlayersHome?: string[]; injPlayersAway?: string[] };
 
 /**
@@ -31,6 +31,16 @@ type Pred = { pHome: number; margin: number; total: number; home: number; away: 
  * so their picks are shown with a badge and kept out of the overall record. Override with BB_TRIAL_LEAGUES=BSN,XYZ (or "none").
  */
 export const BB_TRIAL = new Set((process.env.BB_TRIAL_LEAGUES ?? 'BSN').split(',').map(x => x.trim().toUpperCase()).filter(x => x && x !== 'NONE'));
+
+/**
+ * bb-v3 (8 Oct 2026 research, 14,308 test games in 18 leagues; log loss 0.5817 → 0.5765, picks 68.5% → 69.2%):
+ *  - v1: faster learning in a team's first 10 games of a season, learned team-specific home edge
+ *  - v2 (possessions): faster early learning
+ *  - v1 and v2 blended 50/50 (was a weight chosen on one season), then stretched ×1.05 on the probit scale (calibration)
+ *  - player talent: the value (game score per minute, all our leagues) of the players a team used in its last game
+ *    (NBA: last 5 games, injuries are handled by the injury report), shift = 0.15 × talent gap / 13 on the probit scale
+ */
+export const V3 = { kEarly: 1.5, earlyN: 10, kha: 0.01, rha: 0.7, w2: 0.5, stretch: 1.05, talent: 0.15, decay: 0.995, priorMin: 400 };
 
 /** NBA games before 19 October are pre-season (they count less and are left out of the record). */
 export const isPreseason = (g: { code: string; kickoff: string }) => {
@@ -87,11 +97,13 @@ class League {
   team(id: number, season: string): Team {
     let t = this.teams.get(id);
     if (!t) {
-      t = { o: 0, d: 0, season, games: 0, last: 0 };
+      t = { o: 0, d: 0, season, games: 0, last: 0, sg: 0, ha: 0 };
       this.teams.set(id, t);
     } else if (t.season !== season) {
       t.o *= this.p.r;
       t.d *= this.p.r;
+      t.ha *= V3.rha;
+      t.sg = 0;
       t.season = season;
     }
     return t;
@@ -106,8 +118,9 @@ class League {
     };
     const restHome = restOf(g.home_id), restAway = restOf(g.away_id);
     const b2bHome = restHome !== null && restHome < 1.4, b2bAway = restAway !== null && restAway < 1.4;
-    const home = this.mu + this.hca / 2 + h.o + a.d - (b2bHome ? this.p.b2b / 2 : 0) + (b2bAway ? this.p.b2b / 2 : 0);
-    const away = this.mu - this.hca / 2 + a.o + h.d - (b2bAway ? this.p.b2b / 2 : 0) + (b2bHome ? this.p.b2b / 2 : 0);
+    const ha = (h.ha - a.ha) / 2; // bb-v3: how much better this home team is at home than the away team on the road (learned)
+    const home = this.mu + this.hca / 2 + ha + h.o + a.d - (b2bHome ? this.p.b2b / 2 : 0) + (b2bAway ? this.p.b2b / 2 : 0);
+    const away = this.mu - this.hca / 2 - ha + a.o + h.d - (b2bAway ? this.p.b2b / 2 : 0) + (b2bHome ? this.p.b2b / 2 : 0);
     const margin = home - away;
     return {
       pHome: Math.min(0.995, Math.max(0.005, normCdf(margin / this.sigma))),
@@ -122,10 +135,14 @@ class League {
     const hs = g.hs!, as = g.as_!;
     const h = this.team(g.home_id, g.season), a = this.team(g.away_id, g.season);
     const eh = hs - pr.home, ea = as - pr.away;
-    const k = this.p.k * w * (this.n < 100 ? 2 : 1);
+    // bb-v3: learn faster in a team's first games of a season (new rosters)
+    const early = h.sg < V3.earlyN || a.sg < V3.earlyN ? V3.kEarly : 1;
+    const k = this.p.k * w * (this.n < 100 ? 2 : 1) * early;
     h.o += k * eh; a.d += k * eh;
     a.o += k * ea; h.d += k * ea;
-    h.games++; a.games++;
+    const resid = hs - as - pr.margin;
+    h.ha += V3.kha * w * resid; a.ha -= V3.kha * w * resid;
+    h.games++; a.games++; h.sg++; a.sg++;
     // league-wide numbers learn slowly
     const alpha = this.n < 100 ? 0.05 : 0.01;
     if (!this.n) this.mu = (hs + as) / 2;
@@ -151,7 +168,7 @@ class League {
 // Backtest (browser research, 7 Oct 2026, seasons 2024-25 + 2025-26 never seen when the settings were chosen):
 //   log loss v1 → v2: NBA 0.607 → 0.603, ACB 0.587 → 0.586, Serie A 0.602 → 0.599, EuroLeague 0.627 → 0.629 (blend wins there)
 type P2 = { k: number; kp: number; r: number; rp: number; rh: number; b2b: number; clip: number; early: number; kh: number };
-const P2_DEFAULT: P2 = { k: 0.05, kp: 0.05, r: 0.9, rp: 0.7, rh: 0.8, b2b: 1.5, clip: 40, early: 1.5, kh: 0.01 };
+const P2_DEFAULT: P2 = { k: 0.05, kp: 0.05, r: 0.9, rp: 0.7, rh: 0.8, b2b: 1.5, clip: 40, early: 2, kh: 0.01 };
 const P2_LEAGUE: Record<string, Partial<P2>> = { NBA: { b2b: 3 } };
 type T2 = { o: number; d: number; p: number; h: number; season: string; n: number };
 
@@ -273,6 +290,53 @@ function run(games: Game[], p: Params, onPred?: (g: Game, pr: Pred) => void) {
   return L;
 }
 
+
+/* ---------- bb-v3 player talent (all leagues together: players move between our leagues) ---------- */
+const talentState = { rates: new Map<number, { m: number; g: number }>(), rosters: new Map<number, Map<number, number>[]>(), byGame: new Map<number, [number | null, number | null]>(), builtAt: 0 };
+const gsOf = (r: any) => (r.pts || 0) + 0.4 * (r.fgm || 0) - 0.7 * (r.fga || 0) - 0.4 * ((r.fta || 0) - (r.ftm || 0)) + 0.5 * (r.reb || 0) + 0.7 * (r.ast || 0);
+function playerRate(pid: number) {
+  const x = talentState.rates.get(pid);
+  return x ? (x.g + 0.35 * V3.priorMin) / (x.m + V3.priorMin) : null;
+}
+/** A team's talent: minutes-weighted value of the players it used in its last `lastN` games (game score per 200 minutes). */
+export function teamTalent(teamId: number, lastN = 1) {
+  const h = talentState.rosters.get(teamId);
+  if (!h || !h.length) return null;
+  const use = h.slice(-lastN);
+  const mins = new Map<number, number>();
+  for (const r of use) for (const [p, mi] of r) mins.set(p, (mins.get(p) || 0) + mi / use.length);
+  let s = 0, m = 0;
+  for (const [p, mi] of mins) { const v = playerRate(p); if (v == null) continue; s += mi * v; m += mi; }
+  return m > 60 ? (200 * s) / m : null;
+}
+/** One pass over every finished game with a box score: pre-game talent of both teams, then the players' values update. */
+export function buildTalent() {
+  const games = db.prepare(`SELECT game_id, home_id, away_id FROM bb_games WHERE status IN ('FT','AOT') AND hs IS NOT NULL ORDER BY kickoff, game_id`).all() as any[];
+  const lines = db.prepare(`SELECT game_id, team_id, player_id, minutes, pts, fgm, fga, ftm, fta, reb, ast FROM bb_player_stats WHERE minutes > 0`).all() as any[];
+  const byGame = new Map<number, any[]>();
+  for (const r of lines) { if (!byGame.has(r.game_id)) byGame.set(r.game_id, []); byGame.get(r.game_id)!.push(r); }
+  talentState.rates = new Map(); talentState.rosters = new Map(); talentState.byGame = new Map();
+  for (const g of games) {
+    talentState.byGame.set(g.game_id, [teamTalent(g.home_id), teamTalent(g.away_id)]);
+    const ls = byGame.get(g.game_id);
+    if (!ls) continue;
+    const per = new Map<number, Map<number, number>>();
+    for (const r of ls) {
+      if (!per.has(r.team_id)) per.set(r.team_id, new Map());
+      per.get(r.team_id)!.set(r.player_id, r.minutes);
+      const x = talentState.rates.get(r.player_id) || { m: 0, g: 0 };
+      x.m = x.m * V3.decay + r.minutes; x.g = x.g * V3.decay + gsOf(r);
+      talentState.rates.set(r.player_id, x);
+    }
+    for (const [t, r] of per) { const h = talentState.rosters.get(t) || []; h.push(r); if (h.length > 5) h.shift(); talentState.rosters.set(t, h); }
+  }
+  talentState.builtAt = Date.now();
+}
+/** Probit shift from the talent gap (positive = favours the home team). */
+const talentShift = (th: number | null, ta: number | null) => (th != null && ta != null ? (V3.talent * (th - ta)) / 13 : 0);
+/** bb-v3 final probability: stretch (calibration) + talent, on the probit scale. */
+const finalP = (p: number, shift: number) => Math.min(0.995, Math.max(0.005, normCdf(V3.stretch * normInv(Math.min(0.995, Math.max(0.005, p))) + shift)));
+
 const GRID: Params[] = [];
 for (const k of [0.03, 0.05, 0.07, 0.09, 0.12]) for (const r of [0.5, 0.65, 0.8, 0.9]) for (const b2b of [0, 1.5, 3]) GRID.push({ k, r, b2b });
 
@@ -307,21 +371,16 @@ export function buildLeague(code: string): LeagueModel | null {
   };
   const fin2 = done;
   const tuneGames = games.filter(g => fin2(g) && g.season === tuneSeason && !isPreseason(g));
-  let w2 = 0;
-  if (L2) {
-    let bestLL = Infinity;
-    for (const w of [0, 0.5, 1]) {
-      const m = emptyM();
-      for (const g of tuneGames) addM(m, blend(p1.get(g.game_id)!, p2.get(g.game_id), w), g);
-      const ll = m.n ? m.logLoss / m.n : Infinity;
-      if (ll < bestLL - 1e-4) { bestLL = ll; w2 = w; }
-    }
-  }
+  // bb-v3: fixed 50/50 blend when possession ratings exist (a weight chosen on one season was noisy)
+  const w2 = L2 ? V3.w2 : 0;
+  void tuneGames;
   const tune = emptyM(), test = emptyM(), t1 = emptyM(), t2 = emptyM();
   const bySeason = new Map<string, Metrics>();
   for (const g of games) {
     if (!fin2(g) || isPreseason(g) || !p1.has(g.game_id)) continue;
-    const pr = blend(p1.get(g.game_id)!, p2.get(g.game_id), w2);
+    const b = blend(p1.get(g.game_id)!, p2.get(g.game_id), w2);
+    const tg = talentState.byGame.get(g.game_id);
+    const pr = { ...b, pHome: finalP(b.pHome, tg ? talentShift(tg[0], tg[1]) : 0) };
     if (g.season === tuneSeason) addM(tune, pr, g);
     if (testSeasons.includes(g.season)) {
       addM(test, pr, g);
@@ -361,6 +420,7 @@ export function bbExportPlayers(code: string) {
 }
 
 export function buildAll(codes: string[]) {
+  try { buildTalent(); } catch (e: any) { logger.warn(`bb-v3 talent: ${e.message}`); }
   for (const c of codes) {
     try {
       const m = buildLeague(c);
@@ -391,17 +451,25 @@ export function predictGame(g: Game): Pred | null {
   const pr = L.predict(g);
   for (const [id, t] of keep) { if (t) L.teams.set(id, t); else L.teams.delete(id); }
   L.lastPlayed = saved;
-  if (!m.L2 || !m.w2) return withInjuries(g, pr, L.sigma);
+  const v3 = (x: Pred, sigma: number): Pred => {
+    const th = teamTalent(g.home_id, g.code === 'NBA' ? 5 : 1), ta = teamTalent(g.away_id, g.code === 'NBA' ? 5 : 1);
+    const shift = talentShift(th, ta);
+    const p = finalP(x.pHome, shift);
+    const dm = (shift * sigma) / V3.stretch; // the talent gap in points (the calibration stretch changes confidence, not the spread)
+    return { ...x, pHome: p, margin: x.margin + dm, home: x.home + dm / 2, away: x.away - dm / 2 };
+  };
+  if (!m.L2 || !m.w2) return withInjuries(g, v3(pr, L.sigma), L.sigma);
   // bb-v2: possession ratings, blended with v1 by the weight chosen on the tuning season
   const ko = new Date(g.kickoff).getTime();
   const keep2 = [g.home_id, g.away_id].map(id => [id, m.L2!.teams.get(id) ? { ...m.L2!.teams.get(id)! } : null] as const);
   const p2 = m.L2.predict(g, ph ? (ko - ph) / 86400000 : null, pa ? (ko - pa) / 86400000 : null);
   for (const [id, t] of keep2) { if (t) m.L2.teams.set(id, t); else m.L2.teams.delete(id); }
   const w = m.w2;
-  return withInjuries(g, {
+  const sig = w * m.L2.sigma + (1 - w) * L.sigma;
+  return withInjuries(g, v3({
     ...pr, pHome: w * p2.pHome + (1 - w) * pr.pHome, margin: w * p2.margin + (1 - w) * pr.margin, total: w * p2.total + (1 - w) * pr.total,
     home: w * p2.home + (1 - w) * pr.home, away: w * p2.away + (1 - w) * pr.away, hca: w * p2.hca + (1 - w) * pr.hca
-  }, w * m.L2.sigma + (1 - w) * L.sigma);
+  }, sig), sig);
 }
 
 /** The league numbers behind a prediction (for the game page's markets and model table). */
@@ -410,7 +478,7 @@ export function leagueModelInfo(code: string) {
   if (!m) return null;
   const w = m.L2 && m.w2 ? m.w2 : 0;
   return {
-    version: w ? 'bb-v2' : 'bb-v1', v2Weight: w, avgPoints: m.L.mu, homeEdge: m.L.hca,
+    version: BB_MODEL, v2Weight: w, avgPoints: m.L.mu, homeEdge: m.L.hca,
     sigma: w ? w * m.L2!.sigma + (1 - w) * m.L.sigma : m.L.sigma,
     sigmaTotal: w ? w * m.L2!.sigmaT + (1 - w) * m.L.sigmaT : m.L.sigmaT,
     b2b: m.params.b2b, gamesRated: m.L.n

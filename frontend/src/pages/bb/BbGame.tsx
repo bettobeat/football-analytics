@@ -25,7 +25,7 @@ interface BoxPlayer { id: number; name: string; starter: boolean; minutes: numbe
 interface BoxSide { team: any; players: BoxPlayer[] }
 interface Detail {
   game: Game
-  why: { kind: 'strength' | 'home' | 'b2b' | 'b2bBoth' | 'injuries' | 'attack'; side: 'H' | 'A'; points: number }[]
+  why: { kind: 'strength' | 'home' | 'b2b' | 'b2bBoth' | 'injuries' | 'attack' | 'talent'; side: 'H' | 'A'; points: number }[]
   injuries?: { home: Injury[]; away: Injury[] } | null
   ratings: { home: { attack: number; defence: number; net: number } | null; away: { attack: number; defence: number; net: number } | null } | null
   stats: { home: Avg | null; away: Avg | null }
@@ -365,6 +365,8 @@ function PredictionSection({ d }: { d: Detail }) {
                   } else if (w.kind === 'b2bBoth') {
                     text = t('Both teams played last night, so tiredness evens out.')
                     tone = 'N'
+                  } else if (w.kind === 'talent') {
+                    text = t('{0} have more talent on the floor right now (the players they used in their latest games): about {1} points.', { 0: team.name, 1: pts })
                   } else {
                     text = t('Injuries hurt {0} more: they are missing about {1} points of production.', { 0: other.name, 1: pts })
                   }
