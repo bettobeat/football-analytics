@@ -17,6 +17,7 @@ export default function BbGames() {
   const { access } = useAuth()
   const [params, setParams] = useSearchParams()
   const league = params.get('league') || 'ALL'
+  const view: 'next' | 'results' = params.get('view') === 'results' ? 'results' : 'next'
   const [days, setDays] = useState(7)
   const [games, setGames] = useState<BbGame[] | null>(null)
   const [results, setResults] = useState<BbGame[] | null>(null)
@@ -30,7 +31,7 @@ export default function BbGames() {
       axios.get(`${API_URL}/basketball/games`, { params: { days: 14 } })
         .then(r => { if (!cancelled) { setGames(r.data.data || []); setError(null) } })
         .catch(e => !cancelled && setError(e?.message || 'error'))
-      axios.get(`${API_URL}/basketball/games`, { params: { days: 3, results: 1 } })
+      axios.get(`${API_URL}/basketball/games`, { params: { days: 14, results: 1 } })
         .then(r => !cancelled && setResults((r.data.data || []).filter((g: BbGame) => g.state === 'done')))
         .catch(() => !cancelled && setResults([]))
     }
@@ -39,6 +40,12 @@ export default function BbGames() {
     return () => { cancelled = true; clearInterval(iv) }
   }, [access])
 
+  const setView = (v: 'next' | 'results') => {
+    const p = new URLSearchParams(params)
+    if (v === 'next') p.delete('view')
+    else p.set('view', v)
+    setParams(p, { replace: true })
+  }
   const setLeague = (c: string) => {
     const p = new URLSearchParams(params)
     if (c === 'ALL') p.delete('league')
@@ -54,6 +61,11 @@ export default function BbGames() {
   const upcoming = useMemo(
     () => all.filter(g => (league === 'ALL' || g.league.code === league || (favMode && favs.reasons(g).length > 0)) && g.state !== 'done' && new Date(g.kickoff).getTime() <= horizon),
     [all, league, days, favs.all.length]
+  )
+  // results: finished games of the last N days, newest first
+  const past = useMemo(
+    () => (results || []).filter(g => (league === 'ALL' || g.league.code === league || (favMode && favs.reasons(g).length > 0)) && new Date(g.kickoff).getTime() >= Date.now() - days * 86400000),
+    [results, league, days, favs.all.length]
   )
   // your favorites' next games, pinned on top of the full list
   const favUpcoming = useMemo(
@@ -128,14 +140,20 @@ export default function BbGames() {
             <div>
               <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">{league === 'ALL' ? t('Games') : favMode ? t('My favorites') : leagueName || t('Games')}</h1>
               <p className="mt-1 text-sm text-muted">
-                {t('{0} games in the next {1} days', { 0: upcoming.length, 1: days })}
+                {view === 'results' ? t('{0} results in the last {1} days', { 0: past.length, 1: days }) : t('{0} games in the next {1} days', { 0: upcoming.length, 1: days })}
                 {league !== 'ALL' && !favMode && <Link to={`/basketball/league/${league}`} className="ml-3 font-bold text-accent">{t('League page →')}</Link>}
               </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+            <div className="seg">
+              <button onClick={() => setView('next')} className={`seg-btn ${view === 'next' ? 'seg-btn-active' : ''}`}>{t('Next games')}</button>
+              <button onClick={() => setView('results')} className={`seg-btn ${view === 'results' ? 'seg-btn-active' : ''}`}>{t('Results')}</button>
             </div>
             <div className="seg">
               {DAY_OPTIONS.map(d => (
                 <button key={d} onClick={() => setDays(d)} className={`seg-btn ${days === d ? 'seg-btn-active' : ''}`}>{d}d</button>
               ))}
+            </div>
             </div>
           </div>
 
@@ -144,7 +162,7 @@ export default function BbGames() {
             <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="card h-36 animate-pulse bg-surface2/60" />)}</div>
           )}
           {error && <div className="card p-5 border-loss/40 text-loss">{t('Failed to load games:')} {error}</div>}
-          {favUpcoming.length > 0 && (
+          {view === 'next' && favUpcoming.length > 0 && (
             <section className="mb-8">
               <SectionTitle label={t('Your favorites')} sub={t('their next games')} />
               <div className="card overflow-hidden border-accent/25 divide-y divide-line/50">
@@ -158,6 +176,8 @@ export default function BbGames() {
               <p className="text-ink font-semibold">{t('You have no favorites yet.')}</p>
               <p className="text-sm text-muted max-w-md mx-auto">{t('Tap the star next to a league here, or on any team or game page. Their games then show up in this list.')}</p>
             </div>
+          ) : view === 'results' ? (
+            results && <GamesByDay games={past} logos={logos} empty={t('No results for this selection.')} />
           ) : games && <GamesByDay games={upcoming} logos={logos} empty={favMode ? t('None of your favorites play in this period.') : t('No games for this selection.')} />}
         </div>
 
@@ -167,7 +187,7 @@ export default function BbGames() {
             <section className="card p-3">
               <div className="px-2 pt-1 pb-2 font-display text-lg font-bold">{t('Latest results')}</div>
               {!results ? <p className="px-2 text-sm text-muted">{t('Loading…')}</p> : results.length === 0 ? (
-                <p className="px-2 text-sm text-faint">{t('No results in the last three days.')}</p>
+                <p className="px-2 text-sm text-faint">{t('No results in the last two weeks.')}</p>
               ) : (
                 <div className="max-h-[calc(100vh-12rem)] overflow-y-auto overscroll-contain divide-y divide-line/50 -mx-3">{results.map(g => <GameRow key={g.id} g={g} showLeague compact />)}</div>
               )}

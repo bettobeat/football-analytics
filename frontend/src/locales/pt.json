@@ -1196,5 +1196,8 @@
  "Updated every 15 minutes": "Atualizado a cada 15 minutos",
  "Our prediction takes off the points a team is expected to lose without its injured regulars (by minutes and production; doubtful and questionable players count partly).": "Nossa previsão desconta os pontos que um time perde sem seus titulares lesionados (por minutos e produção; os em dúvida contam em parte).",
  "{0} will be without {1}.": "{0} não terá {1}.",
- "For {0}, {1} may not play.": "No {0}, {1} pode não jogar."
+ "For {0}, {1} may not play.": "No {0}, {1} pode não jogar.",
+ "{0} results in the last {1} days": "{0} resultados nos últimos {1} dias",
+ "No results for this selection.": "Sem resultados para esta seleção.",
+ "No results in the last two weeks.": "Sem resultados nas últimas duas semanas."
 }

@@ -1196,5 +1196,8 @@
  "Updated every 15 minutes": "15 dakikada bir güncellenir",
  "Our prediction takes off the points a team is expected to lose without its injured regulars (by minutes and production; doubtful and questionable players count partly).": "Tahminimiz, sakat düzenli oyuncuları olmadan bir takımın kaybedeceği sayıları düşer (dakika ve üretkenliğe göre; şüpheliler kısmen sayılır).",
  "{0} will be without {1}.": "{0}, {1} olmadan oynayacak.",
- "For {0}, {1} may not play.": "{0} tarafında {1} oynamayabilir."
+ "For {0}, {1} may not play.": "{0} tarafında {1} oynamayabilir.",
+ "{0} results in the last {1} days": "Son {1} günde {0} sonuç",
+ "No results for this selection.": "Bu seçim için sonuç yok.",
+ "No results in the last two weeks.": "Son iki haftada sonuç yok."
 }
