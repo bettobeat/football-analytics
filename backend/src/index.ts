@@ -50,6 +50,8 @@ import { newsFor, newsStatus, startNewsScheduler, bbTeamNames, footballTeamNames
 import { bbGet, bbStatus, bbSyncNow, startBasketballScheduler } from './services/basketball';
 import { bdlGet, refreshNbaInjuries, nbaInjuryStatus } from './services/bbInjuries';
 import { bbPublic, bbLeagues, bbGames, bbGame, bbStandings, bbTeam } from './services/bbSite';
+import { bbPlayer, nbaLeaders } from './services/bbPlayers';
+import { bdlStatus, startBdlScheduler } from './services/bdl';
 import { bbBacktest, bbRecord } from './services/bbModel';
 import { highlightsFor, highlightsStatus, lastCandidates } from './services/highlights';
 import { rebuildPlayerQuality, playerQualityTable } from './services/playerQuality';
@@ -1271,6 +1273,22 @@ app.get('/api/basketball/team/:id(\\d+)', (req, res) => {
     sendError(res, error, 'Failed to load team');
   }
 });
+app.get('/api/basketball/player/:id(\\d+)', async (req, res) => {
+  try {
+    const data = await bbPlayer(parseInt(req.params.id, 10));
+    if (!data) return res.status(404).json({ error: 'Player not found' });
+    res.json({ data, timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Failed to load player');
+  }
+});
+app.get('/api/basketball/leaders', (_req, res) => {
+  try {
+    res.json({ data: nbaLeaders(), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Failed to load leaders');
+  }
+});
 app.get('/api/basketball/record', (req, res) => {
   try {
     const code = typeof req.query.league === 'string' && /^[A-Z]{2,4}$/.test(req.query.league) ? req.query.league : undefined;
@@ -1285,7 +1303,7 @@ app.get('/api/bb/backtest', (_req, res) => res.json({ data: bbBacktest(), timest
 // Admin: basketball data (API-Basketball, same API-Sports key). Not in OPEN_API → admin only.
 app.get('/api/bb/status', async (_req, res) => {
   try {
-    res.json({ data: await bbStatus(), timestamp: new Date().toISOString() });
+    res.json({ data: { ...(await bbStatus()), balldontlie: bdlStatus() }, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Basketball status failed');
   }
@@ -1311,7 +1329,7 @@ app.get('/api/bb/raw', async (req, res) => {
 app.get('/api/bb/bdl', async (req, res) => {
   // admin: raw balldontlie calls (testing what the GOAT plan gives us); the key never leaves the server
   const pathQ = String(req.query.path || '/v1/player_injuries');
-  if (!/^\/(v1\/(player_injuries|lineups|games|teams|players|box_scores|stats|season_averages\/[a-z_]+|standings|leaders|plays)|nba\/v[12]\/stats\/advanced)$/.test(pathQ)) return res.status(400).json({ error: 'path not allowed' });
+  if (!/^\/(v1|nba\/v1|nba\/v2)\/[a-z0-9_\/]+$/.test(pathQ)) return res.status(400).json({ error: 'path not allowed' });
   const params: Record<string, string | string[]> = {};
   for (const [k, v] of Object.entries(req.query)) if (!['path', 'token', 'c'].includes(k)) { if (Array.isArray(v)) params[k.endsWith('[]') ? k : `${k}[]`] = v.map(String); else params[k] = String(v); } // Express turns ids[]=1 into ids: ['1']
   try {
@@ -1809,6 +1827,7 @@ server.listen(PORT, () => {
   startAfMatchesScheduler();
   startNewsScheduler();
   startBasketballScheduler();
+  startBdlScheduler();
   // Match-page tabs (averages, expected XI, H2H) prepared ahead for the next 48h, every 2 hours
   const warmExtras = async () => {
     const fd = await footballDataAPI.getUpcomingMatches(3).catch(() => [] as any[]);

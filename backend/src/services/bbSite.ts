@@ -7,6 +7,8 @@ import { db } from '../db';
 import { BB_LEAGUES, bbGet } from './basketball';
 import { predictGame, teamRating, isPreseason, leagueRatings, BB_MODEL } from './bbModel';
 import { nbaInjuries } from './bbInjuries';
+import { bbSquad, nbaBoxExtras } from './bbPlayers';
+import { personKey } from './bdl';
 
 export const bbPublic = () => process.env.BASKETBALL_PUBLIC === '1';
 
@@ -213,9 +215,15 @@ export async function bbGame(id: number, full: boolean) {
     const ts = db.prepare(`SELECT * FROM bb_team_stats WHERE game_id = ?`).all(id) as any[];
     const ps = db.prepare(`SELECT * FROM bb_player_stats WHERE game_id = ? ORDER BY starter DESC, minutes DESC`).all(id) as any[];
     if (ts.length || ps.length) {
+      // NBA: steals, blocks, turnovers and plus-minus from balldontlie (names as people write them)
+      const ex = g.code === 'NBA' ? nbaBoxExtras(g.kickoff, g.home_name, g.away_name) : null;
       const side = (teamId: number) => ({
         team: ts.find(t => t.team_id === teamId) || null,
-        players: ps.filter(p => p.team_id === teamId).map(p => ({ id: p.player_id, name: p.name, starter: !!p.starter, minutes: p.minutes, points: p.pts, fgm: p.fgm, fga: p.fga, tpm: p.tpm, tpa: p.tpa, ftm: p.ftm, fta: p.fta, rebounds: p.reb, assists: p.ast }))
+        players: ps.filter(p => p.team_id === teamId).map(p => {
+          const x = ex?.get(personKey(p.name));
+          return { id: p.player_id, name: x?.name || p.name, starter: !!p.starter, minutes: p.minutes, points: p.pts, fgm: p.fgm, fga: p.fga, tpm: p.tpm, tpa: p.tpa, ftm: p.ftm, fta: p.fta, rebounds: p.reb, assists: p.ast,
+            ...(x ? { steals: x.stl, blocks: x.blk, turnovers: x.tov, plusMinus: x.plusMinus } : {}) };
+        })
       });
       box = { home: side(g.home_id), away: side(g.away_id) };
     }
@@ -360,5 +368,5 @@ export function bbTeam(teamId: number, full: boolean) {
   const any = recent[0] || next[0];
   if (!any) return null;
   const name = any.home_id === teamId ? any.home_name : any.away_name, logo = any.home_id === teamId ? any.home_logo : any.away_logo;
-  return { team: { id: teamId, name, logo, league: any.code }, rating: full ? teamRating(any.code, teamId) : null, averages: averages(teamId, now), analysis: teamAnalysis(teamId, any.code), recent: recent.map(r => shape(r, full)), next: next.map(r => shape(r, full)) };
+  return { team: { id: teamId, name, logo, league: any.code }, rating: full ? teamRating(any.code, teamId) : null, averages: averages(teamId, now), analysis: teamAnalysis(teamId, any.code), squad: bbSquad(teamId, name, any.code), recent: recent.map(r => shape(r, full)), next: next.map(r => shape(r, full)) };
 }

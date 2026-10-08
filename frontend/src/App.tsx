@@ -31,6 +31,7 @@ import BbGames from './pages/bb/BbGames'
 import BbGame from './pages/bb/BbGame'
 import BbLeague from './pages/bb/BbLeague'
 import BbTeam from './pages/bb/BbTeam'
+import BbPlayer from './pages/bb/BbPlayer'
 import BbAccuracy from './pages/bb/BbAccuracy'
 import BbPast from './pages/bb/BbPast'
 import BbFavorites from './pages/bb/BbFavorites'
@@ -484,6 +485,7 @@ function BbRoutes() {
       <Route path="game/:id" element={<BbGame />} />
       <Route path="league/:code" element={<BbLeague />} />
       <Route path="team/:id" element={<BbTeam />} />
+      <Route path="player/:id" element={<BbPlayer />} />
       <Route path="favorites" element={<BbFavorites />} />
       <Route path="accuracy" element={<BbAccuracy />} />
       <Route path="past" element={<AdminOnly><BbPast /></AdminOnly>} />

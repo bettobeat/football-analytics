@@ -22,9 +22,12 @@ interface TeamData {
   rating: { attack: number; defence: number; net: number; games: number } | null
   averages: { games: number; won: number; lost: number; pointsFor: number; pointsAgainst: number; form: ('W' | 'L')[] } | null
   analysis: Analysis | null
+  squad?: SquadPlayer[]
   recent: BbGame[]
   next: BbGame[]
 }
+
+interface SquadPlayer { id: number; name: string; position: string | null; jersey: string | null; injury: string | null; gp: number; starts: number; min: number | null; pts: number | null; reb: number | null; ast: number | null; fgPct: number | null; tpPct: number | null; pie: number | null; usg: number | null; net: number | null }
 
 /** A team: strengths and weaknesses, form chart, splits, news, next games and results. */
 export default function BbTeam() {
@@ -140,6 +143,8 @@ export default function BbTeam() {
         </div>
       )}
 
+      {d.squad && d.squad.length > 0 && <SquadCard players={d.squad} />}
+
       <div className="grid gap-6 lg:grid-cols-2 items-start">
         <Card title={t('Next games')}><GameList games={d.next} empty={t('No games scheduled.')} /></Card>
         <Card title={t('Latest results')}><GameList games={d.recent.filter(g => g.state === 'done')} empty={t('No results yet.')} /></Card>
@@ -201,5 +206,56 @@ function MarginChart({ games }: { games: Analysis['last20'] }) {
         })}
       </div>
     </div>
+  )
+}
+
+/** Who plays: minutes and production over the last 15 games; NBA adds PIE, usage and net rating for the season. */
+function SquadCard({ players }: { players: SquadPlayer[] }) {
+  const adv = players.some(p => p.pie !== null)
+  const n = (x: number | null, suf = '') => (x === null ? '–' : `${x}${suf}`)
+  return (
+    <Card title={t('Players')} action={<span className="text-xs text-faint">{t('last {0} games', { 0: 15 })}</span>}>
+      <div className="overflow-x-auto -mx-2">
+        <table className="w-full text-xs num">
+          <thead>
+            <tr className="text-faint">
+              <th className="text-left font-semibold py-1 px-2">{t('Player')}</th>
+              <th className="text-right font-semibold px-1">{t('GP')}</th>
+              <th className="text-right font-semibold px-1">{t('MIN')}</th>
+              <th className="text-right font-semibold px-1">{t('PTS')}</th>
+              <th className="text-right font-semibold px-1">{t('REB')}</th>
+              <th className="text-right font-semibold px-1">{t('AST')}</th>
+              <th className="text-right font-semibold px-1">{t('FG%')}</th>
+              <th className="text-right font-semibold px-1">{t('3P%')}</th>
+              {adv && <><th className="text-right font-semibold px-1" title={t('Player impact estimate: share of everything that happened on the court')}>PIE</th><th className="text-right font-semibold px-1">{t('USG%')}</th><th className="text-right font-semibold px-2">{t('Net')}</th></>}
+            </tr>
+          </thead>
+          <tbody>
+            {players.map(p => (
+              <tr key={p.id} className="border-t border-line/40 hover:bg-surface2/40">
+                <td className="py-1.5 px-2 font-sans whitespace-nowrap">
+                  <Link to={`/basketball/player/${p.id}`} className="text-ink font-semibold hover:text-accent">{p.name}</Link>
+                  {p.position && <span className="ml-1.5 text-[10px] text-faint">{p.position}</span>}
+                  {p.injury && <span className="ml-1.5 rounded px-1 text-[9px] font-bold bg-loss/15 text-loss">{p.injury}</span>}
+                </td>
+                <td className="text-right px-1 text-muted">{p.gp}</td>
+                <td className="text-right px-1 text-muted">{n(p.min)}</td>
+                <td className="text-right px-1 text-ink font-bold">{n(p.pts)}</td>
+                <td className="text-right px-1 text-muted">{n(p.reb)}</td>
+                <td className="text-right px-1 text-muted">{n(p.ast)}</td>
+                <td className="text-right px-1 text-muted">{n(p.fgPct)}</td>
+                <td className="text-right px-1 text-muted">{n(p.tpPct)}</td>
+                {adv && <>
+                  <td className="text-right px-1 text-muted">{n(p.pie)}</td>
+                  <td className="text-right px-1 text-muted">{n(p.usg)}</td>
+                  <td className={`text-right px-2 ${p.net === null ? 'text-faint' : p.net > 0 ? 'text-win' : p.net < 0 ? 'text-loss' : 'text-muted'}`}>{p.net === null ? '–' : p.net > 0 ? `+${p.net}` : p.net}</td>
+                </>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {adv && <p className="mt-3 text-[11px] text-faint">{t('PIE, usage and net rating: season figures from the NBA (last season until the new one starts).')}</p>}
+    </Card>
   )
 }

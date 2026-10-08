@@ -20,7 +20,7 @@ interface Avg {
 }
 interface Brief { id: number; kickoff: string; league: string; home: boolean; opponent: string; opponentLogo: string | null; score: string | null; result: 'W' | 'L' | null }
 interface Sched { restDays: number | null; backToBack: boolean; games7: number; away7: number; nextIn: number | null; recent: Brief[]; upcoming: Brief[] }
-interface BoxPlayer { id: number; name: string; starter: boolean; minutes: number | null; points: number | null; fgm: number | null; fga: number | null; tpm: number | null; tpa: number | null; ftm: number | null; fta: number | null; rebounds: number | null; assists: number | null }
+interface BoxPlayer { id: number; name: string; starter: boolean; minutes: number | null; points: number | null; fgm: number | null; fga: number | null; tpm: number | null; tpa: number | null; ftm: number | null; fta: number | null; rebounds: number | null; assists: number | null; steals?: number | null; blocks?: number | null; turnovers?: number | null; plusMinus?: number | null }
 interface BoxSide { team: any; players: BoxPlayer[] }
 interface Detail {
   game: Game
@@ -458,7 +458,7 @@ function InjuriesCard({ d }: { d: Detail }) {
             <li key={x.name} className="text-sm">
               <div className="flex items-center gap-2">
                 <span className={`w-2 h-2 rounded-full shrink-0 ${x.weight >= 1 ? 'bg-loss' : x.weight >= 0.4 ? 'bg-draw' : 'bg-faint'}`} />
-                <span className="text-ink font-semibold truncate">{x.name}</span>
+                {x.playerId ? <Link to={`/basketball/player/${x.playerId}`} className="text-ink font-semibold truncate hover:text-accent">{x.name}</Link> : <span className="text-ink font-semibold truncate">{x.name}</span>}
                 {x.minutes !== null && <span className="text-[11px] text-faint num">{t('{0} min', { 0: x.minutes })}</span>}
                 <span className={`ml-auto text-xs font-bold ${x.weight >= 1 ? 'text-loss' : 'text-draw'}`}>{x.status}</span>
               </div>
@@ -581,7 +581,9 @@ function BriefRow({ b }: { b: Brief }) {
 
 function BoxTab({ d }: { d: Detail }) {
   const g = d.game
-  const side = (team: Game['home'], s: BoxSide) => (
+  const side = (team: Game['home'], s: BoxSide) => {
+    const more = s.players.some(p => p.plusMinus !== undefined && p.plusMinus !== null)
+    return (
     <Card title={team.name}>
       <div className="overflow-x-auto">
         <table className="w-full text-xs num">
@@ -595,12 +597,13 @@ function BoxTab({ d }: { d: Detail }) {
               <th className="text-right font-semibold px-1">{t('FT')}</th>
               <th className="text-right font-semibold px-1">{t('REB')}</th>
               <th className="text-right font-semibold px-1">{t('AST')}</th>
+              {more && <><th className="text-right font-semibold px-1">{t('STL')}</th><th className="text-right font-semibold px-1">{t('BLK')}</th><th className="text-right font-semibold px-1">{t('TO')}</th><th className="text-right font-semibold px-1">+/−</th></>}
             </tr>
           </thead>
           <tbody>
             {s.players.map(pl => (
               <tr key={pl.id} className="border-t border-line/40">
-                <td className="py-1 font-sans text-ink whitespace-nowrap">{pl.name}{pl.starter && <span className="ml-1 text-[9px] text-accent font-bold">{t('S')}</span>}</td>
+                <td className="py-1 font-sans text-ink whitespace-nowrap"><Link to={`/basketball/player/${pl.id}`} className="hover:text-accent">{pl.name}</Link>{pl.starter && <span className="ml-1 text-[9px] text-accent font-bold">{t('S')}</span>}</td>
                 <td className="text-right px-1 text-muted">{pl.minutes !== null ? Math.round(pl.minutes) : '–'}</td>
                 <td className="text-right px-1 text-ink font-bold">{pl.points ?? '–'}</td>
                 <td className="text-right px-1 text-muted">{pl.fgm ?? 0}/{pl.fga ?? 0}</td>
@@ -608,13 +611,20 @@ function BoxTab({ d }: { d: Detail }) {
                 <td className="text-right px-1 text-muted">{pl.ftm ?? 0}/{pl.fta ?? 0}</td>
                 <td className="text-right px-1 text-muted">{pl.rebounds ?? '–'}</td>
                 <td className="text-right px-1 text-muted">{pl.assists ?? '–'}</td>
+                {more && <>
+                  <td className="text-right px-1 text-muted">{pl.steals ?? '–'}</td>
+                  <td className="text-right px-1 text-muted">{pl.blocks ?? '–'}</td>
+                  <td className="text-right px-1 text-muted">{pl.turnovers ?? '–'}</td>
+                  <td className={`text-right px-1 ${pl.plusMinus == null ? 'text-faint' : pl.plusMinus > 0 ? 'text-win' : pl.plusMinus < 0 ? 'text-loss' : 'text-muted'}`}>{pl.plusMinus == null ? '–' : pl.plusMinus > 0 ? `+${pl.plusMinus}` : pl.plusMinus}</td>
+                </>}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
     </Card>
-  )
+    )
+  }
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       {side(g.home, d.box!.home)}

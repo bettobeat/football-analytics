@@ -65,6 +65,11 @@ export default function BbLeague() {
   const [next, setNext] = useState<BbGame[] | null>(null)
   const [results, setResults] = useState<BbGame[] | null>(null)
   const news = useNews({ sport: 'basketball', league: code.toUpperCase(), limit: 10 })
+  const [leaders, setLeaders] = useState<Leaders | null>(null)
+  useEffect(() => {
+    setLeaders(null)
+    if (code.toUpperCase() === 'NBA') axios.get(`${API_URL}/basketball/leaders`).then(r => setLeaders(r.data.data || null)).catch(() => undefined)
+  }, [code])
 
   useEffect(() => {
     const c = code.toUpperCase()
@@ -92,6 +97,7 @@ export default function BbLeague() {
           {table === undefined ? <Skeleton rows={10} h="h-7" /> : table ? <StandingsTable data={table} /> : <p className="text-sm text-faint">{t('No table yet.')}</p>}
         </Card>
         <div className="space-y-6 min-w-0">
+          {leaders && leaders.lists.length > 0 && <LeadersCard data={leaders} />}
           <Card title={t('Next games')}>
             {!next ? <Skeleton rows={5} /> : <div className="max-h-[520px] overflow-y-auto overscroll-contain pr-1"><GameList games={next} empty={t('No games in the next 10 days.')} /></div>}
           </Card>
@@ -104,5 +110,32 @@ export default function BbLeague() {
         </div>
       </div>
     </div>
+  )
+}
+
+interface Leaders { season: string; lists: { stat: string; top: { id: number | null; name: string; value: number; games: number; rank: number }[] }[] }
+const STAT_LABEL: Record<string, string> = { pts: 'Points', reb: 'Rebounds', ast: 'Assists', stl: 'Steals', blk: 'Blocks' }
+
+/** NBA league leaders per game (balldontlie). */
+function LeadersCard({ data }: { data: Leaders }) {
+  const [stat, setStat] = useState(data.lists[0].stat)
+  const list = data.lists.find(l => l.stat === stat) || data.lists[0]
+  return (
+    <Card title={t('League leaders')} action={<span className="text-xs text-faint">{data.season}</span>}>
+      <div className="seg mb-3 flex-wrap">
+        {data.lists.map(l => <button key={l.stat} onClick={() => setStat(l.stat)} className={`seg-btn ${l.stat === stat ? 'seg-btn-active' : ''}`}>{t(STAT_LABEL[l.stat] || l.stat)}</button>)}
+      </div>
+      <ol className="divide-y divide-line/50">
+        {list.top.map(x => (
+          <li key={x.name} className="flex items-center gap-3 py-2 text-sm">
+            <span className="w-5 num text-faint">{x.rank}</span>
+            {x.id ? <Link to={`/basketball/player/${x.id}`} className="text-ink font-semibold hover:text-accent truncate">{x.name}</Link> : <span className="text-ink font-semibold truncate">{x.name}</span>}
+            <span className="ml-auto num font-bold text-ink">{x.value}</span>
+            <span className="text-[10px] text-faint w-12 text-right">{t('{0} GP', { 0: x.games })}</span>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-2 text-[11px] text-faint">{t('Per game, regular season.')}</p>
+    </Card>
   )
 }
