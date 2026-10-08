@@ -1258,5 +1258,15 @@
  "Per game": "Par match",
  "averages per game this season": "moyennes par match cette saison",
  "{0} years": "{0} ans",
- "Games in our leagues, pre-season not counted.": "Matchs dans nos championnats, hors présaison."
+ "Games in our leagues, pre-season not counted.": "Matchs dans nos championnats, hors présaison.",
+ "Pinned leagues": "Championnats épinglés",
+ "My teams": "Mes équipes",
+ "Add a team": "Ajouter une équipe",
+ "International": "International",
+ "Countries": "Pays",
+ "England": "Angleterre",
+ "Scotland": "Écosse",
+ "Wales": "Pays de Galles",
+ "Northern Ireland": "Irlande du Nord",
+ "World": "Monde"
 }

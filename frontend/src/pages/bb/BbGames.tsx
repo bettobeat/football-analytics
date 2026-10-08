@@ -6,10 +6,11 @@ import { t } from '../../lib/i18n'
 import { useAuth } from '../../lib/auth'
 import { useRevealState } from '../../lib/reveal'
 import { useBbConfig, useBbFavorites, bbLeagueFav, type BbGame } from '../../lib/bb'
-import { FavStar } from '../../lib/favorites'
+import LeagueSidebar from '../../components/LeagueSidebar'
 import { GamesByDay, LiveRow, GameRow, LockedNote, SectionTitle } from './parts'
 
 const DAY_OPTIONS = [1, 3, 7, 14]
+const BB_COUNTRY: Record<string, string> = { NBA: 'us', EL: 'eu', ACB: 'es', LBA: 'it' }
 
 /** All games — the same layout as football's Matches page: live and leagues on the left, games by day and league. */
 export default function BbGames() {
@@ -96,35 +97,19 @@ export default function BbGames() {
             )}
           </section>
 
-          <section className="card p-2 lg:flex-1 lg:min-h-[180px] lg:overflow-y-auto overscroll-contain">
-            <div className="px-2 pt-2 pb-1 label">{t('Leagues')}</div>
-            <ul className="space-y-0.5">
-              <li>
-                <button onClick={() => setLeague('ALL')} className={`side-item ${league === 'ALL' ? 'side-item-active' : ''}`}>
-                  <span className="w-5 h-5 rounded-md bg-surface2 grid place-items-center text-[10px] font-bold text-muted">∞</span>
-                  {t('All leagues')}<span className="ml-auto num text-xs text-faint">{all.filter(g => g.state !== 'done').length}</span>
-                </button>
-              </li>
-              <li>
-                <button onClick={() => setLeague('FAV')} className={`side-item ${favMode ? 'side-item-active' : ''}`}>
-                  <span className="w-5 h-5 rounded-md bg-accent/15 grid place-items-center text-accent">
-                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="currentColor" aria-hidden><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5z" /></svg>
-                  </span>
-                  {t('My favorites')}<span className="ml-auto num text-xs text-faint">{favs.all.length ? all.filter(g => g.state !== 'done' && favs.reasons(g).length > 0).length : ''}</span>
-                </button>
-              </li>
-              {(cfg?.leagues || []).map(l => (
-                <li key={l.code} className="relative">
-                  <button onClick={() => setLeague(l.code)} className={`side-item pr-9 ${league === l.code ? 'side-item-active' : ''}`}>
-                    {l.logo ? <img src={l.logo} alt="" className="w-5 h-5 object-contain" /> : <span className="w-5 h-5 rounded-md bg-surface2" />}
-                    <span className="truncate">{l.name}</span>
-                    <span className="ml-auto num text-xs text-faint">{all.filter(g => g.league.code === l.code && g.state !== 'done').length}</span>
-                  </button>
-                  <span className="absolute right-1.5 top-1/2 -translate-y-1/2"><FavStar size="sm" fav={bbLeagueFav(l)} /></span>
-                </li>
-              ))}
-            </ul>
-          </section>
+          <LeagueSidebar
+            leagues={(cfg?.leagues || []).map(l => ({
+              code: l.code, name: l.name, logo: l.logo, country: BB_COUNTRY[l.code] || 'world',
+              count: all.filter(g => g.league.code === l.code && g.state !== 'done').length, fav: bbLeagueFav(l)
+            }))}
+            selected={league}
+            onSelect={setLeague}
+            pinned={favs.leagues.length ? favs.leagues.map(f => f.ref) : (cfg?.leagues || []).map(l => l.code)}
+            teams={favs.teams.map(f => ({ key: f.ref, name: f.name, logo: f.img || null, to: `/basketball/team/${f.ref}` }))}
+            total={all.filter(g => g.state !== 'done').length}
+            favCount={favs.all.length ? all.filter(g => g.state !== 'done' && favs.reasons(g).length > 0).length : null}
+            addTeamTo="/basketball/favorites"
+          />
 
           {league === 'ALL' && results && results.length > 0 && (
             <section className="card p-3 hidden lg:block 2xl:hidden shrink-0">

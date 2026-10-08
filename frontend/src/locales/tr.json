@@ -1258,5 +1258,15 @@
  "Per game": "Maç başına",
  "averages per game this season": "bu sezon maç başına ortalamalar",
  "{0} years": "{0} yaşında",
- "Games in our leagues, pre-season not counted.": "Liglerimizdeki maçlar, hazırlık maçları hariç."
+ "Games in our leagues, pre-season not counted.": "Liglerimizdeki maçlar, hazırlık maçları hariç.",
+ "Pinned leagues": "Sabitlenen ligler",
+ "My teams": "Takımlarım",
+ "Add a team": "Takım ekle",
+ "International": "Uluslararası",
+ "Countries": "Ülkeler",
+ "England": "İngiltere",
+ "Scotland": "İskoçya",
+ "Wales": "Galler",
+ "Northern Ireland": "Kuzey İrlanda",
+ "World": "Dünya"
 }

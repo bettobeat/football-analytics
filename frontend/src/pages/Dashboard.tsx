@@ -7,7 +7,9 @@ import { Link, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
 import { pickOfPrediction, type Prediction } from '../lib/predict'
-import { useFavorites, FavStar } from '../lib/favorites'
+import { useFavorites } from '../lib/favorites'
+import LeagueSidebar from '../components/LeagueSidebar'
+import { footballCountry, leagueShortName } from '../lib/leagueCountry'
 import { t as tt, LOCALE } from '../lib/i18n'
 
 export interface Team {
@@ -28,7 +30,8 @@ export interface Competition {
   trial?: boolean // new league, predictions still being tested (not in the public record yet)
 }
 
-const GROUP_TITLE: Record<number, string> = { 0: tt('Top leagues'), 1: tt('European cups'), 2: tt('More leagues'), 3: tt('National teams') }
+/** Pinned in the league menu until the visitor stars leagues of their own. */
+const DEFAULT_PINNED = ['PL', 'PD', 'BL1', 'SA', 'FL1', 'CL']
 
 export interface APIMatch {
   id: number
@@ -91,28 +94,6 @@ function Dashboard() {
   const [error, setError] = useState<string | null>(null)
   // opened on one league (search, shared link): show its whole month, so the list is never empty between rounds
   const [days, setDays] = useState(() => (new URLSearchParams(window.location.search).get('league') ? 30 : 7))
-  // League menu categories: Top leagues open by default; remembered in this browser
-  const [openGroups, setOpenGroups] = useState<Set<number>>(() => {
-    try {
-      const saved = localStorage.getItem('b2b-league-groups')
-      if (saved) return new Set(JSON.parse(saved) as number[])
-    } catch {
-      /* storage unavailable */
-    }
-    return new Set([0])
-  })
-  const toggleGroup = (g: number) =>
-    setOpenGroups(prev => {
-      const next = new Set(prev)
-      if (next.has(g)) next.delete(g)
-      else next.add(g)
-      try {
-        localStorage.setItem('b2b-league-groups', JSON.stringify([...next]))
-      } catch {
-        /* storage unavailable */
-      }
-      return next
-    })
   const [params, setParams] = useSearchParams()
   const [league, setLeagueState] = useState<string>(params.get('league') || 'ALL')
   // the league is kept in the address (?league=PL), so search results and shared links open the right league
@@ -265,69 +246,24 @@ function Dashboard() {
             )}
           </section>
 
-          {/* Leagues: scrolls inside its own box on wide screens, like Latest results */}
-          <section className="card p-2 lg:flex-1 lg:min-h-[180px] lg:overflow-y-auto overscroll-contain">
-            <div className="px-2 pt-2 pb-1 label">{tt("Leagues")}</div>
-            <ul className="space-y-0.5">
-              <li>
-                <button onClick={() => setLeague('ALL')} className={`side-item ${league === 'ALL' ? 'side-item-active' : ''}`}>
-                  <span className="w-5 h-5 rounded-md bg-surface2 grid place-items-center text-[10px] font-bold text-muted">∞</span>
-                  {tt("All leagues")}<span className="ml-auto num text-xs text-faint">{matches.length}</span>
-                </button>
-              </li>
-              <li>
-                <button onClick={() => setLeague('FAV')} className={`side-item ${favMode ? 'side-item-active' : ''}`}>
-                  <span className="w-5 h-5 rounded-md bg-accent/15 grid place-items-center text-accent">
-                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="currentColor" aria-hidden><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5z" /></svg>
-                  </span>
-                  {tt("My favorites")}<span className="ml-auto num text-xs text-faint">{favList.length ? favCount : ''}</span>
-                </button>
-              </li>
-              {[0, 1, 2, 3].map(g => {
-                const list = competitions.filter(c => (c.rank ?? 0) === g)
-                if (!list.length) return null
-                const total = list.reduce((s, c) => s + matches.filter(m => m.competition.code === c.code).length, 0)
-                const hasActive = list.some(c => c.code === league)
-                const open = openGroups.has(g) || hasActive
-                return (
-                  <li key={`g${g}`}>
-                    <button
-                      onClick={() => toggleGroup(g)}
-                      className="w-full flex items-center gap-2 px-2 pt-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-faint hover:text-muted transition-colors"
-                      aria-expanded={open}
-                    >
-                      <span className={`inline-block transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
-                      {GROUP_TITLE[g]}
-                      <span className="ml-auto num normal-case tracking-normal font-medium">{total}</span>
-                    </button>
-                    {open && (
-                      <ul className="space-y-0.5">
-                        {list.map(c => {
-                          const n = matches.filter(m => m.competition.code === c.code).length
-                          return (
-                            <li key={c.code} className="group/li relative">
-                              <button onClick={() => setLeague(c.code)} className={`side-item pr-9 ${league === c.code ? 'side-item-active' : ''}`}>
-                                {c.emblem ? (
-                                  <img src={c.emblem} alt="" className="w-5 h-5 object-contain" />
-                                ) : (
-                                  <span className="w-5 h-5 rounded-md bg-surface2" />
-                                )}
-                                <span className="truncate">{c.name}</span>
-                                <span className="ml-auto num text-xs text-faint">{n}</span>
-                              </button>
-                              <span className="absolute right-1.5 top-1/2 -translate-y-1/2">
-                                <FavStar size="sm" fav={{ kind: 'league', ref: c.code, code: c.code, name: c.name, img: c.emblem || null }} />
-                              </span>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    )}
-                  </li>
-                )
-              })}
-            </ul>
-          </section>
+          {/* Leagues: pinned, my teams, international, countries (Flashscore style) */}
+          <LeagueSidebar
+            leagues={competitions.map(c => ({
+              code: c.code, name: c.name, short: leagueShortName(c.name), logo: c.emblem || null, country: footballCountry(c),
+              count: matches.filter(m => m.competition.code === c.code).length,
+              fav: { kind: 'league', ref: c.code, code: c.code, name: c.name, img: c.emblem || null }
+            }))}
+            selected={league}
+            onSelect={setLeague}
+            pinned={(() => {
+              const mine = favList.filter(f => f.kind === 'league').map(f => f.code || f.ref).filter(c => competitions.some(x => x.code === c))
+              return mine.length ? mine : DEFAULT_PINNED.filter(c => competitions.some(x => x.code === c))
+            })()}
+            teams={favList.filter(f => f.kind === 'team').map(f => ({ key: f.ref, name: f.name, logo: f.img || null, to: f.ids?.[0] ? `/team/${f.ids[0]}?${new URLSearchParams({ n: f.name }).toString()}` : '/favorites' }))}
+            total={matches.length}
+            favCount={favList.length ? favCount : null}
+            addTeamTo="/favorites"
+          />
 
           {/* Latest results (medium screens; wide screens get the full column on the right) */}
           {league === 'ALL' && (
