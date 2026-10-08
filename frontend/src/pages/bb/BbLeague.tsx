@@ -11,8 +11,8 @@ import { useNews, NewsRows } from '../../components/NewsList'
 export interface StandRow { position: number; team: { id: number; name: string; logo: string | null }; played: number; won: number; lost: number; pct: number | null; pointsFor: number | null; pointsAgainst: number | null }
 export interface Standings { season: string; groups: { name: string | null; stage: string | null; rows: StandRow[] }[] }
 
-/** Standings table(s); the teams of a game are marked. */
-export function StandingsTable({ data, mark = [] }: { data: Standings; mark?: number[] }) {
+/** Standings table(s); the teams of a game are marked (in the home / away colours when given). */
+export function StandingsTable({ data, mark = [], colors }: { data: Standings; mark?: number[]; colors?: Record<number, 'H' | 'A'> }) {
   return (
     <div className="space-y-5">
       {data.groups.map((g, i) => (
@@ -20,34 +20,47 @@ export function StandingsTable({ data, mark = [] }: { data: Standings; mark?: nu
           {data.groups.length > 1 && g.name && <div className="label pb-2">{g.name}</div>}
           <table className="w-full text-xs sm:text-sm">
             <thead>
-              <tr className="text-faint text-[11px]">
-                <th className="text-left font-semibold py-1 w-7">#</th>
-                <th className="text-left font-semibold py-1">{t('Team')}</th>
-                <th className="text-right font-semibold py-1 w-9">{t('P')}</th>
-                <th className="text-right font-semibold py-1 w-9">{t('W')}</th>
-                <th className="text-right font-semibold py-1 w-9">{t('L')}</th>
-                <th className="text-right font-semibold py-1 w-12">%</th>
-                <th className="text-right font-semibold py-1 w-14 hidden sm:table-cell">{t('+/−')}</th>
+              <tr className="text-faint text-[10px] uppercase tracking-wide">
+                <th className="text-left font-semibold py-1.5 w-8">#</th>
+                <th className="text-left font-semibold py-1.5">{t('Team')}</th>
+                <th className="text-right font-semibold py-1.5 w-8">{t('P')}</th>
+                <th className="text-right font-semibold py-1.5 w-8">{t('W')}</th>
+                <th className="text-right font-semibold py-1.5 w-8">{t('L')}</th>
+                <th className="text-right font-semibold py-1.5 w-12 sm:w-28">%</th>
+                <th className="text-right font-semibold py-1.5 w-14 hidden sm:table-cell">{t('+/−')}</th>
               </tr>
             </thead>
             <tbody>
-              {g.rows.map(r => (
-                <tr key={r.team.id} className={`border-t border-line/50 ${mark.includes(r.team.id) ? 'bg-accent/10' : ''}`}>
-                  <td className="py-1.5 num text-faint">{r.position}</td>
-                  <td className="py-1.5">
-                    <Link to={`/basketball/team/${r.team.id}`} className="flex items-center gap-2 text-ink hover:text-accent">
-                      <TeamLogo team={r.team} size={18} /><span className="truncate">{r.team.name}</span>
-                    </Link>
-                  </td>
-                  <td className="py-1.5 text-right num text-muted">{r.played}</td>
-                  <td className="py-1.5 text-right num text-ink font-semibold">{r.won}</td>
-                  <td className="py-1.5 text-right num text-muted">{r.lost}</td>
-                  <td className="py-1.5 text-right num text-muted">{r.pct !== null ? r.pct.toFixed(3).replace(/^0/, '') : '–'}</td>
-                  <td className="py-1.5 text-right num text-muted hidden sm:table-cell">
-                    {r.pointsFor !== null && r.pointsAgainst !== null && r.played ? (((r.pointsFor - r.pointsAgainst) / r.played) > 0 ? '+' : '') + ((r.pointsFor - r.pointsAgainst) / r.played).toFixed(1) : '–'}
-                  </td>
-                </tr>
-              ))}
+              {g.rows.map(r => {
+                const c = colors?.[r.team.id]
+                const on = mark.includes(r.team.id)
+                const diff = r.pointsFor !== null && r.pointsAgainst !== null && r.played ? (r.pointsFor - r.pointsAgainst) / r.played : null
+                return (
+                  <tr key={r.team.id} className={`border-t border-line/40 ${c === 'H' ? 'bg-home/10' : c === 'A' ? 'bg-away/10' : on ? 'bg-accent/10' : 'hover:bg-surface2/40'}`}>
+                    <td className="py-1.5 relative">
+                      {(c || on) && <span className={`absolute left-0 inset-y-1 w-[3px] rounded-full ${c === 'H' ? 'bg-home' : c === 'A' ? 'bg-away' : 'bg-accent'}`} />}
+                      <span className={`ml-1.5 inline-grid place-items-center w-5 h-5 rounded-md num text-[10px] font-bold ${r.position <= 3 ? 'bg-accent/15 text-accent' : 'text-faint'}`}>{r.position}</span>
+                    </td>
+                    <td className="py-1.5 max-w-0 w-full">
+                      <Link to={`/basketball/team/${r.team.id}`} className={`flex items-center gap-2 hover:text-accent ${on ? 'font-bold text-ink' : 'text-ink'}`}>
+                        <TeamLogo team={r.team} size={18} /><span className="truncate">{r.team.name}</span>
+                      </Link>
+                    </td>
+                    <td className="py-1.5 text-right num text-muted">{r.played}</td>
+                    <td className="py-1.5 text-right num text-ink font-semibold">{r.won}</td>
+                    <td className="py-1.5 text-right num text-muted">{r.lost}</td>
+                    <td className="py-1.5 text-right num text-muted">
+                      <span className="inline-flex items-center justify-end gap-2">
+                        {r.pct !== null && <span className="hidden sm:block w-12 h-1.5 rounded-full bg-surface2 overflow-hidden"><span className="block h-full rounded-full bg-win/70" style={{ width: `${r.pct * 100}%` }} /></span>}
+                        {r.pct !== null ? r.pct.toFixed(3).replace(/^0/, '') : '–'}
+                      </span>
+                    </td>
+                    <td className={`py-1.5 text-right num hidden sm:table-cell font-semibold ${diff === null ? 'text-muted' : diff > 0 ? 'text-win' : diff < 0 ? 'text-loss' : 'text-muted'}`}>
+                      {diff !== null ? (diff > 0 ? '+' : '') + diff.toFixed(1) : '–'}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

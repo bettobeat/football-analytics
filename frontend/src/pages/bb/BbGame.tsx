@@ -10,17 +10,18 @@ import { RevealCover } from '../../components/Reveal'
 import { BB_STATUS, liveLabel, spreadText, bbTeamFav, bbLeagueFav, useBbConfig, type BbGame as Game } from '../../lib/bb'
 import { FavStar } from '../../lib/favorites'
 import { Card, TeamLogo, LockedNote, rid, rstatus } from './parts'
-import { StandingsTable, type Standings } from './BbLeague'
+import type { Standings } from './BbLeague'
+import { StatsTab, RestTab, H2HTab, StandingsTab } from './GameTabs'
 import { MarketsCard, CompareCard, PlayersCard, ModelTable, type Markets, type ModelInfo, type GamePlayer } from './GameExtras'
 
-interface Avg {
+export interface Avg {
   games: number; won: number; lost: number; pointsFor: number; pointsAgainst: number
   fgPct: number | null; threePct: number | null; threeMade: number | null; threeAttempts: number | null; ftPct: number | null
   rebounds: number | null; assists: number | null; steals: number | null; blocks: number | null; turnovers: number | null
   withStats: number; form: ('W' | 'L')[]
 }
-interface Brief { id: number; kickoff: string; league: string; home: boolean; opponent: string; opponentLogo: string | null; score: string | null; result: 'W' | 'L' | null }
-interface Sched { restDays: number | null; backToBack: boolean; games7: number; away7: number; nextIn: number | null; recent: Brief[]; upcoming: Brief[] }
+export interface Brief { id: number; kickoff: string; league: string; home: boolean; opponent: string; opponentLogo: string | null; score: string | null; result: 'W' | 'L' | null }
+export interface Sched { restDays: number | null; backToBack: boolean; games7: number; away7: number; nextIn: number | null; recent: Brief[]; upcoming: Brief[] }
 interface BoxPlayer { id: number; name: string; starter: boolean; minutes: number | null; points: number | null; fgm: number | null; fga: number | null; tpm: number | null; tpa: number | null; ftm: number | null; fta: number | null; rebounds: number | null; assists: number | null; steals?: number | null; blocks?: number | null; turnovers?: number | null; plusMinus?: number | null }
 interface BoxSide { team: any; players: BoxPlayer[] }
 interface Detail {
@@ -30,7 +31,7 @@ interface Detail {
   ratings: { home: { attack: number; defence: number; net: number } | null; away: { attack: number; defence: number; net: number } | null } | null
   stats: { home: Avg | null; away: Avg | null }
   schedule: { home: Sched; away: Sched }
-  h2h: { id: number; kickoff: string; home: string; away: string; homeId: number; score: [number, number]; league: string }[]
+  h2h: H2H[]
   box: { home: BoxSide; away: BoxSide } | null
   standings: Standings | null
   preview?: { home: PreviewSide; away: PreviewSide; h2h: { games: number; homeWins: number; awayWins: number } }
@@ -38,6 +39,7 @@ interface Detail {
   model?: ModelInfo | null
   players?: { home: GamePlayer[]; away: GamePlayer[] }
 }
+export interface H2H { id: number; kickoff: string; home: string; away: string; homeId: number; score: [number, number]; league: string }
 interface Profile { games: number; fgPct: number | null; threePct: number | null; threeAttempts: number | null; ftPct: number | null; rebounds: number | null; assists: number | null; turnovers: number | null; steals: number | null; blocks: number | null }
 interface PreviewSide {
   season: string; previousSeason: boolean
@@ -186,41 +188,16 @@ export default function BbGame() {
           </>
         )}
         {tab === 'box' && d.box && <BoxTab d={d} />}
-        {tab === 'stats' && <StatsTab d={d} />}
+        {tab === 'stats' && <StatsTab g={g} home={d.stats.home} away={d.stats.away} />}
         {tab === 'players' && (
           <>
             {d.injuries && <InjuriesCard d={d} />}
             {d.players && <PlayersCard g={g} home={d.players.home} away={d.players.away} limit={10} title={t('Key players')} />}
           </>
         )}
-        {tab === 'rest' && <RestTab d={d} />}
-        {tab === 'h2h' && (
-          <Card title={t('Last meetings')}>
-            {d.h2h.length ? (
-              <ul className="divide-y divide-line/50">
-                {d.h2h.map(m => {
-                  const homeWon = m.score[0] > m.score[1]
-                  return (
-                    <li key={m.id}>
-                      <Link to={`/basketball/game/${m.id}`} className="flex items-center gap-3 py-2 text-sm hover:bg-surface2/50 rounded-lg px-2">
-                        <span className="w-20 text-xs text-faint">{new Date(m.kickoff).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short', year: '2-digit' })}</span>
-                        <span className={`flex-1 truncate text-right ${homeWon ? 'font-bold text-ink' : 'text-muted'}`}>{m.home}</span>
-                        <span className="num font-bold text-ink w-20 text-center">{m.score[0]}–{m.score[1]}</span>
-                        <span className={`flex-1 truncate ${!homeWon ? 'font-bold text-ink' : 'text-muted'}`}>{m.away}</span>
-                      </Link>
-                    </li>
-                  )
-                })}
-              </ul>
-            ) : <p className="text-sm text-faint">{t('These teams have not met in the seasons we hold.')}</p>}
-            <p className="mt-3 text-[11px] text-faint">{t('Meetings in our leagues over the last five seasons.')}</p>
-          </Card>
-        )}
-        {tab === 'table' && d.standings && (
-          <Card title={t('Standings')} action={<span className="text-xs text-faint">{g.league.name}</span>}>
-            <StandingsTable data={d.standings} mark={[g.home.id, g.away.id]} />
-          </Card>
-        )}
+        {tab === 'rest' && <RestTab g={g} home={d.schedule.home} away={d.schedule.away} />}
+        {tab === 'h2h' && <H2HTab g={g} list={d.h2h} />}
+        {tab === 'table' && d.standings && <StandingsTab g={g} data={d.standings} />}
       </div>
     </div>
   )
@@ -521,96 +498,6 @@ function Stat({ label, value }: { label: string; value: ReactNode }) {
       <div className="num text-sm sm:text-base font-bold text-ink truncate">{value}</div>
       <div className="text-[10px] text-faint mt-0.5">{label}</div>
     </div>
-  )
-}
-
-const ROWS: { k: keyof Avg; label: string; pct?: boolean; lowerBetter?: boolean }[] = [
-  { k: 'pointsFor', label: t('Points scored') },
-  { k: 'pointsAgainst', label: t('Points allowed'), lowerBetter: true },
-  { k: 'fgPct', label: t('Field goal %'), pct: true },
-  { k: 'threePct', label: t('3-point %'), pct: true },
-  { k: 'threeMade', label: t('3-pointers made') },
-  { k: 'ftPct', label: t('Free throw %'), pct: true },
-  { k: 'rebounds', label: t('Rebounds') },
-  { k: 'assists', label: t('Assists') },
-  { k: 'steals', label: t('Steals') },
-  { k: 'blocks', label: t('Blocks') },
-  { k: 'turnovers', label: t('Turnovers'), lowerBetter: true }
-]
-
-function StatsTab({ d }: { d: Detail }) {
-  const { home, away } = d.stats
-  if (!home || !away) return <Card><p className="text-sm text-faint">{t('Not enough games yet for averages.')}</p></Card>
-  return (
-    <Card title={t('Averages, last {0} games', { 0: Math.max(home.games, away.games) })}>
-      <div className="grid grid-cols-[1fr_auto_1fr] gap-x-3 text-xs font-bold text-muted mb-2">
-        <span className="truncate text-home">{d.game.home.name}</span><span /><span className="truncate text-right text-away">{d.game.away.name}</span>
-      </div>
-      <div className="grid grid-cols-[1fr_auto_1fr] gap-x-3 mb-3">
-        <Form f={home.form} /><span className="text-[11px] text-faint">{t('Form')}</span><div className="flex justify-end"><Form f={away.form} /></div>
-      </div>
-      <ul className="space-y-2">
-        {ROWS.map(r => {
-          const a = home[r.k] as number | null, b = away[r.k] as number | null
-          if (a === null || b === null) return null
-          const better = a === b ? 0 : (a > b) !== !!r.lowerBetter ? -1 : 1
-          return (
-            <li key={r.k} className="grid grid-cols-[1fr_auto_1fr] gap-x-3 items-center text-sm">
-              <span className={`num ${better === -1 ? 'text-ink font-bold' : 'text-muted'}`}>{a}{r.pct ? '%' : ''}</span>
-              <span className="text-[11px] text-faint text-center w-32">{r.label}</span>
-              <span className={`num text-right ${better === 1 ? 'text-ink font-bold' : 'text-muted'}`}>{b}{r.pct ? '%' : ''}</span>
-            </li>
-          )
-        })}
-      </ul>
-      {(home.withStats < home.games || away.withStats < away.games) && <p className="mt-3 text-[11px] text-faint">{t('Shooting and other stats from the games with a box score.')}</p>}
-    </Card>
-  )
-}
-
-function Form({ f }: { f: ('W' | 'L')[] }) {
-  return <div className="flex gap-1">{f.map((r, i) => <span key={i} className={`w-5 h-5 rounded text-[10px] font-bold grid place-items-center ${r === 'W' ? 'bg-win text-bg' : 'bg-loss text-bg'}`}>{r === 'W' ? t('W') : t('L')}</span>)}</div>
-}
-
-function RestTab({ d }: { d: Detail }) {
-  const g = d.game
-  const panel = (team: Game['home'], s: Sched) => (
-    <div>
-      <div className="flex items-center gap-2 mb-3"><TeamLogo team={team} size={22} /><span className="font-display font-bold text-ink">{team.name}</span></div>
-      <div className="grid grid-cols-3 gap-2 mb-3">
-        <Stat label={t('Days of rest')} value={s.restDays === null ? '–' : s.backToBack ? t('B2B') : Math.floor(s.restDays)} />
-        <Stat label={t('Games, last 7 days')} value={s.games7} />
-        <Stat label={t('Next game in')} value={s.nextIn === null ? '–' : t('{0} d', { 0: Math.floor(s.nextIn) })} />
-      </div>
-      {s.backToBack && <p className="text-xs text-draw font-semibold mb-2">{t('Second night of a back-to-back')}</p>}
-      {s.recent.length > 0 && <div className="label pb-1">{t('Before this game')}</div>}
-      <ul className="space-y-1 mb-3">{s.recent.map(b => <BriefRow key={b.id} b={b} />)}</ul>
-      {s.upcoming.length > 0 && <div className="label pb-1">{t('After this game')}</div>}
-      <ul className="space-y-1">{s.upcoming.map(b => <BriefRow key={b.id} b={b} />)}</ul>
-    </div>
-  )
-  return (
-    <Card title={t('Schedule & rest')}>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-        {panel(g.home, d.schedule.home)}
-        {panel(g.away, d.schedule.away)}
-      </div>
-    </Card>
-  )
-}
-
-function BriefRow({ b }: { b: Brief }) {
-  return (
-    <li>
-      <Link to={`/basketball/game/${b.id}`} className="flex items-center gap-2 text-xs py-0.5 hover:text-accent">
-        <span className="num text-faint w-14 shrink-0">{new Date(b.kickoff).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short' })}</span>
-        <span className="text-faint w-4 shrink-0">{b.home ? t('H') : t('A')}</span>
-        {b.opponentLogo && <img src={b.opponentLogo} alt="" className="w-4 h-4 object-contain shrink-0" loading="lazy" />}
-        <span className="text-ink truncate">{b.opponent}</span>
-        {b.score && <span className="ml-auto num text-muted">{b.score}</span>}
-        {b.result && <span className={`w-4 text-center font-bold ${b.result === 'W' ? 'text-win' : 'text-loss'}`}>{b.result === 'W' ? t('W') : t('L')}</span>}
-      </Link>
-    </li>
   )
 }
 

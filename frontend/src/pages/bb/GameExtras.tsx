@@ -195,50 +195,83 @@ function FormDots({ f }: { f: ('W' | 'L')[] }) {
   return <div className="flex gap-1">{f.map((r, i) => <span key={i} className={`w-5 h-5 rounded text-[10px] font-bold grid place-items-center ${r === 'W' ? 'bg-win text-bg' : 'bg-loss text-bg'}`}>{r === 'W' ? t('W') : t('L')}</span>)}</div>
 }
 
-/** Each team's key players (season averages), injury flags; links to the player pages. */
+/** Each team's key players (season averages): the top scorer up front, then everyone with a points bar; injury flags; links to the player pages. */
 export function PlayersCard({ g, home, away, limit, title }: { g: Game; home: GamePlayer[]; away: GamePlayer[]; limit: number; title: string }) {
   if (!home.length && !away.length) return null
   const adv = [...home, ...away].some(p => p.pie !== null)
-  const side = (team: Game['home'], list: GamePlayer[]) => (
-    <div className="min-w-0">
-      <div className="flex items-center gap-2 mb-2"><TeamLogo team={team} size={20} /><Link to={`/basketball/team/${team.id}`} className="font-display font-bold text-ink hover:text-accent truncate">{team.name}</Link></div>
-      {list.length === 0 ? <p className="text-sm text-faint">{t('No player stats yet.')}</p> : (
-        <table className="w-full text-xs num">
-          <thead>
-            <tr className="text-faint">
-              <th className="text-left font-semibold py-1">{t('Player')}</th>
-              <th className="text-right font-semibold px-1">{t('PTS')}</th>
-              <th className="text-right font-semibold px-1">{t('REB')}</th>
-              <th className="text-right font-semibold px-1">{t('AST')}</th>
-              <th className="text-right font-semibold px-1 hidden sm:table-cell">{t('MIN')}</th>
-              {adv && <th className="text-right font-semibold pl-1 hidden sm:table-cell">PIE</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {list.slice(0, limit).map(p => (
-              <tr key={p.id} className="border-t border-line/40">
-                <td className="py-1.5 font-sans whitespace-nowrap max-w-[150px] truncate">
-                  <Link to={`/basketball/player/${p.id}`} className="text-ink font-semibold hover:text-accent">{p.name}</Link>
-                  {p.injury && <span className="ml-1 rounded px-1 text-[9px] font-bold bg-loss/15 text-loss">{p.injury}</span>}
-                  {p.statsFrom && p.statsFrom !== 'current' && <span className="ml-1 rounded px-1 text-[9px] text-faint bg-surface2">{p.statsFrom.season}</span>}
-                </td>
-                <td className="text-right px-1 text-ink font-bold">{p.pts ?? '–'}</td>
-                <td className="text-right px-1 text-muted">{p.reb ?? '–'}</td>
-                <td className="text-right px-1 text-muted">{p.ast ?? '–'}</td>
-                <td className="text-right px-1 text-muted hidden sm:table-cell">{p.min ?? '–'}</td>
-                {adv && <td className="text-right pl-1 text-muted hidden sm:table-cell">{p.pie ?? '–'}</td>}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  )
+  const side = (s: 'H' | 'A', team: Game['home'], list: GamePlayer[]) => {
+    const rows = list.slice(0, limit)
+    const top = rows.reduce<GamePlayer | null>((m, p) => (p.pts !== null && (!m || (m.pts ?? -1) < p.pts) ? p : m), null)
+    const max = Math.max(1, ...rows.map(p => p.pts ?? 0))
+    const tone = s === 'H' ? { text: 'text-home', bg: 'bg-home', soft: 'from-home/20' } : { text: 'text-away', bg: 'bg-away', soft: 'from-away/20' }
+    const tag = (p: GamePlayer) => (
+      <>
+        {p.injury && <span className="ml-1.5 rounded px-1 py-px text-[9px] font-bold bg-loss/15 text-loss align-middle">{p.injury}</span>}
+        {p.statsFrom && p.statsFrom !== 'current' && <span className="ml-1.5 rounded px-1 py-px text-[9px] text-faint bg-surface2 align-middle">{p.statsFrom.season}</span>}
+      </>
+    )
+    return (
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 mb-3">
+          <span className={`w-1 h-6 rounded-full ${tone.bg}`} />
+          <TeamLogo team={team} size={22} />
+          <Link to={`/basketball/team/${team.id}`} className="font-display font-bold text-ink hover:text-accent truncate">{team.name}</Link>
+        </div>
+        {rows.length === 0 ? <p className="text-sm text-faint">{t('No player stats yet.')}</p> : (
+          <>
+            {top && (
+              <Link to={`/basketball/player/${top.id}`} className={`group flex items-center gap-3 rounded-2xl border border-line/60 bg-gradient-to-r ${tone.soft} to-transparent p-3 mb-3 hover:border-accent/40 transition-colors`}>
+                <span className={`w-12 h-12 rounded-xl grid place-items-center font-display text-lg font-extrabold text-bg shrink-0 ${tone.bg}`}>{top.number ?? '★'}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-faint">{t('Top scorer')}{top.position ? ` · ${top.position}` : ''}</span>
+                  <span className="block font-bold text-ink truncate group-hover:text-accent">{top.name}{tag(top)}</span>
+                </span>
+                <span className="flex gap-3 text-center shrink-0">
+                  {([['PTS', top.pts], ['REB', top.reb], ['AST', top.ast]] as const).map(([k, v], i) => (
+                    <span key={k}>
+                      <span className={`block num leading-none ${i === 0 ? `text-xl font-extrabold ${tone.text}` : 'text-sm font-bold text-ink mt-1'}`}>{v ?? '–'}</span>
+                      <span className="block text-[9px] font-semibold text-faint mt-1">{t(k)}</span>
+                    </span>
+                  ))}
+                </span>
+              </Link>
+            )}
+            <div className="grid grid-cols-[1fr_5.5rem_2.25rem_2.25rem] sm:grid-cols-[1fr_6.5rem_2.25rem_2.25rem_2.5rem] gap-x-2 text-[10px] font-semibold uppercase tracking-wide text-faint px-1 pb-1">
+              <span>{t('Player')}</span><span>{t('PTS')}</span><span className="text-right">{t('REB')}</span><span className="text-right">{t('AST')}</span><span className="text-right hidden sm:block">{adv ? 'PIE' : t('MIN')}</span>
+            </div>
+            <ul className="divide-y divide-line/40">
+              {rows.map(p => (
+                <li key={p.id}>
+                  <Link to={`/basketball/player/${p.id}`} className="grid grid-cols-[1fr_5.5rem_2.25rem_2.25rem] sm:grid-cols-[1fr_6.5rem_2.25rem_2.25rem_2.5rem] gap-x-2 items-center px-1 py-1.5 rounded-lg hover:bg-surface2/50 text-xs">
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="w-6 h-6 rounded-md bg-surface2 grid place-items-center num text-[10px] font-bold text-muted shrink-0">{p.number ?? '–'}</span>
+                      <span className="min-w-0 truncate">
+                        <span className="font-semibold text-ink">{p.name}</span>
+                        {p.position && <span className="ml-1.5 text-[10px] text-faint">{p.position}</span>}
+                        {tag(p)}
+                      </span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="flex-1 h-1.5 rounded-full bg-surface2 overflow-hidden"><span className={`block h-full rounded-full ${tone.bg} opacity-80`} style={{ width: `${((p.pts ?? 0) / max) * 100}%` }} /></span>
+                      <span className="num font-bold text-ink w-7 text-right">{p.pts ?? '–'}</span>
+                    </span>
+                    <span className="num text-right text-muted">{p.reb ?? '–'}</span>
+                    <span className="num text-right text-muted">{p.ast ?? '–'}</span>
+                    <span className="num text-right text-muted hidden sm:block">{adv ? (p.pie ?? '–') : (p.min ?? '–')}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
+    )
+  }
   return (
     <Card title={title} action={<span className="text-xs text-faint">{t('per game, this season')}</span>}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-        {side(g.home, home)}
-        {side(g.away, away)}
+        {side('H', g.home, home)}
+        {side('A', g.away, away)}
       </div>
     </Card>
   )
