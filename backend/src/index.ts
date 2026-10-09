@@ -24,6 +24,7 @@ import { recordPredictions, settlePending, accuracy, recentSettled, trackingStat
 import { historyStatus, teamMapStatus, GROUPS, syncAll, syncH2HArchive, h2hArchiveStatus, syncHalfTimes } from './services/history';
 import { withLive, liveHalfTimeTest } from './services/liveChance';
 import { backtestUpsets, upsetWatchReport, upsetWatchBacktest } from './services/upsetAlerts';
+import { submitContact, contactInbox, markContact, ContactError } from './services/contact';
 import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestRows, backtestRunsList } from './services/historyModel';
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
 import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler, squadCompetitions } from './services/squadValues';
@@ -269,7 +270,7 @@ app.use('/api', rateLimit('api', 600, 60000)); // ~10 a second, far above a pers
 app.use(['/api/team-page', '/api/player-page'], rateLimit('pages', 60, 10 * 60000));
 app.use('/api/unlocks', (req, res, next) => (req.method === 'POST' ? rateLimit('unlock', 30, 60000, r => String(r.user?.id || r.ip))(req, res, next) : next()));
 
-const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|basketball\/|public\/(summary|results|record)$|unlocks(\/|$)|billing\/)/;
+const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|contact$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|basketball\/|public\/(summary|results|record)$|unlocks(\/|$)|billing\/)/;
 const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|history\/status|clv|draw-alerts|upset-watch)$/; // past seasons and backtests are admin only (Oct 2026)
 
 app.use('/api', (req, res, next) => {
@@ -434,6 +435,25 @@ app.post('/api/favorites', jsonOnly, (req, res) => {
 app.post('/api/favorites/remove', jsonOnly, (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Sign in required' });
   res.json({ data: removeFavorite(req.user.id, req.body?.kind, req.body?.ref) });
+});
+
+// Contact form → support inbox (anyone; signed-in users send from their account email)
+app.post('/api/contact', rateLimit('contact', 5, 60 * 60000), jsonOnly, async (req, res) => {
+  try {
+    res.json({ data: await submitContact(req.body, req.user ? { id: req.user.id, email: req.user.email } : null) });
+  } catch (e: any) {
+    if (e instanceof ContactError) return res.status(e.status).json({ error: e.message });
+    sendError(res, e, 'Message not sent');
+  }
+});
+// Admin: contact messages (read, mark handled)
+app.get('/api/admin/contact', (_req, res) => {
+  try { res.json({ data: contactInbox(), timestamp: new Date().toISOString() }); }
+  catch (e: any) { sendError(res, e, 'Contact inbox failed'); }
+});
+app.post('/api/admin/contact/:id(\\d+)', jsonOnly, (req, res) => {
+  try { markContact(parseInt(req.params.id, 10), req.body?.handled !== false); res.json({ data: { ok: true } }); }
+  catch (e: any) { sendError(res, e, 'Update failed'); }
 });
 
 // "Tell me when it opens" for the sports that are coming (anyone, signed in or not)

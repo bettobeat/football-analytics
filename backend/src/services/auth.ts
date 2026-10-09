@@ -541,6 +541,7 @@ export function exportUserData(userId: number) {
     unlockedMatches: tableExists('match_unlocks') ? safeAll('SELECT match_id AS matchId, at FROM match_unlocks WHERE user_id = ? ORDER BY at', userId) : [],
     waitlists: tableExists('sport_waitlist') ? safeAll('SELECT sport, lang, created_at AS joinedAt FROM sport_waitlist WHERE user_id = ? OR email = ?', userId, u.email) : [],
     cancellationFeedback: tableExists('leave_feedback') ? safeAll('SELECT plan, reason, details, at FROM leave_feedback WHERE user_id = ?', userId) : [],
+    contactMessages: tableExists('contact_messages') ? safeAll('SELECT at, topic, message FROM contact_messages WHERE user_id = ? OR email = ? ORDER BY at', userId, u.email) : [],
     assistantUsage: tableExists('assistant_log') ? safeAll('SELECT at, match_id AS matchId FROM assistant_log WHERE user_id = ? ORDER BY at', userId) : [],
     notes: [
       'Passwords are stored only as a one-way hash and are not included.',
@@ -606,6 +607,7 @@ export function deleteAccount(userId: number, password: unknown, reason?: unknow
     if (tableExists('match_unlocks')) db.prepare('DELETE FROM match_unlocks WHERE user_id = ?').run(userId);
     if (tableExists('sport_waitlist')) db.prepare('DELETE FROM sport_waitlist WHERE user_id = ? OR email = ?').run(userId, u.email);
     if (tableExists('assistant_log')) db.prepare('DELETE FROM assistant_log WHERE user_id = ?').run(userId);
+    if (tableExists('contact_messages')) db.prepare('DELETE FROM contact_messages WHERE user_id = ? OR email = ?').run(userId, u.email);
     db.prepare('DELETE FROM email_codes WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM users WHERE id = ?').run(userId);

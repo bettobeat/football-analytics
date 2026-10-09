@@ -25,6 +25,7 @@ import Favorites from './pages/Favorites'
 import Assistant from './components/Assistant'
 import AccessibilityMenu, { initA11y } from './components/Accessibility'
 import Accessibility from './pages/Accessibility'
+import Contact from './pages/Contact'
 import SportSoon from './pages/SportSoon'
 import SportSwitch from './components/SportSwitch'
 import BbHome from './pages/bb/BbHome'
@@ -339,6 +340,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/terms/, tt('Terms of use')],
   [/^\/privacy/, tt('Privacy policy')],
   [/^\/accessibility/, tt('Accessibility statement')],
+  [/^\/contact/, tt('Contact us')],
   [/^\/admin/, 'Users']
 ]
 /** Browser tab title per page (the match page sets its own once the teams are loaded). */
@@ -461,6 +463,7 @@ function Shell() {
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/accessibility" element={<Accessibility />} />
+            <Route path="/contact" element={<Contact />} />
             <Route path="/basketball/*" element={<BbRoutes />} />
             <Route path="/tennis/*" element={<SportSoon sport="tennis" />} />
             <Route path="/american-football/*" element={<SportSoon sport="american-football" />} />
@@ -474,6 +477,7 @@ function Shell() {
             <Link to="/privacy" className="hover:text-ink">{tt("Privacy")}</Link>
             <Link to="/accessibility" className="hover:text-ink">{tt("Accessibility")}</Link>
             <Link to="/premium" className="hover:text-ink">{tt("Premium")}</Link>
+            <Link to="/contact" className="hover:text-ink">{tt("Contact us")}</Link>
             <span className="ml-auto"><LangSwitch compact /></span>
           </div>
           <p>

@@ -106,6 +106,7 @@ export default function Admin() {
               {tile('Want updates', stats?.optIn, () => go('users'))}
             </div>
           </section>
+          <ContactCard />
           <LeaveCard />
           <DataHealth />
         </>
@@ -221,6 +222,57 @@ interface Leave {
 }
 
 /** Why people cancel or delete (last 12 months). */
+interface ContactMsg { id: number; at: string; userId: number | null; name: string | null; email: string; topic: string; message: string; page: string | null; sent: boolean; handled: boolean }
+const TOPIC_LABEL: Record<string, string> = {
+  question: 'Question', account: 'Account / sign-in', billing: 'Billing / plan', privacy: 'Privacy / my data',
+  bug: 'Something is broken', idea: 'Idea / feedback', business: 'Business / partnership', other: 'Other'
+}
+
+/** Messages from the contact form (they also arrive in support@ by email; reply from there). */
+function ContactCard() {
+  const [d, setD] = useState<{ open: number; rows: ContactMsg[] } | null>(null)
+  const [all, setAll] = useState(false)
+  const load = () => axios.get(`${API_URL}/admin/contact`).then(r => setD(r.data.data)).catch(() => setD(null))
+  useEffect(() => { load() }, [])
+  if (!d) return null
+  const mark = async (id: number, handled: boolean) => {
+    setD(prev => prev && { open: prev.open + (handled ? -1 : 1), rows: prev.rows.map(r => (r.id === id ? { ...r, handled } : r)) })
+    await axios.post(`${API_URL}/admin/contact/${id}`, { handled }).catch(load)
+  }
+  const rows = d.rows.filter(r => all || !r.handled)
+  return (
+    <section className="card p-5 sm:p-6 mb-8">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+        <h2 className="font-display text-lg font-bold text-ink">Contact messages</h2>
+        <span className="text-xs text-faint">
+          {d.open} open · {d.rows.length} total ·{' '}
+          <button type="button" onClick={() => setAll(v => !v)} className="text-accent font-semibold">{all ? 'Open only' : 'Show all'}</button>
+        </span>
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-sm text-faint">{d.rows.length ? 'Nothing open. All answered.' : 'No messages yet.'}</p>
+      ) : (
+        <ul className="divide-y divide-line/50 text-sm">
+          {rows.slice(0, 30).map(r => (
+            <li key={r.id} className={`py-3 ${r.handled ? 'opacity-55' : ''}`}>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-faint">
+                <span className="px-1.5 py-0.5 rounded bg-surface2 text-ink font-semibold">{TOPIC_LABEL[r.topic] || r.topic}</span>
+                <span>#{r.id} · {fmt(r.at)}</span>
+                <span className="text-ink">{r.name || '—'}</span>
+                <a href={`mailto:${r.email}?subject=${encodeURIComponent(`Re: your message to SportLikely (#${r.id})`)}`} className="text-accent">{r.email}</a>
+                {r.userId && <span>account #{r.userId}</span>}
+                {!r.sent && <span className="text-loss font-semibold">email not delivered — reply from here</span>}
+                <button type="button" onClick={() => mark(r.id, !r.handled)} className="ml-auto text-xs font-semibold text-accent">{r.handled ? 'Reopen' : 'Mark answered'}</button>
+              </div>
+              <p className="text-ink mt-1 whitespace-pre-wrap break-words">{r.message}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
 function LeaveCard() {
   const [d, setD] = useState<Leave | null>(null)
   useEffect(() => { axios.get(`${API_URL}/admin/leave-feedback`).then(r => setD(r.data.data)).catch(() => setD(null)) }, [])

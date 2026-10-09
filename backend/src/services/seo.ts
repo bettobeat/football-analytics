@@ -155,6 +155,7 @@ export function seoPage(rawPath: string): SeoInfo {
     if (path === '/terms') return page(`Terms of use | ${BRAND}`, 'Terms of use of SportLikely.', '<h1>Terms of use</h1>');
     if (path === '/privacy') return page(`Privacy policy | ${BRAND}`, 'How SportLikely handles your data.', '<h1>Privacy policy</h1>');
     if (path === '/accessibility') return page(`Accessibility | ${BRAND}`, 'Accessibility statement of SportLikely.', '<h1>Accessibility statement</h1>');
+    if (path === '/contact') return page(`Contact us | ${BRAND}`, 'Questions, problems or ideas? Write to the SportLikely team: we answer by email within 1–2 working days.', '<h1>Contact us</h1><p>Write to support@sportlikely.com or use the contact form.</p>');
 
     if (path.startsWith('/basketball')) {
       if (!bbPublic()) return page(`Basketball predictions · coming soon | ${BRAND}`, 'Basketball predictions are coming soon to SportLikely.', '<h1>Basketball · coming soon</h1>', { noindex: true });
@@ -222,7 +223,7 @@ export function sitemapXml(): string {
   const urls: { loc: string; freq: string; pri: string }[] = [];
   const add = (p: string, freq: string, pri: string) => urls.push({ loc: p, freq, pri });
   add('/', 'hourly', '1.0'); add('/matches', 'hourly', '0.9'); add('/accuracy', 'daily', '0.8'); add('/draw-alerts', 'daily', '0.6'); add('/premium', 'monthly', '0.5');
-  add('/terms', 'yearly', '0.2'); add('/privacy', 'yearly', '0.2'); add('/accessibility', 'yearly', '0.2');
+  add('/terms', 'yearly', '0.2'); add('/privacy', 'yearly', '0.2'); add('/accessibility', 'yearly', '0.2'); add('/contact', 'yearly', '0.3');
   for (const c of fbCompetitions()) add(`/league/${c.code}`, 'daily', '0.7');
   for (const x of fbUpcoming(1500)) add(`/match/${x.id}`, 'hourly', '0.8');
   for (const x of fbRecent(14, 1500)) add(`/match/${x.id}`, 'weekly', '0.4');

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
 const CONTACT = 'contact@sportlikely.com'
-const UPDATED = '9 October 2026'
+const UPDATED = '10 October 2026'
 // Operator details: fill in once the company is registered (legal name, registration number, address)
 const OPERATOR: string | null = null
 
@@ -129,6 +129,11 @@ export function Privacy() {
           sign you out everywhere when you change your password.
         </p>
         <p>
+          <span className="text-ink font-semibold">Messages to us:</span> when you use the{' '}
+          <Link to="/contact" className="text-accent hover:underline">contact form</Link> or email us, we keep your email address, name
+          (if given) and message to answer you and to improve the service. Messages linked to an account are deleted with it.
+        </p>
+        <p>
           <span className="text-ink font-semibold">Security:</span> the IP address of sign-in and sign-up attempts is held in memory for about
           15 minutes to stop password guessing. Server logs keep the pages requested, for troubleshooting.
         </p>
@@ -175,7 +180,7 @@ export function Privacy() {
           You can see, correct, download or delete your data, or object to how we use it. Two of these work by yourself on your{' '}
           <Link to="/account" className="text-accent hover:underline">account page</Link>: <span className="text-ink">Download my data</span> gives you
           a file with everything we store about your account, and <span className="text-ink">Delete my account</span> removes it. For anything
-          else, write to <Mail />; we answer within 30 days. You can also complain to the data protection authority where you live.
+          else, write to <Mail /> or use the <Link to="/contact" className="text-accent hover:underline">contact form</Link>; we answer within 30 days. You can also complain to the data protection authority where you live.
         </p>
       </Section>
       <Section title="Children">

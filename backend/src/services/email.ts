@@ -19,18 +19,18 @@ function parseFrom(from: string): { name: string; email: string } {
   return m ? { name: m[1] || 'SportLikely', email: m[2] } : { name: 'SportLikely', email: from.trim() };
 }
 
-export async function sendEmail(to: string, subject: string, html: string, text: string): Promise<void> {
+export async function sendEmail(to: string, subject: string, html: string, text: string, replyTo?: string): Promise<void> {
   if (!emailProvider) throw new Error('Email is not configured');
   if (emailProvider === 'resend') {
     await axios.post(
       'https://api.resend.com/emails',
-      { from: FROM, to: [to], subject, html, text },
+      { from: FROM, to: [to], subject, html, text, ...(replyTo ? { reply_to: replyTo } : {}) },
       { headers: { Authorization: `Bearer ${RESEND_KEY}` }, timeout: 15000 }
     );
   } else {
     await axios.post(
       'https://api.brevo.com/v3/smtp/email',
-      { sender: parseFrom(FROM), to: [{ email: to }], subject, htmlContent: html, textContent: text },
+      { sender: parseFrom(FROM), to: [{ email: to }], subject, htmlContent: html, textContent: text, ...(replyTo ? { replyTo: { email: replyTo } } : {}) },
       { headers: { 'api-key': BREVO_KEY }, timeout: 15000 }
     );
   }
