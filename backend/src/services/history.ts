@@ -532,3 +532,92 @@ export function fdNameFor(group: string, teamId: number): string | null {
 export function teamMapStatus() {
   return db.prepare(`SELECT grp, team_id, fd_name, api_name, score FROM team_map ORDER BY grp, api_name`).all();
 }
+
+/* ------------------------------------------------------------------ */
+/* Head-to-head archive (Oct 2026)                                     */
+/* ------------------------------------------------------------------ */
+// The model's history holds the last 3 seasons, so it often had "no previous meetings" while the match page (from
+// API-Football) showed ten. Older seasons are stored here for the head-to-head row only: ratings, Elo and the backtest
+// samples keep using history_matches. Same football-data.co.uk names, so pairs match directly.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS h2h_archive (
+    division TEXT NOT NULL, season TEXT NOT NULL, date TEXT NOT NULL, home TEXT NOT NULL, away TEXT NOT NULL,
+    hg INTEGER NOT NULL, ag INTEGER NOT NULL, PRIMARY KEY (division, date, home, away)
+  );
+  CREATE INDEX IF NOT EXISTS idx_h2h_archive_div ON h2h_archive(division);
+`);
+const insertArchive = db.prepare(`INSERT OR REPLACE INTO h2h_archive (division, season, date, home, away, hg, ag) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+
+/** Seasons before the model's 3: e.g. 1516 … 2324. */
+export function archiveSeasonCodes(back = 10): string[] {
+  const recent = seasonCodes(3);
+  const oldest = recent[recent.length - 1];
+  let y = parseInt(oldest.slice(0, 2), 10);
+  const out: string[] = [];
+  for (let i = 0; i < back; i++) { y = (y + 99) % 100; out.push(`${String(y).padStart(2, '0')}${String((y + 1) % 100).padStart(2, '0')}`); }
+  return out;
+}
+
+export async function syncH2HArchive(back = 10) {
+  const seasons = archiveSeasonCodes(back);
+  const keep = new Set(seasonCodes(3));
+  const summary: { division: string; season: string; rows: number; error?: string }[] = [];
+  const store = (division: string, rows: Record<string, string>[], season: string | null) => {
+    let n = 0;
+    db.exec('BEGIN');
+    try {
+      for (const r of rows) {
+        const date = parseDate(r.Date);
+        const homeName = r.HomeTeam || r.Home, awayName = r.AwayTeam || r.Away;
+        const hg = parseInt(r.FTHG ?? r.HG, 10), ag = parseInt(r.FTAG ?? r.AG, 10);
+        if (!date || !homeName || !awayName || Number.isNaN(hg) || Number.isNaN(ag)) continue;
+        const sc = season || seasonForDivision(division, date);
+        if (keep.has(sc)) continue; // those are in history_matches
+        insertArchive.run(division, sc, date, homeName, awayName, hg, ag);
+        n++;
+      }
+      db.exec('COMMIT');
+    } catch (e) { db.exec('ROLLBACK'); throw e; }
+    return n;
+  };
+  for (const cfg of Object.values(GROUPS)) {
+    for (const division of cfg.divisions) {
+      if (NEW_FORMAT_DIVS.has(division)) {
+        try { summary.push({ division, season: 'all', rows: store(division, parseCSV(await fetchCSV(division, seasons[0])), null) }); }
+        catch (e: any) { summary.push({ division, season: 'all', rows: 0, error: e.message }); }
+        continue;
+      }
+      for (const season of seasons) {
+        try { summary.push({ division, season, rows: store(division, parseCSV(await fetchCSV(division, season)), season) }); }
+        catch (e: any) { summary.push({ division, season, rows: 0, error: e.message }); }
+      }
+    }
+  }
+  archiveCache.clear();
+  const total = (db.prepare(`SELECT COUNT(*) AS c FROM h2h_archive`).get() as any).c;
+  logger.info(`H2H archive sync done: ${total} matches`);
+  return { total, seasons, errors: summary.filter(s => s.error).length, summary };
+}
+
+const archiveCache = new Map<string, Map<string, HistoryMatch[]>>();
+/** Archive meetings of a group, indexed by the pair (names sorted). */
+export function h2hArchiveFor(group: string): Map<string, HistoryMatch[]> {
+  let idx = archiveCache.get(group);
+  if (idx) return idx;
+  idx = new Map();
+  const divs = GROUPS[group]?.divisions || [];
+  if (divs.length) {
+    const rows = db.prepare(`SELECT * FROM h2h_archive WHERE division IN (${divs.map(() => '?').join(',')})`).all(...divs) as HistoryMatch[];
+    for (const m of rows) {
+      const k = [m.home, m.away].sort().join('|');
+      const l = idx.get(k);
+      if (l) l.push(m); else idx.set(k, [m]);
+    }
+  }
+  archiveCache.set(group, idx);
+  return idx;
+}
+
+export function h2hArchiveStatus() {
+  return db.prepare(`SELECT division, COUNT(*) AS rows, MIN(date) AS first, MAX(date) AS last FROM h2h_archive GROUP BY division ORDER BY division`).all();
+}

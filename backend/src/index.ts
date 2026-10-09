@@ -21,7 +21,7 @@ console.log('API Key:', process.env.FOOTBALL_DATA_API_KEY ? '✅ SET' : '❌ NOT
 // Import after env is loaded
 import footballDataAPI from './services/footballDataAPI';
 import { recordPredictions, settlePending, accuracy, recentSettled, trackingStatus, computeMetrics, publicRecord } from './services/tracking';
-import { historyStatus, teamMapStatus, GROUPS, syncAll } from './services/history';
+import { historyStatus, teamMapStatus, GROUPS, syncAll, syncH2HArchive, h2hArchiveStatus } from './services/history';
 import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestRows, backtestRunsList } from './services/historyModel';
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
 import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler, squadCompetitions } from './services/squadValues';
@@ -94,7 +94,7 @@ const tokenKind = (t: unknown): 'read' | 'job' | null =>
 
 // GET endpoints that DO something (start a job, spend API calls, change data). The read token may not call them,
 // and a browser may not call them from another website (see the cross-site guard below).
-const ACTION_GET = /^\/api\/(model\/v3\/player-quality\/rebuild|data-audit\/run|history\/(sync-season|refit)|af\/(odds-backfill|sync|raw)|bb\/(sync|raw|bdl|injuries-refresh)|clv\/(tick|probe)|model\/v3\/(backfill|squad\/sync|league-tune|league-conv)|backtest\/(run|sweep)|model\/elo\/tune)$/;
+const ACTION_GET = /^\/api\/(model\/v3\/player-quality\/rebuild|data-audit\/run|history\/(sync-season|refit|h2h-archive)|af\/(odds-backfill|sync|raw)|bb\/(sync|raw|bdl|injuries-refresh)|clv\/(tick|probe)|model\/v3\/(backfill|squad\/sync|league-tune|league-conv)|backtest\/(run|sweep)|model\/elo\/tune)$/;
 const isActionGet = (req: express.Request) =>
   req.method === 'GET' && (ACTION_GET.test(req.path) || (req.path === '/api/team-overrides' && !!req.query.field));
 
@@ -1094,6 +1094,15 @@ app.get('/api/history/teams', (_req, res) => {
 });
 
 // Load one extra (older) season of results, e.g. ?season=2324 — for out-of-sample backtests
+// Head-to-head archive (older seasons, used only by the H2H row when CONV.h2hArchive = 1). GET → status, ?sync=1 → download
+app.get('/api/history/h2h-archive', async (req, res) => {
+  try {
+    if (req.query.sync === '1') { const r = await syncH2HArchive(Number(req.query.back) || 10); res.json({ data: { total: r.total, seasons: r.seasons, errors: r.errors, failed: r.summary.filter(x => x.error).slice(0, 20) }, timestamp: new Date().toISOString() }); return; }
+    res.json({ data: h2hArchiveStatus(), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'H2H archive failed');
+  }
+});
 app.get('/api/history/sync-season', async (req, res) => {
   try {
     const season = String(req.query.season || '');

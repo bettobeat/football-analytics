@@ -23,7 +23,7 @@ import { yieldLoop } from './perf';
 import { db } from '../db';
 import logger from '../utils/logger';
 import { markFresh } from './freshness';
-import { GROUPS, groupForCompetition, loadGroupMatches, fdNameFor, HistoryMatch, seasonForDivision } from './history';
+import { GROUPS, groupForCompetition, loadGroupMatches, fdNameFor, HistoryMatch, seasonForDivision, h2hArchiveFor } from './history';
 import { Prediction } from './predictionModel';
 import { squadValueFor, squadValueAt } from './squadValues';
 import { availabilityFor, xgByMatch } from './apiFootball';
@@ -127,7 +127,15 @@ export const CONV = {
   floorDraw: 60,
   halfLifeProd: 120, // days, production/form rows
   halfLifeLong: 365, // days, home record / h2h
-  useLeagueConv: 1 // 1 = apply the per-league settings (v3_league_conv, fitted by tuneLeaguesV3)
+  useLeagueConv: 1, // 1 = apply the per-league settings (v3_league_conv, fitted by tuneLeaguesV3)
+  poisBlend: 0, // share of the expected-goals (Poisson) 1X2 mixed into the final split (0 = off), see scoreMatch
+  poisBlendMode: 0, // 0 = blend H/D/A, 1 = keep the draw, blend only the home/away split
+  guardPts: 0, // common-sense guard: min. last-10 points gap (with the rows agreeing) before the weaker side can't be favourite; 0 = off
+  guardMargin: 20, // how far (in 1000-points) the better side is put ahead when the guard fires
+  guardUsePpg: 0, // 1 = the guard also looks at this season's points per game (whichever gap is larger)
+  guardH2H: 0, // the guard also fires on a one-sided head-to-head: share of points ≤ this (e.g. 0.2) over ≥ 5 meetings; 0 = off
+  h2hArchive: 0, // 1 = the head-to-head row also uses older seasons (h2h_archive), not only the model's 3 seasons
+  h2hYears: 10 // oldest meeting counted from the archive, in years (0 = no limit)
 };
 
 /* ------------------------------------------------------------------ */
@@ -266,6 +274,7 @@ interface TeamFeat {
   attack: number; // opponent-adjusted goals for / game (decayed)
   defence: number; // opponent-adjusted goals against / game (decayed), lower = better
   formPts: number; // points in last 6 league games
+  form10Pts: number; // points in last 10 games (padded with draws), for the common-sense guard
   homePpg: number; // decayed home ppg
   awayPpg: number; // decayed away ppg
   drawRate: number; // decayed share of draws
@@ -378,7 +387,7 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string, div
     if (!t) {
       t = {
         name, division: divOf.get(name) || divisions[0], played: 0, tier: 3, rank: 10, ppgSeason: 1, elo: 1450, attack: 1.3, defence: 1.3,
-        formPts: 6, homePpg: 1.5, awayPpg: 1.1, drawRate: 0.25, gamesLast8: 0, lastMatch: null, squadEur: null, v: {}
+        formPts: 6, form10Pts: 10, homePpg: 1.5, awayPpg: 1.1, drawRate: 0.25, gamesLast8: 0, lastMatch: null, squadEur: null, v: {}
       };
       teams.set(name, t);
     }
@@ -537,6 +546,8 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string, div
     t.awayPpg = (x.apts + 1.1 * PRIOR_W) / (x.aw + PRIOR_W);
     const recent = [...x.games].filter(g => !CONV.formCurDiv || g.division === t.division).sort((p, q) => (p.date < q.date ? 1 : -1)).slice(0, 6);
     t.formPts = recent.reduce((s, g) => s + g.pts, 0) + (6 - recent.length) * 1; // pad missing games with a draw
+    const recent10 = [...x.games].sort((p, q) => (p.date < q.date ? 1 : -1)).slice(0, 10);
+    t.form10Pts = recent10.reduce((s, g) => s + g.pts, 0) + (10 - recent10.length) * 1;
     t.gamesLast8 = x.games.filter(g => days(g.date, asOf) <= 8).length;
     t.lastMatch = x.games.length ? x.games.reduce((m, g) => (g.date > m ? g.date : m), x.games[0].date) : null;
   });
@@ -595,9 +606,15 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string, div
 /* Scoring one match                                                   */
 /* ------------------------------------------------------------------ */
 
-function h2hLast10(all: HistoryMatch[], home: string, away: string, asOf: string) {
-  const meet = all.filter(m => m.date < asOf && ((m.home === home && m.away === away) || (m.home === away && m.away === home)))
-    .sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 10);
+function h2hLast10(all: HistoryMatch[], home: string, away: string, asOf: string, group?: string) {
+  const pair = (m: HistoryMatch) => (m.home === home && m.away === away) || (m.home === away && m.away === home);
+  let meet = all.filter(m => m.date < asOf && pair(m));
+  // older seasons (h2h_archive), when switched on: the page shows them, so the model should see them too
+  if (CONV.h2hArchive && group) {
+    const old = h2hArchiveFor(group).get([home, away].sort().join('|'));
+    if (old) meet = meet.concat(old.filter(m => m.date < asOf && (!CONV.h2hYears || (Date.parse(asOf) - Date.parse(m.date)) / (365.25 * 86400000) <= CONV.h2hYears)));
+  }
+  meet = meet.sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 10);
   if (!meet.length) return null;
   let share = 0;
   for (const m of meet) {
@@ -668,6 +685,14 @@ function splitPoints(gap0: number, drawRaw: number, type: MatchType, lc?: League
 
 const streakMemo = new WeakMap<HistoryMatch[], Map<string, number>>();
 
+/** Home / draw / away chances from two Poisson goal rates. */
+function poisson1x2(lh: number, la: number) {
+  let H = 0, D = 0, A = 0;
+  for (let i = 0; i <= 10; i++) for (let j = 0; j <= 10; j++) { const q = poisson(lh, i) * poisson(la, j); if (i > j) H += q; else if (i === j) D += q; else A += q; }
+  const t = H + D + A || 1;
+  return { H: H / t, D: D / t, A: A / t };
+}
+
 export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string, away: string, asOf: string, matchDate?: string): Prediction | null {
   const h = state.teams.get(home), a = state.teams.get(away);
   if (!h || !a) return null;
@@ -676,7 +701,7 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   const div = h.division;
   const leagueDraw = state.leagueDrawRate[div] ?? 0.25;
 
-  const h2h = h2hLast10(all, home, away, asOf);
+  const h2h = h2hLast10(all, home, away, asOf, state.group);
   const rows: NonNullable<Prediction['grid']>['rows'] = [];
   let totH = 0, totA = 0, drawFactors = 0, relSum = 0;
   const detRows: ScoreDetail['rows'] = [], detDraws: ScoreDetail['draws'] = [];
@@ -760,7 +785,39 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   // --- split the 1000 points (with this league's own settings, if any)
   const lc = CONV.useLeagueConv ? LEAGUE_CONV.get(div) : undefined;
   const sp = splitPoints(gap, drawRaw, type, lc);
-  const ptsH = Math.round(sp.ptsH), ptsA = Math.round(sp.ptsA);
+  let ptsH = Math.round(sp.ptsH), ptsA = Math.round(sp.ptsA);
+  // Oct 2026 (Málaga–Espanyol): the 1X2 split and the goals model could disagree on the favourite. poisBlend mixes in
+  // the win/draw/loss chances implied by the expected goals (same Poisson grid as the score extras). 0 = off.
+  // poisBlendMode 0 blends all three; 1 keeps our draw and only re-splits home vs away.
+  if (CONV.poisBlend > 0) {
+    const ph = poisson1x2(lamH * CONV.goalScale, lamA * CONV.goalScale);
+    const w = CONV.poisBlend;
+    if (CONV.poisBlendMode === 1) {
+      const dec = ptsH + ptsA, share = ptsH / Math.max(1, dec), pShare = ph.H / Math.max(1e-9, ph.H + ph.A);
+      const s2 = (1 - w) * share + w * pShare;
+      ptsH = Math.round(dec * s2); ptsA = dec - ptsH;
+    } else {
+      ptsH = Math.round((1 - w) * ptsH + w * 1000 * ph.H);
+      ptsA = Math.round((1 - w) * ptsA + w * 1000 * ph.A);
+    }
+  }
+  // Common-sense guard (Oct 2026, Yarin): a side that the rows rate weaker AND that is in clearly worse form over its
+  // last 10 games may not come out as the favourite just because of home advantage. When both point the same way,
+  // the order is flipped back with a small margin (guardMargin, in 1000-points). guardPts = minimum form gap, 0 = off.
+  let guarded = false;
+  if (CONV.guardPts > 0 || CONV.guardH2H > 0) {
+    // > 0: away in better shape. Last-10 points gap, or (guardUsePpg) the season points-per-game gap scaled to 10 games
+    const fg = a.form10Pts - h.form10Pts, pg = (a.ppgSeason - h.ppgSeason) * 10;
+    const formGap = CONV.guardUsePpg ? (Math.abs(pg) > Math.abs(fg) ? pg : fg) : fg;
+    const h2hBad = (share: number) => CONV.guardH2H > 0 && !!h2h && h2h.n >= 5 && share <= CONV.guardH2H;
+    if (totA > totH && ((CONV.guardPts > 0 && formGap >= CONV.guardPts) || h2hBad(h2h ? h2h.share : 1)) && ptsH > ptsA - CONV.guardMargin) {
+      const mid = (ptsH + ptsA) / 2;
+      ptsH = Math.round(mid - CONV.guardMargin / 2); ptsA = Math.round(mid + CONV.guardMargin / 2); guarded = true;
+    } else if (totH > totA && ((CONV.guardPts > 0 && -formGap >= CONV.guardPts) || h2hBad(h2h ? 1 - h2h.share : 1)) && ptsA > ptsH - CONV.guardMargin) {
+      const mid = (ptsH + ptsA) / 2;
+      ptsA = Math.round(mid - CONV.guardMargin / 2); ptsH = Math.round(mid + CONV.guardMargin / 2); guarded = true;
+    }
+  }
   const drawPts = 1000 - ptsH - ptsA;
 
   const grid: number[][] = [];
@@ -776,6 +833,7 @@ export function scoreMatch(state: GroupState, all: HistoryMatch[], home: string,
   for (const r of byEdge) reasons.push(`${r.name}: ${r.edge > 0 ? home : away} +${Math.abs(r.edge)}`);
   if (drawFactors > 8) reasons.push(`draw factors +${Math.round(drawFactors)} (${derby ? 'derby, ' : ''}draw-prone / league)`);
   if (lc) reasons.push(`league settings (${div}): ${describeLc(lc)}`);
+  if (guarded) reasons.push(`common-sense check: form (last 10: ${h.form10Pts} vs ${a.form10Pts} pts, season ${h.ppgSeason.toFixed(2)} vs ${a.ppgSeason.toFixed(2)} ppg) and the factors agree, so the weaker side is not the favourite`);
 
   const evidence = Math.min(h.played, a.played);
   // draw streaks: bookmakers over-price draws for teams that drew a lot lately (draw-factor test, both seasons)
