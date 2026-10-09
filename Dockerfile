@@ -1,8 +1,11 @@
 # SportLikely — single image: Express API + built React site + SQLite on a volume.
 # Node 24 (node:sqlite is built in). Used by Railway (see railway.json) or any Docker host.
 
+# Base image from Amazon's public mirror of the official Node image: Docker Hub limits downloads (429 errors on Railway).
+ARG NODE_IMAGE=public.ecr.aws/docker/library/node:24-alpine
+
 # ---- 1. build the frontend ----
-FROM node:24-alpine AS web
+FROM ${NODE_IMAGE} AS web
 WORKDIR /web
 COPY frontend/package*.json ./
 RUN npm install --no-audit --no-fund
@@ -11,7 +14,7 @@ COPY frontend/ ./
 RUN npx vite build
 
 # ---- 2. build the backend ----
-FROM node:24-alpine AS api
+FROM ${NODE_IMAGE} AS api
 WORKDIR /api
 COPY backend/package*.json ./
 RUN npm install --no-audit --no-fund
@@ -19,7 +22,7 @@ COPY backend/ ./
 RUN npm run build && npm prune --omit=dev
 
 # ---- 3. runtime ----
-FROM node:24-alpine
+FROM ${NODE_IMAGE}
 ENV NODE_ENV=production \
     PORT=3001 \
     DATA_DIR=/data \
