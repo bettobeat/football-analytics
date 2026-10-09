@@ -1415,5 +1415,22 @@
  "Live win chance": "Live-Siegchance",
  "was {0}%": "vorher {0}%",
  "Updated every minute from our pre-match prediction, the score, the time left and red cards.": "Jede Minute aktualisiert aus unserer Prognose vor dem Spiel, dem Spielstand, der Restzeit und Roten Karten.",
- "Red cards: {0} – {1}.": "Rote Karten: {0} – {1}."
+ "Red cards: {0} – {1}.": "Rote Karten: {0} – {1}.",
+ "Upset watch": "Überraschungs-Check",
+ "Upset watch · SportLikely": "Überraschungs-Check · SportLikely",
+ "{0} is the favourite, but our model gives {1} about a 1 in {2} chance.": "{0} ist Favorit, aber unser Modell gibt {1} etwa eine Chance von 1 zu {2}.",
+ "Games of the coming week where the favourite is at risk: our model gives the underdog {0}% or more to win.": "Spiele der kommenden Woche, in denen der Favorit wackelt: Unser Modell gibt dem Außenseiter {0} % oder mehr Siegchance.",
+ "No favourite at risk this week yet": "Diese Woche noch kein wackelnder Favorit",
+ "Games appear here once they are scheduled and our model has rated them.": "Spiele erscheinen hier, sobald sie angesetzt sind und unser Modell sie bewertet hat.",
+ "How these calls went": "Wie diese Einschätzungen ausgingen",
+ "games flagged": "markierte Spiele",
+ "underdog won (we said {0}%)": "Außenseiter gewann (wir sagten {0} %)",
+ "draws (we said {0}%)": "Unentschieden (wir sagten {0} %)",
+ "We said {0}": "Wir sagten {0}",
+ "Bar = how often the underdog won; line = the chance we gave. Close together means our numbers are honest.": "Balken = wie oft der Außenseiter gewann; Linie = die Chance, die wir angaben. Liegen sie nah beieinander, sind unsere Zahlen ehrlich.",
+ "Upset": "Überraschung",
+ "Favourite won": "Favorit gewann",
+ "An upset watch is not a tip: at 30–40% the favourite still wins or draws most of the time. It tells you which favourites are less safe than they look. Probabilities, not promises.": "Ein Überraschungs-Check ist kein Tipp: Bei 30–40 % gewinnt der Favorit oder spielt meistens trotzdem unentschieden. Er zeigt, welche Favoriten weniger sicher sind, als sie aussehen. Wahrscheinlichkeiten, keine Versprechen.",
+ "Also for Pro: Upset watch →": "Auch für Pro: Überraschungs-Check →",
+ "Our model gives the underdog {0}% to win": "Unser Modell gibt dem Außenseiter {0} % Siegchance"
 }

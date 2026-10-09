@@ -10,6 +10,7 @@ import MatchDetail from './pages/MatchDetail'
 import AccuracySimple from './pages/AccuracySimple'
 import Past from './pages/Past'
 import DrawAlerts from './pages/DrawAlerts'
+import UpsetWatch from './pages/UpsetWatch'
 import { Terms, Privacy, NotFound } from './pages/Legal'
 import Login from './pages/Login'
 import Account from './pages/Account'
@@ -225,6 +226,8 @@ function NavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
         {tt("Favorites")}</NavLink>
       <NavLink to="/draw-alerts" className={cls}>
         {tt("Draw picks")}</NavLink>
+      <NavLink to="/upset-watch" className={cls}>
+        {tt("Upset watch")}</NavLink>
       <NavLink to="/accuracy" className={cls}>
         {tt("Accuracy")}</NavLink>
       {access !== 'pro' && access !== 'admin' && (
@@ -327,6 +330,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/match\//, tt('Match')],
   [/^\/accuracy/, tt('Accuracy')],
   [/^\/draw-alerts/, tt('Draw picks')],
+  [/^\/upset-watch/, tt('Upset watch')],
   [/^\/past/, tt('Past seasons')],
   [/^\/premium/, tt('Premium')],
   [/^\/login/, tt('Sign in')],
@@ -426,6 +430,14 @@ function Shell() {
             <Route
               path="/accuracy"
               element={<AccuracySimple />}
+            />
+            <Route
+              path="/upset-watch"
+              element={
+                <PremiumGate title="Upset watch" pro>
+                  <UpsetWatch />
+                </PremiumGate>
+              }
             />
             <Route
               path="/draw-alerts"

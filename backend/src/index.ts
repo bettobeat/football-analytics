@@ -23,7 +23,7 @@ import footballDataAPI from './services/footballDataAPI';
 import { recordPredictions, settlePending, accuracy, recentSettled, trackingStatus, computeMetrics, publicRecord } from './services/tracking';
 import { historyStatus, teamMapStatus, GROUPS, syncAll, syncH2HArchive, h2hArchiveStatus, syncHalfTimes } from './services/history';
 import { withLive, liveHalfTimeTest } from './services/liveChance';
-import { backtestUpsets } from './services/upsetAlerts';
+import { backtestUpsets, upsetWatchReport, upsetWatchBacktest } from './services/upsetAlerts';
 import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestRows, backtestRunsList } from './services/historyModel';
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
 import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler, squadCompetitions } from './services/squadValues';
@@ -270,7 +270,7 @@ app.use(['/api/team-page', '/api/player-page'], rateLimit('pages', 60, 10 * 6000
 app.use('/api/unlocks', (req, res, next) => (req.method === 'POST' ? rateLimit('unlock', 30, 60000, r => String(r.user?.id || r.ip))(req, res, next) : next()));
 
 const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|basketball\/|public\/(summary|results|record)$|unlocks(\/|$)|billing\/)/;
-const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|history\/status|clv|draw-alerts)$/; // past seasons and backtests are admin only (Oct 2026)
+const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|history\/status|clv|draw-alerts|upset-watch)$/; // past seasons and backtests are admin only (Oct 2026)
 
 app.use('/api', (req, res, next) => {
   const p = req.originalUrl.split('?')[0];
@@ -290,7 +290,7 @@ app.use('/api', (req, res, next) => {
   if (access === 'admin') return next();
   if (req.method === 'GET' && PREMIUM_GET_API.test(p)) {
     // draw alerts are a Pro feature; the rest is open to every paid plan
-    const proOnly = p.startsWith('/api/draw-alerts');
+    const proOnly = p.startsWith('/api/draw-alerts') || p.startsWith('/api/upset-watch');
     if (proOnly ? access === 'pro' : isPaid(access)) return next();
     return res.status(access === 'anon' ? 401 : 402).json({ error: access === 'anon' ? 'Sign in required' : proOnly ? 'Pro required' : 'Premium required', premium: true, pro: proOnly });
   }
@@ -859,7 +859,7 @@ app.get('/api/backtest/upsets', (req, res) => {
   try {
     const rule: Record<string, number> = {};
     for (const k of ['K', 'cut', 'minGap', 'minEdge', 'maxEdge']) { const v = Number(req.query[k]); if (req.query[k] !== undefined && Number.isFinite(v)) rule[k] = v; }
-    res.json({ data: backtestUpsets(rule, req.query.grid === '1'), timestamp: new Date().toISOString() });
+    res.json({ data: { ...backtestUpsets(rule, req.query.grid === '1'), watch: upsetWatchBacktest() }, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Upset backtest failed');
   }
@@ -1648,6 +1648,15 @@ app.get('/api/backtest/draw-factors', (req, res) => {
     res.json({ data: drawFactorTest(String(req.query.season || '2526')), timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Draw factor test failed');
+  }
+});
+
+// Upset watch (Pro): games where our model gives the underdog 30%+ (no bookmakers), and how those calls went
+app.get('/api/upset-watch', (_req, res) => {
+  try {
+    res.json({ data: upsetWatchReport(), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Upset watch failed');
   }
 });
 

@@ -1415,5 +1415,22 @@
  "Live win chance": "Canlı kazanma şansı",
  "was {0}%": "önce %{0}",
  "Updated every minute from our pre-match prediction, the score, the time left and red cards.": "Maç öncesi tahminimiz, skor, kalan süre ve kırmızı kartlarla her dakika güncellenir.",
- "Red cards: {0} – {1}.": "Kırmızı kartlar: {0} – {1}."
+ "Red cards: {0} – {1}.": "Kırmızı kartlar: {0} – {1}.",
+ "Upset watch": "Sürpriz alarmı",
+ "Upset watch · SportLikely": "Sürpriz alarmı · SportLikely",
+ "{0} is the favourite, but our model gives {1} about a 1 in {2} chance.": "{0} favori, ama modelimiz {1} için yaklaşık {2}'de 1 şans veriyor.",
+ "Games of the coming week where the favourite is at risk: our model gives the underdog {0}% or more to win.": "Önümüzdeki haftanın favorinin risk altında olduğu maçları: modelimiz sürpriz takıma %{0} veya daha fazla kazanma şansı veriyor.",
+ "No favourite at risk this week yet": "Bu hafta henüz risk altındaki favori yok",
+ "Games appear here once they are scheduled and our model has rated them.": "Maçlar programlandığında ve modelimiz değerlendirdiğinde burada görünür.",
+ "How these calls went": "Bu uyarılar nasıl sonuçlandı",
+ "games flagged": "işaretlenen maç",
+ "underdog won (we said {0}%)": "sürpriz takım kazandı (%{0} demiştik)",
+ "draws (we said {0}%)": "beraberlik (%{0} demiştik)",
+ "We said {0}": "{0} demiştik",
+ "Bar = how often the underdog won; line = the chance we gave. Close together means our numbers are honest.": "Çubuk = sürpriz takımın ne sıklıkla kazandığı; çizgi = verdiğimiz şans. Birbirine yakınsa rakamlarımız dürüsttür.",
+ "Upset": "Sürpriz",
+ "Favourite won": "Favori kazandı",
+ "An upset watch is not a tip: at 30–40% the favourite still wins or draws most of the time. It tells you which favourites are less safe than they look. Probabilities, not promises.": "Sürpriz alarmı bir tavsiye değildir: %30–40'ta favori yine çoğu zaman kazanır ya da berabere kalır. Hangi favorilerin göründüğü kadar güvenli olmadığını gösterir. Olasılıklar, vaat değil.",
+ "Also for Pro: Upset watch →": "Pro için ayrıca: Sürpriz alarmı →",
+ "Our model gives the underdog {0}% to win": "Modelimiz sürpriz takıma %{0} kazanma şansı veriyor"
 }

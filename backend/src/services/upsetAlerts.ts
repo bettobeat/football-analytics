@@ -107,3 +107,100 @@ export function backtestUpsets(rule: Partial<UpsetRule> = {}, grid = false) {
   }
   return out;
 }
+
+/* ------------------------------------------------------------------ */
+/* Upset watch (Pro, Oct 2026): model only, no bookmakers              */
+/* ------------------------------------------------------------------ */
+// The upset rule vs the market did not hold (claude/upset-alerts-test.md), so the Pro feature is content, not an
+// edge: games where OUR model gives the underdog a real chance. Judged by calibration ("when we say 33%, do 33% win?").
+export const WATCH = { minUnderdog: 30, minGap: 10 };
+
+/** Underdog side and numbers when a prediction makes the cut (probabilities in %), else null. */
+export function watchOf(ph: number, pd: number, pa: number) {
+  const fav = ph >= pa ? 'H' : 'A';
+  const fp = Math.max(ph, pa), up = Math.min(ph, pa);
+  if (up < WATCH.minUnderdog || fp - up < WATCH.minGap) return null;
+  return { favourite: fav as 'H' | 'A', underdog: (fav === 'H' ? 'A' : 'H') as 'H' | 'A', favChance: fp, upsetChance: up, draw: pd };
+}
+
+const crestOf = (id?: number | null) =>
+  !id ? null : id >= 1_000_000_000 ? `https://media.api-sports.io/football/teams/${id - 1_000_000_000}.png` : `https://crests.football-data.org/${id}.png`;
+const MODELS = ['grid-v3', 'elo-euro', 'elo-intl'];
+const rank = (m: string) => MODELS.indexOf(m);
+const r1 = (x: number) => Math.round(x * 10) / 10;
+
+function bestPerMatch(rows: any[]) {
+  const best = new Map<number, any>();
+  for (const r of rows) { const c = best.get(r.match_id); if (!c || rank(r.model) < rank(c.model)) best.set(r.match_id, r); }
+  return [...best.values()];
+}
+
+export function upsetWatchReport() {
+  const now = new Date().toISOString();
+  const soon = new Date(Date.now() + 7 * 86400000).toISOString();
+  const up = bestPerMatch(db.prepare(`
+    SELECT match_id, model, competition_name, competition_code, utc_date, home_team, away_team, home_team_id, away_team_id, p_home, p_draw, p_away
+    FROM predictions WHERE settled = 0 AND locked = 0 AND utc_date > ? AND utc_date < ? AND model IN ('grid-v3', 'elo-euro', 'elo-intl')
+  `).all(now, soon) as any[]);
+  const upcoming = up.map(r => {
+    const w = watchOf(r.p_home, r.p_draw, r.p_away);
+    if (!w) return null;
+    return {
+      matchId: r.match_id, league: r.competition_name || r.competition_code, date: r.utc_date,
+      home: r.home_team, away: r.away_team, homeCrest: crestOf(r.home_team_id), awayCrest: crestOf(r.away_team_id),
+      home_p: r1(r.p_home), draw_p: r1(r.p_draw), away_p: r1(r.p_away), ...w
+    };
+  }).filter(Boolean).sort((a: any, b: any) => b.upsetChance - a.upsetChance || a.date.localeCompare(b.date));
+
+  // Record: every settled prediction (saved before kick-off) that made the cut
+  const done = bestPerMatch(db.prepare(`
+    SELECT p.match_id, p.model, p.competition_name, p.competition_code, p.utc_date, p.home_team, p.away_team, p.p_home, p.p_draw, p.p_away,
+           r.home_goals, r.away_goals, r.outcome
+    FROM predictions p JOIN results r ON r.match_id = p.match_id
+    WHERE p.settled = 1 AND r.outcome IN ('H','D','A') AND p.model IN ('grid-v3', 'elo-euro', 'elo-intl')
+  `).all() as any[]);
+  let n = 0, upsets = 0, draws = 0, said = 0, saidDraw = 0;
+  const bands = [[30, 35], [35, 40], [40, 101]].map(([lo, hi]) => ({ range: hi > 100 ? `${lo}%+` : `${lo}–${hi}%`, lo, hi, n: 0, upsets: 0, said: 0 }));
+  const recent: any[] = [];
+  for (const r of done) {
+    const w = watchOf(r.p_home, r.p_draw, r.p_away);
+    if (!w) continue;
+    n++; said += w.upsetChance; saidDraw += w.draw;
+    const upset = r.outcome === w.underdog;
+    if (upset) upsets++;
+    if (r.outcome === 'D') draws++;
+    const b = bands.find(x => w.upsetChance >= x.lo && w.upsetChance < x.hi)!;
+    b.n++; b.said += w.upsetChance; if (upset) b.upsets++;
+    recent.push({ matchId: r.match_id, league: r.competition_name || r.competition_code, date: r.utc_date, home: r.home_team, away: r.away_team,
+      score: `${r.home_goals}-${r.away_goals}`, underdog: w.underdog, upsetChance: r1(w.upsetChance), result: upset ? 'upset' : r.outcome === 'D' ? 'draw' : 'favourite' });
+  }
+  recent.sort((a, b) => b.date.localeCompare(a.date));
+  return {
+    rule: WATCH,
+    upcoming,
+    record: {
+      n, upsets, draws,
+      upsetRate: n ? r1((100 * upsets) / n) : null, said: n ? r1(said / n) : null,
+      drawRate: n ? r1((100 * draws) / n) : null, saidDraw: n ? r1(saidDraw / n) : null,
+      bands: bands.map(b => ({ range: b.range, n: b.n, said: b.n ? r1(b.said / b.n) : null, happened: b.n ? r1((100 * b.upsets) / b.n) : null })),
+      since: recent.length ? recent[recent.length - 1].date : null,
+      recent: recent.slice(0, 12)
+    }
+  };
+}
+
+/** Admin: the same cut on the walk-forward backtests (calibration only; v3 league games). */
+export function upsetWatchBacktest() {
+  const all = rows();
+  const seasons = [...new Set(all.map(r => r.season))].sort();
+  const one = (list: Row[]) => {
+    let n = 0, up = 0, said = 0;
+    for (const r of list) {
+      const w = watchOf(r.ph, 100 - r.ph - r.pa, r.pa);
+      if (!w) continue;
+      n++; said += w.upsetChance; if (r.out === w.underdog) up++;
+    }
+    return { n, said: n ? r1(said / n) : null, happened: n ? r1((100 * up) / n) : null };
+  };
+  return { rule: WATCH, bySeason: Object.fromEntries(seasons.map(s => [s, one(all.filter(r => r.season === s))])), all: one(all) };
+}

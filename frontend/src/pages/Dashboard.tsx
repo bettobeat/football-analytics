@@ -11,6 +11,7 @@ import { useFavorites } from '../lib/favorites'
 import LeagueSidebar, { MobileLeagueBar, LeagueBar } from '../components/LeagueSidebar'
 import { footballCountry, leagueShortName } from '../lib/leagueCountry'
 import { t as tt, LOCALE } from '../lib/i18n'
+import { useAuth } from '../lib/auth'
 
 export interface Team {
   id: number
@@ -606,6 +607,7 @@ export function byCompetition(list: APIMatch[]): [Competition, APIMatch[]][] {
  */
 export function MatchRow({ match, showComp = false, showDay = false }: { match: APIMatch; showComp?: boolean; showDay?: boolean }) {
   const favWhy = useFavorites().reasons(match)
+  const { full } = useAuth()
   const isLive = LIVE.has(match.status)
   const p = match.prediction
   const { hidden: covered, reveal } = useReveal(match.id, match.status, !!p && !p.locked)
@@ -666,6 +668,15 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
             </div>
           )
         })}
+        {full && p && !p.locked && !covered && ['SCHEDULED', 'TIMED'].includes(match.status) && (() => {
+          const up = Math.min(p.home, p.away), fav = Math.max(p.home, p.away)
+          if (up < 30 || fav - up < 10) return null
+          return (
+            <span className="block text-[10px] font-bold text-loss" title={tt("Our model gives the underdog {0}% to win", { 0: Math.round(up) })}>
+              {tt("Upset watch")} · {Math.round(up)}%
+            </span>
+          )
+        })()}
         {isLive && p?.live && !covered && (() => {
           const l = p.live
           const k: Pick = l.home >= l.draw && l.home >= l.away ? 'H' : l.away >= l.draw ? 'A' : 'D'
