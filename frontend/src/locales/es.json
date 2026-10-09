@@ -1432,5 +1432,6 @@
  "Favourite won": "Ganó el favorito",
  "An upset watch is not a tip: at 30–40% the favourite still wins or draws most of the time. It tells you which favourites are less safe than they look. Probabilities, not promises.": "Una alerta de sorpresa no es un consejo: con un 30–40% el favorito sigue ganando o empatando la mayoría de las veces. Te dice qué favoritos son menos seguros de lo que parecen. Probabilidades, no promesas.",
  "Also for Pro: Upset watch →": "También para Pro: Alerta de sorpresa →",
- "Our model gives the underdog {0}% to win": "Nuestro modelo da al no favorito un {0}% de ganar"
+ "Our model gives the underdog {0}% to win": "Nuestro modelo da al no favorito un {0}% de ganar",
+ "Only {0} games so far, too few to judge. On {1} games from past seasons, we said {2}% and the underdog won {3}%.": "Solo {0} partidos hasta ahora, demasiado pocos para juzgar. En {1} partidos de temporadas pasadas dijimos {2}% y el no favorito ganó el {3}%."
 }

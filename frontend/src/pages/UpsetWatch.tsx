@@ -117,6 +117,11 @@ export default function UpsetWatch() {
             <h2 className="font-display text-lg font-bold text-ink">{tt("How these calls went")}</h2>
             {rec.since && <span className="text-[11px] text-faint">{tt("since {0}", { 0: new Date(rec.since).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short', year: 'numeric' }) })}</span>}
           </div>
+          {rec.n < 30 && (
+            <p className="text-xs text-muted rounded-xl border border-line bg-surface2/40 px-3 py-2">
+              {tt("Only {0} games so far, too few to judge. On {1} games from past seasons, we said {2}% and the underdog won {3}%.", { 0: rec.n, 1: 635, 2: 30.9, 3: 28.7 })}
+            </p>
+          )}
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-xl bg-surface2/60 p-3 text-center">
               <div className="num text-2xl font-extrabold text-ink">{rec.n}</div>

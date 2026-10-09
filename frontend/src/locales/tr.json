@@ -1432,5 +1432,6 @@
  "Favourite won": "Favori kazandı",
  "An upset watch is not a tip: at 30–40% the favourite still wins or draws most of the time. It tells you which favourites are less safe than they look. Probabilities, not promises.": "Sürpriz alarmı bir tavsiye değildir: %30–40'ta favori yine çoğu zaman kazanır ya da berabere kalır. Hangi favorilerin göründüğü kadar güvenli olmadığını gösterir. Olasılıklar, vaat değil.",
  "Also for Pro: Upset watch →": "Pro için ayrıca: Sürpriz alarmı →",
- "Our model gives the underdog {0}% to win": "Modelimiz sürpriz takıma %{0} kazanma şansı veriyor"
+ "Our model gives the underdog {0}% to win": "Modelimiz sürpriz takıma %{0} kazanma şansı veriyor",
+ "Only {0} games so far, too few to judge. On {1} games from past seasons, we said {2}% and the underdog won {3}%.": "Şimdiye kadar yalnızca {0} maç var, karar vermek için çok az. Geçmiş sezonlardan {1} maçta %{2} demiştik, sürpriz takım %{3} kazandı."
 }
