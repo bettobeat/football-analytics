@@ -12,6 +12,7 @@ import { db } from '../db';
 import logger from '../utils/logger';
 import { afGet, afConfigured } from './apiFootball';
 import { Prediction } from './predictionModel';
+import { Meetings, commonSense, type H2H } from './h2hGuard';
 import { nationalValueFor } from './squadValues';
 
 export const MODEL_ELO = 'elo-intl';
@@ -148,10 +149,14 @@ const kindOf = (leagueId: number): Kind => {
   const cfg = COMPS[leagueId] || COMPS[10];
   return cfg.k <= 20 ? 'friendly' : cfg.ha === 0 ? 'finals' : 'competitive';
 };
-interface Feat { dElo: number; lv: number; gl: number; form: number; rest: number; homeComp: number; homeFriendly: number; pDraw: number; kind: Kind; lamH: number; lamA: number }
-const GW = ['w_elo', 'w_squad', 'w_goals', 'w_form', 'w_rest', 'w_homeComp', 'w_homeFriendly', 'm_friendly', 'c_finals', 'c_comp', 'c_friendly', 'g_draw'] as const;
+interface Feat { dElo: number; lv: number; gl: number; form: number; rest: number; homeComp: number; homeFriendly: number; pDraw: number; kind: Kind; lamH: number; lamA: number; h2h: number; h2hInfo: H2H | null }
+// head-to-head (Oct 2026): past meetings since 2014, used as a fitted row and by the common-sense check
+const meetings = new Meetings();
+let h2hUsed = true;
+let guardOpt = { on: false, formT: 0.3, h2hT: 0.2, margin: 0.02 };
+const GW = ['w_elo', 'w_squad', 'w_goals', 'w_form', 'w_rest', 'w_homeComp', 'w_homeFriendly', 'm_friendly', 'c_finals', 'c_comp', 'c_friendly', 'g_draw', 'w_h2h'] as const;
 type GridW = Record<(typeof GW)[number], number>;
-const GRID0: GridW = { w_elo: 0.6, w_squad: 0.3, w_goals: 0.3, w_form: 0, w_rest: 0, w_homeComp: 0.3, w_homeFriendly: 0.15, m_friendly: 0.9, c_finals: 0.6, c_comp: 0.6, c_friendly: 0.6, g_draw: 0 };
+const GRID0: GridW = { w_elo: 0.6, w_squad: 0.3, w_goals: 0.3, w_form: 0, w_rest: 0, w_homeComp: 0.3, w_homeFriendly: 0.15, m_friendly: 0.9, c_finals: 0.6, c_comp: 0.6, c_friendly: 0.6, g_draw: 0, w_h2h: 0 };
 let gridW: GridW = { ...GRID0 };
 let engine: 'grid' | 'elo' = 'elo';
 
@@ -176,7 +181,7 @@ function lambdas(H: TeamState, A: TeamState, neutral: boolean) {
   const h = neutral ? 0 : NP.homeG;
   return { lamH: Math.exp(MU + H.att - A.def + h), lamA: Math.exp(MU + A.att - H.def) };
 }
-function featOf(H: TeamState, A: TeamState, leagueId: number, date: string, vh: number | null, va: number | null): Feat {
+function featOf(H: TeamState, A: TeamState, leagueId: number, date: string, vh: number | null, va: number | null, hid = 0, aid = 0): Feat {
   const cfg = COMPS[leagueId] || COMPS[10];
   const kind = kindOf(leagueId);
   const neutral = cfg.ha === 0;
@@ -193,11 +198,12 @@ function featOf(H: TeamState, A: TeamState, leagueId: number, date: string, vh: 
     homeComp: !neutral && kind !== 'friendly' ? 1 : 0,
     homeFriendly: !neutral && kind === 'friendly' ? 1 : 0,
     pDraw: poissonDraw(lamH, lamA),
-    kind, lamH, lamA
+    kind, lamH, lamA,
+    ...(() => { const h = hid && aid ? meetings.get(hid, aid, date) : null; return { h2h: h ? h.x : 0, h2hInfo: h }; })()
   };
 }
 function gridProbs(f: Feat, w: GridW = gridW) {
-  let z = w.w_elo * f.dElo + w.w_squad * f.lv + w.w_goals * f.gl + w.w_form * f.form + w.w_rest * f.rest + w.w_homeComp * f.homeComp + w.w_homeFriendly * f.homeFriendly;
+  let z = w.w_elo * f.dElo + w.w_squad * f.lv + w.w_goals * f.gl + w.w_form * f.form + w.w_rest * f.rest + w.w_homeComp * f.homeComp + w.w_homeFriendly * f.homeFriendly + (w.w_h2h || 0) * f.h2h;
   if (f.kind === 'friendly') z *= w.m_friendly;
   const c = Math.max(0.05, (f.kind === 'finals' ? w.c_finals : f.kind === 'friendly' ? w.c_friendly : w.c_comp) + w.g_draw * (f.pDraw - 0.27));
   const h = sig(z - c), a = sig(-z - c);
@@ -239,8 +245,10 @@ function fitGrid(xs: { f: Feat; o: 'H' | 'D' | 'A' }[], start: GridW, fixed: str
 /** Grid starting point equivalent to the Elo-only engine (c, s in Elo points; beta per ln value ratio). */
 const gridFromElo = (e: { c: number; s: number; beta: number }): GridW => ({
   ...GRID0, w_elo: 100 / e.s, w_squad: e.beta / e.s, w_goals: 0, w_form: 0, w_rest: 0,
-  w_homeComp: 90 / e.s, w_homeFriendly: 50 / e.s, m_friendly: 1, c_finals: e.c / e.s, c_comp: e.c / e.s, c_friendly: e.c / e.s, g_draw: 0
+  w_homeComp: 90 / e.s, w_homeFriendly: 50 / e.s, m_friendly: 1, c_finals: e.c / e.s, c_comp: e.c / e.s, c_friendly: e.c / e.s, g_draw: 0, w_h2h: 0
 });
+/** The factors' verdict without home advantage (> 0 favours the home side). */
+const factorsOf = (f: Feat, w: GridW) => w.w_elo * f.dElo + w.w_squad * f.lv + w.w_goals * f.gl + w.w_form * f.form + w.w_rest * f.rest + (w.w_h2h || 0) * f.h2h;
 
 let lastSplit: { trainOld: any[]; test: any[]; gridOld: GridW; eloOld: { c: number; s: number; beta: number }; score: (pf: (x: any) => { h: number; d: number; a: number }) => any } | null = null;
 
@@ -307,6 +315,7 @@ export function nationalGoalsSensitivity() {
 export function buildNationalElo() {
   const rows = db.prepare(`SELECT * FROM nat_matches ORDER BY date, fixture_id`).all() as any[];
   ratings.clear();
+  meetings.clear();
   const pre: { d: number; lv: number; o: 'H' | 'D' | 'A'; date: string; f: Feat; hg: number; ag: number; league: number }[] = [];
   const valueCache = new Map<number, number | null>();
   const valueOf = (id: number, name: string) => {
@@ -321,7 +330,7 @@ export function buildNationalElo() {
     const d = H.elo - A.elo + cfg.ha;
     const o = r.hg > r.ag ? 'H' : r.hg < r.ag ? 'A' : 'D';
     const vh = valueOf(r.home_id, r.home_name), va = valueOf(r.away_id, r.away_name);
-    if (H.n >= 10 && A.n >= 10) pre.push({ d, lv: vh && va ? Math.log(vh / va) : 0, o, date: r.date, f: featOf(H, A, r.league_id, r.date, vh, va), hg: r.hg, ag: r.ag, league: r.league_id });
+    if (H.n >= 10 && A.n >= 10) pre.push({ d, lv: vh && va ? Math.log(vh / va) : 0, o, date: r.date, f: featOf(H, A, r.league_id, r.date, vh, va, r.home_id, r.away_id), hg: r.hg, ag: r.ag, league: r.league_id });
     // Elo
     const we = 1 / (1 + Math.pow(10, -d / 400));
     const w = o === 'H' ? 1 : o === 'D' ? 0.5 : 0;
@@ -338,6 +347,7 @@ export function buildNationalElo() {
     H.att += eta * eh; A.def -= eta * eh;
     A.att += eta * ea; H.def -= eta * ea;
     H.n++; A.n++; H.last = r.date; A.last = r.date;
+    meetings.add(r.home_id, r.away_id, r.date, w);
   }
   // Elo-only engine: fit c, s (and beta for the squad-value term) on matches from 2018
   const twoYears = new Date(Date.now() - 2 * 365 * 86400000).toISOString().slice(0, 10);
@@ -383,7 +393,12 @@ export function buildNationalElo() {
   };
   // honest comparison: both engines fitted on 2018 → two years ago, scored on the last two years
   const eloOld = fitElo(trainOld, BETAS);
-  const gridOld = fitGrid(trainOld, gridFromElo(eloOld));
+  // head-to-head row: fitted with and without it, kept only if it does not make the test worse
+  const gridNoH2H = fitGrid(trainOld, gridFromElo(eloOld), ['w_h2h']);
+  const gridWithH2H = fitGrid(trainOld, gridFromElo(eloOld));
+  const testNoH2H = score(x => gridProbs(x.f, gridNoH2H)), testWithH2H = score(x => gridProbs(x.f, gridWithH2H));
+  h2hUsed = testWithH2H.logLoss <= testNoH2H.logLoss + 0.0005;
+  const gridOld = h2hUsed ? gridWithH2H : gridNoH2H;
   const eloTest = score(x => probs(x.d + eloOld.beta * x.lv, eloOld.c, eloOld.s));
   lastSplit = { trainOld, test, gridOld, eloOld, score };
   const gridTest = score(x => gridProbs(x.f, gridOld));
@@ -391,7 +406,15 @@ export function buildNationalElo() {
   // live parameters: refit on everything since 2018
   const eloAll = fitElo(trainAll, BETAS);
   fit = { c: eloAll.c, s: eloAll.s, beta: eloAll.beta };
-  gridW = engine === 'grid' ? fitGrid(trainAll, gridFromElo(eloAll)) : gridOld;
+  gridW = engine === 'grid' ? fitGrid(trainAll, gridFromElo(eloAll), h2hUsed ? [] : ['w_h2h']) : gridOld;
+  // common-sense check: on when it does not make the test clearly worse (Yarin, Oct 2026: picks must make sense)
+  const baseP = (x: (typeof pre)[number]) => (engine === 'grid' ? gridProbs(x.f, gridOld) : probs(x.d + eloOld.beta * x.lv, eloOld.c, eloOld.s));
+  const facOf = (x: (typeof pre)[number]) => (engine === 'grid' ? factorsOf(x.f, gridOld) : x.d - (COMPS[x.league] || COMPS[10]).ha);
+  const guardTrial = { ...guardOpt, on: true };
+  const guardTest = score(x => commonSense(baseP(x), facOf(x), x.f.form, x.f.h2hInfo, guardTrial));
+  const plainTest = engine === 'grid' ? gridTest : eloTest;
+  guardOpt = { ...guardOpt, on: guardTest.logLoss <= plainTest.logLoss + 0.003 };
+  const h2hGuard = { h2h: { used: h2hUsed, withoutH2H: testNoH2H, withH2H: testWithH2H, weight: Math.round((gridWithH2H.w_h2h || 0) * 1000) / 1000 }, guard: { on: guardOpt.on, without: plainTest, with: guardTest } };
   const rw = (w: GridW) => Object.fromEntries(Object.entries(w).map(([k, v]) => [k, Math.round(v * 1000) / 1000]));
   evalStats = test.length
     ? {
@@ -402,7 +425,8 @@ export function buildNationalElo() {
         engine,
         gridWeightsTest: rw(gridOld),
         withValues: test.filter(x => x.lv !== 0).length,
-        note: 'both engines fitted before the test period and scored on the last 2 years; squad values are a July 2026 snapshot (mild look-ahead on older matches, same for both)'
+        note: 'both engines fitted before the test period and scored on the last 2 years; squad values are a July 2026 snapshot (mild look-ahead on older matches, same for both)',
+        h2hGuard
       }
     : null;
   natGoalByKind = fitGoalScales(test);
@@ -536,10 +560,11 @@ export function predictNational(match: any, leagueId: number): Prediction | null
   const cfg = COMPS[leagueId] || COMPS[10];
   const vh = nationalValueFor(H.name), va = nationalValueFor(A.name);
   const date = String(match.utcDate || new Date().toISOString()).slice(0, 10);
-  const f = featOf(H, A, leagueId, date, vh, va);
+  const f = featOf(H, A, leagueId, date, vh, va, hid, aid);
   const valueTerm = vh && va ? fit.beta * Math.log(vh / va) : 0;
   const d = H.elo - A.elo + cfg.ha + valueTerm;
-  const p = engine === 'grid' ? gridProbs(f) : probs(d);
+  const p0 = engine === 'grid' ? gridProbs(f) : probs(d);
+  const p = commonSense(p0, engine === 'grid' ? factorsOf(f, gridW) : d - cfg.ha, f.form, f.h2hInfo, guardOpt);
   // goals: from the goal ratings (grid) or the rating gap (elo)
   const gs = goalScaleFor(f.kind);
   const lamH = (engine === 'grid' ? Math.min(4, Math.max(0.2, f.lamH)) : Math.max(0.2, 1.3 * Math.exp(d / 650))) * gs;
@@ -582,11 +607,13 @@ export function predictNational(match: any, leagueId: number): Prediction | null
       { id: '#19', name: 'Goals: attack vs defence', rel: relOf(w.w_goals), home: scale(H.att + H.def, ps.goals.mean, ps.goals.sd), away: scale(A.att + A.def, ps.goals.mean, ps.goals.sd), edge: edge(w.w_goals * f.gl), note: `expected goals ${out.expectedGoals.home} vs ${out.expectedGoals.away}` },
       { id: '#21', name: 'Form, last 6 (vs expectation)', rel: relOf(w.w_form), home: scale(avg(H.recent), ps.form.mean, ps.form.sd), away: scale(avg(A.recent), ps.form.mean, ps.form.sd), edge: edge(w.w_form * f.form) },
       { id: '#10', name: 'Rest days', rel: relOf(w.w_rest), home: 5.5 + Math.round(f.rest * 45) / 10, away: 5.5 - Math.round(f.rest * 45) / 10, edge: edge(w.w_rest * f.rest) },
+      { id: '#7', name: 'Head-to-head, last 10', rel: relOf(w.w_h2h || 0), home: f.h2hInfo ? Math.round((1 + 9 * f.h2hInfo.share) * 10) / 10 : 5, away: f.h2hInfo ? Math.round((1 + 9 * (1 - f.h2hInfo.share)) * 10) / 10 : 5, edge: edge((w.w_h2h || 0) * f.h2h), note: f.h2hInfo ? `${f.h2hInfo.n} meetings, ${H.name} share ${Math.round(f.h2hInfo.share * 100)}%` : 'no meetings in the last 10 years' },
       { id: '#23', name: f.kind === 'friendly' ? 'Home advantage (friendly)' : 'Home advantage', rel: relOf(f.kind === 'friendly' ? w.w_homeFriendly : w.w_homeComp), home: f.homeComp || f.homeFriendly ? 7 : 5.5, away: 5.5, edge: edge(w.w_homeComp * f.homeComp + w.w_homeFriendly * f.homeFriendly), note: f.kind === 'finals' ? 'tournament finals: neutral venue' : undefined }
     ];
     const reasons = rows.filter(r => Math.abs(r.edge) >= 3).sort((a, b) => Math.abs(b.edge) - Math.abs(a.edge)).slice(0, 3)
       .map(r => `${r.name}: ${r.edge > 0 ? H.name : A.name} +${Math.abs(r.edge)}`);
     if (f.kind === 'friendly') reasons.push('friendly: rotated squads make it less predictable');
+    if (p.fired) reasons.push('common-sense check: the weaker side on form or head-to-head is not made the favourite');
     const ptsH = Math.round(p.h * 1000), ptsA = Math.round(p.a * 1000);
     out.grid = {
       matchType: Math.abs(gridProbs(f).z) > 1.4 ? 'mismatch' : Math.abs(gridProbs(f).z) < 0.35 ? 'even' : 'standard',

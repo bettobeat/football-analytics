@@ -355,13 +355,13 @@ export default function AccuracySimple() {
 /** Reliability chart: what we said (x) against how often it happened (y); the dashed diagonal is perfect. */
 function CalibrationChart({ bins }: { bins: { lo: number; hi: number; n: number; said: number; happened: number | null }[] }) {
   if (!bins.length) return null
-  const W = 320, H = 320, P = 36
+  const W = 320, H = 320, P = 44
   const x = (v: number) => P + (v / 100) * (W - P - 10)
   const y = (v: number) => H - P - (v / 100) * (H - P - 10)
   const maxN = Math.max(...bins.map(b => b.n))
   const pts = bins.filter(b => b.happened !== null)
   return (
-    <div className="rounded-2xl border border-line/60 bg-surface2/30 p-3">
+    <div className="rounded-2xl border border-line/60 bg-surface2/30 p-3 w-full max-w-[420px] mx-auto lg:mx-0">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label={t('Calibration chart')}>
         {[0, 20, 40, 60, 80, 100].map(v => (
           <g key={v}>
@@ -380,7 +380,7 @@ function CalibrationChart({ bins }: { bins: { lo: number; hi: number; n: number;
           </g>
         ))}
         <text x={(x(0) + x(100)) / 2} y={H - 4} textAnchor="middle" fontSize="10" fill="rgb(var(--muted))">{t('The chance we gave')}</text>
-        <text x={10} y={(y(0) + y(100)) / 2} textAnchor="middle" fontSize="10" fill="rgb(var(--muted))" transform={`rotate(-90 10 ${(y(0) + y(100)) / 2})`}>{t('How often it happened')}</text>
+        <text x={9} y={(y(0) + y(100)) / 2} textAnchor="middle" fontSize="10" fill="rgb(var(--muted))" transform={`rotate(-90 9 ${(y(0) + y(100)) / 2})`}>{t('How often it happened')}</text>
       </svg>
       <p className="text-[11px] text-faint px-1">{t('Bigger dots = more results. Hover a dot for the numbers.')}</p>
     </div>
