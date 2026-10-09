@@ -386,7 +386,7 @@ export function buildClubElo() {
     const cupNoH2H = fitCup(train, cupFromElo(withV), ['w_h2h']);
     const cupWithH2H = fitCup(train, cupFromElo(withV));
     const tNo = score(x => cupProbs(x.f, cupNoH2H)), tWith = score(x => cupProbs(x.f, cupWithH2H));
-    h2hUsed = !!(tNo && tWith && tWith.logLoss <= tNo.logLoss + 0.0005);
+    h2hUsed = !!(tNo && tWith && tWith.logLoss <= tNo.logLoss + 0.0005 && (cupWithH2H.w_h2h || 0) > 0); // a negative H2H weight is noise, not a pattern
     const cupTrain = h2hUsed ? cupWithH2H : cupNoH2H;
     const eloTest = score(x => probs(x.d + withV.beta * x.lv, withV.c, withV.s));
     const gridTest = score(x => cupProbs(x.f, cupTrain));

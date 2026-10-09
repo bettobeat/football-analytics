@@ -397,7 +397,7 @@ export function buildNationalElo() {
   const gridNoH2H = fitGrid(trainOld, gridFromElo(eloOld), ['w_h2h']);
   const gridWithH2H = fitGrid(trainOld, gridFromElo(eloOld));
   const testNoH2H = score(x => gridProbs(x.f, gridNoH2H)), testWithH2H = score(x => gridProbs(x.f, gridWithH2H));
-  h2hUsed = testWithH2H.logLoss <= testNoH2H.logLoss + 0.0005;
+  h2hUsed = testWithH2H.logLoss <= testNoH2H.logLoss + 0.0005 && (gridWithH2H.w_h2h || 0) > 0; // a negative H2H weight is noise, not a pattern
   const gridOld = h2hUsed ? gridWithH2H : gridNoH2H;
   const eloTest = score(x => probs(x.d + eloOld.beta * x.lv, eloOld.c, eloOld.s));
   lastSplit = { trainOld, test, gridOld, eloOld, score };
