@@ -38,7 +38,7 @@ interface AuthState {
   /** signed in but the email is not confirmed yet */
   needsVerification: boolean
   login: (email: string, password: string) => Promise<void>
-  signup: (email: string, password: string, name?: string, optIn?: boolean) => Promise<void>
+  signup: (email: string, password: string, name?: string, optIn?: boolean, adult?: boolean) => Promise<void>
   verify: (code: string) => Promise<void>
   resendCode: () => Promise<void>
   resetPassword: (email: string, code: string, password: string) => Promise<void>
@@ -112,8 +112,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     apply(r.data)
   }
 
-  const signup = async (email: string, password: string, name?: string, optIn?: boolean) => {
-    const r = await axios.post(`${API_URL}/auth/signup`, { email, password, name, optIn: !!optIn })
+  const signup = async (email: string, password: string, name?: string, optIn?: boolean, adult?: boolean) => {
+    const r = await axios.post(`${API_URL}/auth/signup`, { email, password, name, optIn: !!optIn, adult: !!adult })
     apply(r.data)
   }
 

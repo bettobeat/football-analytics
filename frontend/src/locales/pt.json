@@ -1406,5 +1406,10 @@
  "We said {0}%, it happened {1}% of the time ({2} results)": "Dissemos {0}%, aconteceu {1}% das vezes ({2} resultados)",
  "The chance we gave": "A probabilidade que demos",
  "How often it happened": "Com que frequência aconteceu",
- "Bigger dots = more results. Hover a dot for the numbers.": "Pontos maiores = mais resultados. Passe o rato sobre um ponto para ver os números."
+ "Bigger dots = more results. Hover a dot for the numbers.": "Pontos maiores = mais resultados. Passe o rato sobre um ponto para ver os números.",
+ "Please confirm you are 18 or older and accept the terms.": "Confirme que tem 18 anos ou mais e aceite os termos.",
+ "I am 18 or older and I accept the": "Tenho 18 anos ou mais e aceito os",
+ "and the": "e a",
+ "Show": "Mostrar",
+ "Hide": "Ocultar"
 }

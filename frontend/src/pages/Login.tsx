@@ -15,6 +15,8 @@ export default function Login({ mode: initial }: { mode: 'login' | 'signup' }) {
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
   const [optIn, setOptIn] = useState(false)
+  const [adult, setAdult] = useState(false)
+  const [showPw, setShowPw] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -30,10 +32,11 @@ export default function Login({ mode: initial }: { mode: 'login' | 'signup' }) {
     e.preventDefault()
     setError(null)
     if (mode === 'signup' && password.length < 8) return setError(t("Password must be at least 8 characters."))
+    if (mode === 'signup' && !adult) return setError(t("Please confirm you are 18 or older and accept the terms."))
     setBusy(true)
     try {
       if (mode === 'login') await login(email, password)
-      else await signup(email, password, name, optIn)
+      else await signup(email, password, name, optIn, adult)
     } catch (err) {
       setError(errorText(err))
     } finally {
@@ -56,7 +59,7 @@ export default function Login({ mode: initial }: { mode: 'login' | 'signup' }) {
           {mode === 'signup' && (
             <label className="block">
               <span className="label">{t("Name (optional)")}</span>
-              <input className={`${input} mt-1`} value={name} onChange={e => setName(e.target.value)} autoComplete="name" maxLength={80} />
+              <input className={`${input} mt-1`} value={name} onChange={e => setName(e.target.value)} autoComplete="name" autoCapitalize="words" maxLength={80} />
             </label>
           )}
           <label className="block">
@@ -69,26 +72,54 @@ export default function Login({ mode: initial }: { mode: 'login' | 'signup' }) {
               onChange={e => setEmail(e.target.value)}
               autoComplete="email"
               inputMode="email"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
             />
           </label>
           <label className="block">
             <span className="label">{t("Password")}</span>
-            <input
-              className={`${input} mt-1`}
-              type="password"
-              required
-              minLength={mode === 'signup' ? 8 : undefined}
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-            />
+            <div className="relative mt-1">
+              <input
+                className={`${input} pr-16`}
+                type={showPw ? 'text' : 'password'}
+                required
+                minLength={mode === 'signup' ? 8 : undefined}
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPw(v => !v)}
+                aria-pressed={showPw}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-muted hover:text-ink"
+              >
+                {showPw ? t("Hide") : t("Show")}
+              </button>
+            </div>
             {mode === 'signup' && <span className="text-[11px] text-faint">{t("At least 8 characters.")}</span>}
           </label>
 
           {mode === 'signup' && (
             <label className="flex items-start gap-2.5 text-sm text-muted cursor-pointer select-none">
-              <input type="checkbox" checked={optIn} onChange={e => setOptIn(e.target.checked)} className="mt-0.5 w-4 h-4 accent-[rgb(var(--accent))]" />
+              <input type="checkbox" checked={optIn} onChange={e => setOptIn(e.target.checked)} className="mt-0.5 w-4 h-4 shrink-0 accent-[rgb(var(--accent))]" />
               <span>{t("Email me about new features, Premium and weekly picks. You can turn this off anytime.")}</span>
+            </label>
+          )}
+
+          {mode === 'signup' && (
+            <label className="flex items-start gap-2.5 text-sm text-muted cursor-pointer select-none">
+              <input type="checkbox" required checked={adult} onChange={e => setAdult(e.target.checked)} className="mt-0.5 w-4 h-4 shrink-0 accent-[rgb(var(--accent))]" />
+              <span>
+                {t("I am 18 or older and I accept the")}{' '}
+                <Link to="/terms" target="_blank" className="text-accent hover:underline">{t("Terms of use")}</Link>{' '}
+                {t("and the")}{' '}
+                <Link to="/privacy" target="_blank" className="text-accent hover:underline">{t("Privacy policy")}</Link>.
+              </span>
             </label>
           )}
 

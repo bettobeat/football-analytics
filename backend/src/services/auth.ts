@@ -78,6 +78,7 @@ db.exec(`
   if (!cols.has('marketing_opt_in')) db.exec('ALTER TABLE users ADD COLUMN marketing_opt_in INTEGER NOT NULL DEFAULT 0');
   if (!cols.has('marketing_opt_in_at')) db.exec('ALTER TABLE users ADD COLUMN marketing_opt_in_at TEXT');
   if (!cols.has('cancel_at')) db.exec('ALTER TABLE users ADD COLUMN cancel_at TEXT');
+  if (!cols.has('terms_at')) db.exec('ALTER TABLE users ADD COLUMN terms_at TEXT'); // when the user confirmed 18+ and accepted the terms
 }
 
 export const SESSION_COOKIE = 'b2b_session';
@@ -197,8 +198,9 @@ export class AuthError extends Error {
   }
 }
 
-export function signup(emailIn: unknown, password: unknown, nameIn: unknown, ip: string, optIn = false): User {
+export function signup(emailIn: unknown, password: unknown, nameIn: unknown, ip: string, optIn = false, adult = false): User {
   const email = normEmail(emailIn);
+  if (!adult) throw new AuthError(400, 'Please confirm you are 18 or older and accept the terms.');
   if (limited(`signup:${ip}`, 10)) throw new AuthError(429, 'Too many sign-ups from this network. Try again later.');
   const bad = checkCredentials(email, password);
   if (bad) throw new AuthError(400, bad);
@@ -206,8 +208,8 @@ export function signup(emailIn: unknown, password: unknown, nameIn: unknown, ip:
   const name = String(nameIn || '').trim().slice(0, 80) || null;
   const now = new Date().toISOString();
   const r = db
-    .prepare('INSERT INTO users (email, name, pass_hash, plan, created_at, email_verified, marketing_opt_in, marketing_opt_in_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(email, name, hashPassword(String(password)), 'free', now, verificationRequired ? 0 : 1, optIn ? 1 : 0, optIn ? now : null);
+    .prepare('INSERT INTO users (email, name, pass_hash, plan, created_at, email_verified, marketing_opt_in, marketing_opt_in_at, terms_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(email, name, hashPassword(String(password)), 'free', now, verificationRequired ? 0 : 1, optIn ? 1 : 0, optIn ? now : null, now);
   logger.info(`New account #${r.lastInsertRowid}`);
   return rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(Number(r.lastInsertRowid)));
 }
@@ -530,7 +532,7 @@ export function exportUserData(userId: number) {
     exportedAt: new Date().toISOString(),
     account: {
       email: u.email, name: u.name, plan: u.plan, premiumUntil: u.premium_until, createdAt: u.created_at, lastLoginAt: u.last_login_at,
-      emailConfirmed: !!u.email_verified, emailUpdates: !!u.marketing_opt_in, emailUpdatesChosenAt: u.marketing_opt_in_at
+      emailConfirmed: !!u.email_verified, emailUpdates: !!u.marketing_opt_in, emailUpdatesChosenAt: u.marketing_opt_in_at, termsAcceptedAt: u.terms_at || null
     },
     signedInDevices: safeAll('SELECT created_at AS signedInAt, expires_at AS expiresAt, user_agent AS device FROM sessions WHERE user_id = ?', userId),
     favorites: tableExists('user_favorites') ? safeAll('SELECT kind, ref, data, created_at AS addedAt FROM user_favorites WHERE user_id = ?', userId).map((f: any) => {

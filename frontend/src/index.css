@@ -223,3 +223,9 @@ html.a11y-contrast :focus-visible { outline-color: #ff0; }
 /* "Skip to content" link: hidden until it gets keyboard focus */
 .skip-link { position: absolute; left: 8px; top: -60px; z-index: 100; padding: 10px 14px; border-radius: 10px; background: rgb(var(--accent)); color: rgb(var(--bg)); font-weight: 700; }
 .skip-link:focus { top: 8px; }
+
+/* Phones: iPhone Safari zooms into any field with text under 16px when it is tapped. Keep small fields at 16px there. */
+@media (max-width: 639px) {
+  input.text-sm, input.text-xs, textarea.text-sm, textarea.text-xs, select.text-sm, select.text-xs,
+  input[class*="text-["], textarea[class*="text-["], select[class*="text-["] { font-size: 16px; }
+}

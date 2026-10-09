@@ -321,7 +321,7 @@ app.get('/api/auth/me', (req, res) => {
 
 app.post('/api/auth/signup', jsonOnly, async (req, res) => {
   try {
-    const user = signup(req.body?.email, req.body?.password, req.body?.name, req.ip || '', req.body?.optIn === true);
+    const user = signup(req.body?.email, req.body?.password, req.body?.name, req.ip || '', req.body?.optIn === true, req.body?.adult === true);
     const s = createSession(user.id, req.headers['user-agent']);
     setSessionCookie(res, s.token, s.expires, req.secure);
     // Send the confirmation code; if the email fails the account still exists and the code can be re-sent

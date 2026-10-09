@@ -61,7 +61,7 @@ export default function Forgot() {
             <p className="text-sm text-muted">{t("Enter your account email and we’ll send you a 6-digit code.")}</p>
             <label className="block">
               <span className="label">{t("Email")}</span>
-              <input className={`${input} mt-1`} type="email" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" />
+              <input className={`${input} mt-1`} type="email" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} />
             </label>
             {error && <div className="rounded-xl border border-loss/40 bg-loss/10 px-3 py-2 text-sm text-loss">{error}</div>}
             <button type="submit" disabled={busy} className="w-full rounded-xl bg-accent text-bg font-semibold py-2.5 text-sm disabled:opacity-60">
