@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { t, LOCALE } from '../../lib/i18n'
 import { useReveal, justRevealed } from '../../lib/reveal'
@@ -42,13 +42,20 @@ export function SectionTitle({ label, sub, count, sticky }: { label: string; sub
 }
 
 export function TeamLogo({ team, size = 22 }: { team: BbSide | { name: string; logo: string | null }; size?: number }) {
-  return team.logo ? (
-    <img src={team.logo} alt="" width={size} height={size} loading="lazy" className="object-contain flex-shrink-0 drop-shadow-sm" style={{ width: size, height: size }} />
+  const [broken, setBroken] = useState(false)
+  return team.logo && !broken ? (
+    <img src={team.logo} alt="" width={size} height={size} loading="lazy" onError={() => setBroken(true)} className="object-contain flex-shrink-0 drop-shadow-sm" style={{ width: size, height: size }} />
   ) : (
-    <span className="rounded-full bg-surface2 grid place-items-center text-[10px] font-display font-bold text-muted flex-shrink-0" style={{ width: size, height: size }}>
-      {team.name.slice(0, 3).toUpperCase()}
+    <span className="rounded-full bg-surface2 border border-line/60 grid place-items-center font-display font-bold text-muted flex-shrink-0 leading-none" style={{ width: size, height: size, fontSize: Math.max(7, Math.round(size * 0.36)) }} title={team.name}>
+      {initials(team.name)}
     </span>
   )
+}
+
+/** "Tokyo Sunrockers" → "TS", "Bayern" → "BAY". */
+export const initials = (name: string) => {
+  const w = name.replace(/[^\p{L}\p{N} ]/gu, ' ').split(/\s+/).filter(x => x.length > 1 || /\d/.test(x))
+  return (w.length >= 2 ? w.slice(0, 2).map(x => x[0]).join('') : (w[0] || name).slice(0, 3)).toUpperCase()
 }
 
 export function LockIcon() {
