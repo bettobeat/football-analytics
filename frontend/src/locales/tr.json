@@ -1389,5 +1389,9 @@
  "of our picks were right": "tahminimiz doğru çıktı",
  "last {0} days · {1} matches": "son {0} gün · {1} maç",
  "when we were 60%+ sure": "%60+ emin olduğumuzda",
- "{0} picks": "{0} tahmin"
+ "{0} picks": "{0} tahmin",
+ "SportLikely · Sports predictions, tested in public": "SportLikely · Herkese açık test edilen spor tahminleri",
+ "Sports predictions,": "Spor tahminleri,",
+ "Sports predictions, tested in public": "Herkese açık test edilen spor tahminleri",
+ "Football now, basketball next: win chances, goals or points, and the reasons behind each pick.": "Şimdi futbol, sırada basketbol: kazanma olasılıkları, goller veya sayılar ve her tahminin nedenleri."
 }

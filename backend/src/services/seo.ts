@@ -103,9 +103,13 @@ export function seoPage(rawPath: string): SeoInfo {
   let m: RegExpMatchArray | null;
   try {
     if (path === '/') {
-      return page(`${BRAND} · Football predictions, tested in public`,
-        'Match predictions for the top leagues, national teams and European cups: win, draw and loss chances, goals, form and head-to-head. Every prediction is saved before kick-off and checked against the result, in public.',
-        `<h1>Football predictions, tested in public</h1><p>Win, draw and loss chances, goals and the reasons behind every pick, for the top leagues, cups and national teams. Every prediction is saved before kick-off and scored after the game.</p><h2>Next matches</h2>${fbList(lang, fbUpcoming(30))}`);
+      return page(`${BRAND} · Sports predictions, tested in public`,
+        'Sports predictions tested in public: football leagues, cups and national teams, with basketball and more sports coming. Win chances, goals and points, form and head-to-head. Every prediction is saved before kick-off and checked against the result.',
+        `<h1>Sports predictions, tested in public</h1><p>Football predictions for the top leagues, cups and national teams, with basketball and more sports coming: win, draw and loss chances, goals and the reasons behind every pick. Every prediction is saved before kick-off and scored after the game.</p><h2>Next football matches</h2>${fbList(lang, fbUpcoming(30))}`,
+        { jsonld: [
+          { '@context': 'https://schema.org', '@type': 'Organization', name: BRAND, url: SITE, logo: `${SITE}/icon-512.png`, description: 'Sports predictions tested in public.' },
+          { '@context': 'https://schema.org', '@type': 'WebSite', name: BRAND, url: SITE }
+        ] });
     }
     if (path === '/matches') {
       return page(`Football predictions for today and the coming days | ${BRAND}`,
@@ -179,7 +183,7 @@ export function seoPage(rawPath: string): SeoInfo {
       return page(`Basketball | ${BRAND}`, 'Basketball predictions on SportLikely.', '<h1>Basketball</h1>');
     }
   } catch { /* fall through to the generic page */ }
-  return page(`${BRAND} · Football predictions, tested in public`, 'Football and basketball predictions, tested in public.', `<h1>${BRAND}</h1>`);
+  return page(`${BRAND} · Sports predictions, tested in public`, 'Sports predictions tested in public: football now, basketball and more sports coming.', `<h1>${BRAND}</h1>`);
 }
 
 /** index.html with this page's head tags and crawler HTML. */

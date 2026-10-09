@@ -66,7 +66,7 @@ function FeaturedHero({ m, p }: { m: Match | null; p: Prediction | null }) {
   if (!m)
     return (
       <div className="relative overflow-hidden rounded-[32px] border border-white/10 min-h-[360px] sm:min-h-[460px] bg-[linear-gradient(160deg,#0F1A2B_0%,#0A0F17_60%,#07090D_100%)] p-10 flex flex-col justify-center gap-3 text-[#EEF1F6]">
-        <div className="font-display text-3xl sm:text-5xl font-extrabold tracking-tight leading-[1.05]">{tt("Football predictions,")}<br />{tt("tested in public.")}</div>
+        <div className="font-display text-3xl sm:text-5xl font-extrabold tracking-tight leading-[1.05]">{tt("Sports predictions,")}<br />{tt("tested in public.")}</div>
         <p className="text-[#C9D0DB] max-w-lg">{tt("The next fixtures appear here as soon as they are scheduled.")}</p>
       </div>
     )
@@ -309,12 +309,12 @@ export default function Home() {
         <section className="rounded-3xl border border-accent/30 bg-[linear-gradient(135deg,rgb(var(--accent)/0.10),rgb(var(--surface)/0.6)_60%)] p-5 sm:p-7 grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
           <div className="min-w-0 space-y-4">
             <div className="space-y-2">
-              <h1 className="font-display text-2xl sm:text-4xl font-extrabold tracking-tight text-ink leading-tight">{tt("Football predictions, tested in public")}</h1>
+              <h1 className="font-display text-2xl sm:text-4xl font-extrabold tracking-tight text-ink leading-tight">{tt("Sports predictions, tested in public")}</h1>
               <p className="text-sm sm:text-base text-muted max-w-2xl">{tt("Know what is likely before kick-off, and why.")}</p>
             </div>
             <ul className="grid gap-2.5 sm:grid-cols-3 max-w-3xl">
               {[
-                [tt("Every match"), tt("Win, draw and loss chances, goals and the reasons behind each pick.")],
+                [tt("Every match"), tt("Football now, basketball next: win chances, goals or points, and the reasons behind each pick.")],
                 [tt("Checked in public"), tt("Every prediction is saved before kick-off and scored after the game.")],
                 [tt("Free to start"), tt("2 full picks every week. No card needed.")]
               ].map(([h, d]) => (

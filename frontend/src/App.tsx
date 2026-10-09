@@ -343,7 +343,7 @@ function PageTitle() {
   useEffect(() => {
     applyHeadLang(loc.pathname)
     const t = TITLES.find(([re]) => re.test(loc.pathname))?.[1]
-    document.title = t && t !== 'Home' ? tt("{0} · SportLikely", { 0: t }) : tt("SportLikely · Football predictions, tested in public")
+    document.title = t && t !== 'Home' ? tt("{0} · SportLikely", { 0: t }) : tt("SportLikely · Sports predictions, tested in public")
   }, [loc.pathname])
   return null
 }
