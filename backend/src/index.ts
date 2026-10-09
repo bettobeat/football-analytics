@@ -57,6 +57,8 @@ import { highlightsFor, highlightsStatus, lastCandidates } from './services/high
 import { rebuildPlayerQuality, playerQualityTable } from './services/playerQuality';
 import { db } from './db';
 import { trackVisit, visitorStats } from './services/visitors';
+import { seoPage, renderIndex, sitemapXml } from './services/seo';
+import { fontRoute, warmFonts } from './services/fonts';
 import { listFavorites, addFavorites, removeFavorite, MAX_FAVORITES } from './services/favorites';
 import { tuneV3Full, tuneStatus, isTuning } from './services/v3Tuner';
 import { askAssistant, assistantConfigured, messagesToday, assistantStats } from './services/assistant';
@@ -67,7 +69,7 @@ import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures, afGet, 
 import {
   signup, login, changePassword, setPlan, adminResetPassword, listUsers, userStats, createSession, destroySession, userForToken,
   parseCookies, setSessionCookie, clearSessionCookie, SESSION_COOKIE, accessOf, canSeeFull, isPaid, teaseDeep, teaseDeepExcept, AuthError, Access, User,
-  sendVerification, verifyEmail, requestPasswordReset, resetPassword, setMarketingOptIn, usersCsv, verificationRequired
+  sendVerification, verifyEmail, requestPasswordReset, resetPassword, setMarketingOptIn, usersCsv, verificationRequired, exportUserData, deleteAccount
 } from './services/auth';
 import { playerDataStatus, teamPlayers } from './services/playerData';
 import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, backfillV3, setRelOverride, SweepVariant, tuneLeaguesV3, leagueTuneProgress, leagueConvStatus, clearLeagueConv, tunedStatus, clearTuning, applyStoredTuning } from './services/gridModel';
@@ -164,7 +166,7 @@ const PUBLIC_FILES = new Set(['/favicon.svg', '/apple-touch-icon.png', '/og-imag
 // Health check stays open so the host can monitor the service. Unset = open site (local dev).
 if (SITE_PASSWORD) {
   app.use((req, res, next) => {
-    if (req.path === '/api/health' || PUBLIC_FILES.has(req.path)) return next();
+    if (req.path === '/api/health' || PUBLIC_FILES.has(req.path) || req.path.startsWith('/fonts/')) return next();
     if (req.headers.authorization === SITE_AUTH) return next();
     if (req.method === 'GET' && req.path.startsWith('/api/') && tokenKind(req.query.token)) return next();
     res.set('WWW-Authenticate', 'Basic realm="SportLikely - private beta", charset="UTF-8"');
@@ -459,6 +461,29 @@ app.post('/api/auth/logout', (req, res) => {
   destroySession(parseCookies(req.headers.cookie)[SESSION_COOKIE]);
   clearSessionCookie(res, req.secure);
   res.json(sessionPayload(null));
+});
+
+// Your data (GDPR): download everything we hold about you, or delete the account (password required)
+app.get('/api/auth/export', (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  try {
+    res.set('Content-Disposition', `attachment; filename="sportlikely-my-data-${new Date().toISOString().slice(0, 10)}.json"`);
+    res.set('Cache-Control', 'no-store');
+    res.type('application/json').send(JSON.stringify(exportUserData(req.user.id), null, 2));
+  } catch (e) {
+    authFail(res, e);
+  }
+});
+app.post('/api/auth/delete', jsonOnly, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  if (req.body?.confirm !== 'DELETE') return res.status(400).json({ error: 'Type DELETE to confirm.' });
+  try {
+    deleteAccount(req.user.id, req.body?.password);
+    clearSessionCookie(res, req.secure);
+    res.json(sessionPayload(null));
+  } catch (e) {
+    authFail(res, e);
+  }
 });
 
 app.post('/api/auth/password', jsonOnly, (req, res) => {
@@ -1775,10 +1800,23 @@ setInterval(async () => {
 const STATIC_DIR = process.env.STATIC_DIR || path.resolve(__dirname, '../../frontend/dist');
 if (fs.existsSync(path.join(STATIC_DIR, 'index.html'))) {
   // Hashed assets can be cached for a long time; index.html must always be fresh
+  // Search engines: a live sitemap (served before the static file of the same name) and per-page head tags + content
+  app.get('/fonts/:file', fontRoute);
+  warmFonts();
+  app.get('/sitemap.xml', (_req, res) => {
+    try { res.type('application/xml').set('Cache-Control', 'public, max-age=3600').send(sitemapXml()); }
+    catch (e: any) { logger.warn(`sitemap: ${e.message}`); res.sendFile(path.join(STATIC_DIR, 'sitemap.xml')); }
+  });
   app.use(express.static(STATIC_DIR, { index: false, maxAge: '7d' }));
-  app.get(/^(?!\/api\/|\/socket\.io\/).*/, (_req, res) => {
+  const indexHtml = fs.readFileSync(path.join(STATIC_DIR, 'index.html'), 'utf8');
+  app.get(/^(?!\/api\/|\/socket\.io\/).*/, (req, res) => {
     res.set('Cache-Control', 'no-cache');
-    res.sendFile(path.join(STATIC_DIR, 'index.html'));
+    try {
+      res.type('html').send(renderIndex(indexHtml, seoPage(req.path)));
+    } catch (e: any) {
+      logger.warn(`seo page ${req.path}: ${e.message}`);
+      res.sendFile(path.join(STATIC_DIR, 'index.html'));
+    }
   });
   logger.info(`Serving frontend from ${STATIC_DIR}`);
 }

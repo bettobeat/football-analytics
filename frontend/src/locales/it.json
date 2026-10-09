@@ -1354,5 +1354,13 @@
  "Last 14 days": "Ultimi 14 giorni",
  "Ball & keeper": "Palla e portiere",
  "{0} also have the upper hand in this matchup: they won {1} of the last {2} meetings.": "{0} sono avanti anche negli scontri diretti: hanno vinto {1} degli ultimi {2}.",
- "{0} won {1} of the last {2} meetings, but our numbers still favour {3}: in basketball past meetings say little once current form, rest and the rosters are known.": "{0} hanno vinto {1} degli ultimi {2} scontri diretti, ma i nostri numeri favoriscono comunque {3}: nel basket i precedenti contano poco quando forma, riposo e roster sono noti."
+ "{0} won {1} of the last {2} meetings, but our numbers still favour {3}: in basketball past meetings say little once current form, rest and the rosters are known.": "{0} hanno vinto {1} degli ultimi {2} scontri diretti, ma i nostri numeri favoriscono comunque {3}: nel basket i precedenti contano poco quando forma, riposo e roster sono noti.",
+ "Your data": "I tuoi dati",
+ "Download a copy of everything we store about your account, or delete the account and all of it.": "Scarica una copia di tutto ciò che conserviamo sul tuo account, oppure elimina l’account e tutti i dati.",
+ "Download my data": "Scarica i miei dati",
+ "Delete my account": "Elimina il mio account",
+ "This deletes your account, favorites and unlocked matches for good. It cannot be undone. Paid plans are not refunded automatically: write to us first if you want a refund.": "Questo elimina definitivamente l’account, i preferiti e le partite sbloccate. Non si può annullare. I piani a pagamento non vengono rimborsati automaticamente: scrivici prima se vuoi un rimborso.",
+ "Type DELETE to confirm": "Scrivi DELETE per confermare",
+ "Deleting…": "Eliminazione…",
+ "Cancel": "Annulla"
 }

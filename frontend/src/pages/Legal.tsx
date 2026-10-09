@@ -2,7 +2,9 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
 const CONTACT = 'contact@sportlikely.com'
-const UPDATED = '25 September 2026'
+const UPDATED = '9 October 2026'
+// Operator details: fill in once the company is registered (legal name, registration number, address)
+const OPERATOR: string | null = null
 
 function Page({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -34,8 +36,8 @@ export function Terms() {
     <Page title="Terms of use">
       <Section title="What SportLikely is">
         <p>
-          SportLikely publishes football statistics and match predictions made by our own models, together with live scores and match
-          statistics from third-party data providers. Predictions are probabilities, not promises: any match can end in
+          SportLikely publishes football and basketball statistics and match predictions made by our own models, together with live
+          scores and match statistics from third-party data providers. Predictions are probabilities, not promises: any match can end in
           any result.
         </p>
       </Section>
@@ -59,7 +61,8 @@ export function Terms() {
       <Section title="Your account">
         <p>
           Keep your password to yourself; you are responsible for what happens under your account. We may suspend accounts that abuse the
-          service. You can close your account at any time by writing to <Mail />.
+          service. You can delete your account at any time from your{' '}
+          <Link to="/account" className="text-accent hover:underline">account page</Link> (or by writing to <Mail />).
         </p>
       </Section>
       <Section title="Premium">
@@ -88,6 +91,9 @@ export function Terms() {
           its content, including betting losses.
         </p>
       </Section>
+      <Section title="Who we are">
+        <p>{OPERATOR || 'SportLikely is run by its founders. The legal name and registered address of the company operating the site will be added here once it is registered.'}</p>
+      </Section>
       <Section title="Changes and contact">
         <p>
           We may update these terms; the date above shows the latest version. Questions: <Mail />. See also our{' '}
@@ -104,44 +110,75 @@ export function Terms() {
 export function Privacy() {
   return (
     <Page title="Privacy policy">
+      <Section title="Who is responsible">
+        <p>
+          {OPERATOR || 'SportLikely (the legal name and address of the operating company will be added here once it is registered).'} Contact for
+          anything about your data: <Mail />.
+        </p>
+      </Section>
       <Section title="What we collect">
         <p>
-          <span className="text-ink font-semibold">Account:</span> your email address and a scrambled (hashed) version of your password.
-          We never store the password itself. We also store whether you confirmed your email, your plan, and whether you asked for update
-          emails, with the date you chose it.
+          <span className="text-ink font-semibold">Account:</span> your email address, an optional name, and a scrambled (hashed) version of
+          your password. We never store the password itself. We also store whether you confirmed your email, your plan, when you joined
+          and last signed in, and whether you asked for update emails (with the date you chose it).
         </p>
         <p>
-          <span className="text-ink font-semibold">Security:</span> the IP address of sign-in and sign-up attempts, to stop password
-          guessing. Server logs keep the pages requested, for troubleshooting.
+          <span className="text-ink font-semibold">What you do in your account:</span> your favorite teams, leagues and players, the matches
+          you unlocked, and the sports you asked to be told about. Signed-in devices are kept as a list with the browser name, so we can
+          sign you out everywhere when you change your password.
         </p>
         <p>
-          <span className="text-ink font-semibold">Cookies:</span> one cookie that keeps you signed in (required for accounts to work).
-          Your theme choice (dark / light) is stored in your browser. We use no advertising or tracking cookies.
+          <span className="text-ink font-semibold">Security:</span> the IP address of sign-in and sign-up attempts is held in memory for about
+          15 minutes to stop password guessing. Server logs keep the pages requested, for troubleshooting.
+        </p>
+        <p>
+          <span className="text-ink font-semibold">Visitor counts:</span> to know how many people use the site, we count visits per day using
+          a scrambled version of the IP address (a one-way code with a secret key). It cannot be turned back into the IP address, is not
+          linked to your account, and is deleted after 90 days.
+        </p>
+        <p>
+          <span className="text-ink font-semibold">Cookies and browser storage:</span> one cookie keeps you signed in (needed for accounts to
+          work). Your settings (theme, language, accessibility options, pinned leagues, favorites before you sign in, the predictions you
+          revealed, "guess first", and your chat with the assistant) are saved in your own browser and never sent to us unless you sign in. We use no advertising or tracking cookies and no analytics
+          services, so there is nothing to consent to.
         </p>
       </Section>
       <Section title="What we use it for">
         <p>
-          To run your account, send the codes that confirm your email or reset your password, keep the site secure, and, only if you ticked
-          the box, send occasional updates. You can switch updates off in your account at any time.
+          To run your account, send the codes that confirm your email or reset your password, show your favorites and unlocked matches,
+          keep the site secure, count visitors, and, only if you ticked the box, send occasional updates. You can switch updates off in
+          your account at any time. Legal basis: running the service you signed up for, our legitimate interest in security and simple
+          statistics, and your consent for update emails.
         </p>
       </Section>
       <Section title="Who else handles it">
         <p>
           Our hosting provider (Railway) runs the servers and database. Our email provider (Resend) sends the confirmation and reset
-          emails. When payments launch, the payment provider will handle billing. We do not sell your data or share it with advertisers.
+          emails. When payments launch, the payment provider will handle billing and card details; we never see your card. Fonts and
+          pictures of teams come from our own server or from our sports-data providers, which receive no data about you beyond what any
+          website receives when an image loads. These providers may process data outside your country; we only use providers that
+          protect it with the safeguards the law requires. If the AI assistant is switched on and you use it, your questions and the
+          match you are looking at are sent to our AI provider (Anthropic) to write the answer; we keep only counts of how much it is
+          used. We do not sell your data or share it with advertisers.
         </p>
       </Section>
       <Section title="How long we keep it">
         <p>
-          For as long as your account exists. Confirmation and reset codes expire within minutes. If you close your account, we delete your
-          details, except where the law requires us to keep records (for example, payment records).
+          For as long as your account exists. Confirmation and reset codes expire within minutes; signed-in sessions expire on their own.
+          Visitor counts are deleted after 90 days. If you delete your account, we delete your details and everything linked to them,
+          except where the law requires us to keep records (for example, payment records).
         </p>
       </Section>
       <Section title="Your rights">
         <p>
-          You can ask to see, correct, export or delete your data, or object to how we use it, by writing to <Mail />. We answer within 30
-          days.
+          You can see, correct, download or delete your data, or object to how we use it. Two of these work by yourself on your{' '}
+          <Link to="/account" className="text-accent hover:underline">account page</Link>: <span className="text-ink">Download my data</span> gives you
+          a file with everything we store about your account, and <span className="text-ink">Delete my account</span> removes it. For anything
+          else, write to <Mail />; we answer within 30 days. You can also complain to the data protection authority where you live.
         </p>
+      </Section>
+      <Section title="Children">
+        <p>SportLikely is for adults. Accounts are for people aged 18 or over, and we do not knowingly collect data about children.</p>
       </Section>
       <Section title="Changes">
         <p>

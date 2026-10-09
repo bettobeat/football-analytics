@@ -513,3 +513,54 @@ export function teaseDeepExcept(value: any, keep: (id: number, status: string) =
 export function teaseDeep(value: any): any {
   return teaseDeepExcept(value, () => false);
 }
+
+// ---------- your data (GDPR, Oct 2026): download everything we hold about you, or delete the account ----------
+
+const tableExists = (name: string) => !!db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`).get(name);
+const safeAll = (sql: string, ...args: any[]) => { try { return db.prepare(sql).all(...args); } catch { return []; } };
+
+/** Everything stored about one account, as plain data (no password hash, no session tokens). */
+export function exportUserData(userId: number) {
+  const u: any = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+  if (!u) throw new AuthError(404, 'Account not found.');
+  return {
+    exportedAt: new Date().toISOString(),
+    account: {
+      email: u.email, name: u.name, plan: u.plan, premiumUntil: u.premium_until, createdAt: u.created_at, lastLoginAt: u.last_login_at,
+      emailConfirmed: !!u.email_verified, emailUpdates: !!u.marketing_opt_in, emailUpdatesChosenAt: u.marketing_opt_in_at
+    },
+    signedInDevices: safeAll('SELECT created_at AS signedInAt, expires_at AS expiresAt, user_agent AS device FROM sessions WHERE user_id = ?', userId),
+    favorites: tableExists('user_favorites') ? safeAll('SELECT kind, ref, data, created_at AS addedAt FROM user_favorites WHERE user_id = ?', userId).map((f: any) => {
+      try { return { ...f, data: JSON.parse(f.data) }; } catch { return f; }
+    }) : [],
+    unlockedMatches: tableExists('match_unlocks') ? safeAll('SELECT match_id AS matchId, at FROM match_unlocks WHERE user_id = ? ORDER BY at', userId) : [],
+    waitlists: tableExists('sport_waitlist') ? safeAll('SELECT sport, lang, created_at AS joinedAt FROM sport_waitlist WHERE user_id = ? OR email = ?', userId, u.email) : [],
+    assistantUsage: tableExists('assistant_log') ? safeAll('SELECT at, match_id AS matchId FROM assistant_log WHERE user_id = ? ORDER BY at', userId) : [],
+    notes: [
+      'Passwords are stored only as a one-way hash and are not included.',
+      'Visitor counts use a scrambled IP address that cannot be linked back to you or your account; it is deleted after 90 days.'
+    ]
+  };
+}
+
+/** Delete an account and everything linked to it. Needs the current password. */
+export function deleteAccount(userId: number, password: unknown): void {
+  const u: any = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+  if (!u) throw new AuthError(404, 'Account not found.');
+  if (!verifyPassword(String(password || ''), u.pass_hash)) throw new AuthError(401, 'Password is wrong.');
+  if (ADMIN_EMAILS.has(String(u.email).toLowerCase())) throw new AuthError(400, 'Admin accounts cannot be deleted here. Remove the email from ADMIN_EMAILS first.');
+  db.exec('BEGIN');
+  try {
+    if (tableExists('user_favorites')) db.prepare('DELETE FROM user_favorites WHERE user_id = ?').run(userId);
+    if (tableExists('match_unlocks')) db.prepare('DELETE FROM match_unlocks WHERE user_id = ?').run(userId);
+    if (tableExists('sport_waitlist')) db.prepare('DELETE FROM sport_waitlist WHERE user_id = ? OR email = ?').run(userId, u.email);
+    if (tableExists('assistant_log')) db.prepare('DELETE FROM assistant_log WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM email_codes WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}

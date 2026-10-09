@@ -123,6 +123,8 @@ export default function Account() {
         </button>
       </form>
 
+      <DataCard />
+
       <button
         onClick={async () => {
           await logout()
@@ -131,6 +133,60 @@ export default function Account() {
         className="text-sm text-muted hover:text-loss"
       >
         {t("Sign out")}</button>
+    </div>
+  )
+}
+
+/** Your data (GDPR): download everything we hold, or delete the account. */
+function DataCard() {
+  const [open, setOpen] = useState(false)
+  const [pw, setPw] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [err, setErr] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const del = async (e: FormEvent) => {
+    e.preventDefault()
+    setErr(null)
+    setBusy(true)
+    try {
+      await axios.post(`${API_URL}/auth/delete`, { password: pw, confirm })
+      window.location.href = '/'
+    } catch (x) {
+      setErr(errorText(x))
+      setBusy(false)
+    }
+  }
+  const input = 'w-full rounded-xl border border-line bg-surface2/60 px-3.5 py-2.5 text-sm text-ink outline-none focus:border-loss focus:ring-2 focus:ring-loss/20'
+  return (
+    <div className="card p-6 space-y-4">
+      <div>
+        <div className="font-display font-bold text-ink">{t("Your data")}</div>
+        <p className="text-sm text-muted mt-0.5">{t("Download a copy of everything we store about your account, or delete the account and all of it.")}{' '}
+          <Link to="/privacy" className="text-accent hover:underline">{t("Privacy policy")}</Link>
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <a href={`${API_URL}/auth/export`} className="rounded-xl bg-surface2 border border-line px-4 py-2 text-sm font-semibold text-ink hover:border-faint">{t("Download my data")}</a>
+        {!open && <button type="button" onClick={() => setOpen(true)} className="rounded-xl border border-loss/40 px-4 py-2 text-sm font-semibold text-loss hover:bg-loss/10">{t("Delete my account")}</button>}
+      </div>
+      {open && (
+        <form onSubmit={del} className="rounded-xl border border-loss/40 bg-loss/5 p-4 space-y-3">
+          <p className="text-sm text-ink">{t("This deletes your account, favorites and unlocked matches for good. It cannot be undone. Paid plans are not refunded automatically: write to us first if you want a refund.")}</p>
+          <label className="block">
+            <span className="label">{t("Password")}</span>
+            <input className={`${input} mt-1`} type="password" required value={pw} onChange={e => setPw(e.target.value)} autoComplete="current-password" />
+          </label>
+          <label className="block">
+            <span className="label">{t("Type DELETE to confirm")}</span>
+            <input className={`${input} mt-1`} required value={confirm} onChange={e => setConfirm(e.target.value)} />
+          </label>
+          {err && <div className="rounded-xl border border-loss/40 bg-loss/10 px-3 py-2 text-sm text-loss">{err}</div>}
+          <div className="flex gap-2">
+            <button type="submit" disabled={busy || confirm !== 'DELETE' || !pw} className="rounded-xl bg-loss text-bg px-4 py-2 text-sm font-bold disabled:opacity-50">{busy ? t("Deleting…") : t("Delete my account")}</button>
+            <button type="button" onClick={() => { setOpen(false); setPw(''); setConfirm(''); setErr(null) }} className="rounded-xl px-4 py-2 text-sm text-muted hover:text-ink">{t("Cancel")}</button>
+          </div>
+        </form>
+      )}
     </div>
   )
 }

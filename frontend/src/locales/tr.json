@@ -1354,5 +1354,13 @@
  "Last 14 days": "Son 14 gün",
  "Ball & keeper": "Top ve kaleci",
  "{0} also have the upper hand in this matchup: they won {1} of the last {2} meetings.": "{0} bu eşleşmede de üstün: son {2} karşılaşmanın {1} tanesini kazandılar.",
- "{0} won {1} of the last {2} meetings, but our numbers still favour {3}: in basketball past meetings say little once current form, rest and the rosters are known.": "{0} son {2} karşılaşmanın {1} tanesini kazandı, ama rakamlarımız yine de {3} tarafını gösteriyor: basketbolda güncel form, dinlenme ve kadrolar bilindiğinde geçmiş maçlar pek bir şey söylemez."
+ "{0} won {1} of the last {2} meetings, but our numbers still favour {3}: in basketball past meetings say little once current form, rest and the rosters are known.": "{0} son {2} karşılaşmanın {1} tanesini kazandı, ama rakamlarımız yine de {3} tarafını gösteriyor: basketbolda güncel form, dinlenme ve kadrolar bilindiğinde geçmiş maçlar pek bir şey söylemez.",
+ "Your data": "Verileriniz",
+ "Download a copy of everything we store about your account, or delete the account and all of it.": "Hesabınız hakkında sakladığımız her şeyin bir kopyasını indirin ya da hesabı tüm verileriyle silin.",
+ "Download my data": "Verilerimi indir",
+ "Delete my account": "Hesabımı sil",
+ "This deletes your account, favorites and unlocked matches for good. It cannot be undone. Paid plans are not refunded automatically: write to us first if you want a refund.": "Bu işlem hesabınızı, favorilerinizi ve açtığınız maçları kalıcı olarak siler. Geri alınamaz. Ücretli planlar otomatik olarak iade edilmez: iade istiyorsanız önce bize yazın.",
+ "Type DELETE to confirm": "Onaylamak için DELETE yazın",
+ "Deleting…": "Siliniyor…",
+ "Cancel": "İptal"
 }
