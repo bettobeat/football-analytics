@@ -162,25 +162,29 @@ export function CompareCard({ g, home, away, table, form }: {
   if (rows.length < 3) return null
   return (
     <Card title={t('Team comparison')} action={<span className="text-xs text-faint">{home.season}</span>}>
-      <div className="grid grid-cols-[1fr_auto_1fr] gap-x-3 items-center mb-3">
-        <span className="flex items-center gap-2 min-w-0"><TeamLogo team={g.home} size={20} /><span className="truncate text-sm font-bold text-ink">{g.home.name}</span></span>
-        <span />
-        <span className="flex items-center justify-end gap-2 min-w-0"><span className="truncate text-sm font-bold text-ink text-right">{g.away.name}</span><TeamLogo team={g.away} size={20} /></span>
+      <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-3 mb-4">
+        {(['H', 'A'] as const).map((sd, i) => {
+          const team = sd === 'H' ? g.home : g.away
+          const f = form ? (sd === 'H' ? form.home : form.away) : []
+          return (
+            <div key={sd} className={`flex flex-col sm:flex-row items-center gap-2 sm:gap-3 min-w-0 text-center ${i === 1 ? 'order-3 sm:flex-row-reverse sm:text-right' : 'sm:text-left'}`}>
+              <span className="w-11 h-11 rounded-2xl bg-surface2/80 border border-line/60 grid place-items-center shrink-0"><TeamLogo team={team} size={28} /></span>
+              <span className="min-w-0 max-w-full">
+                <span className="block text-sm font-bold text-ink leading-tight line-clamp-2">{team.name}</span>
+                {f.length > 0 && <span className={`mt-1 flex justify-center ${i === 1 ? 'sm:justify-end' : 'sm:justify-start'}`}><FormDots f={f} /></span>}
+              </span>
+            </div>
+          )
+        })}
+        <span className="order-2 self-center text-[10px] font-extrabold tracking-widest text-faint">VS</span>
       </div>
-      {form && (form.home.length > 0 || form.away.length > 0) && (
-        <div className="grid grid-cols-[1fr_auto_1fr] gap-x-3 items-center mb-3">
-          <FormDots f={form.home} />
-          <span className="text-[11px] text-faint text-center w-40">{t('Form')}</span>
-          <div className="flex justify-end"><FormDots f={form.away} /></div>
-        </div>
-      )}
       <ul className="divide-y divide-line/40">
         {rows.map(r => {
           const better = r.hv === undefined || r.av === undefined || r.hv === r.av ? 0 : (r.hv > r.av) !== !!r.lower ? -1 : 1
           return (
             <li key={r.label} className="grid grid-cols-[1fr_auto_1fr] gap-x-3 items-center py-2 text-sm">
               <span className={`num ${better === -1 ? 'text-ink font-bold' : 'text-muted'}`}>{r.h}</span>
-              <span className="text-[11px] text-faint text-center w-40">{r.label}</span>
+              <span className="text-[11px] leading-tight text-faint text-center w-28 sm:w-40">{r.label}</span>
               <span className={`num text-right ${better === 1 ? 'text-ink font-bold' : 'text-muted'}`}>{r.a}</span>
             </li>
           )
@@ -192,7 +196,7 @@ export function CompareCard({ g, home, away, table, form }: {
 }
 
 function FormDots({ f }: { f: ('W' | 'L')[] }) {
-  return <div className="flex gap-1">{f.map((r, i) => <span key={i} className={`w-5 h-5 rounded text-[10px] font-bold grid place-items-center ${r === 'W' ? 'bg-win text-bg' : 'bg-loss text-bg'}`}>{r === 'W' ? t('W') : t('L')}</span>)}</div>
+  return <div className="flex gap-[3px] sm:gap-1">{f.map((r, i) => <span key={i} className={`w-4 h-4 sm:w-5 sm:h-5 rounded text-[9px] sm:text-[10px] font-bold grid place-items-center ${r === 'W' ? 'bg-win text-bg' : 'bg-loss text-bg'}`}>{r === 'W' ? t('W') : t('L')}</span>)}</div>
 }
 
 /** Each team's key players (season averages): the top scorer up front, then everyone with a points bar; injury flags; links to the player pages. */
