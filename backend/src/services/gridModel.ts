@@ -128,13 +128,13 @@ export const CONV = {
   halfLifeProd: 120, // days, production/form rows
   halfLifeLong: 365, // days, home record / h2h
   useLeagueConv: 1, // 1 = apply the per-league settings (v3_league_conv, fitted by tuneLeaguesV3)
-  poisBlend: 0, // share of the expected-goals (Poisson) 1X2 mixed into the final split (0 = off), see scoreMatch
+  poisBlend: 0.25, // Oct 2026: 0.25 tested neutral-to-better on 2025-26 / 2026-27; share of the expected-goals (Poisson) 1X2 mixed into the final split (0 = off), see scoreMatch
   poisBlendMode: 0, // 0 = blend H/D/A, 1 = keep the draw, blend only the home/away split
-  guardPts: 0, // common-sense guard: min. last-10 points gap (with the rows agreeing) before the weaker side can't be favourite; 0 = off
+  guardPts: 8, // Oct 2026 on (with ppg + H2H): same record on 2025-26, slightly better on 2026-27; common-sense guard: min. last-10 points gap (with the rows agreeing) before the weaker side can't be favourite; 0 = off
   guardMargin: 20, // how far (in 1000-points) the better side is put ahead when the guard fires
-  guardUsePpg: 0, // 1 = the guard also looks at this season's points per game (whichever gap is larger)
-  guardH2H: 0, // the guard also fires on a one-sided head-to-head: share of points ≤ this (e.g. 0.2) over ≥ 5 meetings; 0 = off
-  h2hArchive: 0, // 1 = the head-to-head row also uses older seasons (h2h_archive), not only the model's 3 seasons
+  guardUsePpg: 1, // 1 = the guard also looks at this season's points per game (whichever gap is larger)
+  guardH2H: 0.2, // the guard also fires on a one-sided head-to-head: share of points ≤ this (e.g. 0.2) over ≥ 5 meetings; 0 = off
+  h2hArchive: 1, // 1 = the head-to-head row also uses older seasons (h2h_archive), not only the model's 3 seasons
   h2hYears: 10 // oldest meeting counted from the archive, in years (0 = no limit)
 };
 
