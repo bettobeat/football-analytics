@@ -387,7 +387,7 @@ function MatchDetail() {
       // Only take the live fields — the slim live payload has no lineups/stats/events
       setDetails(prev =>
         prev
-          ? { ...prev, match: { ...prev.match, status: m.status, minute: m.minute, injuryTime: m.injuryTime, score: m.score } }
+          ? withLiveChance({ ...prev, match: { ...prev.match, status: m.status, minute: m.minute, injuryTime: m.injuryTime, score: m.score } }, (m as Match & { prediction?: Prediction | null }).prediction?.live)
           : prev
       )
     }
@@ -765,6 +765,8 @@ function MatchDetail() {
                       <div className={`rounded-full bg-away ${pick === 'A' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.away}% - 3px)` }} />
                     </div>
 
+                    {p.live && LIVE.has(m.status) && <LiveChance p={p} home={home} away={away} paused={m.status === 'PAUSED'} />}
+
                     {['SCHEDULED', 'TIMED'].includes(m.status) && (
                       <LineupTip kickoff={kickoff} lineupsOut={hasLineups} usesLineups={p.model === 'grid-v3'} />
                     )}
@@ -1032,6 +1034,63 @@ function MatchDetail() {
 /* ---------- pieces ---------- */
 
 /** Lineups are in: the earlier numbers, and a button to reveal the analysis updated with the confirmed XI. */
+/** Socket update: the new live win chance goes on the main prediction and on the same model in the list. */
+function withLiveChance(d: Details, live: Prediction['live']): Details {
+  if (!live) return d
+  const model = d.prediction?.model
+  return {
+    ...d,
+    prediction: d.prediction ? { ...d.prediction, live } : d.prediction,
+    predictions: d.predictions?.map(x => (x.model === model ? { ...x, live } : x))
+  }
+}
+
+/** While the match is played: win chance now vs before kick-off. */
+function LiveChance({ p, home, away, paused }: { p: Prediction; home: Team; away: Team; paused: boolean }) {
+  const l = p.live!
+  const cap = (v: number) => Math.min(99, Math.max(1, Math.round(v)))
+  const rows = [
+    { k: 'H' as const, label: home.shortName || home.name, now: l.home, before: p.home, bar: 'bg-home' },
+    { k: 'D' as const, label: tt("Draw"), now: l.draw, before: p.draw, bar: 'bg-draw' },
+    { k: 'A' as const, label: away.shortName || away.name, now: l.away, before: p.away, bar: 'bg-away' }
+  ]
+  const top = [...rows].sort((a, b) => b.now - a.now)[0]
+  return (
+    <div className="mt-4 rounded-2xl border border-live/40 bg-live/[0.06] p-3 sm:p-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="inline-block w-2 h-2 rounded-full bg-live animate-pulseDot" aria-hidden />
+          <span className="text-sm font-bold text-ink">{tt("Live win chance")}</span>
+        </div>
+        <span className="num text-xs font-semibold text-live">
+          {paused ? tt("HT") : `${Math.min(90, l.minute)}'${l.minute > 90 ? '+' : ''}`} · {l.score[0]}-{l.score[1]}
+        </span>
+      </div>
+      <div className="grid grid-cols-3 gap-2 mt-3">
+        {rows.map(r => {
+          const diff = Math.round(r.now) - Math.round(r.before)
+          return (
+            <div key={r.k} className={`rounded-xl px-2 py-2 text-center ${r.k === top.k ? 'bg-surface border border-line' : ''}`}>
+              <div className="text-[11px] text-muted truncate">{r.label}</div>
+              <div className="num text-xl sm:text-2xl font-extrabold text-ink">{cap(r.now)}%</div>
+              <div className={`num text-[11px] font-semibold ${diff > 0 ? 'text-win' : diff < 0 ? 'text-loss' : 'text-faint'}`}>
+                {diff > 0 ? '▲' : diff < 0 ? '▼' : '='} {Math.abs(diff)} <span className="text-faint font-normal">· {tt("was {0}%", { 0: Math.round(r.before) })}</span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <div className="flex h-2 gap-[3px] mt-3" aria-hidden>
+        {rows.map(r => <div key={r.k} className={`rounded-full ${r.bar} transition-all duration-700`} style={{ width: `calc(${Math.max(1, r.now)}% - 3px)` }} />)}
+      </div>
+      <p className="text-[11px] text-faint mt-2">
+        {tt("Updated every minute from our pre-match prediction, the score, the time left and red cards.")}
+        {(l.reds[0] > 0 || l.reds[1] > 0) && ` ${tt("Red cards: {0} – {1}.", { 0: l.reds[0], 1: l.reds[1] })}`}
+      </p>
+    </div>
+  )
+}
+
 function LineupUpdateCover({ before, home, away, onReveal }: { before: NonNullable<Prediction['beforeLineups']>; home: Team; away: Team; onReveal: () => void }) {
   const hn = home.shortName || home.name, an = away.shortName || away.name
   return (

@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import { withLive } from './liveChance';
 import { cachedPredictions, clearPredictionCache, mainPrediction } from './predCache';
 import { timed, setJob, yieldLoop } from './perf';
 import { freezePredictions } from './tracking';
@@ -353,7 +354,7 @@ class FootballDataAPI {
   withPredictions<T extends { id: number }>(matches: T[]): (T & { prediction: Prediction | null; predictions: Prediction[] })[] {
     return withMarket(matches).map(m => {
       const predictions = this.allPredictionsFor(m);
-      return { ...m, prediction: mainPrediction(predictions), predictions };
+      return withLive({ ...m, prediction: mainPrediction(predictions), predictions });
     });
   }
 

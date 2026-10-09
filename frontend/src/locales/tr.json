@@ -1411,5 +1411,9 @@
  "I am 18 or older and I accept the": "18 yaşında veya daha büyüğüm ve şunları kabul ediyorum:",
  "and the": "ve",
  "Show": "Göster",
- "Hide": "Gizle"
+ "Hide": "Gizle",
+ "Live win chance": "Canlı kazanma şansı",
+ "was {0}%": "önce %{0}",
+ "Updated every minute from our pre-match prediction, the score, the time left and red cards.": "Maç öncesi tahminimiz, skor, kalan süre ve kırmızı kartlarla her dakika güncellenir.",
+ "Red cards: {0} – {1}.": "Kırmızı kartlar: {0} – {1}."
 }

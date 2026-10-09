@@ -7,6 +7,7 @@
  * Budget (Pro 7,500/day): fixture window every 30 min (~15 leagues), live scores every 60 s only while one of
  * these matches is in play, match details / tables / scorers / odds on demand with caching.
  */
+import { withLive } from './liveChance';
 import { cachedPredictions, mainPrediction } from './predCache';
 import { isTrialCompetition } from './trial';
 import logger from '../utils/logger';
@@ -628,7 +629,7 @@ function computeAfPredictions(m: any): Prediction[] {
 export function afWithPredictions(matches: any[]) {
   return matches.map(m => {
     const predictions = afPredictions(m);
-    return { ...m, prediction: mainPrediction(predictions), predictions };
+    return withLive({ ...m, prediction: mainPrediction(predictions), predictions });
   });
 }
 

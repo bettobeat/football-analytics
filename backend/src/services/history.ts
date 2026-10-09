@@ -621,3 +621,47 @@ export function h2hArchiveFor(group: string): Map<string, HistoryMatch[]> {
 export function h2hArchiveStatus() {
   return db.prepare(`SELECT division, COUNT(*) AS rows, MIN(date) AS first, MAX(date) AS last FROM h2h_archive GROUP BY division ORDER BY division`).all();
 }
+
+/* ---------------- Half-time scores (Oct 2026) ---------------- */
+// For testing the live win chance: the half-time score of every match in the model's 3 seasons (HTHG / HTAG in the
+// football-data.co.uk files; the new-format leagues have none). Kept apart from history_matches so nothing re-downloads.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS ht_scores (
+    division TEXT NOT NULL, date TEXT NOT NULL, home TEXT NOT NULL, away TEXT NOT NULL,
+    ht_hg INTEGER NOT NULL, ht_ag INTEGER NOT NULL, PRIMARY KEY (division, date, home, away)
+  );
+`);
+const insertHt = db.prepare(`INSERT OR REPLACE INTO ht_scores (division, date, home, away, ht_hg, ht_ag) VALUES (?, ?, ?, ?, ?, ?)`);
+
+export async function syncHalfTimes() {
+  const seasons = seasonCodes(3);
+  const summary: { division: string; season: string; rows: number; error?: string }[] = [];
+  for (const cfg of Object.values(GROUPS)) {
+    for (const division of cfg.divisions) {
+      if (NEW_FORMAT_DIVS.has(division)) continue;
+      for (const season of seasons) {
+        try {
+          const rows = parseCSV(await fetchCSV(division, season));
+          let n = 0;
+          db.exec('BEGIN');
+          try {
+            for (const r of rows) {
+              const date = parseDate(r.Date);
+              const home = r.HomeTeam || r.Home, away = r.AwayTeam || r.Away;
+              const hh = parseInt(r.HTHG, 10), ha = parseInt(r.HTAG, 10);
+              if (!date || !home || !away || Number.isNaN(hh) || Number.isNaN(ha)) continue;
+              insertHt.run(division, date, home, away, hh, ha);
+              n++;
+            }
+            db.exec('COMMIT');
+          } catch (e) { db.exec('ROLLBACK'); throw e; }
+          summary.push({ division, season, rows: n });
+        } catch (e: any) {
+          summary.push({ division, season, rows: 0, error: e.message });
+        }
+      }
+    }
+  }
+  const total = (db.prepare(`SELECT COUNT(*) AS c FROM ht_scores`).get() as any).c;
+  return { total, seasons, errors: summary.filter(s => s.error).length, summary };
+}

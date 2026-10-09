@@ -21,7 +21,8 @@ console.log('API Key:', process.env.FOOTBALL_DATA_API_KEY ? '✅ SET' : '❌ NOT
 // Import after env is loaded
 import footballDataAPI from './services/footballDataAPI';
 import { recordPredictions, settlePending, accuracy, recentSettled, trackingStatus, computeMetrics, publicRecord } from './services/tracking';
-import { historyStatus, teamMapStatus, GROUPS, syncAll, syncH2HArchive, h2hArchiveStatus } from './services/history';
+import { historyStatus, teamMapStatus, GROUPS, syncAll, syncH2HArchive, h2hArchiveStatus, syncHalfTimes } from './services/history';
+import { withLive, liveHalfTimeTest } from './services/liveChance';
 import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestRows, backtestRunsList } from './services/historyModel';
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
 import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler, squadCompetitions } from './services/squadValues';
@@ -695,6 +696,12 @@ app.get('/api/matches/:id(\\d+)/details', async (req, res) => {
         logger.warn('Live extras failed', { id, message: e.message });
       }
     }
+    // live win chance on the match page (uses the red cards and minute filled in above)
+    if (details?.match && details.prediction) {
+      const lv = withLive({ ...details.match, prediction: details.prediction, predictions: details.predictions });
+      details.prediction = lv.prediction;
+      details.predictions = lv.predictions;
+    }
     res.json({ data: details, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Failed to fetch match details');
@@ -843,6 +850,19 @@ app.get('/api/player-page/:id(\\d+)', async (req, res) => {
     res.json({ data: await playerPage(parseInt(req.params.id, 10), isPaid(req.access || 'anon')), timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Player page failed');
+  }
+});
+
+// Admin: live win chance tested at half-time. ?sync=1 first downloads the half-time scores (football-data.co.uk);
+// ?tune=1 adds a grid over late / lead / corrPow; ?late=&lead=&corrPow= try other values (nothing is changed live)
+app.get('/api/backtest/live-ht', async (req, res) => {
+  try {
+    const sync = req.query.sync === '1' ? await syncHalfTimes() : undefined;
+    const conf: Record<string, number> = {};
+    for (const k of ['late', 'lead', 'corrPow', 'minRem']) { const v = Number(req.query[k]); if (req.query[k] !== undefined && Number.isFinite(v)) conf[k] = v; }
+    res.json({ data: { sync: sync && { total: sync.total, errors: sync.errors }, ...liveHalfTimeTest(conf, req.query.tune === '1') }, timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Live half-time test failed');
   }
 });
 

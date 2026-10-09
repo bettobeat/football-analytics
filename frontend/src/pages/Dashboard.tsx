@@ -666,6 +666,16 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
             </div>
           )
         })}
+        {isLive && p?.live && !covered && (() => {
+          const l = p.live
+          const k: Pick = l.home >= l.draw && l.home >= l.away ? 'H' : l.away >= l.draw ? 'A' : 'D'
+          const v = Math.min(99, Math.round(k === 'H' ? l.home : k === 'D' ? l.draw : l.away))
+          return (
+            <div className="text-[10px] text-live font-semibold truncate">
+              {tt("Now")}: {k === 'D' ? tt("Draw") : name(k === 'H' ? match.homeTeam : match.awayTeam)} <span className="num">{v}%</span>
+            </div>
+          )
+        })()}
         {extras && (
           <div className={`lg:hidden flex gap-3 text-[10px] text-muted ${roll ? 'pop-in' : ''}`} style={roll ? { animationDelay: '420ms' } : undefined}>
             {extras.map(x => (

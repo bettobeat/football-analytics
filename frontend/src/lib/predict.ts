@@ -28,6 +28,8 @@ export interface Prediction {
   }
   /** Grid model (v3) breakdown — absent on v1/v2 */
   drawStreak?: { home: number; away: number }
+  /** Match being played: win chance now, from the pre-match prediction + score, minute and red cards */
+  live?: { home: number; draw: number; away: number; minute: number; score: [number, number]; reds: [number, number] }
   /** Started / finished match: the prediction saved before kick-off (full = with its breakdown) */
   frozen?: { at: string | null; full: boolean }
   grid?: {

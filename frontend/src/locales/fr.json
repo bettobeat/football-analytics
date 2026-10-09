@@ -1411,5 +1411,9 @@
  "I am 18 or older and I accept the": "J'ai 18 ans ou plus et j'accepte les",
  "and the": "et la",
  "Show": "Afficher",
- "Hide": "Masquer"
+ "Hide": "Masquer",
+ "Live win chance": "Chances en direct",
+ "was {0}%": "avant {0}%",
+ "Updated every minute from our pre-match prediction, the score, the time left and red cards.": "Mis à jour chaque minute à partir de notre prédiction d'avant-match, du score, du temps restant et des cartons rouges.",
+ "Red cards: {0} – {1}.": "Cartons rouges : {0} – {1}."
 }
