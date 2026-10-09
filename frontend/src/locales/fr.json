@@ -1378,5 +1378,16 @@
  "Keep my plan": "Garder ma formule",
  "Cancel subscription": "Résilier l’abonnement",
  "Your plan stays active until {0}. After that it will not renew.": "Votre formule reste active jusqu’au {0}. Ensuite, elle ne sera pas renouvelée.",
- "Your plan will not renew.": "Votre formule ne sera pas renouvelée."
+ "Your plan will not renew.": "Votre formule ne sera pas renouvelée.",
+ "Know what is likely before kick-off, and why.": "Sachez ce qui est probable avant le coup d’envoi, et pourquoi.",
+ "Every match": "Chaque match",
+ "Win, draw and loss chances, goals and the reasons behind each pick.": "Chances de victoire, nul et défaite, buts et les raisons de chaque pronostic.",
+ "Checked in public": "Vérifié en public",
+ "Every prediction is saved before kick-off and scored after the game.": "Chaque pronostic est enregistré avant le match et évalué après.",
+ "Free to start": "Gratuit pour commencer",
+ "2 full picks every week. No card needed.": "2 pronostics complets par semaine. Sans carte bancaire.",
+ "of our picks were right": "de nos pronostics étaient justes",
+ "last {0} days · {1} matches": "{0} derniers jours · {1} matchs",
+ "when we were 60%+ sure": "quand nous étions sûrs à 60 %+",
+ "{0} picks": "{0} pronostics"
 }

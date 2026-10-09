@@ -306,30 +306,50 @@ export default function Home() {
     <div className="space-y-10 min-w-0">
       {/* ---------- first visit: what this is and why trust it, in five seconds (signed-out visitors only) ---------- */}
       {access === 'anon' && (
-        <section className="rounded-3xl border border-accent/30 bg-[linear-gradient(135deg,rgb(var(--accent)/0.10),rgb(var(--surface)/0.6)_60%)] p-5 sm:p-7 flex flex-col lg:flex-row lg:items-center gap-5">
-          <div className="flex-1 min-w-0 space-y-2">
-            <h1 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-ink">{tt("Football predictions, tested in public")}</h1>
-            <p className="text-sm sm:text-base text-muted max-w-2xl">
-              {tt("Win, draw or loss chances, goals and the reasons behind every pick, for the top leagues, cups and national teams. Every prediction is saved before kick-off and scored after the game, so you can check us.")}</p>
+        <section className="rounded-3xl border border-accent/30 bg-[linear-gradient(135deg,rgb(var(--accent)/0.10),rgb(var(--surface)/0.6)_60%)] p-5 sm:p-7 grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+          <div className="min-w-0 space-y-4">
+            <div className="space-y-2">
+              <h1 className="font-display text-2xl sm:text-4xl font-extrabold tracking-tight text-ink leading-tight">{tt("Football predictions, tested in public")}</h1>
+              <p className="text-sm sm:text-base text-muted max-w-2xl">{tt("Know what is likely before kick-off, and why.")}</p>
+            </div>
+            <ul className="grid gap-2.5 sm:grid-cols-3 max-w-3xl">
+              {[
+                [tt("Every match"), tt("Win, draw and loss chances, goals and the reasons behind each pick.")],
+                [tt("Checked in public"), tt("Every prediction is saved before kick-off and scored after the game.")],
+                [tt("Free to start"), tt("2 full picks every week. No card needed.")]
+              ].map(([h, d]) => (
+                <li key={h} className="flex gap-2.5 rounded-2xl bg-surface/60 border border-line/60 px-3.5 py-3">
+                  <span className="mt-0.5 w-5 h-5 rounded-full bg-accent text-bg grid place-items-center shrink-0" aria-hidden>
+                    <svg viewBox="0 0 24 24" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-bold text-ink">{h}</span>
+                    <span className="block text-xs text-muted leading-snug mt-0.5">{d}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Link to="/signup" className="h-11 px-6 rounded-2xl bg-accent text-bg font-extrabold grid place-items-center">{tt("Get 2 free picks a week")}</Link>
+              <Link to="/accuracy" className="h-11 px-5 rounded-2xl border border-line text-ink font-semibold grid place-items-center hover:border-faint">{tt("See our record")}</Link>
+            </div>
           </div>
           {summary?.v3?.hitRate != null && (
-            <div className="flex gap-3">
-              <div className="rounded-2xl bg-surface/70 border border-line px-4 py-3 text-center">
-                <div className="font-display text-2xl font-extrabold text-accent num">{summary.v3.hitRate}%</div>
-                <div className="text-[11px] text-muted">{tt("our picks right")}</div>
+            <div className="grid grid-cols-2 lg:grid-cols-1 gap-3 lg:w-56">
+              <div className="rounded-2xl bg-surface/70 border border-line px-4 py-3">
+                <div className="font-display text-3xl font-extrabold text-accent num leading-none">{summary.v3.hitRate}%</div>
+                <div className="text-xs text-ink font-semibold mt-1.5">{tt("of our picks were right")}</div>
+                <div className="text-[11px] text-faint">{tt("last {0} days · {1} matches", { 0: summary.days, 1: summary.v3.games })}</div>
               </div>
               {summary.v3.strong60?.hitRate != null && (
-                <div className="rounded-2xl bg-surface/70 border border-line px-4 py-3 text-center">
-                  <div className="font-display text-2xl font-extrabold text-ink num">{summary.v3.strong60.hitRate}%</div>
-                  <div className="text-[11px] text-muted">{tt("strong picks right")}</div>
+                <div className="rounded-2xl bg-surface/70 border border-line px-4 py-3">
+                  <div className="font-display text-3xl font-extrabold text-ink num leading-none">{summary.v3.strong60.hitRate}%</div>
+                  <div className="text-xs text-ink font-semibold mt-1.5">{tt("when we were 60%+ sure")}</div>
+                  <div className="text-[11px] text-faint">{tt("{0} picks", { 0: summary.v3.strong60.n })}</div>
                 </div>
               )}
             </div>
           )}
-          <div className="flex flex-col sm:flex-row lg:flex-col gap-2 lg:w-52">
-            <Link to="/signup" className="h-11 px-5 rounded-2xl bg-accent text-bg font-extrabold grid place-items-center">{tt("Get 2 free picks a week")}</Link>
-            <Link to="/accuracy" className="h-11 px-5 rounded-2xl border border-line text-ink font-semibold grid place-items-center hover:border-faint">{tt("See our record")}</Link>
-          </div>
         </section>
       )}
 

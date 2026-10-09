@@ -1378,5 +1378,16 @@
  "Keep my plan": "Planımı koru",
  "Cancel subscription": "Aboneliği iptal et",
  "Your plan stays active until {0}. After that it will not renew.": "Planınız {0} tarihine kadar aktif. Sonrasında yenilenmeyecek.",
- "Your plan will not renew.": "Planınız yenilenmeyecek."
+ "Your plan will not renew.": "Planınız yenilenmeyecek.",
+ "Know what is likely before kick-off, and why.": "Başlama düdüğünden önce neyin olası olduğunu ve nedenini bilin.",
+ "Every match": "Her maç",
+ "Win, draw and loss chances, goals and the reasons behind each pick.": "Galibiyet, beraberlik ve mağlubiyet olasılıkları, goller ve her tahminin nedenleri.",
+ "Checked in public": "Herkese açık kontrol",
+ "Every prediction is saved before kick-off and scored after the game.": "Her tahmin maçtan önce kaydedilir ve maçtan sonra değerlendirilir.",
+ "Free to start": "Ücretsiz başlayın",
+ "2 full picks every week. No card needed.": "Her hafta 2 tam tahmin. Kart gerekmez.",
+ "of our picks were right": "tahminimiz doğru çıktı",
+ "last {0} days · {1} matches": "son {0} gün · {1} maç",
+ "when we were 60%+ sure": "%60+ emin olduğumuzda",
+ "{0} picks": "{0} tahmin"
 }
