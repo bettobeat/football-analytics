@@ -377,12 +377,14 @@ export function buildLeague(code: string): LeagueModel | null {
   const w2 = L2 ? V3.w2 : 0;
   void tuneGames;
   const tune = emptyM(), test = emptyM(), t1 = emptyM(), t2 = emptyM();
+  const wf: [number, number, number][] = [];
   const bySeason = new Map<string, Metrics>();
   for (const g of games) {
     if (!fin2(g) || isPreseason(g) || !p1.has(g.game_id)) continue;
     const b = blend(p1.get(g.game_id)!, p2.get(g.game_id), w2);
     const tg = talentState.byGame.get(g.game_id);
     const pr = { ...b, pHome: finalP(b.pHome, tg ? talentShift(tg[0], tg[1]) : 0) };
+    wf.push([g.game_id, Math.round(pr.pHome * 10000) / 10000, Math.round(pr.margin * 10) / 10]);
     if (g.season === tuneSeason) addM(tune, pr, g);
     if (testSeasons.includes(g.season)) {
       addM(test, pr, g);
@@ -399,7 +401,14 @@ export function buildLeague(code: string): LeagueModel | null {
     builtAt: new Date().toISOString()
   };
   models.set(code, model);
+  wfByCode.set(code, wf);
   return model;
+}
+
+/** Research export (admin): the walk-forward bb-v3 prediction of every finished game (as it was before tip-off). */
+const wfByCode = new Map<string, [number, number, number][]>();
+export function bbWalkForward(code: string) {
+  return { code, cols: ['id', 'pHome', 'margin'], rows: wfByCode.get(code) || [] };
 }
 
 /** Admin research export: every game of a league in compact rows, with box-score possessions. */
