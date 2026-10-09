@@ -15,7 +15,9 @@
  */
 import { db } from '../db';
 
-export const LIVE_CONF = { late: 0.25, lead: 0.08, redOwn: 0.67, redOpp: 1.3, minRem: 0.012, corrPow: 1 };
+// late 0.6 / corrPow 0.5: half-time test, fit on 2024-26, better on 2026-27 too (0.8277 → 0.8259); 44.2% of goals before
+// half-time, real share 44.7%
+export const LIVE_CONF = { late: 0.6, lead: 0.08, redOwn: 0.67, redOpp: 1.3, minRem: 0.012, corrPow: 0.5 };
 export type LiveConf = typeof LIVE_CONF;
 
 export interface LiveState { minute: number; scoreH: number; scoreA: number; redH?: number; redA?: number }
