@@ -5,6 +5,8 @@ import { API_URL } from '../lib/socket'
 import { errorText, useAuth } from '../lib/auth'
 import AccuracyDetailed from './Accuracy'
 import { t, LOCALE } from '../lib/i18n'
+import { Flag } from '../components/LeagueSidebar'
+import { footballCountry, leagueShortName } from '../lib/leagueCountry'
 
 /**
  * The public record: three numbers, every game our model predicted before kick-off.
@@ -40,7 +42,8 @@ interface Record_ {
   doubleChance?: { n: number; v3: number | null; v3Hits: number }
   over15?: { n: number; hitRate: number | null; hits: number; overShare: number | null }
   safest?: { n: number; hitRate: number | null; hits: number; byMarket: { market: string; n: number; hitRate: number | null }[] }
-  byCompetition: { code: string; name: string; n: number; v3: number | null }[]
+  byCompetition: { code: string; name: string; n: number; v3: number | null; btts?: number | null; over25?: number | null }[]
+  calibration?: { lo: number; hi: number; n: number; said: number; happened: number | null }[]
   byConfidence?: { id: string; label: string; n: number; hitRate: number | null; said: number | null }[]
   recent: Recent[]
 }
@@ -201,58 +204,83 @@ export default function AccuracySimple() {
             </Card>
           </div>
 
-          {rec.byConfidence && rec.byConfidence.some(b => b.n > 0) && (
+          {((rec.calibration && rec.calibration.some(b => b.n >= 10)) || (rec.byConfidence && rec.byConfidence.some(b => b.n > 0))) && (
             <Card>
-              <h2 className="font-display text-xl font-bold text-ink">{t("How sure we were, and how often we were right")}</h2>
-              <p className="text-sm text-muted mt-1 mb-4">
-                {t("Every match result pick, grouped by the chance we gave it. When our numbers are honest, the games we call at 70% should come in about 7 times in 10.")}</p>
-              <div className="space-y-3">
-                {rec.byConfidence.filter(b => b.n > 0).map(b => (
-                  <div key={b.id} className="grid grid-cols-[110px_1fr_auto] sm:grid-cols-[140px_1fr_auto] items-center gap-3">
-                    <div>
-                      <div className="text-sm font-semibold text-ink">{t("We said")}{' '}{b.label}</div>
-                      <div className="text-[11px] text-faint num">{b.n} {t("games · average")}{' '}{b.said}%</div>
+              <h2 className="font-display text-xl font-bold text-ink">{t("When we say 70%, does it happen 70% of the time?")}</h2>
+              <p className="text-sm text-muted mt-1 mb-5 max-w-3xl">
+                {t("Every chance we gave, for every result of every match (home win, draw and away win), grouped by the number we said. If our numbers are honest, the dots sit on the dashed line.")}</p>
+              <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_1fr] items-start">
+                {rec.calibration && <CalibrationChart bins={rec.calibration.filter(b => b.n >= 10)} />}
+                {rec.byConfidence && rec.byConfidence.some(b => b.n > 0) && (
+                  <div>
+                    <div className="label pb-2">{t("Our picks, by how sure we were")}</div>
+                    <div className="space-y-3">
+                      {rec.byConfidence.filter(b => b.n > 0).map(b => (
+                        <div key={b.id} className="grid grid-cols-[110px_1fr_auto] sm:grid-cols-[140px_1fr_auto] items-center gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-ink">{t("We said")}{' '}{b.label}</div>
+                            <div className="text-[11px] text-faint num">{b.n} {t("games · average")}{' '}{b.said}%</div>
+                          </div>
+                          <div className="relative h-3 rounded-full bg-surface2 overflow-hidden">
+                            <div className="h-full rounded-full bg-accent" style={{ width: `${Math.min(100, b.hitRate ?? 0)}%` }} />
+                            {b.said !== null && <div className="absolute top-[-2px] bottom-[-2px] w-0.5 bg-ink/70" style={{ left: `${b.said}%` }} title={t("We said {0}%", { 0: b.said })} />}
+                          </div>
+                          <div className="text-right min-w-[92px]">
+                            <div className="num text-sm font-extrabold text-ink">{pct(b.hitRate)} {t("right")}</div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <div className="relative h-3 rounded-full bg-surface2 overflow-hidden">
-                      <div className="h-full rounded-full bg-accent" style={{ width: `${Math.min(100, b.hitRate ?? 0)}%` }} />
-                      {b.said !== null && <div className="absolute top-[-2px] bottom-[-2px] w-0.5 bg-ink/70" style={{ left: `${b.said}%` }} title={t("We said {0}%", { 0: b.said })} />}
-                    </div>
-                    <div className="text-right min-w-[92px]">
-                      <div className="num text-sm font-extrabold text-ink">{pct(b.hitRate)} {t("right")}</div>
-                    </div>
+                    <p className="text-[11px] text-faint mt-3">{t("The thin line on each bar is the chance we gave; the bar is how often it happened.")}</p>
                   </div>
-                ))}
+                )}
               </div>
-              <p className="text-[11px] text-faint mt-3">{t("The thin line on each bar is the chance we gave; the bar is how often it happened.")}</p>
             </Card>
           )}
 
           {rec.byCompetition.length > 0 && (
             <Card>
-              <h2 className="font-display text-xl font-bold text-ink mb-3">{t("Match result by competition")}</h2>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[360px]">
+              <h2 className="font-display text-xl font-bold text-ink">{t("Our record by competition")}</h2>
+              <p className="text-sm text-muted mt-1 mb-4">{t("How often each call was right, league by league, in the period you picked.")}</p>
+              <div className="overflow-x-auto -mx-1">
+                <table className="w-full text-sm min-w-[520px]">
                   <thead>
-                    <tr className="text-xs text-faint">
-                      <th className="text-left font-medium py-2">{t("Competition")}</th>
-                      <th className="text-right font-medium py-2">{t("Games")}</th>
-                      <th className="text-right font-medium py-2">{t("Right")}</th>
+                    <tr className="text-[10px] uppercase tracking-wide text-faint">
+                      <th className="text-left font-semibold py-2 px-1">{t("Competition")}</th>
+                      <th className="text-right font-semibold py-2 px-1 w-14">{t("Games")}</th>
+                      <th className="text-left font-semibold py-2 px-2 w-44">{t("Match result")}</th>
+                      <th className="text-right font-semibold py-2 px-1 w-16">{t("BTTS")}</th>
+                      <th className="text-right font-semibold py-2 px-1 w-20">{t("Goals 2.5")}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {rec.byCompetition.map(c => (
-                      <tr key={c.code || c.name} className="border-t border-line/50">
-                        <td className="py-2">
-                          {c.code ? <Link to={`/league/${c.code}`} className="text-ink hover:text-accent">{c.name}</Link> : <span className="text-ink">{c.name}</span>}
-                        </td>
-                        <td className="py-2 text-right num text-muted">{c.n}</td>
-                        <td className="py-2 text-right num font-bold text-accent">{pct(c.v3)}</td>
-                      </tr>
-                    ))}
+                    {rec.byCompetition.map(c => {
+                      const few = c.n < 20
+                      return (
+                        <tr key={c.code || c.name} className="border-t border-line/50">
+                          <td className="py-2 px-1">
+                            <span className="flex items-center gap-2 min-w-0">
+                              <Flag code={footballCountry({ code: c.code, name: c.name })} size={16} />
+                              {c.code ? <Link to={`/league/${c.code}`} className="text-ink hover:text-accent truncate">{leagueShortName(c.name)}</Link> : <span className="text-ink truncate">{leagueShortName(c.name)}</span>}
+                              {few && <span className="shrink-0 rounded px-1 text-[9px] font-semibold text-faint bg-surface2" title={t("Under 20 games: too few to judge yet")}>{t("few games")}</span>}
+                            </span>
+                          </td>
+                          <td className="py-2 px-1 text-right num text-muted">{c.n}</td>
+                          <td className="py-2 px-2">
+                            <span className="flex items-center gap-2">
+                              <span className="flex-1 h-2 rounded-full bg-surface2 overflow-hidden"><span className={`block h-full rounded-full ${few ? 'bg-accent/50' : 'bg-accent'}`} style={{ width: `${Math.min(100, c.v3 ?? 0)}%` }} /></span>
+                              <span className={`num font-bold w-11 text-right ${few ? 'text-muted' : 'text-accent'}`}>{pct(c.v3)}</span>
+                            </span>
+                          </td>
+                          <td className="py-2 px-1 text-right num text-muted">{pct(c.btts)}</td>
+                          <td className="py-2 px-1 text-right num text-muted">{pct(c.over25)}</td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
-              <p className="text-[11px] text-faint mt-2">{t("Competitions with at least 5 finished games in this period.")}</p>
+              <p className="text-[11px] text-faint mt-2">{t("Competitions with at least 5 finished games in this period. Under 20 games is too few to judge a competition: pick a longer period for a fairer picture.")}</p>
             </Card>
           )}
 
@@ -320,6 +348,41 @@ export default function AccuracySimple() {
             {t("Admin: detailed statistics (calibration, backtests, all models)")}</button>
         </div>
       )}
+    </div>
+  )
+}
+
+/** Reliability chart: what we said (x) against how often it happened (y); the dashed diagonal is perfect. */
+function CalibrationChart({ bins }: { bins: { lo: number; hi: number; n: number; said: number; happened: number | null }[] }) {
+  if (!bins.length) return null
+  const W = 320, H = 320, P = 36
+  const x = (v: number) => P + (v / 100) * (W - P - 10)
+  const y = (v: number) => H - P - (v / 100) * (H - P - 10)
+  const maxN = Math.max(...bins.map(b => b.n))
+  const pts = bins.filter(b => b.happened !== null)
+  return (
+    <div className="rounded-2xl border border-line/60 bg-surface2/30 p-3">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label={t('Calibration chart')}>
+        {[0, 20, 40, 60, 80, 100].map(v => (
+          <g key={v}>
+            <line x1={x(0)} x2={x(100)} y1={y(v)} y2={y(v)} stroke="rgb(var(--line))" strokeOpacity="0.5" />
+            <text x={P - 6} y={y(v) + 3} textAnchor="end" fontSize="9" fill="rgb(var(--faint))">{v}%</text>
+            <text x={x(v)} y={H - P + 14} textAnchor="middle" fontSize="9" fill="rgb(var(--faint))">{v}%</text>
+          </g>
+        ))}
+        <line x1={x(0)} y1={y(0)} x2={x(100)} y2={y(100)} stroke="rgb(var(--ink))" strokeOpacity="0.35" strokeDasharray="4 4" />
+        <polyline fill="none" stroke="rgb(var(--accent))" strokeWidth="2" points={pts.map(b => `${x(b.said)},${y(b.happened!)}`).join(' ')} />
+        {pts.map(b => (
+          <g key={b.lo}>
+            <circle cx={x(b.said)} cy={y(b.happened!)} r={3 + 6 * Math.sqrt(b.n / maxN)} fill="rgb(var(--accent))" fillOpacity="0.85" stroke="rgb(var(--bg))" strokeWidth="1.5">
+              <title>{t('We said {0}%, it happened {1}% of the time ({2} results)', { 0: b.said, 1: b.happened, 2: b.n })}</title>
+            </circle>
+          </g>
+        ))}
+        <text x={(x(0) + x(100)) / 2} y={H - 4} textAnchor="middle" fontSize="10" fill="rgb(var(--muted))">{t('The chance we gave')}</text>
+        <text x={10} y={(y(0) + y(100)) / 2} textAnchor="middle" fontSize="10" fill="rgb(var(--muted))" transform={`rotate(-90 10 ${(y(0) + y(100)) / 2})`}>{t('How often it happened')}</text>
+      </svg>
+      <p className="text-[11px] text-faint px-1">{t('Bigger dots = more results. Hover a dot for the numbers.')}</p>
     </div>
   )
 }

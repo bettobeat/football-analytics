@@ -1393,5 +1393,18 @@
  "SportLikely · Sports predictions, tested in public": "SportLikely · Sportprognosen, öffentlich überprüft",
  "Sports predictions,": "Sportprognosen,",
  "Sports predictions, tested in public": "Sportprognosen, öffentlich überprüft",
- "Football now, basketball next: win chances, goals or points, and the reasons behind each pick.": "Jetzt Fußball, bald Basketball: Siegchancen, Tore oder Punkte und die Gründe hinter jedem Tipp."
+ "Football now, basketball next: win chances, goals or points, and the reasons behind each pick.": "Jetzt Fußball, bald Basketball: Siegchancen, Tore oder Punkte und die Gründe hinter jedem Tipp.",
+ "When we say 70%, does it happen 70% of the time?": "Wenn wir 70 % sagen – passiert es in 70 % der Fälle?",
+ "Every chance we gave, for every result of every match (home win, draw and away win), grouped by the number we said. If our numbers are honest, the dots sit on the dashed line.": "Jede Chance, die wir angegeben haben, für jedes Ergebnis jedes Spiels (Heimsieg, Remis, Auswärtssieg), gruppiert nach der genannten Zahl. Wenn unsere Zahlen ehrlich sind, liegen die Punkte auf der gestrichelten Linie.",
+ "Our picks, by how sure we were": "Unsere Tipps, nach Sicherheit",
+ "Our record by competition": "Unsere Bilanz nach Wettbewerb",
+ "How often each call was right, league by league, in the period you picked.": "Wie oft jeder Tipp richtig lag, Liga für Liga, im gewählten Zeitraum.",
+ "Under 20 games: too few to judge yet": "Unter 20 Spiele: noch zu wenige für ein Urteil",
+ "few games": "wenige Spiele",
+ "Competitions with at least 5 finished games in this period. Under 20 games is too few to judge a competition: pick a longer period for a fairer picture.": "Wettbewerbe mit mindestens 5 beendeten Spielen in diesem Zeitraum. Unter 20 Spielen ist zu wenig für ein Urteil: Wähle einen längeren Zeitraum für ein faireres Bild.",
+ "Calibration chart": "Kalibrierungsdiagramm",
+ "We said {0}%, it happened {1}% of the time ({2} results)": "Wir sagten {0} %, es trat in {1} % der Fälle ein ({2} Ergebnisse)",
+ "The chance we gave": "Unsere angegebene Chance",
+ "How often it happened": "Wie oft es eintrat",
+ "Bigger dots = more results. Hover a dot for the numbers.": "Größere Punkte = mehr Ergebnisse. Zeige auf einen Punkt für die Zahlen."
 }

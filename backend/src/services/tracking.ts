@@ -667,7 +667,9 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
   const res = { n: 0, v3: 0 };
   const btts = { n: 0, hits: 0, yesPicks: 0 };
   const ou = { n: 0, hits: 0, overPicks: 0 };
-  const byComp = new Map<string, { code: string; name: string; n: number; v3: number }>();
+  const byComp = new Map<string, { code: string; name: string; n: number; v3: number; bn: number; bh: number; on: number; oh: number }>();
+  // calibration (Oct 2026): every outcome of every match (home, draw, away) by the chance we gave it, in 10% steps
+  const cal = Array.from({ length: 10 }, (_, i) => ({ lo: i * 10, n: 0, sumP: 0, hits: 0 }));
   const recent: any[] = [];
   // "safer" calls: double chance, over/under 1.5, and the most confident pick of each match
   const dc = { n: 0, v3: 0 };
@@ -695,10 +697,17 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
     if (v3hit) res.v3++;
     {
       const key = r.competition_code || r.competition_name || '?';
-      const c = byComp.get(key) || { code: r.competition_code || '', name: r.competition_name || key, n: 0, v3: 0 };
+      const c = byComp.get(key) || { code: r.competition_code || '', name: r.competition_name || key, n: 0, v3: 0, bn: 0, bh: 0, on: 0, oh: 0 };
       c.n++;
       if (v3hit) c.v3++;
+      if (r.btts !== null && r.btts !== undefined) { c.bn++; if ((Number(r.btts) >= 50) === (hg > 0 && ag > 0)) c.bh++; }
+      if (r.over25 !== null && r.over25 !== undefined) { c.on++; if ((Number(r.over25) >= 50) === (hg + ag > 2.5)) c.oh++; }
       byComp.set(key, c);
+    }
+    for (const [p, o] of [[Number(r.p_home), 'H'], [Number(r.p_draw), 'D'], [Number(r.p_away), 'A']] as [number, Outcome][]) {
+      if (!Number.isFinite(p)) continue;
+      const b = cal[Math.min(9, Math.max(0, Math.floor(p / 10)))];
+      b.n++; b.sumP += p; if (r.outcome === o) b.hits++;
     }
     let bttsPick: boolean | null = null, bttsHit: boolean | null = null;
     if (r.btts !== null && r.btts !== undefined) {
@@ -776,9 +785,10 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
       byMarket: Object.entries(safest.byMarket).map(([market, v]) => ({ market, n: v.n, hitRate: pc(v.hits, v.n) })).sort((a, b) => b.n - a.n)
     },
     byConfidence: bands.map(b => ({ id: b.id, label: b.label, n: b.n, hitRate: pc(b.hits, b.n), said: b.n ? Math.round(b.sumP / b.n) : null })),
+    calibration: cal.filter(b => b.n > 0).map(b => ({ lo: b.lo, hi: b.lo + 10, n: b.n, said: Math.round((b.sumP / b.n) * 10) / 10, happened: pc(b.hits, b.n) })),
     byCompetition: [...byComp.values()]
       .filter(c => c.n >= 5)
-      .map(c => ({ ...c, v3: pc(c.v3, c.n) }))
+      .map(c => ({ code: c.code, name: c.name, n: c.n, v3: pc(c.v3, c.n), btts: pc(c.bh, c.bn), over25: pc(c.oh, c.on) }))
       .sort((a, b) => b.n - a.n),
     recent
   };
