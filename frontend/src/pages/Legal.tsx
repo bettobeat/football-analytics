@@ -124,7 +124,8 @@ export function Privacy() {
         </p>
         <p>
           <span className="text-ink font-semibold">What you do in your account:</span> your favorite teams, leagues and players, the matches
-          you unlocked, and the sports you asked to be told about. Signed-in devices are kept as a list with the browser name, so we can
+          you unlocked, and the sports you asked to be told about. If you cancel a plan or delete your account, we ask why and keep
+          your answer to improve the service (for deleted accounts, without your email or anything that links it to you). Signed-in devices are kept as a list with the browser name, so we can
           sign you out everywhere when you change your password.
         </p>
         <p>

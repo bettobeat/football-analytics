@@ -69,7 +69,7 @@ import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures, afGet, 
 import {
   signup, login, changePassword, setPlan, adminResetPassword, listUsers, userStats, createSession, destroySession, userForToken,
   parseCookies, setSessionCookie, clearSessionCookie, SESSION_COOKIE, accessOf, canSeeFull, isPaid, teaseDeep, teaseDeepExcept, AuthError, Access, User,
-  sendVerification, verifyEmail, requestPasswordReset, resetPassword, setMarketingOptIn, usersCsv, verificationRequired, exportUserData, deleteAccount
+  sendVerification, verifyEmail, requestPasswordReset, resetPassword, setMarketingOptIn, usersCsv, verificationRequired, exportUserData, deleteAccount, cancelPlan, resumePlan, leaveFeedback
 } from './services/auth';
 import { playerDataStatus, teamPlayers } from './services/playerData';
 import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, backfillV3, setRelOverride, SweepVariant, tuneLeaguesV3, leagueTuneProgress, leagueConvStatus, clearLeagueConv, tunedStatus, clearTuning, applyStoredTuning } from './services/gridModel';
@@ -478,13 +478,25 @@ app.post('/api/auth/delete', jsonOnly, (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Sign in required' });
   if (req.body?.confirm !== 'DELETE') return res.status(400).json({ error: 'Type DELETE to confirm.' });
   try {
-    deleteAccount(req.user.id, req.body?.password);
+    deleteAccount(req.user.id, req.body?.password, req.body?.reason, req.body?.details);
     clearSessionCookie(res, req.secure);
     res.json(sessionPayload(null));
   } catch (e) {
     authFail(res, e);
   }
 });
+
+// Cancel a paid plan (a reason is required) / undo. Until payments are connected this marks the plan as not renewing;
+// the payment provider's cancel call goes here later.
+app.post('/api/auth/cancel', jsonOnly, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  try { res.json(sessionPayload(cancelPlan(req.user.id, req.body?.reason, req.body?.details))); } catch (e) { authFail(res, e); }
+});
+app.post('/api/auth/cancel/undo', jsonOnly, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  try { res.json(sessionPayload(resumePlan(req.user.id))); } catch (e) { authFail(res, e); }
+});
+app.get('/api/admin/leave-feedback', (_req, res) => res.json({ data: leaveFeedback() }));
 
 app.post('/api/auth/password', jsonOnly, (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Sign in required' });

@@ -1362,5 +1362,21 @@
  "This deletes your account, favorites and unlocked matches for good. It cannot be undone. Paid plans are not refunded automatically: write to us first if you want a refund.": "Cela supprime définitivement votre compte, vos favoris et les matchs débloqués. C’est irréversible. Les formules payantes ne sont pas remboursées automatiquement : écrivez-nous avant si vous souhaitez un remboursement.",
  "Type DELETE to confirm": "Tapez DELETE pour confirmer",
  "Deleting…": "Suppression…",
- "Cancel": "Annuler"
+ "Cancel": "Annuler",
+ "Delete account": "Supprimer le compte",
+ "It is too expensive": "C’est trop cher",
+ "The predictions were not accurate enough": "Les pronostics n’étaient pas assez précis",
+ "I don’t use it enough": "Je ne l’utilise pas assez",
+ "A feature or sport I need is missing": "Il manque une fonction ou un sport dont j’ai besoin",
+ "I found another service": "J’ai trouvé un autre service",
+ "Technical problems": "Problèmes techniques",
+ "Something else": "Autre chose",
+ "Why are you leaving?": "Pourquoi partez-vous ?",
+ "Anything else you want to tell us? (optional)": "Autre chose à nous dire ? (facultatif)",
+ "Cancelled: your plan stays active until {0} and will not renew.": "Annulé : votre formule reste active jusqu’au {0} et ne sera pas renouvelée.",
+ "Cancelled: your plan will not renew.": "Annulé : votre formule ne sera pas renouvelée.",
+ "Keep my plan": "Garder ma formule",
+ "Cancel subscription": "Résilier l’abonnement",
+ "Your plan stays active until {0}. After that it will not renew.": "Votre formule reste active jusqu’au {0}. Ensuite, elle ne sera pas renouvelée.",
+ "Your plan will not renew.": "Votre formule ne sera pas renouvelée."
 }

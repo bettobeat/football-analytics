@@ -1362,5 +1362,21 @@
  "This deletes your account, favorites and unlocked matches for good. It cannot be undone. Paid plans are not refunded automatically: write to us first if you want a refund.": "Esto elimina definitivamente tu cuenta, tus favoritos y los partidos desbloqueados. No se puede deshacer. Los planes de pago no se reembolsan automáticamente: escríbenos antes si quieres un reembolso.",
  "Type DELETE to confirm": "Escribe DELETE para confirmar",
  "Deleting…": "Eliminando…",
- "Cancel": "Cancelar"
+ "Cancel": "Cancelar",
+ "Delete account": "Eliminar cuenta",
+ "It is too expensive": "Es demasiado caro",
+ "The predictions were not accurate enough": "Las predicciones no fueron lo bastante precisas",
+ "I don’t use it enough": "No lo uso lo suficiente",
+ "A feature or sport I need is missing": "Falta una función o un deporte que necesito",
+ "I found another service": "Encontré otro servicio",
+ "Technical problems": "Problemas técnicos",
+ "Something else": "Otra cosa",
+ "Why are you leaving?": "¿Por qué te vas?",
+ "Anything else you want to tell us? (optional)": "¿Algo más que quieras contarnos? (opcional)",
+ "Cancelled: your plan stays active until {0} and will not renew.": "Cancelado: tu plan sigue activo hasta el {0} y no se renovará.",
+ "Cancelled: your plan will not renew.": "Cancelado: tu plan no se renovará.",
+ "Keep my plan": "Mantener mi plan",
+ "Cancel subscription": "Cancelar suscripción",
+ "Your plan stays active until {0}. After that it will not renew.": "Tu plan sigue activo hasta el {0}. Después no se renovará.",
+ "Your plan will not renew.": "Tu plan no se renovará."
 }

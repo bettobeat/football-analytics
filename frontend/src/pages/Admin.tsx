@@ -106,6 +106,7 @@ export default function Admin() {
               {tile('Want updates', stats?.optIn, () => go('users'))}
             </div>
           </section>
+          <LeaveCard />
           <DataHealth />
         </>
       )}
@@ -206,5 +207,57 @@ export default function Admin() {
       </div>
       </>)}
     </div>
+  )
+}
+
+const REASON_LABEL: Record<string, string> = {
+  too_expensive: 'Too expensive', not_accurate: 'Predictions not accurate enough', not_using: 'Not using it enough',
+  missing_feature: 'Missing feature / sport', other_service: 'Found another service', technical: 'Technical problems', other: 'Something else'
+}
+interface Leave {
+  total: number; cancels: number; deletes: number; cancelledStillActive: number
+  counts: Record<string, { cancel: number; delete: number }>
+  recent: { kind: 'cancel' | 'delete'; plan: string | null; reason: string; details: string | null; memberDays: number | null; at: string }[]
+}
+
+/** Why people cancel or delete (last 12 months). */
+function LeaveCard() {
+  const [d, setD] = useState<Leave | null>(null)
+  useEffect(() => { axios.get(`${API_URL}/admin/leave-feedback`).then(r => setD(r.data.data)).catch(() => setD(null)) }, [])
+  if (!d) return null
+  const rows = Object.entries(d.counts).sort((a, b) => b[1].cancel + b[1].delete - (a[1].cancel + a[1].delete))
+  const max = Math.max(1, ...rows.map(([, c]) => c.cancel + c.delete))
+  return (
+    <section className="card p-5 sm:p-6 mb-8">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+        <h2 className="font-display text-lg font-bold text-ink">Why people leave</h2>
+        <span className="text-xs text-faint">last 12 months · {d.cancels} cancelled · {d.deletes} deleted · {d.cancelledStillActive} cancelled but still active</span>
+      </div>
+      {d.total === 0 ? <p className="text-sm text-faint">Nobody has cancelled or deleted an account yet.</p> : (
+        <>
+          <ul className="space-y-2 mb-5">
+            {rows.map(([k, c]) => (
+              <li key={k} className="text-sm">
+                <div className="flex justify-between gap-3"><span className="text-ink">{REASON_LABEL[k] || k}</span><span className="num text-muted">{c.cancel} cancel · {c.delete} delete</span></div>
+                <div className="mt-1 h-2 rounded-full bg-surface2 overflow-hidden flex">
+                  <div className="h-full bg-draw" style={{ width: `${(c.cancel / max) * 100}%` }} />
+                  <div className="h-full bg-loss" style={{ width: `${(c.delete / max) * 100}%` }} />
+                </div>
+              </li>
+            ))}
+          </ul>
+          <div className="label pb-2">Latest comments</div>
+          <ul className="divide-y divide-line/50 text-sm">
+            {d.recent.filter(r => r.details).slice(0, 15).map((r, i) => (
+              <li key={i} className="py-2">
+                <div className="text-[11px] text-faint">{fmt(r.at)} · {r.kind === 'cancel' ? 'cancelled' : 'deleted'} · {r.plan || 'free'} · {REASON_LABEL[r.reason] || r.reason}{r.memberDays !== null ? ` · member ${r.memberDays} days` : ''}</div>
+                <div className="text-ink mt-0.5">{r.details}</div>
+              </li>
+            ))}
+            {!d.recent.some(r => r.details) && <li className="py-2 text-faint">No written comments yet.</li>}
+          </ul>
+        </>
+      )}
+    </section>
   )
 }

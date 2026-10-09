@@ -18,6 +18,7 @@ export interface User {
   emailVerified: boolean
   marketingOptIn: boolean
   createdAt: string
+  cancelAt?: string | null
 }
 
 interface SessionPayload {

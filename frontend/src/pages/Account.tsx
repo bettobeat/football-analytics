@@ -70,12 +70,13 @@ export default function Account() {
                 {t("Email not confirmed — enter code →")}</Link>
             )}
           </div>
-          {(access === 'free' || access === 'premium') && (
+          {(access === 'free' || access === 'premium') && !user.cancelAt && (
             <Link to="/premium" className="px-4 py-2 rounded-xl bg-accent text-bg text-sm font-semibold">
               {access === 'premium' ? t("Go Pro: unlimited") : t("See plans")}
             </Link>
           )}
         </div>
+        {(access === 'premium' || access === 'pro') && <CancelPlan />}
       </div>
 
       {(access === 'premium' || access === 'pro' || access === 'admin') && (
@@ -142,6 +143,8 @@ function DataCard() {
   const [open, setOpen] = useState(false)
   const [pw, setPw] = useState('')
   const [confirm, setConfirm] = useState('')
+  const [reason, setReason] = useState('')
+  const [details, setDetails] = useState('')
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const del = async (e: FormEvent) => {
@@ -149,7 +152,7 @@ function DataCard() {
     setErr(null)
     setBusy(true)
     try {
-      await axios.post(`${API_URL}/auth/delete`, { password: pw, confirm })
+      await axios.post(`${API_URL}/auth/delete`, { password: pw, confirm, reason: reason || 'other', details })
       window.location.href = '/'
     } catch (x) {
       setErr(errorText(x))
@@ -167,11 +170,14 @@ function DataCard() {
       </div>
       <div className="flex flex-wrap gap-2">
         <a href={`${API_URL}/auth/export`} className="rounded-xl bg-surface2 border border-line px-4 py-2 text-sm font-semibold text-ink hover:border-faint">{t("Download my data")}</a>
-        {!open && <button type="button" onClick={() => setOpen(true)} className="rounded-xl border border-loss/40 px-4 py-2 text-sm font-semibold text-loss hover:bg-loss/10">{t("Delete my account")}</button>}
       </div>
+      {!open && (
+        <button type="button" onClick={() => setOpen(true)} className="block text-[11px] text-faint hover:text-loss underline-offset-2 hover:underline">{t("Delete account")}</button>
+      )}
       {open && (
         <form onSubmit={del} className="rounded-xl border border-loss/40 bg-loss/5 p-4 space-y-3">
           <p className="text-sm text-ink">{t("This deletes your account, favorites and unlocked matches for good. It cannot be undone. Paid plans are not refunded automatically: write to us first if you want a refund.")}</p>
+          <ReasonPicker value={reason} onChange={setReason} details={details} onDetails={setDetails} />
           <label className="block">
             <span className="label">{t("Password")}</span>
             <input className={`${input} mt-1`} type="password" required value={pw} onChange={e => setPw(e.target.value)} autoComplete="current-password" />
@@ -184,6 +190,74 @@ function DataCard() {
           <div className="flex gap-2">
             <button type="submit" disabled={busy || confirm !== 'DELETE' || !pw} className="rounded-xl bg-loss text-bg px-4 py-2 text-sm font-bold disabled:opacity-50">{busy ? t("Deleting…") : t("Delete my account")}</button>
             <button type="button" onClick={() => { setOpen(false); setPw(''); setConfirm(''); setErr(null) }} className="rounded-xl px-4 py-2 text-sm text-muted hover:text-ink">{t("Cancel")}</button>
+          </div>
+        </form>
+      )}
+    </div>
+  )
+}
+
+const REASONS: [string, string][] = [
+  ['too_expensive', t('It is too expensive')],
+  ['not_accurate', t('The predictions were not accurate enough')],
+  ['not_using', t('I don’t use it enough')],
+  ['missing_feature', t('A feature or sport I need is missing')],
+  ['other_service', t('I found another service')],
+  ['technical', t('Technical problems')],
+  ['other', t('Something else')]
+]
+
+/** Why are you leaving? A required choice plus an optional comment. */
+function ReasonPicker({ value, onChange, details, onDetails }: { value: string; onChange: (v: string) => void; details: string; onDetails: (v: string) => void }) {
+  return (
+    <fieldset className="space-y-2">
+      <legend className="text-sm font-semibold text-ink mb-1">{t('Why are you leaving?')}</legend>
+      {REASONS.map(([k, label]) => (
+        <label key={k} className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 text-sm cursor-pointer ${value === k ? 'border-accent/60 bg-accent/10 text-ink' : 'border-line/60 text-muted hover:text-ink'}`}>
+          <input type="radio" name="reason" value={k} checked={value === k} onChange={() => onChange(k)} className="accent-[rgb(var(--accent))]" />
+          {label}
+        </label>
+      ))}
+      <textarea value={details} onChange={e => onDetails(e.target.value)} maxLength={1000} rows={3} placeholder={t('Anything else you want to tell us? (optional)')}
+        className="w-full rounded-xl border border-line bg-surface2/60 px-3.5 py-2.5 text-sm text-ink outline-none focus:border-accent" />
+    </fieldset>
+  )
+}
+
+/** Cancel a paid plan: asks why, keeps the plan until the end of the period; can be undone. */
+function CancelPlan() {
+  const { user, refresh } = useAuth()
+  const [open, setOpen] = useState(false)
+  const [reason, setReason] = useState('')
+  const [details, setDetails] = useState('')
+  const [err, setErr] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  if (!user) return null
+  const until = user.premiumUntil ? fmtDay(user.premiumUntil) : null
+  const post = async (url: string, body: object) => {
+    setErr(null); setBusy(true)
+    try { await axios.post(`${API_URL}${url}`, body); await refresh(); setOpen(false) } catch (x) { setErr(errorText(x)) } finally { setBusy(false) }
+  }
+  if (user.cancelAt) {
+    return (
+      <div className="mt-4 rounded-xl border border-draw/40 bg-draw/10 px-4 py-3 text-sm text-ink flex flex-wrap items-center justify-between gap-2">
+        <span>{until ? t('Cancelled: your plan stays active until {0} and will not renew.', { 0: until }) : t('Cancelled: your plan will not renew.')}</span>
+        <button type="button" disabled={busy} onClick={() => post('/auth/cancel/undo', {})} className="rounded-lg bg-accent text-bg px-3 py-1.5 text-xs font-bold">{t('Keep my plan')}</button>
+      </div>
+    )
+  }
+  return (
+    <div className="mt-4">
+      {!open ? (
+        <button type="button" onClick={() => setOpen(true)} className="text-[11px] text-faint hover:text-ink underline-offset-2 hover:underline">{t('Cancel subscription')}</button>
+      ) : (
+        <form onSubmit={e => { e.preventDefault(); post('/auth/cancel', { reason, details }) }} className="rounded-xl border border-line/60 bg-surface2/40 p-4 space-y-3">
+          <p className="text-sm text-ink">{until ? t('Your plan stays active until {0}. After that it will not renew.', { 0: until }) : t('Your plan will not renew.')}</p>
+          <ReasonPicker value={reason} onChange={setReason} details={details} onDetails={setDetails} />
+          {err && <div className="rounded-xl border border-loss/40 bg-loss/10 px-3 py-2 text-sm text-loss">{err}</div>}
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setOpen(false)} className="rounded-xl bg-accent text-bg px-4 py-2 text-sm font-bold">{t('Keep my plan')}</button>
+            <button type="submit" disabled={busy || !reason} className="rounded-xl border border-line px-4 py-2 text-sm text-muted hover:text-loss disabled:opacity-50">{t('Cancel subscription')}</button>
           </div>
         </form>
       )}

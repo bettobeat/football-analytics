@@ -28,6 +28,7 @@ export interface User {
   emailVerified: boolean;
   marketingOptIn: boolean;
   createdAt: string;
+  cancelAt: string | null; // asked to cancel: the paid plan runs until premiumUntil and is not renewed
 }
 
 db.exec(`
@@ -76,6 +77,7 @@ db.exec(`
   }
   if (!cols.has('marketing_opt_in')) db.exec('ALTER TABLE users ADD COLUMN marketing_opt_in INTEGER NOT NULL DEFAULT 0');
   if (!cols.has('marketing_opt_in_at')) db.exec('ALTER TABLE users ADD COLUMN marketing_opt_in_at TEXT');
+  if (!cols.has('cancel_at')) db.exec('ALTER TABLE users ADD COLUMN cancel_at TEXT');
 }
 
 export const SESSION_COOKIE = 'b2b_session';
@@ -164,7 +166,8 @@ function rowToUser(r: any): User {
     isAdmin: ADMIN_EMAILS.has(String(r.email).toLowerCase()) && !!r.email_verified,
     emailVerified: !!r.email_verified,
     marketingOptIn: !!r.marketing_opt_in,
-    createdAt: r.created_at
+    createdAt: r.created_at,
+    cancelAt: r.cancel_at || null
   };
 }
 
@@ -535,6 +538,7 @@ export function exportUserData(userId: number) {
     }) : [],
     unlockedMatches: tableExists('match_unlocks') ? safeAll('SELECT match_id AS matchId, at FROM match_unlocks WHERE user_id = ? ORDER BY at', userId) : [],
     waitlists: tableExists('sport_waitlist') ? safeAll('SELECT sport, lang, created_at AS joinedAt FROM sport_waitlist WHERE user_id = ? OR email = ?', userId, u.email) : [],
+    cancellationFeedback: tableExists('leave_feedback') ? safeAll('SELECT plan, reason, details, at FROM leave_feedback WHERE user_id = ?', userId) : [],
     assistantUsage: tableExists('assistant_log') ? safeAll('SELECT at, match_id AS matchId FROM assistant_log WHERE user_id = ? ORDER BY at', userId) : [],
     notes: [
       'Passwords are stored only as a one-way hash and are not included.',
@@ -543,12 +547,57 @@ export function exportUserData(userId: number) {
   };
 }
 
+// ---------- leaving: why people cancel or delete (Oct 2026) ----------
+db.exec(`
+  CREATE TABLE IF NOT EXISTS leave_feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, user_id INTEGER, plan TEXT, reason TEXT NOT NULL, details TEXT,
+    member_days INTEGER, at TEXT NOT NULL
+  );
+`);
+export const LEAVE_REASONS = ['too_expensive', 'not_accurate', 'not_using', 'missing_feature', 'other_service', 'technical', 'other'] as const;
+function saveFeedback(kind: 'cancel' | 'delete', u: any, reason: unknown, details: unknown) {
+  const r = LEAVE_REASONS.includes(String(reason) as any) ? String(reason) : 'other';
+  const d = String(details || '').trim().slice(0, 1000) || null;
+  const days = u?.created_at ? Math.floor((Date.now() - Date.parse(u.created_at)) / 86400000) : null;
+  // deletions keep no link to the person: no user id, no email
+  db.prepare('INSERT INTO leave_feedback (kind, user_id, plan, reason, details, member_days, at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(kind, kind === 'cancel' ? u.id : null, u?.plan || null, r, d, days, new Date().toISOString());
+}
+
+/** Cancel a paid plan: it keeps running until premium_until and is not renewed. A reason is required. */
+export function cancelPlan(userId: number, reason: unknown, details: unknown): User {
+  const u: any = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+  if (!u) throw new AuthError(404, 'Account not found.');
+  if (u.plan === 'free') throw new AuthError(400, 'There is no paid plan to cancel.');
+  if (!LEAVE_REASONS.includes(String(reason) as any)) throw new AuthError(400, 'Please tell us why you are cancelling.');
+  saveFeedback('cancel', u, reason, details);
+  db.prepare('UPDATE users SET cancel_at = ? WHERE id = ?').run(new Date().toISOString(), userId);
+  return rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(userId));
+}
+/** Changed their mind: keep the plan renewing. */
+export function resumePlan(userId: number): User {
+  db.prepare('UPDATE users SET cancel_at = NULL WHERE id = ?').run(userId);
+  const u = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+  if (!u) throw new AuthError(404, 'Account not found.');
+  return rowToUser(u);
+}
+/** Admin: reasons people gave when cancelling or deleting. */
+export function leaveFeedback(days = 365) {
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+  const rows = db.prepare('SELECT kind, plan, reason, details, member_days AS memberDays, at FROM leave_feedback WHERE at >= ? ORDER BY at DESC').all(since) as any[];
+  const counts: Record<string, { cancel: number; delete: number }> = {};
+  for (const r of rows) { counts[r.reason] ||= { cancel: 0, delete: 0 }; counts[r.reason][r.kind as 'cancel' | 'delete']++; }
+  const pending = db.prepare(`SELECT COUNT(*) AS n FROM users WHERE cancel_at IS NOT NULL AND plan != 'free'`).get() as any;
+  return { total: rows.length, cancels: rows.filter(r => r.kind === 'cancel').length, deletes: rows.filter(r => r.kind === 'delete').length, cancelledStillActive: pending.n, counts, recent: rows.slice(0, 50) };
+}
+
 /** Delete an account and everything linked to it. Needs the current password. */
-export function deleteAccount(userId: number, password: unknown): void {
+export function deleteAccount(userId: number, password: unknown, reason?: unknown, details?: unknown): void {
   const u: any = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
   if (!u) throw new AuthError(404, 'Account not found.');
   if (!verifyPassword(String(password || ''), u.pass_hash)) throw new AuthError(401, 'Password is wrong.');
   if (ADMIN_EMAILS.has(String(u.email).toLowerCase())) throw new AuthError(400, 'Admin accounts cannot be deleted here. Remove the email from ADMIN_EMAILS first.');
+  if (reason) saveFeedback('delete', u, reason, details);
   db.exec('BEGIN');
   try {
     if (tableExists('user_favorites')) db.prepare('DELETE FROM user_favorites WHERE user_id = ?').run(userId);

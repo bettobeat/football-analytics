@@ -1362,5 +1362,21 @@
  "This deletes your account, favorites and unlocked matches for good. It cannot be undone. Paid plans are not refunded automatically: write to us first if you want a refund.": "Bu işlem hesabınızı, favorilerinizi ve açtığınız maçları kalıcı olarak siler. Geri alınamaz. Ücretli planlar otomatik olarak iade edilmez: iade istiyorsanız önce bize yazın.",
  "Type DELETE to confirm": "Onaylamak için DELETE yazın",
  "Deleting…": "Siliniyor…",
- "Cancel": "İptal"
+ "Cancel": "İptal",
+ "Delete account": "Hesabı sil",
+ "It is too expensive": "Çok pahalı",
+ "The predictions were not accurate enough": "Tahminler yeterince isabetli değildi",
+ "I don’t use it enough": "Yeterince kullanmıyorum",
+ "A feature or sport I need is missing": "İhtiyacım olan bir özellik veya spor eksik",
+ "I found another service": "Başka bir hizmet buldum",
+ "Technical problems": "Teknik sorunlar",
+ "Something else": "Başka bir şey",
+ "Why are you leaving?": "Neden ayrılıyorsunuz?",
+ "Anything else you want to tell us? (optional)": "Bize söylemek istediğiniz başka bir şey var mı? (isteğe bağlı)",
+ "Cancelled: your plan stays active until {0} and will not renew.": "İptal edildi: planınız {0} tarihine kadar aktif kalacak ve yenilenmeyecek.",
+ "Cancelled: your plan will not renew.": "İptal edildi: planınız yenilenmeyecek.",
+ "Keep my plan": "Planımı koru",
+ "Cancel subscription": "Aboneliği iptal et",
+ "Your plan stays active until {0}. After that it will not renew.": "Planınız {0} tarihine kadar aktif. Sonrasında yenilenmeyecek.",
+ "Your plan will not renew.": "Planınız yenilenmeyecek."
 }
