@@ -23,6 +23,7 @@ import footballDataAPI from './services/footballDataAPI';
 import { recordPredictions, settlePending, accuracy, recentSettled, trackingStatus, computeMetrics, publicRecord } from './services/tracking';
 import { historyStatus, teamMapStatus, GROUPS, syncAll, syncH2HArchive, h2hArchiveStatus, syncHalfTimes } from './services/history';
 import { withLive, liveHalfTimeTest } from './services/liveChance';
+import { backtestUpsets } from './services/upsetAlerts';
 import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestRows, backtestRunsList } from './services/historyModel';
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
 import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler, squadCompetitions } from './services/squadValues';
@@ -850,6 +851,17 @@ app.get('/api/player-page/:id(\\d+)', async (req, res) => {
     res.json({ data: await playerPage(parseInt(req.params.id, 10), isPaid(req.access || 'anon')), timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Player page failed');
+  }
+});
+
+// Admin: upset alerts research (read-only): /api/backtest/upsets?grid=1[&K=&cut=&minGap=&minEdge=&maxEdge=]
+app.get('/api/backtest/upsets', (req, res) => {
+  try {
+    const rule: Record<string, number> = {};
+    for (const k of ['K', 'cut', 'minGap', 'minEdge', 'maxEdge']) { const v = Number(req.query[k]); if (req.query[k] !== undefined && Number.isFinite(v)) rule[k] = v; }
+    res.json({ data: backtestUpsets(rule, req.query.grid === '1'), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Upset backtest failed');
   }
 });
 
