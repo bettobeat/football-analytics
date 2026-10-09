@@ -1352,5 +1352,7 @@
  "goals/game": "golos/jogo",
  "{0} wins": "{0} vitórias",
  "Last 14 days": "Últimos 14 dias",
- "Ball & keeper": "Bola e guarda-redes"
+ "Ball & keeper": "Bola e guarda-redes",
+ "{0} also have the upper hand in this matchup: they won {1} of the last {2} meetings.": "{0} também levam vantagem neste confronto: venceram {1} dos últimos {2} jogos entre as equipas.",
+ "{0} won {1} of the last {2} meetings, but our numbers still favour {3}: in basketball past meetings say little once current form, rest and the rosters are known.": "{0} venceram {1} dos últimos {2} confrontos, mas os nossos números continuam a favorecer {3}: no basquetebol os jogos anteriores dizem pouco quando já se conhecem a forma atual, o descanso e os plantéis."
 }

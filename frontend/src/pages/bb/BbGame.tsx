@@ -435,8 +435,20 @@ function AnalysisCard({ d }: { d: Detail }) {
     const txt = [key(d.injuries.home, H), key(d.injuries.away, A)].filter(Boolean).join(' ')
     if (txt) paras.push(txt)
   }
-  if (pv.h2h.games > 0) paras.push(t('In their last {0} meetings {1} won {2} and {3} won {4}.', { 0: pv.h2h.games, 1: H, 2: pv.h2h.homeWins, 3: A, 4: pv.h2h.awayWins }))
   const p = g.prediction
+  if (pv.h2h.games > 0) {
+    // one-sided head-to-head (Oct 2026): say it, and whether our pick agrees. Tested: in basketball past meetings add
+    // nothing once form, rest and rosters are known, so they don't move the percentages — but readers should see them.
+    const hw = pv.h2h.homeWins, aw = pv.h2h.awayWins, n = pv.h2h.games
+    const dom = n >= 4 ? (hw / n >= 0.75 ? 'H' : aw / n >= 0.75 ? 'A' : null) : null
+    const pickSide = p?.pick && !hidden ? p.pick : null
+    if (dom && pickSide) {
+      const dn = dom === 'H' ? H : A, dw = dom === 'H' ? hw : aw
+      paras.push(dom === pickSide
+        ? t('{0} also have the upper hand in this matchup: they won {1} of the last {2} meetings.', { 0: dn, 1: dw, 2: n })
+        : t('{0} won {1} of the last {2} meetings, but our numbers still favour {3}: in basketball past meetings say little once current form, rest and the rosters are known.', { 0: dn, 1: dw, 2: n, 3: pickSide === 'H' ? H : A }))
+    } else paras.push(t('In their last {0} meetings {1} won {2} and {3} won {4}.', { 0: n, 1: H, 2: hw, 3: A, 4: aw }))
+  }
   if (p?.pick && !hidden) {
     const team = p.pick === 'H' ? H : A
     paras.push(!p.locked && typeof p.pHome === 'number'

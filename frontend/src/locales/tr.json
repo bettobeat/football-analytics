@@ -1352,5 +1352,7 @@
  "goals/game": "gol/maç",
  "{0} wins": "{0} galibiyet",
  "Last 14 days": "Son 14 gün",
- "Ball & keeper": "Top ve kaleci"
+ "Ball & keeper": "Top ve kaleci",
+ "{0} also have the upper hand in this matchup: they won {1} of the last {2} meetings.": "{0} bu eşleşmede de üstün: son {2} karşılaşmanın {1} tanesini kazandılar.",
+ "{0} won {1} of the last {2} meetings, but our numbers still favour {3}: in basketball past meetings say little once current form, rest and the rosters are known.": "{0} son {2} karşılaşmanın {1} tanesini kazandı, ama rakamlarımız yine de {3} tarafını gösteriyor: basketbolda güncel form, dinlenme ve kadrolar bilindiğinde geçmiş maçlar pek bir şey söylemez."
 }
