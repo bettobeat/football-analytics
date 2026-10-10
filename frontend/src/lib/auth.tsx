@@ -40,6 +40,7 @@ interface SessionPayload {
   access: Access
   staff?: Staff
   perms?: Perm[]
+  tester?: { until: string } | null
   verificationRequired?: boolean
 }
 
@@ -47,6 +48,8 @@ interface AuthState {
   user: User | null
   access: Access
   staff: Staff
+  /** beta tester (invite link): Pro until this date */
+  tester: { until: string } | null
   /** what this staff member may do (empty for customers) */
   can: (p: Perm) => boolean
   loading: boolean
@@ -86,6 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [access, setAccess] = useState<Access>('anon')
   const [staff, setStaff] = useState<Staff>(null)
   const [perms, setPerms] = useState<Perm[]>([])
+  const [tester, setTester] = useState<{ until: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [verificationRequired, setVerificationRequired] = useState(false)
 
@@ -94,6 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccess(d.access)
     setStaff(d.staff ?? null)
     setPerms(d.perms ?? [])
+    setTester(d.tester ?? null)
     if (typeof d.verificationRequired === 'boolean') setVerificationRequired(d.verificationRequired)
   }
 
@@ -185,7 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, access, staff, can: (p: Perm) => perms.includes(p), loading, full, paid, needsVerification, login, loginCode, signup, verify, resendCode, resetPassword, setOptIn, logout, refresh }}
+      value={{ user, access, staff, tester, can: (p: Perm) => perms.includes(p), loading, full, paid, needsVerification, login, loginCode, signup, verify, resendCode, resetPassword, setOptIn, logout, refresh }}
     >
       {children}
     </AuthContext.Provider>

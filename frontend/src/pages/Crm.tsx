@@ -10,12 +10,12 @@ import { useConsole } from '../components/ConsoleGate'
  * Replies go out by email from support@; customers' answers arrive in the support@ Gmail inbox.
  */
 
-type Tab = 'inbox' | 'customers' | 'campaigns' | 'revenue' | 'security' | 'team'
+type Tab = 'inbox' | 'customers' | 'testers' | 'campaigns' | 'revenue' | 'security' | 'team'
 const fmt = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'
 const fmtDay = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—')
 const TOPIC: Record<string, string> = {
-  question: 'Question', account: 'Account', billing: 'Billing', privacy: 'Privacy', bug: 'Bug', idea: 'Idea', business: 'Business', other: 'Other'
+  feedback: 'Tester feedback', question: 'Question', account: 'Account', billing: 'Billing', privacy: 'Privacy', bug: 'Bug', idea: 'Idea', business: 'Business', other: 'Other'
 }
 const STATUS_TONE: Record<string, string> = { open: 'bg-accent/15 text-accent', waiting: 'bg-draw/15 text-draw', closed: 'bg-surface2 text-muted' }
 const input =
@@ -47,6 +47,7 @@ export default function Crm() {
   const all: { k: Tab; label: string; ok: boolean }[] = [
     { k: 'inbox', label: 'Support inbox', ok: can('inbox.read') },
     { k: 'customers', label: 'Customers', ok: can('customers.view') },
+    { k: 'testers', label: 'Testers', ok: can('customers.view') },
     { k: 'campaigns', label: 'Campaigns', ok: can('campaigns') },
     { k: 'revenue', label: 'Revenue & churn', ok: can('revenue') },
     { k: 'security', label: 'Security log', ok: can('security') },
@@ -80,6 +81,7 @@ export default function Crm() {
       {!tab && <div className="card p-6 text-sm text-muted">Your role has no CRM permissions yet. Ask the admin.</div>}
       {tab === 'inbox' && <Inbox />}
       {tab === 'customers' && <Customers />}
+      {tab === 'testers' && <Testers canInvite={can('customers.plan')} />}
       {tab === 'campaigns' && <Campaigns />}
       {tab === 'revenue' && <Revenue />}
       {tab === 'security' && <SecurityLog />}
@@ -887,6 +889,99 @@ function Team() {
           <input className={`${input} max-w-xs`} value={newName} onChange={e => setNewName(e.target.value)} placeholder="New role name (e.g. Finance)" maxLength={40} />
           <button type="submit" disabled={busy || newName.trim().length < 2} className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-ink disabled:opacity-60">Create role</button>
         </form>
+      </section>
+    </div>
+  )
+}
+
+/* ---------- Beta testers: invite links (free Pro for N days) and who joined ---------- */
+interface Invite { code: string; label: string | null; days: number; maxUses: number | null; open: boolean; createdAt: string; uses: number }
+interface TesterRow { id: number; code: string; joinedAt: string; until: string; email: string; name: string | null; verified: boolean; lastLoginAt: string | null; feedback: number; active: boolean }
+function Testers({ canInvite }: { canInvite: boolean }) {
+  const [d, setD] = useState<{ invites: Invite[]; testers: TesterRow[] } | null>(null)
+  const [label, setLabel] = useState('')
+  const [days, setDays] = useState('21')
+  const [limit, setLimit] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState<string | null>(null)
+  const load = () => axios.get(`${API_URL}/crm/testers`).then(r => { setD(r.data.data); setError(null) }).catch(e => setError(errorText(e)))
+  useEffect(() => { load() }, [])
+  const linkOf = (code: string) => `${window.location.origin}/join/${code}`
+  const copy = async (code: string) => {
+    try { await navigator.clipboard.writeText(linkOf(code)); setCopied(code); setTimeout(() => setCopied(null), 1500) } catch { /* no clipboard */ }
+  }
+  const act = async (fn: () => Promise<unknown>) => {
+    setBusy(true); setError(null)
+    try { await fn(); await load() } catch (e) { setError(errorText(e)) } finally { setBusy(false) }
+  }
+  if (!d) return <div className="card p-6 text-sm text-faint">{error || 'Loading…'}</div>
+  const active = d.testers.filter(t => t.active).length
+  const week = Date.now() - 7 * 86400000
+  const seenWeek = d.testers.filter(t => t.lastLoginAt && new Date(t.lastLoginAt).getTime() > week).length
+  const fb = d.testers.reduce((a, t) => a + t.feedback, 0)
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[['Testers', d.testers.length], ['Pro still on', active], ['Seen in the last 7 days', seenWeek], ['Feedback messages', fb]].map(([k, v]) => (
+          <div key={k as string} className="card px-4 py-3"><div className="num text-2xl font-extrabold text-ink">{v}</div><div className="text-[11px] text-faint">{k}</div></div>
+        ))}
+      </div>
+      <Err e={error} />
+
+      <section className="card overflow-hidden">
+        <div className="px-5 py-3 border-b border-line/60 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="font-display font-bold text-ink">Invite links</h2>
+          <span className="text-[11px] text-faint">Anyone with the link gets free Pro for the days you choose. Feedback arrives in the Support inbox as "Tester feedback".</span>
+        </div>
+        {canInvite && (
+          <form onSubmit={e => { e.preventDefault(); act(async () => { await axios.post(`${API_URL}/crm/testers/invite`, { label, days: Number(days), maxUses: limit ? Number(limit) : null }); setLabel(''); setLimit('') }) }} className="flex flex-wrap gap-2 p-4 border-b border-line/60">
+            <input className={`${input} flex-1 min-w-[180px]`} value={label} onChange={e => setLabel(e.target.value)} placeholder="Name for the link (e.g. Friends WhatsApp)" />
+            <label className="flex items-center gap-1.5 text-xs text-muted">Days <input className={`${input} w-20`} type="number" min={1} max={90} value={days} onChange={e => setDays(e.target.value)} /></label>
+            <label className="flex items-center gap-1.5 text-xs text-muted">Max people <input className={`${input} w-24`} type="number" min={1} value={limit} onChange={e => setLimit(e.target.value)} placeholder="no limit" /></label>
+            <button type="submit" disabled={busy} className="rounded-xl bg-accent text-bg font-semibold px-4 py-2 text-sm disabled:opacity-60">Create link</button>
+          </form>
+        )}
+        {d.invites.length === 0 ? <p className="p-5 text-sm text-faint">No invite links yet.</p> : (
+          <ul className="divide-y divide-line/50">
+            {d.invites.map(i => (
+              <li key={i.code} className="flex flex-wrap items-center gap-3 px-5 py-3 text-sm">
+                <span className="flex-1 min-w-[220px]">
+                  <span className="block text-ink font-semibold">{i.label || 'Invite link'} {!i.open && <span className="ml-1 text-[11px] text-loss">closed</span>}</span>
+                  <span className="block text-[11px] text-faint num select-all break-all">{linkOf(i.code)}</span>
+                </span>
+                <span className="text-xs text-muted num">{i.uses}{i.maxUses ? ` / ${i.maxUses}` : ''} joined · {i.days} days Pro</span>
+                <button type="button" onClick={() => copy(i.code)} className="text-xs font-semibold text-accent">{copied === i.code ? 'Copied ✓' : 'Copy link'}</button>
+                {canInvite && <button type="button" disabled={busy} onClick={() => act(() => axios.post(`${API_URL}/crm/testers/invite/${i.code}`, { open: !i.open }))} className="text-xs text-muted hover:text-ink">{i.open ? 'Close' : 'Reopen'}</button>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="card overflow-hidden">
+        <div className="px-5 py-3 border-b border-line/60"><h2 className="font-display font-bold text-ink">Testers ({d.testers.length})</h2></div>
+        {d.testers.length === 0 ? <p className="p-5 text-sm text-faint">Nobody has joined yet.</p> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[640px]">
+              <thead><tr className="text-[11px] text-faint text-left">
+                <th className="px-5 py-2 font-semibold">Tester</th><th className="px-3 py-2 font-semibold">Joined</th><th className="px-3 py-2 font-semibold">Pro until</th><th className="px-3 py-2 font-semibold">Last seen</th><th className="px-3 py-2 font-semibold text-right">Feedback</th>
+              </tr></thead>
+              <tbody className="divide-y divide-line/50">
+                {d.testers.map(t => (
+                  <tr key={t.id}>
+                    <td className="px-5 py-2"><span className="block text-ink truncate max-w-[260px]">{t.name || t.email}</span><span className="block text-[11px] text-faint truncate max-w-[260px]">{t.email}{!t.verified && <span className="text-draw"> · email not confirmed</span>}</span></td>
+                    <td className="px-3 py-2 text-muted num">{fmtDay(t.joinedAt)}</td>
+                    <td className={`px-3 py-2 num ${t.active ? 'text-ink' : 'text-faint'}`}>{fmtDay(t.until)}</td>
+                    <td className="px-3 py-2 text-muted num">{fmtDay(t.lastLoginAt)}</td>
+                    <td className="px-3 py-2 text-right num text-ink">{t.feedback}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
     </div>
   )

@@ -27,6 +27,7 @@ import { backtestUpsets, upsetWatchReport, upsetWatchBacktest } from './services
 import { submitContact, contactInbox, markContact, ContactError } from './services/contact';
 import { ADMIN_2FA_REQUIRED, checkCode, revealSetup, twoFactorEnabled, twoFactorStatus, startSetup, confirmSetup, newRecovery, disableTwoFactor, issueTicket, redeemTicket, securePastSessions, TwoFactorError } from './services/twoFactor';
 import { securityLog, securityLogList } from './services/securityLog';
+import { createInvite, setInviteOpen, inviteInfo, joinAsTester, testerOf, testerOverview, TesterError } from './services/testers';
 import { runBackup, backupStatus, localPath, startBackups, remoteList, remoteReady } from './services/backup';
 import { inboxList, inboxThread, reply, addNote, setStatus, assign, canOpen, searchCustomers, customerProfile, signOutEverywhere, segmentPreview, campaignList, sendTest, startCampaign, revenue, unsubscribe, CrmError, type Viewer } from './services/crm';
 import { roleByKey, listRoles, listStaff, createRole, updateRole, deleteRole, RoleError, type Perm } from './services/roles';
@@ -280,7 +281,7 @@ app.use('/api', rateLimit('api', 600, 60000)); // ~10 a second, far above a pers
 app.use(['/api/team-page', '/api/player-page'], rateLimit('pages', 60, 10 * 60000));
 app.use('/api/unlocks', (req, res, next) => (req.method === 'POST' ? rateLimit('unlock', 30, 60000, r => String(r.user?.id || r.ip))(req, res, next) : next()));
 
-const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|contact$|unsubscribe$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|basketball\/|public\/(summary|results|record)$|unlocks(\/|$)|billing\/)/;
+const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|contact$|feedback$|testers\/|unsubscribe$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|basketball\/|public\/(summary|results|record)$|unlocks(\/|$)|billing\/)/;
 const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|history\/status|clv|draw-alerts|upset-watch)$/; // past seasons and backtests are admin only (Oct 2026)
 
 app.use('/api', (req, res, next) => {
@@ -331,7 +332,9 @@ function authFail(res: express.Response, e: any) {
 }
 
 function sessionPayload(user: User | null) {
-  return { user, access: accessOf(user), staff: staffOf(user), perms: permsOf(user), verificationRequired };
+  let tester: { until: string } | null = null;
+  try { tester = user ? testerOf(user.id) : null; } catch { /* table not ready */ }
+  return { user, access: accessOf(user), staff: staffOf(user), perms: permsOf(user), tester, verificationRequired };
 }
 
 // Only JSON bodies on auth POSTs (with SameSite=Lax cookies this blocks cross-site form posts)
@@ -729,6 +732,57 @@ app.post('/api/contact', rateLimit('contact', 5, 60 * 60000), jsonOnly, async (r
     if (e instanceof ContactError) return res.status(e.status).json({ error: e.message });
     sendError(res, e, 'Message not sent');
   }
+});
+// ---------- Beta testers (services/testers.ts) ----------
+const testerFail = (res: express.Response, e: any) => (e instanceof TesterError ? res.status(e.status).json({ error: e.message }) : sendError(res, e, 'Something went wrong'));
+app.get('/api/testers/invite/:code', rateLimit('tester-invite', 60, 15 * 60000), (req, res) => {
+  const info = inviteInfo(String(req.params.code));
+  if (!info) return res.status(404).json({ error: 'This invite link is not valid.' });
+  res.json({ data: info });
+});
+app.post('/api/testers/join', rateLimit('tester-join', 10, 15 * 60000), jsonOnly, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in first.' });
+  try {
+    const r = joinAsTester(req.user.id, String(req.body?.code || ''));
+    if (!r.already) securityLog(req, 'tester_joined', req.user, `invite ${req.body?.code}`);
+    res.json({ data: r });
+  } catch (e) { testerFail(res, e); }
+});
+// Feedback button (testers and staff): straight into the CRM support inbox, topic 'feedback'
+const feedbackCount = new Map<number, number[]>();
+app.post('/api/feedback', jsonOnly, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in first.' });
+  const message = String(req.body?.message || '').replace(/\r/g, '').trim().slice(0, 3000);
+  if (message.length < 3) return res.status(400).json({ error: 'Write a few words first.' });
+  const now = Date.now();
+  const list = (feedbackCount.get(req.user.id) || []).filter(t => now - t < 86400000);
+  if (list.length >= 30) return res.status(429).json({ error: 'That is a lot of feedback for one day — thank you! Try again tomorrow.' });
+  list.push(now); feedbackCount.set(req.user.id, list);
+  const kind = ['bug', 'confusing', 'idea', 'like'].includes(req.body?.kind) ? String(req.body.kind) : 'other';
+  const KIND: Record<string, string> = { bug: 'Something is broken', confusing: 'Confusing', idea: 'Idea', like: 'I like this', other: 'Other' };
+  const page = String(req.body?.page || '').slice(0, 200) || null;
+  const device = String(req.body?.device || '').slice(0, 60);
+  db.prepare('INSERT INTO contact_messages (at, user_id, name, email, topic, message, page, sent) VALUES (?, ?, ?, ?, ?, ?, ?, 1)')
+    .run(new Date().toISOString(), req.user.id, req.user.name || null, req.user.email, 'feedback', `[${KIND[kind]}${device ? ` · ${device}` : ''}]\n${message}`, page);
+  res.json({ data: { ok: true } });
+});
+app.get('/api/crm/testers', need('customers.view'), (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: testerOverview() });
+});
+app.post('/api/crm/testers/invite', need('customers.plan'), jsonOnly, (req, res) => {
+  try {
+    const code = createInvite(req.body?.label, req.body?.days, req.body?.maxUses, req.user!.id);
+    securityLog(req, 'tester_invite_created', req.user, code);
+    res.json({ data: { code } });
+  } catch (e) { testerFail(res, e); }
+});
+app.post('/api/crm/testers/invite/:code', need('customers.plan'), jsonOnly, (req, res) => {
+  try {
+    setInviteOpen(String(req.params.code), !!req.body?.open);
+    securityLog(req, req.body?.open ? 'tester_invite_opened' : 'tester_invite_closed', req.user, String(req.params.code));
+    res.json({ data: { ok: true } });
+  } catch (e) { testerFail(res, e); }
 });
 // Admin: contact messages (read, mark handled)
 app.get('/api/admin/contact', (_req, res) => {

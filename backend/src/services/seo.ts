@@ -88,7 +88,7 @@ const bbList = (lang: Lang, list: any[]) =>
 /* ---------- pages ---------- */
 
 const NAV = (lang: Lang) => `<nav><a href="${link(lang, '/')}">${BRAND}</a> · <a href="${link(lang, '/matches')}">Football matches</a> · <a href="${link(lang, '/accuracy')}">Our record</a> · <a href="${link(lang, '/premium')}">Premium</a>${bbPublic() ? ` · <a href="${link(lang, '/basketball')}">Basketball</a>` : ''}</nav>`;
-const PRIVATE = /^\/(admin|account|verify|forgot|login|signup|favorites)(\/|$)|^\/basketball\/(favorites|past)(\/|$)|^\/past(\/|$)/;
+const PRIVATE = /^\/(admin|account|verify|forgot|login|signup|favorites|join|crm)(\/|$)|^\/basketball\/(favorites|past)(\/|$)|^\/past(\/|$)/;
 
 export function seoPage(rawPath: string): SeoInfo {
   let path = rawPath.split('?')[0].replace(/\/+$/, '') || '/';

@@ -26,6 +26,8 @@ import Assistant from './components/Assistant'
 import AccessibilityMenu, { initA11y } from './components/Accessibility'
 import Accessibility from './pages/Accessibility'
 import Contact from './pages/Contact'
+import Join from './pages/Join'
+import FeedbackButton from './components/FeedbackButton'
 import Crm from './pages/Crm'
 import ConsoleGate from './components/ConsoleGate'
 import SportSoon from './pages/SportSoon'
@@ -531,6 +533,7 @@ function Shell() {
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/accessibility" element={<Accessibility />} />
             <Route path="/contact" element={<Contact />} />
+            <Route path="/join/:code" element={<Join />} />
             <Route path="/crm" element={<ConsoleGate><Crm /></ConsoleGate>} />
             <Route path="/basketball/*" element={<BbRoutes />} />
             <Route path="/tennis/*" element={<SportSoon sport="tennis" />} />
@@ -556,6 +559,7 @@ function Shell() {
         </footer>
         <BottomTabs />
         <Assistant />
+        <FeedbackButton />
         <AccessibilityMenu />
       </div>
     </Router>
