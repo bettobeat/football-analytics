@@ -672,13 +672,38 @@ function Team() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
+  // team changes need a fresh two-step code (opens a 5-minute window on the server)
+  const [left, setLeft] = useState(0)
+  const [pending, setPending] = useState<null | (() => Promise<string | void>)>(null)
+  const [code, setCode] = useState('')
   const load = () => axios.get(`${API_URL}/crm/team`).then(r => { setD(r.data.data); setError(null) }).catch(e => setError(errorText(e)))
-  useEffect(() => { load() }, [])
+  const loadSudo = () => axios.get(`${API_URL}/crm/team/sudo`).then(r => setLeft(r.data.data.leftMs)).catch(() => undefined)
+  useEffect(() => { load(); loadSudo() }, [])
+  useEffect(() => {
+    if (left <= 0) return
+    const t = setInterval(() => setLeft(x => Math.max(0, x - 1000)), 1000)
+    return () => clearInterval(t)
+  }, [left > 0])
   const act = async (fn: () => Promise<string | void>) => {
     setBusy(true); setError(null); setInfo(null)
-    try { const m = await fn(); if (m) setInfo(m); await load() } catch (e) { setError(errorText(e)) } finally { setBusy(false) }
+    try { const m = await fn(); if (m) setInfo(m); await load() }
+    catch (e: any) {
+      if (e?.response?.status === 401 && e?.response?.data?.sudo) { setLeft(0); setPending(() => fn) }
+      else setError(errorText(e))
+    } finally { setBusy(false) }
+  }
+  const unlock = async (e: FormEvent) => {
+    e.preventDefault()
+    setBusy(true); setError(null)
+    try {
+      const r = await axios.post(`${API_URL}/crm/team/sudo`, { code })
+      setLeft(r.data.data.leftMs); setCode('')
+      const fn = pending; setPending(null)
+      if (fn) { setBusy(false); await act(fn); return }
+    } catch (err) { setError(errorText(err)); setCode('') } finally { setBusy(false) }
   }
   if (!d) return <div className="card p-6 text-sm text-faint">{error || 'Loading…'}</div>
+  const mmss = `${Math.floor(left / 60000)}:${String(Math.floor((left % 60000) / 1000)).padStart(2, '0')}`
   const groups = [...new Set(d.perms.map(p => p.group))]
   const toggle = (r: RoleDef, perm: string) => {
     const perms = r.perms.includes(perm) ? r.perms.filter(x => x !== perm) : [...r.perms, perm]
@@ -688,6 +713,31 @@ function Team() {
 
   return (
     <div className="space-y-5">
+      <div className={`flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 text-sm ${left > 0 ? 'border-win/40 bg-win/10' : 'border-line bg-surface2/40'}`}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={left > 0 ? 'text-win' : 'text-muted'} aria-hidden>
+          <rect x="5" y="11" width="14" height="10" rx="2" /><path d={left > 0 ? 'M8 11V7a4 4 0 0 1 7.5-2' : 'M8 11V7a4 4 0 0 1 8 0v4'} />
+        </svg>
+        <span className="flex-1 text-ink">
+          {left > 0 ? <>Team changes unlocked for <b className="num">{mmss}</b>. Every change is logged.</> : 'Team changes are locked. Each time you change the team or a role, you confirm it with a code from your authenticator app.'}
+        </span>
+        {left <= 0 && !pending && <button type="button" onClick={() => setPending(() => async () => 'Unlocked.')} className="rounded-xl border border-line px-3 py-1.5 text-xs font-semibold text-ink">Unlock now</button>}
+      </div>
+
+      {pending && (
+        <form onSubmit={unlock} className="card p-5 space-y-3 border-accent/40">
+          <div className="font-display font-bold text-ink">Confirm with two-step login</div>
+          <p className="text-sm text-muted">Enter the 6-digit code from your authenticator app. The change you asked for is saved right after.</p>
+          <div className="flex flex-wrap gap-2">
+            <input
+              className="w-[200px] rounded-xl border border-line bg-surface2/60 px-4 py-2.5 text-center num text-2xl tracking-[0.4em] text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+              value={code} onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="000000" autoFocus aria-label="6-digit code"
+            />
+            <button type="submit" disabled={busy || code.length !== 6} className="rounded-xl bg-accent text-bg font-semibold px-4 py-2 text-sm disabled:opacity-60">{busy ? 'Checking…' : 'Confirm'}</button>
+            <button type="button" onClick={() => { setPending(null); setCode('') }} className="rounded-xl px-4 py-2 text-sm text-muted">Cancel</button>
+          </div>
+        </form>
+      )}
+
       <Err e={error} />
       {info && <div className="rounded-xl border border-win/40 bg-win/10 px-3 py-2 text-sm text-win">{info}</div>}
 

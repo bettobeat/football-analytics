@@ -567,7 +567,31 @@ app.get('/api/crm/team', need('team'), (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({ data: { ...listRoles(), staff: listStaff(), isAdmin: isAdminReq(req) } });
 });
-app.post('/api/crm/team/member', need('team'), jsonOnly, (req, res) => {
+// Every team / role change needs a fresh two-step code: the code opens a short window (5 minutes) for this session.
+const SUDO_MS = 5 * 60000;
+const sudo = new Map<string, number>(); // session hash → until
+const sessKey = (req: express.Request) => { const t = parseCookies(req.headers.cookie)[SESSION_COOKIE]; return t ? sessionHash(t) : ''; };
+const sudoLeft = (req: express.Request) => Math.max(0, (sudo.get(sessKey(req)) || 0) - Date.now());
+const needSudo = (req: express.Request, res: express.Response, next: express.NextFunction) =>
+  sudoLeft(req) > 0 ? next() : res.status(401).json({ error: 'Enter a code from your authenticator app to make team changes.', sudo: true });
+setInterval(() => { const now = Date.now(); for (const [k, v] of sudo) if (v < now) sudo.delete(k); }, 60000).unref();
+app.get('/api/crm/team/sudo', need('team'), (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ data: { leftMs: sudoLeft(req) } }); });
+app.post('/api/crm/team/sudo', need('team'), rateLimit('team-sudo', 10, 15 * 60000, r => String(r.user?.id)), jsonOnly, (req, res) => {
+  try {
+    if (!req.user!.twoFactor) return res.status(400).json({ error: 'Turn on two-step login in Settings first.' });
+    const key = sessKey(req);
+    if (!key) return res.status(401).json({ error: 'Sign in again.' });
+    checkCode(req.user!.id, req.body?.code);
+    sudo.set(key, Date.now() + SUDO_MS);
+    securityLog(req, 'team_unlocked', req.user, 'two-step code for team changes (5 min)');
+    res.json({ data: { leftMs: SUDO_MS } });
+  } catch (e) {
+    if (e instanceof TwoFactorError) securityLog(req, '2fa_fail', req.user, 'team changes');
+    authFail(res, e);
+  }
+});
+
+app.post('/api/crm/team/member', need('team'), needSudo, jsonOnly, (req, res) => {
   try {
     const email = String(req.body?.email || '').trim().toLowerCase();
     const target = listUsers().find(u => u.email.toLowerCase() === email);
@@ -582,14 +606,14 @@ app.post('/api/crm/team/member', need('team'), jsonOnly, (req, res) => {
     res.json({ data: u });
   } catch (e) { crmFail(res, e); }
 });
-app.post('/api/crm/team/roles', need('team'), jsonOnly, (req, res) => {
+app.post('/api/crm/team/roles', need('team'), needSudo, jsonOnly, (req, res) => {
   try {
     const r = createRole(req.body?.name, req.body?.perms, isAdminReq(req));
     securityLog(req, 'role_created', req.user, `${r.name}: ${r.perms.join(', ')}`);
     res.json({ data: r });
   } catch (e) { crmFail(res, e); }
 });
-app.post('/api/crm/team/roles/:key', need('team'), jsonOnly, (req, res) => {
+app.post('/api/crm/team/roles/:key', need('team'), needSudo, jsonOnly, (req, res) => {
   try {
     if (!isAdminReq(req) && req.user!.role === String(req.params.key)) return res.status(403).json({ error: 'You cannot change your own role. Ask the admin.' });
     const r = updateRole(String(req.params.key), req.body?.name, req.body?.perms, isAdminReq(req));
@@ -597,7 +621,7 @@ app.post('/api/crm/team/roles/:key', need('team'), jsonOnly, (req, res) => {
     res.json({ data: r });
   } catch (e) { crmFail(res, e); }
 });
-app.delete('/api/crm/team/roles/:key', need('team'), (req, res) => {
+app.delete('/api/crm/team/roles/:key', need('team'), needSudo, (req, res) => {
   try {
     if (!isAdminReq(req) && req.user!.role === String(req.params.key)) return res.status(403).json({ error: 'You cannot delete your own role.' });
     deleteRole(String(req.params.key), isAdminReq(req));
