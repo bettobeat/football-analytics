@@ -226,6 +226,10 @@ async function doBackup(trigger: string) {
       .run(new Date().toISOString(), ok ? 1 : 0, trigger, local ? name : null, dbBytes, gzBytes, Date.now() - t0, note, ok ? null : note);
     logger.info(`backup ${name}: ${(dbBytes / 1e6).toFixed(1)} MB → ${(gzBytes / 1e6).toFixed(1)} MB gz in ${Date.now() - t0} ms, off-site ${remote}, server copy ${local}`);
     if (!ok) await alert(`The database backup did not complete: ${note}`);
+    // our own "volume almost full" email (Railway's usage alerts need the Pro plan)
+    const v2 = diskOf(DATA_DIR);
+    if (v2 && (v2.free < 500e6 || v2.free / v2.total < 0.15))
+      await alert(`The Railway volume is almost full: ${GB(v2.free)} free of ${GB(v2.total)}. The site stores everything there — make the volume bigger (volume → Settings → Live resize).`);
     return { ok, name, dbBytes, gzBytes, remote, local };
   } catch (e: any) {
     fs.rmSync(raw, { force: true });
@@ -243,7 +247,7 @@ async function alert(msg: string) {
   const to = (process.env.ADMIN_EMAILS || '').split(',').map(s => s.trim()).filter(Boolean)[0];
   if (!to) return;
   try {
-    await sendMail({ to, subject: 'SportLikely: database backup problem', text: `${msg}\n\nCheck Users → Overview → Backups on sportlikely.com.`, html: `<p>${msg.replace(/</g, '&lt;')}</p><p>Check Users → Overview → Backups on sportlikely.com.</p>` });
+    await sendMail({ to, subject: 'SportLikely: database / disk warning', text: `${msg}\n\nCheck Users → Overview → Backups on sportlikely.com.`, html: `<p>${msg.replace(/</g, '&lt;')}</p><p>Check Users → Overview → Backups on sportlikely.com.</p>` });
   } catch { /* email off */ }
 }
 
