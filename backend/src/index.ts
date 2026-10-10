@@ -25,7 +25,7 @@ import { historyStatus, teamMapStatus, GROUPS, syncAll, syncH2HArchive, h2hArchi
 import { withLive, liveHalfTimeTest } from './services/liveChance';
 import { backtestUpsets, upsetWatchReport, upsetWatchBacktest } from './services/upsetAlerts';
 import { submitContact, contactInbox, markContact, ContactError } from './services/contact';
-import { ADMIN_2FA_REQUIRED, twoFactorEnabled, twoFactorStatus, startSetup, confirmSetup, newRecovery, disableTwoFactor, issueTicket, redeemTicket, securePastSessions, TwoFactorError } from './services/twoFactor';
+import { ADMIN_2FA_REQUIRED, checkCode, revealSetup, twoFactorEnabled, twoFactorStatus, startSetup, confirmSetup, newRecovery, disableTwoFactor, issueTicket, redeemTicket, securePastSessions, TwoFactorError } from './services/twoFactor';
 import { securityLog, securityLogList } from './services/securityLog';
 import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestRows, backtestRunsList } from './services/historyModel';
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
@@ -73,7 +73,7 @@ import { dataHealth, startDataHealthScheduler } from './services/dataHealth';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures, afGet, afRemaining, xgCoverage } from './services/apiFootball';
 import {
   signup, login, changePassword, setPlan, adminResetPassword, listUsers, userStats, createSession, destroySession, userForToken,
-  parseCookies, setSessionCookie, clearSessionCookie, SESSION_COOKIE, userById, checkPassword, sessionHash, accessOf, canSeeFull, isPaid, teaseDeep, teaseDeepExcept, AuthError, Access, User,
+  parseCookies, setSessionCookie, clearSessionCookie, SESSION_COOKIE, userById, checkPassword, sessionHash, startEmailChange, confirmEmailChange, accessOf, canSeeFull, isPaid, teaseDeep, teaseDeepExcept, AuthError, Access, User,
   sendVerification, verifyEmail, requestPasswordReset, resetPassword, setMarketingOptIn, usersCsv, verificationRequired, exportUserData, deleteAccount, cancelPlan, resumePlan, leaveFeedback
 } from './services/auth';
 import { playerDataStatus, teamPlayers } from './services/playerData';
@@ -560,6 +560,43 @@ app.post('/api/auth/2fa/disable', rateLimit('2fa-setup', 10, 15 * 60000), jsonOn
     authFail(res, e);
   }
 });
+// Add another device (second phone / tablet): password + a current code → the setup QR again
+app.post('/api/auth/2fa/device', rateLimit('2fa-setup', 10, 15 * 60000), jsonOnly, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  try {
+    checkPassword(req.user.id, req.body?.password);
+    const d = revealSetup(req.user.id, req.user.email, req.body?.code);
+    securityLog(req, '2fa_device_added', req.user);
+    res.set('Cache-Control', 'no-store');
+    res.json({ data: d });
+  } catch (e) {
+    authFail(res, e);
+  }
+});
+
+// Change the account email: password (+ two-step code when on) → code to the new address → confirm
+app.post('/api/auth/email', rateLimit('email-change', 10, 60 * 60000), jsonOnly, async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  try {
+    if (req.user.twoFactor) checkCode(req.user.id, req.body?.code);
+    const to = await startEmailChange(req.user, req.body?.password, req.body?.email);
+    securityLog(req, 'email_change_started', req.user, `to ${to}`);
+    res.json({ data: { sentTo: to } });
+  } catch (e) {
+    authFail(res, e);
+  }
+});
+app.post('/api/auth/email/confirm', jsonOnly, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  try {
+    const r = confirmEmailChange(req.user, req.body?.code);
+    securityLog(req, 'email_changed', r.user, `from ${r.oldEmail}`);
+    res.json(sessionPayload({ ...r.user, mfa: req.user.mfa }));
+  } catch (e) {
+    authFail(res, e);
+  }
+});
+
 // Admin: security log (sign-ins, two-step, account changes; IPs kept 90 days)
 app.get('/api/admin/security-log', (req, res) => {
   res.set('Cache-Control', 'no-store');

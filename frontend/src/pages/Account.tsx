@@ -107,6 +107,8 @@ export default function Account() {
         </label>
       </div>
 
+      <EmailCard />
+
       <form onSubmit={changePw} className="card p-6 space-y-3">
         <div className="font-display font-bold text-ink">{t("Change password")}</div>
         <label className="block">
@@ -125,7 +127,7 @@ export default function Account() {
         </button>
       </form>
 
-      {user.isAdmin && <TwoFactorCard />}
+      <TwoFactorCard />
 
       <DataCard />
 
@@ -137,6 +139,93 @@ export default function Account() {
         className="text-sm text-muted hover:text-loss"
       >
         {t("Sign out")}</button>
+    </div>
+  )
+}
+
+/** Change the account email: password (+ two-step code) → a code to the new address → confirm. */
+function EmailCard() {
+  const { user, refresh } = useAuth()
+  const [step, setStep] = useState<'idle' | 'form' | 'code' | 'done'>('idle')
+  const [email, setEmail] = useState('')
+  const [pw, setPw] = useState('')
+  const [code2fa, setCode2fa] = useState('')
+  const [code, setCode] = useState('')
+  const [sentTo, setSentTo] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  if (!user) return null
+  const input =
+    'w-full rounded-xl border border-line bg-surface2/60 px-3.5 py-2.5 text-sm text-ink placeholder:text-faint outline-none focus:border-accent focus:ring-2 focus:ring-accent/20'
+  const run = async (fn: () => Promise<void>) => {
+    setError(null); setBusy(true)
+    try { await fn() } catch (err) { setError(errorText(err)) } finally { setBusy(false) }
+  }
+  const start = (e: FormEvent) => { e.preventDefault(); run(async () => {
+    const r = await axios.post(`${API_URL}/auth/email`, { email, password: pw, code: user.twoFactor ? code2fa : undefined })
+    setSentTo(r.data.data.sentTo); setPw(''); setCode2fa(''); setStep('code')
+  }) }
+  const confirm = (e: FormEvent) => { e.preventDefault(); run(async () => {
+    await axios.post(`${API_URL}/auth/email/confirm`, { code })
+    await refresh(); setCode(''); setEmail(''); setStep('done')
+  }) }
+  const close = () => { setStep('idle'); setError(null); setPw(''); setCode(''); setCode2fa('') }
+  const err = error && <div className="rounded-xl border border-loss/40 bg-loss/10 px-3 py-2 text-sm text-loss">{error}</div>
+
+  return (
+    <div className="card p-6 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="font-display font-bold text-ink">{t("Email")}</div>
+          <div className="text-sm text-muted truncate">{user.email}</div>
+        </div>
+        {step === 'idle' && (
+          <button type="button" onClick={() => setStep('form')} className="shrink-0 rounded-xl bg-surface2 border border-line px-3 py-1.5 text-sm font-semibold text-ink">{t("Change")}</button>
+        )}
+      </div>
+      {user.isAdmin && step === 'idle' && <p className="text-[11px] text-faint">Admin account: add the new address to ADMIN_EMAILS in Railway first (keep the old one too), then change it here.</p>}
+      {step === 'form' && (
+        <form onSubmit={start} className="space-y-3">
+          <label className="block">
+            <span className="label">{t("New email")}</span>
+            <input className={`${input} mt-1`} type="email" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" inputMode="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} />
+          </label>
+          <label className="block">
+            <span className="label">{t("Password")}</span>
+            <input className={`${input} mt-1`} type="password" required value={pw} onChange={e => setPw(e.target.value)} autoComplete="current-password" />
+          </label>
+          {user.twoFactor && (
+            <label className="block">
+              <span className="label">{t("6-digit code")}</span>
+              <input className={`${input} mt-1 num tracking-widest`} value={code2fa} onChange={e => setCode2fa(e.target.value.slice(0, 20))} inputMode="numeric" autoComplete="one-time-code" placeholder="000000" />
+            </label>
+          )}
+          {err}
+          <div className="flex gap-2">
+            <button type="submit" disabled={busy} className="rounded-xl bg-accent text-bg font-semibold px-4 py-2 text-sm disabled:opacity-60">{busy ? t("Please wait…") : t("Send code to the new email")}</button>
+            <button type="button" onClick={close} className="rounded-xl px-4 py-2 text-sm text-muted">{t("Cancel")}</button>
+          </div>
+        </form>
+      )}
+      {step === 'code' && (
+        <form onSubmit={confirm} className="space-y-3">
+          <p className="text-sm text-muted">{t("We sent a 6-digit code to {0}. It’s valid for 10 minutes. Check spam if you don’t see it.", { 0: sentTo })}</p>
+          <input
+            className="w-full max-w-[220px] rounded-xl border border-line bg-surface2/60 px-4 py-2.5 text-center num text-2xl tracking-[0.4em] text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            value={code} onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="000000" aria-label={t("6-digit code")}
+          />
+          {err}
+          <div className="flex gap-2">
+            <button type="submit" disabled={busy || code.length !== 6} className="rounded-xl bg-accent text-bg font-semibold px-4 py-2 text-sm disabled:opacity-60">{busy ? t("Checking…") : t("Confirm")}</button>
+            <button type="button" onClick={close} className="rounded-xl px-4 py-2 text-sm text-muted">{t("Cancel")}</button>
+          </div>
+        </form>
+      )}
+      {step === 'done' && (
+        <div className="rounded-xl border border-win/40 bg-win/10 px-3 py-2 text-sm text-win">
+          {t("Your email is now {0}. We sent a notice to your old address.", { 0: user.email })}
+        </div>
+      )}
     </div>
   )
 }

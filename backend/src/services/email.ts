@@ -98,6 +98,31 @@ export function sendVerificationCode(to: string, code: string) {
   return sendEmail(to, `${code} is your SportLikely code`, html, text);
 }
 
+export function sendEmailChangeCode(to: string, code: string) {
+  const { html, text } = codeEmail(
+    'Confirm your new email',
+    'Enter this code on SportLikely to move your account to this email address:',
+    code,
+    'The code is valid for 10 minutes. If you didn’t ask for this, you can ignore this email — nothing changes.'
+  );
+  return sendEmail(to, `${code} is your SportLikely code`, html, text);
+}
+
+/** Sent to the OLD address after the email of an account was changed. */
+export function sendEmailChangedNotice(oldEmail: string, newEmail: string) {
+  const masked = newEmail.replace(/^(.{2}).*(@.*)$/, '$1•••$2');
+  const html = layout({
+    preheader: 'The email of your SportLikely account was changed',
+    label: 'Account security',
+    body: `<tr><td style="padding:16px 28px 24px;font-size:15px;line-height:1.55">
+      <p style="margin:0 0 12px">The email address of your SportLikely account was just changed to <b>${esc(masked)}</b>.</p>
+      <p style="margin:0">If this was you, there is nothing to do. If it wasn’t, reply to this email or write to support@sportlikely.com right away so we can secure your account.</p>
+    </td></tr>`
+  });
+  const text = `The email address of your SportLikely account was just changed to ${masked}.\nIf this was you, there is nothing to do. If it wasn't, write to support@sportlikely.com right away.`;
+  return sendEmail(oldEmail, 'Your SportLikely email was changed', html, text, 'support@sportlikely.com');
+}
+
 export function sendResetCode(to: string, code: string) {
   const { html, text } = codeEmail(
     'Reset your password',

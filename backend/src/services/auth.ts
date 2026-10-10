@@ -12,7 +12,7 @@ import crypto from 'crypto';
 import type express from 'express';
 import { db } from '../db';
 import logger from '../utils/logger';
-import { emailEnabled, sendVerificationCode, sendResetCode } from './email';
+import { emailEnabled, sendVerificationCode, sendResetCode, sendEmailChangeCode, sendEmailChangedNotice } from './email';
 
 /** premium = $15 plan with a monthly allowance of match unlocks; pro = $30 plan, unlimited (see services/billing.ts) */
 export type Plan = 'free' | 'premium' | 'pro';
@@ -85,6 +85,7 @@ db.exec(`
   for (const [c, t] of [['totp_secret', 'TEXT'], ['totp_pending', 'TEXT'], ['totp_enabled_at', 'TEXT'], ['totp_last_step', 'INTEGER'], ['totp_recovery', 'TEXT']])
     if (!cols.has(c)) db.exec(`ALTER TABLE users ADD COLUMN ${c} ${t}`);
   const sc = new Set(db.prepare('PRAGMA table_info(sessions)').all().map((c: any) => c.name));
+  if (!cols.has('pending_email')) db.exec('ALTER TABLE users ADD COLUMN pending_email TEXT'); // email change waiting for its code
   if (!sc.has('mfa')) db.exec('ALTER TABLE sessions ADD COLUMN mfa INTEGER NOT NULL DEFAULT 0'); // 1 = this sign-in passed two-step
 }
 // Admins with two-step login on (or everyone when ADMIN_2FA_REQUIRED=1) get admin access only from a session that passed it
@@ -311,7 +312,7 @@ const CODE_TTL_MS = 10 * 60 * 1000;
 const CODE_COOLDOWN_MS = 45 * 1000;
 const CODE_MAX_ATTEMPTS = 5;
 
-async function issueCode(userId: number, email: string, purpose: 'verify' | 'reset'): Promise<void> {
+async function issueCode(userId: number, email: string, purpose: 'verify' | 'reset' | 'email'): Promise<void> {
   const prev = db.prepare('SELECT sent_at FROM email_codes WHERE user_id = ? AND purpose = ?').get(userId, purpose);
   if (prev && Date.now() - new Date(prev.sent_at).getTime() < CODE_COOLDOWN_MS)
     throw new AuthError(429, 'A code was just sent. Wait a minute before asking for another one.');
@@ -325,6 +326,7 @@ async function issueCode(userId: number, email: string, purpose: 'verify' | 'res
   ).run(userId, purpose, sha(`${purpose}:${userId}:${code}`), new Date(now.getTime() + CODE_TTL_MS).toISOString(), now.toISOString());
   try {
     if (purpose === 'verify') await sendVerificationCode(email, code);
+    else if (purpose === 'email') await sendEmailChangeCode(email, code);
     else await sendResetCode(email, code);
   } catch (e: any) {
     logger.error('Sending code failed', { status: e?.response?.status, message: e?.response?.data?.message || e?.message });
@@ -333,7 +335,7 @@ async function issueCode(userId: number, email: string, purpose: 'verify' | 'res
   }
 }
 
-function useCode(userId: number, purpose: 'verify' | 'reset', codeIn: unknown): void {
+function useCode(userId: number, purpose: 'verify' | 'reset' | 'email', codeIn: unknown): void {
   const code = String(codeIn || '').replace(/\D/g, '');
   const row = db.prepare('SELECT * FROM email_codes WHERE user_id = ? AND purpose = ?').get(userId, purpose);
   if (!row) throw new AuthError(400, 'No active code. Ask for a new one.');
@@ -387,6 +389,37 @@ export function resetPassword(emailIn: unknown, code: unknown, password: unknown
   db.prepare('UPDATE users SET pass_hash = ?, email_verified = 1 WHERE id = ?').run(hashPassword(String(password)), row.id);
   db.prepare('DELETE FROM sessions WHERE user_id = ?').run(row.id);
   return rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(row.id));
+}
+
+/**
+ * Change the account email, step 1: password OK → a code goes to the NEW address (proves it is theirs).
+ * Admin accounts: the new address must already be in ADMIN_EMAILS (admin rights come from that list).
+ */
+export async function startEmailChange(user: User, password: unknown, newEmailIn: unknown): Promise<string> {
+  if (!emailEnabled) throw new AuthError(503, 'Changing the email is not available yet. Contact support.');
+  const email = normEmail(newEmailIn);
+  // admin rights come from ADMIN_EMAILS: the new address must be listed there first, or the account would lose them
+  if ((user.isAdmin || ADMIN_EMAILS.has(user.email.toLowerCase())) && !ADMIN_EMAILS.has(email))
+    throw new AuthError(400, 'Admin account: first add the new address to ADMIN_EMAILS in Railway (keep the old one too), then change it here.');
+  if (!EMAIL_RE.test(email) || email.length > 200) throw new AuthError(400, 'Please enter a valid email address.');
+  if (email === user.email) throw new AuthError(400, 'That is already your email.');
+  if (limited(`email-change:${user.id}`, 5, 3600000)) throw new AuthError(429, 'Too many tries. Try again in an hour.');
+  checkPassword(user.id, password);
+  if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) throw new AuthError(409, 'Another account already uses this email.');
+  db.prepare('UPDATE users SET pending_email = ? WHERE id = ?').run(email, user.id);
+  await issueCode(user.id, email, 'email');
+  return email;
+}
+
+/** Step 2: the code from the new inbox → the email changes; the old address gets a notice. */
+export function confirmEmailChange(user: User, code: unknown): { user: User; oldEmail: string; newEmail: string } {
+  const row: any = db.prepare('SELECT email, pending_email FROM users WHERE id = ?').get(user.id);
+  if (!row?.pending_email) throw new AuthError(400, 'No email change in progress. Start again.');
+  useCode(user.id, 'email', code);
+  if (db.prepare('SELECT 1 FROM users WHERE email = ? AND id != ?').get(row.pending_email, user.id)) throw new AuthError(409, 'Another account already uses this email.');
+  db.prepare('UPDATE users SET email = ?, pending_email = NULL, email_verified = 1 WHERE id = ?').run(row.pending_email, user.id);
+  sendEmailChangedNotice(row.email, row.pending_email).catch(e => logger.warn('Email-changed notice not sent', { message: e?.message }));
+  return { user: rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(user.id)), oldEmail: row.email, newEmail: row.pending_email };
 }
 
 export function setMarketingOptIn(userId: number, on: boolean): User {

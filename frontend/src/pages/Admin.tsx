@@ -228,9 +228,10 @@ const EVENT_LABEL: Record<string, string> = {
   login_ok: 'Signed in', login_ok_recovery_code: 'Signed in with a recovery code', login_password_ok: 'Password OK, waiting for code',
   login_fail: 'Wrong email or password', '2fa_fail': 'Wrong two-step code', '2fa_on': 'Two-step login turned on', '2fa_off': 'Two-step login turned off',
   '2fa_recovery_new': 'New recovery codes', password_reset: 'Password reset by email', password_change: 'Password changed',
-  admin_set_password: 'Admin set a user password'
+  admin_set_password: 'Admin set a user password', '2fa_device_added': 'Two-step: another device added',
+  email_change_started: 'Email change started', email_changed: 'Email changed'
 }
-const BAD = new Set(['login_fail', '2fa_fail', '2fa_off', 'login_ok_recovery_code', 'admin_set_password'])
+const BAD = new Set(['login_fail', '2fa_fail', '2fa_off', 'login_ok_recovery_code', 'admin_set_password', 'email_changed', '2fa_device_added'])
 function browserOf(ua: string | null) {
   if (!ua) return ''
   const os = /iPhone|iPad/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac OS/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : ''

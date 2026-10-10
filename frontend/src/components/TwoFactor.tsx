@@ -106,13 +106,26 @@ function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void 
   )
 }
 
+function QrBlock({ setup }: { setup: { secret: string; otpauth: string; qr?: string } }) {
+  return (
+    <div className="flex flex-col sm:flex-row items-center gap-4">
+      {setup.qr && <img src={setup.qr} alt={t("QR code for your authenticator app")} className="w-[200px] h-[200px] rounded-xl bg-white p-2" />}
+      <div className="text-sm space-y-2 min-w-0">
+        <div className="label">{t("Setup key")}</div>
+        <div className="num text-ink break-all select-all bg-surface2/60 border border-line rounded-xl px-3 py-2">{setup.secret.match(/.{1,4}/g)?.join(' ')}</div>
+        <a href={setup.otpauth} className="inline-block text-accent font-semibold sm:hidden">{t("Open in authenticator app")}</a>
+      </div>
+    </div>
+  )
+}
+
 interface Status { enabled: boolean; enabledAt: string | null; recoveryLeft: number; adminRequired: boolean }
 
 /** Account page: switch two-step login on / off, new recovery codes. */
 export function TwoFactorCard() {
   const { user, refresh } = useAuth()
   const [st, setSt] = useState<Status | null>(null)
-  const [mode, setMode] = useState<'idle' | 'password' | 'scan' | 'codes' | 'off' | 'newcodes'>('idle')
+  const [mode, setMode] = useState<'idle' | 'password' | 'scan' | 'codes' | 'off' | 'newcodes' | 'device' | 'deviceScan'>('idle')
   const [pw, setPw] = useState('')
   const [code, setCode] = useState('')
   const [setup, setSetup] = useState<{ secret: string; otpauth: string; qr?: string } | null>(null)
@@ -142,6 +155,13 @@ export function TwoFactorCard() {
   const turnOff = (e: FormEvent) => { e.preventDefault(); run(async () => {
     await axios.post(`${API_URL}/auth/2fa/disable`, { password: pw, code })
     reset(); await load(); await refresh()
+  }) }
+  const addDevice = (e: FormEvent) => { e.preventDefault(); run(async () => {
+    const r = await axios.post(`${API_URL}/auth/2fa/device`, { password: pw, code })
+    const d = r.data.data as { secret: string; otpauth: string }
+    let qr: string | undefined
+    try { qr = await QRCode.toDataURL(d.otpauth, { margin: 1, width: 220, errorCorrectionLevel: 'M' }) } catch { /* the key still works */ }
+    setSetup({ ...d, qr }); setPw(''); setCode(''); setMode('deviceScan')
   }) }
   const newCodes = (e: FormEvent) => { e.preventDefault(); run(async () => {
     const r = await axios.post(`${API_URL}/auth/2fa/recovery`, { code })
@@ -186,14 +206,7 @@ export function TwoFactorCard() {
               <li>{t("Scan this code (or type the setup key below).")}</li>
               <li>{t("Enter the 6-digit code the app shows for SportLikely.")}</li>
             </ol>
-            <div className="flex flex-col sm:flex-row items-center gap-4">
-              {setup.qr && <img src={setup.qr} alt={t("QR code for your authenticator app")} className="w-[200px] h-[200px] rounded-xl bg-white p-2" />}
-              <div className="text-sm space-y-2 min-w-0">
-                <div className="label">{t("Setup key")}</div>
-                <div className="num text-ink break-all select-all bg-surface2/60 border border-line rounded-xl px-3 py-2">{setup.secret.match(/.{1,4}/g)?.join(' ')}</div>
-                <a href={setup.otpauth} className="inline-block text-accent font-semibold sm:hidden">{t("Open in authenticator app")}</a>
-              </div>
-            </div>
+            <QrBlock setup={setup} />
             <input
               className="w-full max-w-[220px] rounded-xl border border-line bg-surface2/60 px-4 py-2.5 text-center num text-2xl tracking-[0.4em] text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
               value={code} onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="000000" aria-label={t("6-digit code")}
@@ -217,6 +230,23 @@ export function TwoFactorCard() {
             <button type="button" onClick={reset} className="rounded-xl px-4 py-2 text-sm text-muted">{t("Cancel")}</button>
           </div>
         </form>
+      ) : mode === 'device' ? (
+        <form onSubmit={addDevice} className="space-y-3">
+          <p className="text-sm text-muted">{t("Add a second phone or tablet: both will show the same codes. Confirm your password and a code from your current app.")}</p>
+          <input className={input} type="password" required value={pw} onChange={e => setPw(e.target.value)} autoComplete="current-password" placeholder={t("Password")} aria-label={t("Password")} />
+          {codeInput}
+          {err}
+          <div className="flex gap-2">
+            <button type="submit" disabled={busy || !pw || code.trim().length < 6} className="rounded-xl bg-accent text-bg font-semibold px-4 py-2 text-sm disabled:opacity-60">{t("Continue")}</button>
+            <button type="button" onClick={reset} className="rounded-xl px-4 py-2 text-sm text-muted">{t("Cancel")}</button>
+          </div>
+        </form>
+      ) : mode === 'deviceScan' && setup ? (
+        <div className="space-y-4">
+          <p className="text-sm text-muted">{t("On the other device, open your authenticator app, tap + and scan this code (or type the setup key). Both devices will then show the same 6-digit codes.")}</p>
+          <QrBlock setup={setup} />
+          <button type="button" onClick={reset} className="rounded-xl bg-accent text-bg font-semibold px-4 py-2 text-sm">{t("Done")}</button>
+        </div>
       ) : mode === 'newcodes' ? (
         <form onSubmit={newCodes} className="space-y-3">
           <p className="text-sm text-muted">{t("New recovery codes replace the old ones. Enter a code from your app to continue.")}</p>
@@ -233,6 +263,7 @@ export function TwoFactorCard() {
             {t("On since {0}. Recovery codes left: {1}.", { 0: st.enabledAt ? new Date(st.enabledAt).toLocaleDateString() : '–', 1: st.recoveryLeft })}
           </p>
           <div className="flex flex-wrap gap-3 text-sm">
+            <button type="button" onClick={() => setMode('device')} className="font-semibold text-accent">{t("Add another device")}</button>
             <button type="button" onClick={() => setMode('newcodes')} className="font-semibold text-accent">{t("New recovery codes")}</button>
             {!(user.isAdmin && st.adminRequired) && (
               <button type="button" onClick={() => setMode('off')} className="text-muted hover:text-loss">{t("Switch off")}</button>

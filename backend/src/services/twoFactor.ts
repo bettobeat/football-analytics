@@ -183,6 +183,15 @@ export function newRecovery(userId: number, code: unknown): string[] {
   return codes;
 }
 
+/** Add another device: the same secret again (after a valid code), so a second phone or tablet can be set up. */
+export function revealSetup(userId: number, email: string, code: unknown) {
+  checkCode(userId, code);
+  const r = db.prepare('SELECT totp_secret FROM users WHERE id = ?').get(userId) as any;
+  const secret = open(r.totp_secret);
+  const label = encodeURIComponent(`SportLikely:${email}`);
+  return { secret, otpauth: `otpauth://totp/${label}?secret=${secret}&issuer=SportLikely&algorithm=SHA1&digits=6&period=30` };
+}
+
 export function disableTwoFactor(userId: number, code: unknown) {
   checkCode(userId, code);
   db.prepare('UPDATE users SET totp_secret = NULL, totp_pending = NULL, totp_enabled_at = NULL, totp_last_step = NULL, totp_recovery = NULL WHERE id = ?').run(userId);
