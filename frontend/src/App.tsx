@@ -168,9 +168,9 @@ function UserMenu() {
         className="px-3.5 py-2 rounded-xl bg-accent text-bg text-sm font-semibold whitespace-nowrap">
         {tt("Sign in")}</Link>
     )
-  const badge = access === 'admin' ? 'Admin' : access === 'pro' ? 'Pro' : access === 'premium' ? 'Premium' : 'Free'
+  const badge = access === 'admin' ? 'Founder' : access === 'pro' ? 'Pro' : access === 'premium' ? 'Premium' : 'Free'
   const bbPast = sportOfPath(loc.pathname).id === 'basketball'
-  const roleName = access === 'admin' ? 'Admin' : staff ? staff.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : ''
+  const roleName = access === 'admin' ? 'Founder' : staff ? staff.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : ''
   const item = 'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-ink hover:bg-surface2'
   const icon = (d: string) => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted shrink-0" aria-hidden><path d={d} /></svg>
