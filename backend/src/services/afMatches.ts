@@ -14,6 +14,7 @@ import logger from '../utils/logger';
 import { markFresh } from './freshness';
 import { freezePredictions } from './tracking';
 import { db } from '../db';
+import { playerValue } from './squadValues';
 import { afGet, afConfigured, afRemaining } from './apiFootball';
 import { predictFromStandings, Prediction } from './predictionModel';
 import { groupForCompetition, buildTeamMap, fdNameFor } from './history';
@@ -1185,6 +1186,73 @@ export async function fixtureInjuries(fid: number, homeAf: number, awayAf: numbe
         .sort((a: any, b: any) => Number(b.out) - Number(a.out) || a.name.localeCompare(b.name));
     return { home: side(homeAf), away: side(awayAf) };
   });
+}
+
+/**
+ * How important each player is to his team, 1–5 (Oct 2026, for the injury list):
+ *  - usage: share of the team's last 10 games (all competitions) he started;
+ *  - value: his market value against the average of the team's usual XI (so a star who has been out for weeks
+ *    and has not started lately still counts).
+ * The level is the higher of the two. null when we know neither.
+ */
+export const IMPORTANCE_LABEL: Record<number, string> = { 5: 'Key player', 4: 'Important', 3: 'Regular', 2: 'Rotation', 1: 'Fringe' };
+export async function squadImportance(afTeamId: number) {
+  return once(`imp:${afTeamId}`, 4 * 3600 * 1000, async () => {
+    const games = await lastFinished(afTeamId, 10);
+    await prefetchFixtureParts(games.map((f: any) => f.fixture.id));
+    let club: string | null = null;
+    let of = 0;
+    const starts = new Map<number, number>();
+    const names = new Map<number, string>();
+    for (const f of games) {
+      club = club || (f.teams?.home?.id === afTeamId ? f.teams.home.name : f.teams?.away?.name) || null;
+      let lu: any[] = [];
+      try { lu = await storedFixturePart(f.fixture.id, 'lineups'); } catch { /* no lineup */ }
+      const mine = lu.find((x: any) => x.team?.id === afTeamId);
+      if (!mine?.startXI?.length) continue;
+      of++;
+      for (const x of mine.startXI) if (x.player?.id) { starts.set(x.player.id, (starts.get(x.player.id) || 0) + 1); names.set(x.player.id, x.player.name || ''); }
+    }
+    const top11 = [...starts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 11);
+    const vals = top11.map(([id]) => playerValue(names.get(id) || '', club)).filter((v): v is number => v !== null && v > 0);
+    const ref = vals.length >= 5 ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    return {
+      of,
+      rate(rawId: number | null, name: string): { level: number; starts: number | null; of: number } | null {
+        const st = rawId ? starts.get(rawId) ?? 0 : null;
+        let lu = 0;
+        if (of >= 3 && st !== null) {
+          const w = st / of;
+          lu = w >= 0.8 ? 5 : w >= 0.6 ? 4 : w >= 0.35 ? 3 : w >= 0.1 ? 2 : 1;
+        }
+        let lv = 0;
+        const v = ref ? playerValue(name, club) : null;
+        if (ref && v) {
+          const q = v / ref;
+          lv = q >= 1.5 ? 5 : q >= 1.1 ? 4 : q >= 0.75 ? 3 : q >= 0.4 ? 2 : 1;
+        }
+        const level = Math.max(lu, lv);
+        return level ? { level, starts: of >= 3 ? st : null, of } : null;
+      }
+    };
+  });
+}
+
+/** fixtureInjuries + each player's importance (1–5), most important first. */
+export async function fixtureInjuriesRated(fid: number, homeAf: number, awayAf: number) {
+  const inj = await fixtureInjuries(fid, homeAf, awayAf);
+  const rateSide = async (teamId: number, list: any[]) => {
+    if (!list.length) return list;
+    let imp: Awaited<ReturnType<typeof squadImportance>> | null = null;
+    try { imp = await squadImportance(teamId); } catch { /* no history: list without levels */ }
+    return list
+      .map(p => {
+        const r = imp?.rate(p.id ? p.id - AF_OFFSET : null, p.name) || null;
+        return { ...p, importance: r?.level ?? null, importanceLabel: r ? IMPORTANCE_LABEL[r.level] : null, starts: r?.starts ?? null, of: r?.of ?? null };
+      })
+      .sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0) || Number(b.out) - Number(a.out) || a.name.localeCompare(b.name));
+  };
+  return { home: await rateSide(homeAf, inj.home), away: await rateSide(awayAf, inj.away) };
 }
 
 /** A team's next fixtures (any competition). */

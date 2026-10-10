@@ -1496,5 +1496,21 @@
  "Official highlights usually come out a few hours after the final whistle. We keep checking the league and club channels, so come back later.": "Resmi özetler genellikle maç bitiminden birkaç saat sonra yayımlanır. Lig ve kulüp kanallarını kontrol etmeye devam ediyoruz, daha sonra tekrar bakın.",
  "Official match highlights": "Resmi maç özeti",
  "Video": "Video",
- "last {0} days": "son {0} gün"
+ "last {0} days": "son {0} gün",
+ "started {0} of {1}": "{1} maçın {0}'inde ilk 11",
+ "Goalkeeper": "Kaleci",
+ "Midfield": "Orta saha",
+ "Our expected XI from each team's last {0} games: the formation they used most, and the player who played each position most · the dots show how many of those games he started": "Her takımın son {0} maçından beklenen 11'imiz: en çok kullanılan diziliş ve her mevkide en çok oynayan oyuncu · noktalar bu maçların kaçında ilk 11'de başladığını gösterir",
+ "Usual XI from each team's last {0} matches · the dots show how many of those a player started": "Her takımın son {0} maçındaki olağan 11'i · noktalar oyuncunun kaçında ilk 11'de başladığını gösterir",
+ "Importance unknown": "Önem bilinmiyor",
+ "Started {0} of the last {1} games": "Son {1} maçın {0}'inde ilk 11'de",
+ "1 key or important player out": "1 kilit veya önemli oyuncu yok",
+ "{0} key or important players out": "{0} kilit veya önemli oyuncu yok",
+ "No key players out": "Kilit oyuncu eksik değil",
+ "Importance 1–5: how often he started lately and his value to the squad": "Önem 1–5: son dönemde ne sıklıkla ilk 11'de başladığı ve kadroya değeri",
+ "Key player": "Kilit oyuncu",
+ "Important": "Önemli",
+ "Regular": "Düzenli",
+ "Rotation": "Rotasyon",
+ "Fringe": "Yedek"
 }

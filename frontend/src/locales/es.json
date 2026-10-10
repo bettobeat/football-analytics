@@ -1496,5 +1496,21 @@
  "Official highlights usually come out a few hours after the final whistle. We keep checking the league and club channels, so come back later.": "Los resúmenes oficiales suelen salir unas horas después del pitido final. Seguimos revisando los canales de la liga y los clubes, así que vuelve más tarde.",
  "Official match highlights": "Resumen oficial del partido",
  "Video": "Vídeo",
- "last {0} days": "últimos {0} días"
+ "last {0} days": "últimos {0} días",
+ "started {0} of {1}": "titular {0} de {1}",
+ "Goalkeeper": "Portero",
+ "Midfield": "Centro del campo",
+ "Our expected XI from each team's last {0} games: the formation they used most, and the player who played each position most · the dots show how many of those games he started": "Nuestro once esperado según los últimos {0} partidos de cada equipo: la formación que más usaron y el jugador que más veces ocupó cada posición · los puntos muestran en cuántos de esos partidos fue titular",
+ "Usual XI from each team's last {0} matches · the dots show how many of those a player started": "Once habitual según los últimos {0} partidos de cada equipo · los puntos muestran en cuántos fue titular",
+ "Importance unknown": "Importancia desconocida",
+ "Started {0} of the last {1} games": "Titular en {0} de los últimos {1} partidos",
+ "1 key or important player out": "1 jugador clave o importante de baja",
+ "{0} key or important players out": "{0} jugadores clave o importantes de baja",
+ "No key players out": "Ningún jugador clave de baja",
+ "Importance 1–5: how often he started lately and his value to the squad": "Importancia 1–5: cuántas veces fue titular últimamente y su valor para la plantilla",
+ "Key player": "Jugador clave",
+ "Important": "Importante",
+ "Regular": "Habitual",
+ "Rotation": "Rotación",
+ "Fringe": "Secundario"
 }

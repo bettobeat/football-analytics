@@ -960,7 +960,7 @@ function MatchDetail() {
                   <Pitch home={xProbable.home} away={xProbable.away} probable code={m.competition?.code} />
                   <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-faint">
                     <span>
-                      {tt("Our expected XI from each team's last {0} games: the formation they used most, and the player who played each position most · the badge shows how many of those games he started", { 0: Math.max(xProbable.home.basedOn || 0, xProbable.away.basedOn || 0) })}</span>
+                      {tt("Our expected XI from each team's last {0} games: the formation they used most, and the player who played each position most · the dots show how many of those games he started", { 0: Math.max(xProbable.home.basedOn || 0, xProbable.away.basedOn || 0) })}</span>
                     <span className="inline-flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulseDot" />
                       {tt("Replaced automatically when the official lineups are published (~1h before kick-off)")}</span>
@@ -973,7 +973,7 @@ function MatchDetail() {
                   <Pitch home={probable.home} away={probable.away} probable code={m.competition?.code} />
                   <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-faint">
                     <span>
-                      {tt("Usual XI from each team's last {0} matches · the badge shows how many of those a player started", { 0: Math.max(probable.basedOn.home, probable.basedOn.away) })}</span>
+                      {tt("Usual XI from each team's last {0} matches · the dots show how many of those a player started", { 0: Math.max(probable.basedOn.home, probable.basedOn.away) })}</span>
                     <span className="inline-flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulseDot" />
                       {tt("Replaced automatically when the official lineups are published (~1h before kick-off)")}</span>
@@ -987,7 +987,7 @@ function MatchDetail() {
 
               {/* Injured and doubtful players listed for this match */}
               {xLineups?.injuries && (
-                <Section title={tt("Injuries & suspensions")} note={tt("Players listed as out or doubtful for this match")}>
+                <Section title={tt("Injuries & suspensions")} note={tt("Importance 1–5: how often he started lately and his value to the squad")}>
                   {xLineups.injuries.home.length || xLineups.injuries.away.length ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
                       <InjuryList team={home} list={xLineups.injuries.home} />
@@ -1733,24 +1733,50 @@ interface TeamAvg {
   averages: Record<string, number>
 }
 
-interface Injury { id: number | null; name: string; out: boolean; reason: string | null }
+interface Injury { id: number | null; name: string; out: boolean; reason: string | null; importance?: number | null; importanceLabel?: string | null; starts?: number | null; of?: number | null }
 interface Fixture1 { date: string; days: number; home: boolean; opponent: string; opponentCrest: string | null; competition: string | null; score: string | null }
 interface TeamSchedule { previous: Fixture1 | null; next: Fixture1 | null; games14: number; games30: number | null; away30: number | null; recent: Fixture1[]; upcoming: Fixture1[] }
+const IMP_TONE: Record<number, string> = { 5: 'text-loss', 4: 'text-draw', 3: 'text-ink', 2: 'text-muted', 1: 'text-faint' }
+const IMP_BAR: Record<number, string> = { 5: 'bg-loss', 4: 'bg-draw', 3: 'bg-ink/70', 2: 'bg-muted/70', 1: 'bg-faint/70' }
+/** Importance 1–5 as five small bars plus a word. */
+function Importance({ x }: { x: Injury }) {
+  if (!x.importance) return <span className="text-[11px] text-faint">{tt("Importance unknown")}</span>
+  const lvl = x.importance
+  const why = x.starts != null && x.of ? tt("Started {0} of the last {1} games", { 0: x.starts, 1: x.of }) : undefined
+  return (
+    <span className="inline-flex items-center gap-1.5" title={why}>
+      <span className="inline-flex items-end gap-[2px]" aria-hidden>
+        {[1, 2, 3, 4, 5].map(i => <span key={i} className={`w-[4px] rounded-sm ${i <= lvl ? IMP_BAR[lvl] : 'bg-line'}`} style={{ height: `${4 + i * 2}px` }} />)}
+      </span>
+      <span className={`text-[11px] font-semibold ${IMP_TONE[lvl]}`}>{lvl}/5 · {tt(x.importanceLabel || '')}</span>
+    </span>
+  )
+}
+
 function InjuryList({ team, list }: { team: Team; list: Injury[] }) {
+  const key = list.filter(x => x.out && (x.importance ?? 0) >= 4).length
   return (
     <div>
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-1">
         {team.crest && <img src={team.crest} alt="" className="w-6 h-6 object-contain" />}
         <span className="font-display font-bold text-ink">{team.shortName || team.name}</span>
         <span className="ml-auto num text-xs text-faint">{list.filter(x => x.out).length} {tt("out")} · {list.filter(x => !x.out).length} {tt("doubtful")}</span>
       </div>
+      {list.length > 0 && (
+        <p className={`text-xs mb-3 ${key ? 'text-loss font-semibold' : 'text-faint'}`}>
+          {key ? (key === 1 ? tt("1 key or important player out") : tt("{0} key or important players out", { 0: key })) : tt("No key players out")}
+        </p>
+      )}
       {list.length ? (
-        <ul className="space-y-1.5">
+        <ul className="divide-y divide-line/40">
           {list.map((x, i) => (
-            <li key={x.id ?? i} className="flex items-center gap-2 text-sm">
+            <li key={x.id ?? i} className="flex items-center gap-3 py-2 text-sm">
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${x.out ? 'bg-loss' : 'bg-draw'}`} />
-              {x.id ? <Link to={`/player/${x.id}`} className="text-ink hover:text-accent truncate">{x.name}</Link> : <span className="text-ink truncate">{x.name}</span>}
-              <span className="ml-auto text-xs text-faint text-right">{x.out ? tt("Out") : tt("Doubtful")}{x.reason ? ` · ${x.reason}` : ''}</span>
+              <span className="min-w-0 flex-1">
+                {x.id ? <Link to={`/player/${x.id}`} className="block text-ink hover:text-accent truncate font-medium">{x.name}</Link> : <span className="block text-ink truncate font-medium">{x.name}</span>}
+                <span className="block text-[11px] text-faint truncate">{x.out ? tt("Out") : tt("Doubtful")}{x.reason ? ` · ${x.reason}` : ''}</span>
+              </span>
+              <span className="shrink-0"><Importance x={x} /></span>
             </li>
           ))}
         </ul>
@@ -2173,97 +2199,155 @@ function lastName(name: string) {
   return parts.length > 1 ? parts[parts.length - 1] : name
 }
 
-function PlayerDot({ p, side, of, href }: { p: PitchPlayer; side: 'home' | 'away'; of?: number; href?: string | null }) {
-  const ring = side === 'home' ? 'ring-home/70' : 'ring-away/70'
-  const showStarts = typeof p.starts === 'number' && of
-  const title = `${p.name}${p.position ? ` · ${p.position}` : ''}${showStarts ? ` · started ${p.starts}/${of}` : ''}`
+/** Starts in the analysed games as small pips (filled = started). */
+function StartPips({ n, of }: { n: number; of: number }) {
   return (
-    <div className="flex flex-col items-center w-[64px]" title={title}>
-      <div className="relative">
-        <div className={`relative w-9 h-9 rounded-full bg-surface ring-2 ${ring} shadow-card overflow-hidden grid place-items-center ${showStarts && p.starts! < (of || 0) ? 'opacity-90' : ''}`}>
-          {p.photo ? (
-            <span className="photo-duo block w-full h-full"><img src={p.photo} alt="" className="w-full h-full object-cover" /></span>
-          ) : (
-            <span className="num text-sm font-bold text-ink">{p.shirtNumber ?? ''}</span>
-          )}
-        </div>
-        {showStarts && (
-          <span
-            className={`absolute -top-1 -right-2 num text-[9px] font-bold leading-none px-1 py-0.5 rounded-md ring-1 ring-black/20 ${
-              p.starts === of ? 'bg-accent text-bg' : 'bg-surface text-ink'
-            }`}
-          >
-            {p.starts}/{of}
-          </span>
-        )}
+    <span className="inline-flex gap-[2px]" aria-label={tt("started {0} of {1}", { 0: n, 1: of })}>
+      {Array.from({ length: of }, (_, i) => <span key={i} className={`w-[5px] h-[5px] rounded-full ${i < n ? 'bg-accent' : 'bg-white/30'}`} />)}
+    </span>
+  )
+}
+
+function PitchToken({ p, side, of, href }: { p: PitchPlayer; side: 'home' | 'away'; of?: number; href?: string | null }) {
+  const showStarts = typeof p.starts === 'number' && !!of
+  const title = `${p.name}${p.position ? ` · ${p.position}` : ''}${showStarts ? ` · ${tt("started {0} of {1}", { 0: p.starts, 1: of })}` : ''}`
+  const name = <span className="block max-w-[68px] sm:max-w-[84px] truncate rounded-md bg-black/55 px-1.5 py-[2px] text-[11px] font-semibold leading-tight text-white">{lastName(p.name)}</span>
+  return (
+    <div className="flex flex-col items-center gap-1 w-[70px] sm:w-[84px]" title={title}>
+      <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full grid place-items-center shadow-[0_2px_6px_rgba(0,0,0,0.45)] ring-2 ring-white/85 ${side === 'home' ? 'bg-home' : 'bg-away'}`}>
+        <span className="num text-sm font-extrabold text-white">{p.shirtNumber ?? ''}</span>
       </div>
-      {href ? (
-        <Link to={href} className="mt-1 text-[11px] leading-tight text-white font-medium text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)] truncate max-w-full hover:underline">
-          {lastName(p.name)}
-        </Link>
-      ) : (
-        <span className="mt-1 text-[11px] leading-tight text-white font-medium text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)] truncate max-w-full">
-          {lastName(p.name)}
-        </span>
-      )}
+      {href ? <Link to={href} className="hover:underline">{name}</Link> : name}
+      {showStarts && <StartPips n={p.starts!} of={of!} />}
     </div>
   )
 }
 
-function Pitch({ home, away, probable = false, code }: { home: Team; away: Team; probable?: boolean; code?: string }) {
-  const [side, setSide] = useState<'home' | 'away'>('home')
-  const team = side === 'home' ? home : away
-  const of = probable ? team.basedOn : undefined
-  const rows = formationRows(team) // GK first → drawn at the bottom, attackers toward the top
-  const rowStyle = (i: number, n: number) => {
-    const t = n <= 1 ? 0.5 : i / (n - 1) // 0 = goal line (bottom), 1 = top of the half
-    return { bottom: `${8 + t * 74}%` }
+const POS_GROUPS: { k: string; label: string; re: RegExp }[] = [
+  { k: 'G', label: 'Goalkeeper', re: /goal/i },
+  { k: 'D', label: 'Defence', re: /def|back/i },
+  { k: 'M', label: 'Midfield', re: /mid/i },
+  { k: 'F', label: 'Attack', re: /off|att|for|wing|striker/i }
+]
+
+/** The XI as a list by line, under the pitch — easy to read on a phone. */
+function XiList({ team, side, of, code }: { team: Team; side: 'home' | 'away'; of?: number; code?: string }) {
+  const rows = formationRows(team)
+  const lineup = rows.flat()
+  if (!lineup.length) return null
+  // lines: from the provider position, or from the pitch row (GK, then the formation lines)
+  const lineOf = (pl: PitchPlayer) => {
+    const g = POS_GROUPS.find(x => x.re.test(pl.position || ''))
+    if (g) return g.k
+    const r = rows.findIndex(row => row.includes(pl))
+    return r === 0 ? 'G' : r === rows.length - 1 ? 'F' : r === 1 ? 'D' : 'M'
   }
-  const TeamBtn = ({ t, k }: { t: Team; k: 'home' | 'away' }) => (
-    <button onClick={() => setSide(k)} className={`seg-btn flex items-center gap-2 ${side === k ? 'seg-btn-active' : ''}`}>
-      {t.crest && <img src={t.crest} alt="" className="w-4 h-4 object-contain" />}
-      {t.shortName || t.name}
-      {t.formation && <span className="num text-[11px] text-faint">{t.formation}</span>}
-    </button>
-  )
   return (
     <div>
-      <div className="flex justify-center mb-3">
-        <div className="seg">
-          <TeamBtn t={home} k="home" />
-          <TeamBtn t={away} k="away" />
-        </div>
+      <div className="flex items-center gap-2 mb-2">
+        {team.crest && <img src={team.crest} alt="" className="w-5 h-5 object-contain" />}
+        <span className="font-display font-bold text-ink">{team.shortName || team.name}</span>
+        {team.formation && <span className="num text-xs text-faint">{team.formation}</span>}
       </div>
-      <div
-        className="relative mx-auto w-full max-w-[420px] rounded-2xl overflow-hidden border border-line/60"
-        style={{
-          aspectRatio: '4 / 3.4',
-          background: 'repeating-linear-gradient(0deg, rgb(28 120 66) 0 20%, rgb(32 130 72) 20% 40%)'
-        }}
-      >
-        {/* half-pitch markings: goal at the bottom, halfway line at the top */}
-        <svg viewBox="0 0 400 340" className="absolute inset-0 w-full h-full" preserveAspectRatio="none" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="1.5">
-          <rect x="8" y="-20" width="384" height="352" rx="2" />
-          <line x1="8" y1="8" x2="392" y2="8" />
-          <path d="M155 8 A45 45 0 0 0 245 8" />
-          <rect x="90" y="250" width="220" height="82" />
-          <rect x="150" y="300" width="100" height="32" />
-          <path d="M160 250 A40 40 0 0 1 240 250" />
+      <div className="space-y-2">
+        {POS_GROUPS.map(g => {
+          const list = lineup.filter(pl => lineOf(pl) === g.k)
+          if (!list.length) return null
+          return (
+            <div key={g.k}>
+              <div className="text-[10px] font-bold uppercase tracking-wide text-faint mb-1">{tt(g.label)}</div>
+              <ul className="space-y-1">
+                {list.map(pl => {
+                  const href = playerHref(pl, team, code)
+                  return (
+                    <li key={pl.id} className="flex items-center gap-2.5 text-sm">
+                      <span className={`num w-6 h-6 rounded-full grid place-items-center text-[11px] font-bold text-white shrink-0 ${side === 'home' ? 'bg-home' : 'bg-away'}`}>{pl.shirtNumber ?? ''}</span>
+                      {href ? <Link to={href} className="text-ink hover:text-accent truncate">{pl.name}</Link> : <span className="text-ink truncate">{pl.name}</span>}
+                      {typeof pl.starts === 'number' && !!of && <span className="ml-auto num text-[11px] text-faint whitespace-nowrap">{tt("started {0} of {1}", { 0: pl.starts, 1: of })}</span>}
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/** Both XIs on one pitch, facing each other: across on wide screens, top-to-bottom on phones. */
+function Pitch({ home, away, probable = false, code }: { home: Team; away: Team; probable?: boolean; code?: string }) {
+  // a: 0..100 along the pitch (home goal → away goal), b: 0..100 across
+  const place = (team: Team, isHome: boolean) => {
+    const rows = formationRows(team)
+    const n = rows.length
+    return rows.flatMap((row, i) =>
+      row.map((pl, j) => {
+        const t = n <= 1 ? 0 : i / (n - 1)
+        const a = isHome ? 6 + t * 38 : 94 - t * 38
+        const b = ((j + 1) / (row.length + 1)) * 100
+        return { pl, a, b: isHome ? b : 100 - b, team, side: (isHome ? 'home' : 'away') as 'home' | 'away' }
+      })
+    )
+  }
+  const dots = [...place(home, true), ...place(away, false)]
+  const ofOf = (t: Team) => (probable ? t.basedOn : undefined)
+  const head = (t: Team, side: 'home' | 'away') => (
+    <div className={`flex items-center gap-2 min-w-0 ${side === 'away' ? 'flex-row-reverse text-right' : ''}`}>
+      <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${side === 'home' ? 'bg-home' : 'bg-away'}`} />
+      {t.crest && <img src={t.crest} alt="" className="w-6 h-6 object-contain shrink-0" />}
+      <span className="min-w-0">
+        <span className="block font-display font-bold text-ink truncate">{t.shortName || t.name}</span>
+        <span className="block num text-[11px] text-faint truncate">{[t.formation, t.coach?.name].filter(Boolean).join(' · ')}</span>
+      </span>
+    </div>
+  )
+  const grass = (deg: number) => ({ background: `repeating-linear-gradient(${deg}deg, rgb(28 120 66) 0 10%, rgb(33 131 73) 10% 20%)` })
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        {head(home, 'home')}
+        {probable && <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.14em] text-faint px-2 py-1 rounded-full border border-line">{tt("Probable")}</span>}
+        {head(away, 'away')}
+      </div>
+
+      {/* wide screens: across, home on the left */}
+      <div className="hidden sm:block relative w-full rounded-2xl overflow-hidden border border-line/60" style={{ aspectRatio: '16 / 10', ...grass(90) }}>
+        <svg viewBox="0 0 1000 625" className="absolute inset-0 w-full h-full" preserveAspectRatio="none" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" aria-hidden>
+          <rect x="15" y="15" width="970" height="595" rx="3" />
+          <line x1="500" y1="15" x2="500" y2="610" />
+          <circle cx="500" cy="312" r="72" />
+          <rect x="15" y="150" width="140" height="325" /><rect x="15" y="235" width="50" height="155" />
+          <rect x="845" y="150" width="140" height="325" /><rect x="935" y="235" width="50" height="155" />
+          <path d="M155 250 A70 70 0 0 1 155 375" /><path d="M845 250 A70 70 0 0 0 845 375" />
         </svg>
-        {rows.map((row, i) => (
-          <div key={i} className="absolute left-0 right-0 flex justify-evenly px-2 translate-y-1/2" style={rowStyle(i, rows.length)}>
-            {row.map(p => (
-              <PlayerDot key={p.id} p={p} side={side} of={of} href={playerHref(p, team, code)} />
-            ))}
+        {dots.map(d => (
+          <div key={`${d.side}${d.pl.id}`} className="absolute -translate-x-1/2 -translate-y-[22px]" style={{ left: `${d.a}%`, top: `${d.b}%` }}>
+            <PitchToken p={d.pl} side={d.side} of={ofOf(d.team)} href={playerHref(d.pl, d.team, code)} />
           </div>
         ))}
-        {probable && (
-          <div className="absolute top-2 left-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/80 drop-shadow">
-            {tt("Probable")}</div>
-        )}
-        {team.coach?.name && (
-          <div className="absolute top-2 right-3 text-[10px] text-white/70 drop-shadow">{tt("Coach")}{' '}{team.coach.name}</div>
-        )}
+      </div>
+
+      {/* phones: top to bottom, away at the top */}
+      <div className="sm:hidden relative w-full rounded-2xl overflow-hidden border border-line/60" style={{ aspectRatio: '10 / 15', ...grass(0) }}>
+        <svg viewBox="0 0 400 600" className="absolute inset-0 w-full h-full" preserveAspectRatio="none" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" aria-hidden>
+          <rect x="8" y="8" width="384" height="584" rx="2" />
+          <line x1="8" y1="300" x2="392" y2="300" />
+          <circle cx="200" cy="300" r="45" />
+          <rect x="90" y="8" width="220" height="80" /><rect x="150" y="8" width="100" height="30" />
+          <rect x="90" y="512" width="220" height="80" /><rect x="150" y="562" width="100" height="30" />
+        </svg>
+        {dots.map(d => (
+          <div key={`${d.side}${d.pl.id}`} className="absolute -translate-x-1/2 -translate-y-[20px]" style={{ top: `${4 + (100 - d.a) * 0.88}%`, left: `${d.b}%` }}>
+            <PitchToken p={d.pl} side={d.side} of={ofOf(d.team)} href={playerHref(d.pl, d.team, code)} />
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-5">
+        <XiList team={home} side="home" of={ofOf(home)} code={code} />
+        <XiList team={away} side="away" of={ofOf(away)} code={code} />
       </div>
     </div>
   )

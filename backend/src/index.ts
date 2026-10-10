@@ -43,7 +43,7 @@ import {
   isAfMatchId, isAfCode, afUpcoming, afLive, afWithPredictions, getAfMatchDetails, getAfStandings, getAfScorers, getAfRecent,
   afCompetitions, pollAfLive, startAfMatchesScheduler, afWindowStatus, refreshAfWindow, onAfWindow, isKnownAfFixture, afExtrasForFd, withAfOdds, backfillAfOdds,
   warmMatchExtras, teamAverages, probableXI, lastMeetings, AF_OFFSET,
-  afFixtureInfo, fixtureInjuries, teamSchedule
+  afFixtureInfo, fixtureInjuriesRated, teamSchedule
 } from './services/afMatches';
 import { buildNationalElo, syncNationalHistory, nationalEloStatus, startNationalEloScheduler, nationalGoalsSensitivity, tuneNational, nationalTuneStatus } from './services/nationalElo';
 import { buildClubElo, syncEuropeanCups, clubEloStatus, startClubEloScheduler, clubValueReport } from './services/clubElo';
@@ -1152,7 +1152,7 @@ app.get('/api/matches/:id(\\d+)/extras/:part(stats|lineups|h2h|rest)', async (re
     } else if (req.params.part === 'lineups') {
       const [home, away] = [await probableXI(teams.home, 5), await probableXI(teams.away, 5)];
       let injuries: any = null;
-      try { injuries = await fixtureInjuries(info.fid, teams.home, teams.away); } catch { /* no injury list for this league */ }
+      try { injuries = await fixtureInjuriesRated(info.fid, teams.home, teams.away); } catch { /* no injury list for this league */ }
       data = { home, away, injuries };
     } else if (req.params.part === 'rest') {
       const [home, away] = await Promise.all([teamSchedule(teams.home, info.kickoff), teamSchedule(teams.away, info.kickoff)]);
