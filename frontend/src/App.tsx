@@ -27,6 +27,7 @@ import AccessibilityMenu, { initA11y } from './components/Accessibility'
 import Accessibility from './pages/Accessibility'
 import Contact from './pages/Contact'
 import Crm from './pages/Crm'
+import ConsoleGate from './components/ConsoleGate'
 import SportSoon from './pages/SportSoon'
 import SportSwitch from './components/SportSwitch'
 import BbHome from './pages/bb/BbHome'
@@ -525,12 +526,12 @@ function Shell() {
             <Route path="/verify" element={<Verify />} />
             <Route path="/forgot" element={<Forgot />} />
             <Route path="/premium" element={<Premium />} />
-            <Route path="/admin" element={<AdminOnly><Admin /></AdminOnly>} />
+            <Route path="/admin" element={<AdminOnly><ConsoleGate><Admin /></ConsoleGate></AdminOnly>} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/accessibility" element={<Accessibility />} />
             <Route path="/contact" element={<Contact />} />
-            <Route path="/crm" element={<Crm />} />
+            <Route path="/crm" element={<ConsoleGate><Crm /></ConsoleGate>} />
             <Route path="/basketball/*" element={<BbRoutes />} />
             <Route path="/tennis/*" element={<SportSoon sport="tennis" />} />
             <Route path="/american-football/*" element={<SportSoon sport="american-football" />} />

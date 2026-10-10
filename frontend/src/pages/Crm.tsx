@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { errorText, useAuth } from '../lib/auth'
+import { useConsole } from '../components/ConsoleGate'
 
 /*
  * CRM (staff only, English): support inbox (admin + support staff), email campaigns and revenue (admin only).
@@ -23,6 +24,7 @@ const Err = ({ e }: { e: string | null }) => (e ? <div className="rounded-xl bor
 
 export default function Crm() {
   const { staff, user, loading, can } = useAuth()
+  const con = useConsole()
   const [params, setParams] = useSearchParams()
   useEffect(() => { document.title = 'CRM · SportLikely' }, [])
 
@@ -61,6 +63,13 @@ export default function Crm() {
         <div>
           <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink">CRM</h1>
           <p className="text-sm text-muted mt-1">{roleName} · {user?.email}</p>
+          {con.username && (
+            <p className="text-[11px] text-faint mt-1">
+              Console: <b className="text-muted">{con.username}</b> ·{' '}
+              <button type="button" onClick={con.changePassword} className="underline hover:text-ink">Change console password</button> ·{' '}
+              <button type="button" onClick={con.lock} className="underline hover:text-ink">Lock</button>
+            </p>
+          )}
         </div>
         <div className="seg flex-wrap">
           {tabs.map(t => (
@@ -661,7 +670,7 @@ function SecurityLog() {
 
 interface PermDef { key: string; group: string; label: string; help: string }
 interface RoleDef { key: string; name: string; perms: string[]; members?: number; locked?: boolean }
-interface StaffRow { id: number; email: string; name: string | null; role: string; roleName: string; emailVerified: boolean; twoFactor: boolean; lastLoginAt: string | null }
+interface StaffRow { id: number; email: string; name: string | null; role: string; roleName: string; emailVerified: boolean; twoFactor: boolean; lastLoginAt: string | null; console: { username: string; mustChange: boolean; updatedAt: string } | null }
 interface TeamData { perms: PermDef[]; admin: RoleDef; roles: RoleDef[]; staff: StaffRow[]; isAdmin: boolean }
 
 function Team() {
@@ -676,6 +685,9 @@ function Team() {
   const [left, setLeft] = useState(0)
   const [pending, setPending] = useState<null | (() => Promise<string | void>)>(null)
   const [code, setCode] = useState('')
+  const [conFor, setConFor] = useState<number | null>(null)
+  const [conUser, setConUser] = useState('')
+  const [conPw, setConPw] = useState('')
   const load = () => axios.get(`${API_URL}/crm/team`).then(r => { setD(r.data.data); setError(null) }).catch(e => setError(errorText(e)))
   const loadSudo = () => axios.get(`${API_URL}/crm/team/sudo`).then(r => setLeft(r.data.data.leftMs)).catch(() => undefined)
   useEffect(() => { load(); loadSudo() }, [])
@@ -764,10 +776,25 @@ function Team() {
                   <span className="block text-[11px] text-faint truncate">{m.email} · last seen {fmtDay(m.lastLoginAt)}</span>
                 </span>
                 {(!m.twoFactor || !m.emailVerified) && <span className="text-[11px] text-draw font-semibold">{!m.emailVerified ? 'email not confirmed' : 'no two-step login yet'}</span>}
+                <span className={`text-[11px] font-semibold ${m.console ? (m.console.mustChange ? 'text-draw' : 'text-muted') : 'text-loss'}`}>
+                  {m.console ? `console: ${m.console.username}${m.console.mustChange ? ' (must change password)' : ''}` : 'no console login'}
+                </span>
+                <button type="button" disabled={busy} onClick={() => { setConFor(conFor === m.id ? null : m.id); setConUser(m.console?.username || ''); setConPw('') }} className="text-xs text-accent font-semibold">{m.console ? 'Reset console login' : 'Set console login'}</button>
                 <select value={m.role} disabled={busy} onChange={e => act(async () => { await axios.post(`${API_URL}/crm/team/member`, { email: m.email, role: e.target.value }); return `${m.email} is now ${d.roles.find(r => r.key === e.target.value)?.name}.` })} className="rounded-lg border border-line bg-surface2/60 px-2 py-1.5 text-xs text-ink">
                   {d.roles.map(r => <option key={r.key} value={r.key}>{r.name}</option>)}
                 </select>
                 <button type="button" disabled={busy} onClick={() => { if (window.confirm(`Remove ${m.email} from the team? Their access stops at once.`)) act(async () => { await axios.post(`${API_URL}/crm/team/member`, { email: m.email, role: null }); return 'Removed from the team.' }) }} className="text-xs text-muted hover:text-loss">Remove</button>
+              {conFor === m.id && (
+                  <form
+                    onSubmit={e => { e.preventDefault(); const id = m.id, u = conUser, p = conPw; act(async () => { const r = await axios.post(`${API_URL}/crm/team/console`, { userId: id, username: u, password: p }); setConFor(null); setConPw(''); return `Console login for ${m.email}: username ${r.data.data.username}. Give them the password in person or by phone (not by email). They must change it the first time.` }) }}
+                    className="basis-full flex flex-wrap gap-2 pt-1"
+                  >
+                    <input className={`${input} flex-1 min-w-[160px]`} value={conUser} onChange={e => setConUser(e.target.value)} placeholder="Console username" autoCapitalize="none" spellCheck={false} autoComplete="off" required />
+                    <input className={`${input} flex-1 min-w-[160px]`} type="text" value={conPw} onChange={e => setConPw(e.target.value)} placeholder="Temporary password (10+ characters)" autoComplete="off" minLength={10} required />
+                    <button type="submit" disabled={busy} className="rounded-xl bg-accent text-bg font-semibold px-4 py-2 text-sm disabled:opacity-60">Save</button>
+                    <button type="button" onClick={() => setConFor(null)} className="rounded-xl px-3 py-2 text-sm text-muted">Cancel</button>
+                  </form>
+                )}
               </li>
             ))}
           </ul>

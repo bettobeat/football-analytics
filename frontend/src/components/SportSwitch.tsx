@@ -35,7 +35,7 @@ export default function SportSwitch() {
         title={current.name}
         className="h-9 pl-2 pr-1.5 inline-flex items-center gap-1.5 rounded-xl border border-line/80 bg-surface hover:border-faint text-ink"
       >
-        <span className="text-base leading-none" aria-hidden>{current.icon}</span>
+        <span className="text-sm font-bold leading-none">{current.name}</span>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-muted">
           <path d="m6 9 6 6 6-6" />
         </svg>

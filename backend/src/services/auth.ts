@@ -111,13 +111,13 @@ const ADMIN_EMAILS = new Set(
 
 const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 64 };
 
-function hashPassword(password: string): string {
+export function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16);
   const key = crypto.scryptSync(password, salt, SCRYPT.keylen, { N: SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p });
   return `scrypt$${SCRYPT.N}$${SCRYPT.r}$${SCRYPT.p}$${salt.toString('base64')}$${key.toString('base64')}`;
 }
 
-function verifyPassword(password: string, stored: string): boolean {
+export function verifyPassword(password: string, stored: string): boolean {
   const parts = stored.split('$');
   if (parts.length !== 6 || parts[0] !== 'scrypt') return false;
   const [, N, r, p, saltB64, keyB64] = parts;
@@ -295,12 +295,21 @@ export function checkPassword(userId: number, password: unknown): void {
   if (!row || !verifyPassword(String(password || ''), row.pass_hash)) throw new AuthError(401, 'Wrong password.');
 }
 
+/** Staff: the account password may not be the same as the staff console password. */
+function notConsolePassword(userId: number, pw: string) {
+  try {
+    const c: any = db.prepare('SELECT pass_hash FROM staff_console WHERE user_id = ?').get(userId);
+    if (c && verifyPassword(pw, c.pass_hash)) throw new AuthError(400, 'Use a different password from your staff console password.');
+  } catch (e) { if (e instanceof AuthError) throw e; }
+}
+
 export function changePassword(userId: number, current: unknown, next: unknown): void {
   const row = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
   if (!row) throw new AuthError(404, 'Account not found.');
   if (!verifyPassword(String(current || ''), row.pass_hash)) throw new AuthError(401, 'Current password is wrong.');
   const bad = checkCredentials(row.email, next);
   if (bad) throw new AuthError(400, bad);
+  notConsolePassword(userId, String(next));
   db.prepare('UPDATE users SET pass_hash = ? WHERE id = ?').run(hashPassword(String(next)), userId);
   // sign out everywhere else
   db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
@@ -427,6 +436,7 @@ export function resetPassword(emailIn: unknown, code: unknown, password: unknown
   if (bad) throw new AuthError(400, bad);
   useCode(row.id, 'reset', code);
   // The code proves the inbox, so the email counts as confirmed too
+  notConsolePassword(row.id, String(password));
   db.prepare('UPDATE users SET pass_hash = ?, email_verified = 1 WHERE id = ?').run(hashPassword(String(password)), row.id);
   db.prepare('DELETE FROM sessions WHERE user_id = ?').run(row.id);
   return rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(row.id));

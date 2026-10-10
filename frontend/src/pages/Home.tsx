@@ -339,13 +339,12 @@ export default function Home() {
               <div className="rounded-2xl bg-surface/70 border border-line px-4 py-3">
                 <div className="font-display text-3xl font-extrabold text-accent num leading-none">{summary.v3.hitRate}%</div>
                 <div className="text-xs text-ink font-semibold mt-1.5">{tt("of our picks were right")}</div>
-                <div className="text-[11px] text-faint">{tt("last {0} days · {1} matches", { 0: summary.days, 1: summary.v3.games })}</div>
+                <div className="text-[11px] text-faint">{tt("last {0} days", { 0: summary.days })}</div>
               </div>
               {summary.v3.strong60?.hitRate != null && (
                 <div className="rounded-2xl bg-surface/70 border border-line px-4 py-3">
-                  <div className="font-display text-3xl font-extrabold text-ink num leading-none">{summary.v3.strong60.hitRate}%</div>
+                  <div className="font-display text-3xl font-extrabold text-accent num leading-none">{summary.v3.strong60.hitRate}%</div>
                   <div className="text-xs text-ink font-semibold mt-1.5">{tt("when we were 60%+ sure")}</div>
-                  <div className="text-[11px] text-faint">{tt("{0} picks", { 0: summary.v3.strong60.n })}</div>
                 </div>
               )}
             </div>
@@ -439,7 +438,7 @@ export default function Home() {
         <div className="rounded-3xl p-6 border border-accent/30 bg-[linear-gradient(160deg,rgb(var(--accent)/0.10),rgb(var(--surface)/0.6))] flex flex-col gap-4">
           <div className="flex items-center justify-between gap-2">
             <h2 className="font-display text-lg font-bold">{tt("Our record")}</h2>
-            {summary && <span className="text-xs text-muted">{tt("{0} games · {1} days", { 0: summary.v3.games, 1: summary.days })}</span>}
+            {summary && <span className="text-xs text-muted">{tt("last {0} days", { 0: summary.days })}</span>}
           </div>
           {summary && summary.v3.hitRate !== null ? (
             <div className="space-y-3">

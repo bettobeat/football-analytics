@@ -29,6 +29,7 @@ import { ADMIN_2FA_REQUIRED, checkCode, revealSetup, twoFactorEnabled, twoFactor
 import { securityLog, securityLogList } from './services/securityLog';
 import { inboxList, inboxThread, reply, addNote, setStatus, assign, canOpen, searchCustomers, customerProfile, signOutEverywhere, segmentPreview, campaignList, sendTest, startCampaign, revenue, unsubscribe, CrmError, type Viewer } from './services/crm';
 import { roleByKey, listRoles, listStaff, createRole, updateRole, deleteRole, RoleError, type Perm } from './services/roles';
+import { consoleRow, sessionUnlocked, lockSession, setupOwn, setFor, consoleLogin, changeOwn, resetOwn, removeFor, consoleUsers, ConsoleError } from './services/staffConsole';
 import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestRows, backtestRunsList } from './services/historyModel';
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
 import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler, squadCompetitions } from './services/squadValues';
@@ -311,6 +312,17 @@ app.use('/api', (req, res, next) => {
   return res.status(access === 'anon' ? 401 : 403).json({ error: 'Not allowed' });
 });
 
+// Staff console login (services/staffConsole.ts): the CRM and the Users/admin area need a second, separate sign-in once
+// per session. Console endpoints themselves (/api/crm/console/*) and maintenance tokens (which can't reach these) excluded.
+const tokenHashOf = (req: express.Request) => { const t = parseCookies(req.headers.cookie)[SESSION_COOKIE]; return t ? sessionHash(t) : ''; };
+app.use(['/api/crm', '/api/admin'], (req, res, next) => {
+  if (req.path.startsWith('/console/') || req.path === '/console') return next();
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  if (!sessionUnlocked(tokenHashOf(req))) return res.status(423).json({ error: 'Sign in to the staff console first.', console: 'locked' });
+  if (consoleRow(req.user.id)?.must_change) return res.status(423).json({ error: 'Change your console password first.', console: 'change' });
+  next();
+});
+
 function authFail(res: express.Response, e: any) {
   if (e instanceof AuthError || e instanceof TwoFactorError) return res.status(e.status).json({ error: e.message });
   logger.error('Auth error', { message: e?.message });
@@ -453,6 +465,52 @@ app.post('/api/favorites/remove', jsonOnly, (req, res) => {
   res.json({ data: removeFavorite(req.user.id, req.body?.kind, req.body?.ref) });
 });
 
+// ---------- Staff console login ----------
+const consoleFail = (res: express.Response, e: any) => (e instanceof ConsoleError ? res.status(e.status).json({ error: e.message }) : authFail(res, e));
+app.get('/api/crm/console/status', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const row = consoleRow(req.user!.id);
+  res.json({ data: { hasLogin: !!row, username: row?.username || null, unlocked: sessionUnlocked(tokenHashOf(req)), mustChange: !!row?.must_change, isAdmin: req.staff === 'admin' } });
+});
+app.post('/api/crm/console/setup', rateLimit('console', 10, 15 * 60000, r => String(r.user?.id)), jsonOnly, (req, res) => {
+  try {
+    if (req.staff !== 'admin') return res.status(403).json({ error: 'Your console login is set by your manager.' });
+    const u = setupOwn(req.user!.id, tokenHashOf(req), req.body?.username, req.body?.password);
+    securityLog(req, 'console_setup', req.user, `username ${u}`);
+    res.json({ data: { ok: true } });
+  } catch (e) { consoleFail(res, e); }
+});
+app.post('/api/crm/console/login', rateLimit('console', 10, 15 * 60000, r => String(r.user?.id)), jsonOnly, (req, res) => {
+  try {
+    const r = consoleLogin(req.user!.id, tokenHashOf(req), req.body?.username, req.body?.password);
+    securityLog(req, 'console_login_ok', req.user);
+    res.json({ data: r });
+  } catch (e) {
+    if (e instanceof ConsoleError && e.status !== 400) securityLog(req, 'console_login_fail', req.user, e.message);
+    consoleFail(res, e);
+  }
+});
+app.post('/api/crm/console/change', rateLimit('console', 10, 15 * 60000, r => String(r.user?.id)), jsonOnly, (req, res) => {
+  try {
+    if (!sessionUnlocked(tokenHashOf(req))) return res.status(423).json({ error: 'Sign in to the staff console first.', console: 'locked' });
+    changeOwn(req.user!.id, req.body?.current, req.body?.next);
+    securityLog(req, 'console_password_changed', req.user);
+    res.json({ data: { ok: true } });
+  } catch (e) { consoleFail(res, e); }
+});
+// Admin forgot their console login: account password + a two-step code clear it, then set it up again
+app.post('/api/crm/console/reset', rateLimit('console', 10, 15 * 60000, r => String(r.user?.id)), jsonOnly, (req, res) => {
+  try {
+    if (req.staff !== 'admin') return res.status(403).json({ error: 'Ask your manager to reset your console login.' });
+    checkPassword(req.user!.id, req.body?.password);
+    checkCode(req.user!.id, req.body?.code);
+    resetOwn(req.user!.id);
+    securityLog(req, 'console_reset_admin', req.user);
+    res.json({ data: { ok: true } });
+  } catch (e) { consoleFail(res, e); }
+});
+app.post('/api/crm/console/lock', (req, res) => { lockSession(tokenHashOf(req)); res.json({ data: { ok: true } }); });
+
 // ---------- CRM: every route checks its own permission (services/roles.ts); admin has all ----------
 const staffName = (req: express.Request) => ({ id: req.user!.id, name: req.user!.name || req.user!.email.split('@')[0] });
 const crmFail = (res: express.Response, e: any) =>
@@ -565,7 +623,8 @@ app.get('/api/crm/security', need('security'), (req, res) => {
 // Team & roles
 app.get('/api/crm/team', need('team'), (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json({ data: { ...listRoles(), staff: listStaff(), isAdmin: isAdminReq(req) } });
+  const cons = consoleUsers();
+  res.json({ data: { ...listRoles(), staff: listStaff().map(m => ({ ...m, console: cons.get(m.id) || null })), isAdmin: isAdminReq(req) } });
 });
 // Every team / role change needs a fresh two-step code: the code opens a short window (5 minutes) for this session.
 const SUDO_MS = 5 * 60000;
@@ -602,9 +661,22 @@ app.post('/api/crm/team/member', need('team'), needSudo, jsonOnly, (req, res) =>
     const touchesTeam = (k: string | null) => !!k && !!roleByKey(k)?.perms.includes('team');
     if ((touchesTeam(role) || touchesTeam(target.role)) && !isAdminReq(req)) return res.status(403).json({ error: 'Only the admin can change who manages the team.' });
     const u = setRole(target.id, role);
+    if (!role) removeFor(target.id);
     securityLog(req, 'role_changed', req.user, `${target.email} → ${role ? roleByKey(role)?.name : 'no role'}`);
     res.json({ data: u });
   } catch (e) { crmFail(res, e); }
+});
+app.post('/api/crm/team/console', need('team'), needSudo, jsonOnly, (req, res) => {
+  try {
+    const target = userById(parseInt(String(req.body?.userId), 10));
+    if (!target) return res.status(404).json({ error: 'Account not found.' });
+    if (target.id === req.user!.id) return res.status(400).json({ error: 'Change your own console password from the CRM header.' });
+    if (!target.role) return res.status(400).json({ error: 'Add them to the team first.' });
+    if (roleByKey(target.role)?.perms.includes('team') && !isAdminReq(req)) return res.status(403).json({ error: 'Only the admin can set this person’s console login.' });
+    const u = setFor(target.id, req.body?.username, req.body?.password, req.user!.id);
+    securityLog(req, 'console_login_set', req.user, `${target.email} → username ${u}`);
+    res.json({ data: { ok: true, username: u } });
+  } catch (e) { consoleFail(res, e); }
 });
 app.post('/api/crm/team/roles', need('team'), needSudo, jsonOnly, (req, res) => {
   try {
