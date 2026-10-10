@@ -138,7 +138,7 @@ export default function SearchBox({ compact = false, onDone }: { compact?: boole
       </label>
 
       {show && (
-        <div className="absolute left-0 right-0 mt-2 z-50 card p-2 max-h-[70vh] overflow-y-auto">
+        <div className="absolute left-0 right-0 mt-2 z-[60] menu-panel p-2 max-h-[70vh] overflow-y-auto">
           {loading && !any && <div className="px-3 py-3 text-sm text-faint">{tt("Searching…")}</div>}
           {!loading && !any && <div className="px-3 py-3 text-sm text-faint">{tt("Nothing found for \"")}{q.trim()}".</div>}
           {onBasketball && bbBlock}

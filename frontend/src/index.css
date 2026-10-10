@@ -134,6 +134,17 @@ html.dark {
     background: rgb(255 255 255 / 0.06);
     border-color: rgb(255 255 255 / 0.1);
   }
+ /* menus and dropdowns: solid, never see-through (content behind must not show) */
+  .menu-panel {
+    background: rgb(var(--surface));
+    @apply border border-line rounded-2xl;
+    box-shadow: 0 18px 50px -12px rgb(0 0 0 / 0.45);
+  }
+  .dark .menu-panel {
+    background: rgb(22 27 37);
+    border-color: rgb(255 255 255 / 0.1);
+    box-shadow: 0 24px 60px -12px rgb(0 0 0 / 0.85);
+  }
   .card-hover {
     @apply transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lift hover:border-line;
   }

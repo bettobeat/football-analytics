@@ -184,7 +184,7 @@ function UserMenu() {
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-muted transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden><path d="m6 9 6 6 6-6" /></svg>
       </button>
       {open && (
-        <div role="menu" className="absolute right-0 mt-2 w-60 z-50 card p-1.5 shadow-xl">
+        <div role="menu" className="absolute right-0 mt-2 w-60 z-[60] menu-panel p-1.5">
           <div className="px-3 py-2 border-b border-line/60 mb-1">
             <div className="text-sm font-semibold text-ink truncate">{user.name || user.email.split('@')[0]}</div>
             <div className="text-[11px] text-faint truncate">{user.email}</div>
