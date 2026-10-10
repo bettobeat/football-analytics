@@ -10,7 +10,7 @@ import { useConsole } from '../components/ConsoleGate'
  * Replies go out by email from support@; customers' answers arrive in the support@ Gmail inbox.
  */
 
-type Tab = 'inbox' | 'customers' | 'testers' | 'campaigns' | 'revenue' | 'security' | 'team'
+type Tab = 'inbox' | 'customers' | 'testers' | 'campaigns' | 'revenue' | 'security' | 'activity' | 'team'
 const fmt = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'
 const fmtDay = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—')
@@ -51,6 +51,7 @@ export default function Crm() {
     { k: 'campaigns', label: 'Campaigns', ok: can('campaigns') },
     { k: 'revenue', label: 'Revenue & churn', ok: can('revenue') },
     { k: 'security', label: 'Security log', ok: can('security') },
+    { k: 'activity', label: 'Staff activity', ok: can('activity') },
     { k: 'team', label: 'Team & roles', ok: can('team') }
   ]
   const tabs = all.filter(t => t.ok)
@@ -85,6 +86,7 @@ export default function Crm() {
       {tab === 'campaigns' && <Campaigns />}
       {tab === 'revenue' && <Revenue />}
       {tab === 'security' && <SecurityLog />}
+      {tab === 'activity' && <Activity />}
       {tab === 'team' && <Team />}
     </div>
   )
@@ -494,6 +496,7 @@ interface CustProfile extends CustRow {
   planHistory: { at: string; fromPlan: string | null; toPlan: string; until: string | null; source: string }[]
   messages: { id: number; at: string; topic: string; status: string }[]
   security: { at: string; event: string; ip: string | null; ua: string | null }[] | null
+  staffActivity?: ActRow[]
 }
 const PLAN_TONE: Record<string, string> = { free: 'text-muted', premium: 'text-accent', pro: 'text-accent font-bold' }
 
@@ -612,6 +615,14 @@ function CustomerView({ id }: { id: number }) {
           <div className="label pb-1">Messages</div>
           <ul className="text-xs text-muted space-y-1">
             {c.messages.map(m => <li key={m.id}>#{m.id} · {fmt(m.at)} · {TOPIC[m.topic] || m.topic} · {m.status}</li>)}
+          </ul>
+        </div>
+      )}
+      {c.staffActivity && c.staffActivity.length > 0 && (
+        <div>
+          <div className="label pb-1">What staff did on this account</div>
+          <ul className="text-xs text-muted space-y-1">
+            {c.staffActivity.slice(0, 15).map(a => <li key={a.id}>{fmt(a.at)} · <span className="text-ink">{a.staffEmail}</span> · {a.label}{a.detail ? ` (${a.detail})` : ''}</li>)}
           </ul>
         </div>
       )}
@@ -982,6 +993,63 @@ function Testers({ canInvite }: { canInvite: boolean }) {
             </table>
           </div>
         )}
+      </section>
+    </div>
+  )
+}
+
+/* ---------- Staff activity: who did what (recorded automatically for every staff action) ---------- */
+interface ActRow { id: number; at: string; staffId: number; staffEmail: string | null; role: string | null; action: string; label: string; targetUser: number | null; targetEmail: string | null; target: string | null; detail: string | null }
+const ACT_GROUPS: { k: string; label: string }[] = [
+  { k: '', label: 'Everything' }, { k: 'inbox', label: 'Support inbox' }, { k: 'customer', label: 'Customers' },
+  { k: 'campaign', label: 'Campaigns' }, { k: 'tester', label: 'Testers' }, { k: 'team', label: 'Team' }, { k: 'role', label: 'Roles' },
+  { k: 'console', label: 'Console sign-ins' }, { k: 'backup', label: 'Backups' }, { k: 'users', label: 'Users export' }
+]
+const ACT_TONE = (a: string) => (/password|sign_out|reset|role_|team_|backup_download|users_export|customer_plan/.test(a) ? 'text-draw' : 'text-ink')
+function Activity() {
+  const [d, setD] = useState<{ rows: ActRow[]; staff: { id: number; email: string; n: number; last: string }[]; week: { action: string; n: number }[] } | null>(null)
+  const [staffId, setStaffId] = useState('')
+  const [group, setGroup] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    axios.get(`${API_URL}/crm/activity`, { params: { staff: staffId || undefined, action: group || undefined } })
+      .then(r => { setD(r.data.data); setError(null) }).catch(e => setError(errorText(e)))
+  }, [staffId, group])
+  if (!d) return <div className="card p-6 text-sm text-faint">{error || 'Loading…'}</div>
+  const wk = (re: RegExp) => d.week.filter(w => re.test(w.action)).reduce((a, w) => a + w.n, 0)
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {([['Replies sent', wk(/^inbox_reply$/)], ['Profiles opened', wk(/^customer_open$/)], ['Plan changes', wk(/^customer_plan$/)], ['Team / role changes', wk(/^(team_|role_)/)]] as [string, number][]).map(([k, v]) => (
+          <div key={k} className="card px-4 py-3"><div className="num text-2xl font-extrabold text-ink">{v}</div><div className="text-[11px] text-faint">{k} · last 7 days</div></div>
+        ))}
+      </div>
+      <section className="card overflow-hidden">
+        <div className="px-5 py-3 border-b border-line/60 flex flex-wrap items-center gap-2">
+          <h2 className="font-display font-bold text-ink mr-auto">Staff activity</h2>
+          <select value={staffId} onChange={e => setStaffId(e.target.value)} className="rounded-lg border border-line bg-surface2/60 px-2 py-1.5 text-xs text-ink">
+            <option value="">All staff</option>
+            {d.staff.map(s => <option key={s.id} value={s.id}>{s.email} ({s.n})</option>)}
+          </select>
+          <select value={group} onChange={e => setGroup(e.target.value)} className="rounded-lg border border-line bg-surface2/60 px-2 py-1.5 text-xs text-ink">
+            {ACT_GROUPS.map(g => <option key={g.k} value={g.k}>{g.label}</option>)}
+          </select>
+        </div>
+        <Err e={error} />
+        {d.rows.length === 0 ? <p className="p-5 text-sm text-faint">Nothing recorded yet.</p> : (
+          <ul className="divide-y divide-line/50 text-sm">
+            {d.rows.map(r => (
+              <li key={r.id} className="px-5 py-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                <span className="w-32 shrink-0 text-[11px] text-faint num">{fmt(r.at)}</span>
+                <span className="w-48 shrink-0 truncate text-muted" title={r.role || ''}>{r.staffEmail}</span>
+                <span className={`font-semibold ${ACT_TONE(r.action)}`}>{r.label}</span>
+                {(r.targetEmail || r.target) && <span className="text-muted truncate">{[r.targetEmail, r.target && r.target !== r.targetEmail ? r.target : null].filter(Boolean).join(' · ')}</span>}
+                {r.detail && <span className="text-[11px] text-faint">{r.detail}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="px-5 py-3 text-[11px] text-faint border-t border-line/60">Recorded automatically for every staff action, kept 1 year. Message texts and passwords are never stored here.</p>
       </section>
     </div>
   )

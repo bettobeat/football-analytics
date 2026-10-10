@@ -27,6 +27,7 @@ import { backtestUpsets, upsetWatchReport, upsetWatchBacktest } from './services
 import { submitContact, contactInbox, markContact, ContactError } from './services/contact';
 import { ADMIN_2FA_REQUIRED, checkCode, revealSetup, twoFactorEnabled, twoFactorStatus, startSetup, confirmSetup, newRecovery, disableTwoFactor, issueTicket, redeemTicket, securePastSessions, TwoFactorError } from './services/twoFactor';
 import { securityLog, securityLogList } from './services/securityLog';
+import { recordActivity, activityList } from './services/activity';
 import { createInvite, setInviteOpen, inviteInfo, joinAsTester, testerOf, testerOverview, TesterError } from './services/testers';
 import { runBackup, backupStatus, localPath, startBackups, remoteList, remoteReady } from './services/backup';
 import { inboxList, inboxThread, reply, addNote, setStatus, assign, canOpen, searchCustomers, customerProfile, signOutEverywhere, segmentPreview, campaignList, sendTest, startCampaign, revenue, unsubscribe, CrmError, type Viewer } from './services/crm';
@@ -324,6 +325,11 @@ app.use(['/api/crm', '/api/admin'], (req, res, next) => {
   if (consoleRow(req.user.id)?.must_change) return res.status(423).json({ error: 'Change your console password first.', console: 'change' });
   next();
 });
+// Staff activity log (services/activity.ts): every successful staff action in the CRM / Users area is recorded
+app.use(['/api/crm', '/api/admin'], (req, res, next) => {
+  res.on('finish', () => { if (res.statusCode < 400) recordActivity(req as any); });
+  next();
+});
 
 function authFail(res: express.Response, e: any) {
   if (e instanceof AuthError || e instanceof TwoFactorError) return res.status(e.status).json({ error: e.message });
@@ -561,7 +567,13 @@ app.get('/api/crm/customers', need('customers.view'), (req, res) => {
   try { res.set('Cache-Control', 'no-store'); res.json({ data: searchCustomers(req.query.q) }); } catch (e) { crmFail(res, e); }
 });
 app.get('/api/crm/customers/:id(\\d+)', need('customers.view'), (req, res) => {
-  try { res.set('Cache-Control', 'no-store'); res.json({ data: customerProfile(parseInt(req.params.id, 10), !!req.perms?.has('security')) }); } catch (e) { crmFail(res, e); }
+  try {
+    res.set('Cache-Control', 'no-store');
+    const id = parseInt(req.params.id, 10);
+    const data: any = customerProfile(id, !!req.perms?.has('security'));
+    if (data && req.perms?.has('activity')) data.staffActivity = activityList({ userId: id, limit: 50 }).rows;
+    res.json({ data });
+  } catch (e) { crmFail(res, e); }
 });
 app.post('/api/crm/customers/:id(\\d+)/plan', need('customers.plan'), jsonOnly, (req, res) => {
   try {
@@ -765,6 +777,11 @@ app.post('/api/feedback', jsonOnly, (req, res) => {
   db.prepare('INSERT INTO contact_messages (at, user_id, name, email, topic, message, page, sent) VALUES (?, ?, ?, ?, ?, ?, ?, 1)')
     .run(new Date().toISOString(), req.user.id, req.user.name || null, req.user.email, 'feedback', `[${KIND[kind]}${device ? ` · ${device}` : ''}]\n${message}`, page);
   res.json({ data: { ok: true } });
+});
+app.get('/api/crm/activity', need('activity'), (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const n = (v: any) => { const x = parseInt(String(v || ''), 10); return Number.isFinite(x) ? x : null; };
+  res.json({ data: activityList({ staffId: n(req.query.staff), userId: n(req.query.user), action: req.query.action ? String(req.query.action).replace(/[^a-z_]/g, '') : null, limit: n(req.query.limit) || 300 }) });
 });
 app.get('/api/crm/testers', need('customers.view'), (_req, res) => {
   res.set('Cache-Control', 'no-store');

@@ -19,6 +19,7 @@ export const PERMS = [
   { key: 'campaigns', group: 'Marketing', label: 'Email campaigns', help: 'Build segments and send emails to opted-in users' },
   { key: 'revenue', group: 'Business', label: 'Revenue & churn', help: 'Revenue, paying accounts, cancellations' },
   { key: 'security', group: 'Business', label: 'Security log', help: 'Sign-ins, failed attempts, account changes (with IP)' },
+  { key: 'activity', group: 'Team', label: 'Staff activity', help: 'See what every staff member did: replies, plan changes, profiles opened, team changes' },
   { key: 'model', group: 'Product', label: 'Model & data', help: 'Past seasons, model tests and statistics (read-only)' },
   { key: 'team', group: 'Team', label: 'Manage the team', help: 'Add staff, choose their role, edit role permissions' }
 ] as const;
@@ -26,7 +27,7 @@ export type Perm = (typeof PERMS)[number]['key'];
 export const ALL_PERMS: Perm[] = PERMS.map(p => p.key);
 
 const DEFAULT_ROLES: { key: string; name: string; perms: Perm[] }[] = [
-  { key: 'support_manager', name: 'Support Manager', perms: ['inbox.read', 'inbox.reply', 'inbox.manage', 'customers.view', 'customers.plan', 'customers.security', 'revenue', 'security'] },
+  { key: 'support_manager', name: 'Support Manager', perms: ['inbox.read', 'inbox.reply', 'inbox.manage', 'customers.view', 'customers.plan', 'customers.security', 'revenue', 'security', 'activity'] },
   { key: 'support_agent', name: 'Support Agent', perms: ['inbox.read', 'inbox.reply', 'customers.view'] },
   { key: 'marketing', name: 'Marketing', perms: ['campaigns', 'revenue'] },
   { key: 'analyst', name: 'Analyst', perms: ['revenue', 'model'] },
@@ -42,6 +43,21 @@ db.exec(`CREATE TABLE IF NOT EXISTS roles (key TEXT PRIMARY KEY, name TEXT NOT N
   }
   // the first version had a single 'support' role: it becomes Support Agent
   try { db.prepare(`UPDATE users SET role = 'support_agent' WHERE role = 'support'`).run(); } catch { /* users table not ready */ }
+}
+// one-off updates to existing roles
+db.exec('CREATE TABLE IF NOT EXISTS role_migrations (key TEXT PRIMARY KEY, at TEXT NOT NULL)');
+{
+  const done = (k: string) => !!db.prepare('SELECT 1 FROM role_migrations WHERE key = ?').get(k);
+  if (!done('activity-2026-10')) {
+    // Oct 2026: new 'Staff activity' permission for the support manager
+    const r = db.prepare(`SELECT perms FROM roles WHERE key = 'support_manager'`).get() as any;
+    if (r) {
+      let p: string[] = [];
+      try { p = JSON.parse(r.perms); } catch { /* none */ }
+      if (!p.includes('activity')) db.prepare(`UPDATE roles SET perms = ? WHERE key = 'support_manager'`).run(JSON.stringify([...p, 'activity']));
+    }
+    db.prepare('INSERT INTO role_migrations (key, at) VALUES (?, ?)').run('activity-2026-10', new Date().toISOString());
+  }
 }
 
 export class RoleError extends Error { constructor(public status: number, msg: string) { super(msg); } }

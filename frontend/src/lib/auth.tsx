@@ -30,7 +30,7 @@ export interface User {
 /** CRM: 'admin', the staff member's role key, or null */
 export type Staff = string | null
 /** staff permission keys (backend services/roles.ts) */
-export type Perm = 'inbox.read' | 'inbox.reply' | 'inbox.manage' | 'customers.view' | 'customers.plan' | 'customers.security' | 'campaigns' | 'revenue' | 'security' | 'model' | 'team'
+export type Perm = 'inbox.read' | 'inbox.reply' | 'inbox.manage' | 'customers.view' | 'customers.plan' | 'customers.security' | 'campaigns' | 'revenue' | 'security' | 'activity' | 'model' | 'team'
 
 /** Sign-in step result: a ticket means a two-step code is still needed. */
 export interface SignInStep { ticket?: string }
