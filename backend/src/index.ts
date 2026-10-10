@@ -1540,7 +1540,10 @@ app.get('/api/public/record', (req, res) => {
       recordCache.set(ck, c);
       if (recordCache.size > 200) recordCache.delete(recordCache.keys().next().value as string);
     }
-    res.json({ data: c.data, timestamp: new Date().toISOString() });
+    // the per-competition table is admin-only for now (Yarin, 10 Oct 2026): small samples look bad in public
+    const data = req.access === 'admin' ? c.data : { ...c.data, byCompetition: [] };
+    res.set('Cache-Control', 'no-store');
+    res.json({ data, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Record failed');
   }

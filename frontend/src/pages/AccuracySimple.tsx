@@ -238,9 +238,9 @@ export default function AccuracySimple() {
             </Card>
           )}
 
-          {rec.byCompetition.length > 0 && (
+          {access === 'admin' && rec.byCompetition.length > 0 && (
             <Card>
-              <h2 className="font-display text-xl font-bold text-ink">{t("Our record by competition")}</h2>
+              <h2 className="font-display text-xl font-bold text-ink">{t("Our record by competition")} <span className="ml-2 text-[11px] font-semibold uppercase tracking-wide text-faint">admin only</span></h2>
               <p className="text-sm text-muted mt-1 mb-4">{t("How often each call was right, league by league, in the period you picked.")}</p>
               <div className="overflow-x-auto -mx-1">
                 <table className="w-full text-sm min-w-[520px]">
