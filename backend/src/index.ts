@@ -27,6 +27,7 @@ import { backtestUpsets, upsetWatchReport, upsetWatchBacktest } from './services
 import { submitContact, contactInbox, markContact, ContactError } from './services/contact';
 import { ADMIN_2FA_REQUIRED, checkCode, revealSetup, twoFactorEnabled, twoFactorStatus, startSetup, confirmSetup, newRecovery, disableTwoFactor, issueTicket, redeemTicket, securePastSessions, TwoFactorError } from './services/twoFactor';
 import { securityLog, securityLogList } from './services/securityLog';
+import { runBackup, backupStatus, localPath, startBackups, remoteList, remoteReady } from './services/backup';
 import { inboxList, inboxThread, reply, addNote, setStatus, assign, canOpen, searchCustomers, customerProfile, signOutEverywhere, segmentPreview, campaignList, sendTest, startCampaign, revenue, unsubscribe, CrmError, type Viewer } from './services/crm';
 import { roleByKey, listRoles, listStaff, createRole, updateRole, deleteRole, RoleError, type Perm } from './services/roles';
 import { consoleRow, sessionUnlocked, lockSession, setupOwn, setFor, renameFor, consoleLogin, changeOwn, resetOwn, removeFor, consoleUsers, ConsoleError } from './services/staffConsole';
@@ -746,6 +747,28 @@ app.post('/api/waitlist', rateLimit('waitlist', 10, 15 * 60000), jsonOnly, (req,
   } catch (e: any) {
     res.status(e.status || 500).json({ error: e.message || 'Could not save' });
   }
+});
+// ---------- Database backups (services/backup.ts) — admin only; downloading a copy needs a fresh two-step code ----------
+app.get('/api/admin/backups', async (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const st: any = backupStatus();
+  if (remoteReady()) {
+    try { const l = await remoteList(); st.remote.copies = l.length; st.remote.latest = l[0] || null; st.remote.bytes = l.reduce((a, b) => a + b.size, 0); }
+    catch (e: any) { st.remote.listError = e.message; }
+  }
+  res.json({ data: st });
+});
+app.post('/api/admin/backups/run', (req, res) => {
+  securityLog(req, 'backup_manual', req.user);
+  runBackup('manual').catch(() => undefined);
+  res.json({ data: { started: true } });
+});
+app.get('/api/admin/backups/download/:name', needSudo, (req, res) => {
+  const file = localPath(req.params.name);
+  if (!file) return res.status(404).json({ error: 'Backup not found.' });
+  securityLog(req, 'backup_downloaded', req.user, req.params.name);
+  res.set('Cache-Control', 'no-store');
+  res.download(file, req.params.name);
 });
 app.get('/api/admin/waitlist', (_req, res) => res.json({ data: waitlistStats() }));
 app.get('/api/admin/visitors', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json({ data: visitorStats() }); });
@@ -2336,6 +2359,8 @@ server.listen(PORT, () => {
   })().catch(err => logger.warn('AF window predictions failed', { message: err.message })); });
   // Warm the fixture window now and keep it fresh in the background
   footballDataAPI.startBackgroundRefresh();
+  // Daily database backup (services/backup.ts)
+  startBackups();
   // Settle finished matches every 10 minutes (first run after 1 minute)
   const settle = () =>
     settlePending(

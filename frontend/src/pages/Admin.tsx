@@ -94,6 +94,7 @@ export default function Admin() {
       {tab === 'overview' && (
         <>
           <VisitorsCard />
+          <BackupsCard />
           <section className="card p-5 sm:p-6 mb-8">
             <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
               <h2 className="font-display text-lg font-bold text-ink">Accounts</h2>
@@ -241,6 +242,121 @@ function browserOf(ua: string | null) {
 }
 
 /** Sign-ins and account security events with IP (kept 90 days). */
+interface BackupRow { at: string; ok: number; trigger: string; file: string | null; dbBytes: number | null; gzBytes: number | null; ms: number; remote: string | null; error: string | null }
+interface BackupData {
+  running: boolean; healthy: boolean; lastOkAt: string | null; lastError: string | null; schedule: string; localKeep: number
+  remote: { configured: boolean; encrypted: boolean; ready: boolean; keepDays: number; copies?: number; bytes?: number; latest?: { key: string; at: string } | null; listError?: string }
+  local: { name: string; size: number; at: string }[]; history: BackupRow[]
+}
+const mb = (n: number | null | undefined) => (n == null ? '–' : n >= 1e9 ? `${(n / 1e9).toFixed(2)} GB` : `${(n / 1e6).toFixed(1)} MB`)
+const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '–')
+
+/** Daily database backups: status, copies on the server and off-site, "Back up now", download (needs a two-step code). */
+function BackupsCard() {
+  const [d, setD] = useState<BackupData | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [ask, setAsk] = useState<string | null>(null) // file waiting for the two-step code
+  const [code, setCode] = useState('')
+  const load = () => axios.get(`${API_URL}/admin/backups`).then(r => { setD(r.data.data); setErr(null) }).catch(e => setErr(errorText(e)))
+  useEffect(() => { load() }, [])
+  useEffect(() => {
+    if (!d?.running) return
+    const t = setInterval(load, 4000)
+    return () => clearInterval(t)
+  }, [d?.running])
+
+  const runNow = async () => {
+    setBusy(true)
+    try { await axios.post(`${API_URL}/admin/backups/run`); await load() } catch (e) { setErr(errorText(e)) } finally { setBusy(false) }
+  }
+  const download = async (name: string) => {
+    setBusy(true); setErr(null)
+    try {
+      const r = await axios.get(`${API_URL}/admin/backups/download/${encodeURIComponent(name)}`, { responseType: 'blob' })
+      const url = URL.createObjectURL(r.data)
+      const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 30000)
+    } catch (e: any) {
+      if (e?.response?.status === 401) setAsk(name)
+      else setErr('Download failed.')
+    } finally { setBusy(false) }
+  }
+  const confirm = async () => {
+    setBusy(true); setErr(null)
+    try {
+      await axios.post(`${API_URL}/crm/team/sudo`, { code })
+      const name = ask!; setAsk(null); setCode('')
+      setBusy(false); await download(name)
+    } catch (e) { setErr(errorText(e)); setCode('') } finally { setBusy(false) }
+  }
+
+  if (!d) return err ? <section className="card p-5 sm:p-6 mb-8 text-sm text-loss">Backups: {err}</section> : null
+  const last = d.history[0]
+  return (
+    <section className="card p-5 sm:p-6 mb-8">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+        <h2 className="font-display text-lg font-bold text-ink">Database backups</h2>
+        <button type="button" disabled={busy || d.running} onClick={runNow} className="rounded-xl border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:border-faint disabled:opacity-60">
+          {d.running ? 'Backing up…' : 'Back up now'}
+        </button>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3 mb-4">
+        <div className={`rounded-xl border px-4 py-3 ${d.healthy ? 'border-win/40 bg-win/10' : 'border-loss/40 bg-loss/10'}`}>
+          <div className={`text-sm font-bold ${d.healthy ? 'text-win' : 'text-loss'}`}>{d.healthy ? 'Backed up' : d.lastOkAt ? 'Backup is late' : 'No backup yet'}</div>
+          <div className="text-[11px] text-muted mt-0.5">Last good: {when(d.lastOkAt)} · {d.schedule}</div>
+        </div>
+        <div className="rounded-xl border border-line px-4 py-3">
+          <div className="text-sm font-bold text-ink">On the server</div>
+          <div className="text-[11px] text-muted mt-0.5">{d.local.length} of {d.localKeep} copies · database {mb(last?.dbBytes)} → {mb(last?.gzBytes)} zipped</div>
+        </div>
+        <div className={`rounded-xl border px-4 py-3 ${d.remote.ready && !d.remote.listError ? 'border-line' : 'border-draw/40 bg-draw/10'}`}>
+          <div className={`text-sm font-bold ${d.remote.ready && !d.remote.listError ? 'text-ink' : 'text-draw'}`}>Off-site copy</div>
+          <div className="text-[11px] text-muted mt-0.5">
+            {!d.remote.configured ? 'Not set up yet (Cloudflare R2) — a server copy alone is lost if the volume is lost.'
+              : !d.remote.encrypted ? 'Storage is set, but BACKUP_KEY is missing — nothing is uploaded.'
+              : d.remote.listError ? `Storage error: ${d.remote.listError}`
+              : `${d.remote.copies ?? 0} encrypted copies (${mb(d.remote.bytes)}), kept ${d.remote.keepDays} days`}
+          </div>
+        </div>
+      </div>
+
+      {d.lastError && <div className="rounded-xl border border-loss/40 bg-loss/10 px-3 py-2 text-sm text-loss mb-3">Last attempt: {d.lastError}</div>}
+      {err && <div className="rounded-xl border border-loss/40 bg-loss/10 px-3 py-2 text-sm text-loss mb-3">{err}</div>}
+
+      {ask && (
+        <form onSubmit={e => { e.preventDefault(); confirm() }} className="rounded-xl border border-accent/40 p-4 mb-4 space-y-2">
+          <div className="text-sm font-semibold text-ink">Confirm the download with two-step login</div>
+          <p className="text-xs text-muted">The file holds every account (emails, password hashes). Keep it somewhere safe and delete it when you're done.</p>
+          <div className="flex flex-wrap gap-2">
+            <input value={code} onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="000000" autoFocus aria-label="6-digit code"
+              className="w-[160px] rounded-xl border border-line bg-surface2/60 px-3 py-2 text-center num text-xl tracking-[0.35em] text-ink outline-none focus:border-accent" />
+            <button type="submit" disabled={busy || code.length !== 6} className="rounded-xl bg-accent text-bg font-semibold px-4 py-2 text-sm disabled:opacity-60">Confirm</button>
+            <button type="button" onClick={() => { setAsk(null); setCode('') }} className="rounded-xl px-3 py-2 text-sm text-muted">Cancel</button>
+          </div>
+        </form>
+      )}
+
+      {d.local.length > 0 && (
+        <ul className="divide-y divide-line/50 text-sm">
+          {d.local.map(f => (
+            <li key={f.name} className="py-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="w-32 shrink-0 text-[11px] text-faint num">{when(f.at)}</span>
+              <span className="text-ink truncate num text-xs">{f.name}</span>
+              <span className="text-[11px] text-faint num">{mb(f.size)}</span>
+              <button type="button" disabled={busy} onClick={() => download(f.name)} className="ml-auto text-xs font-semibold text-accent disabled:opacity-60">Download</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {d.history.some(h => !h.ok) && (
+        <p className="mt-3 text-[11px] text-faint">Failed in the last {d.history.length} attempts: {d.history.filter(h => !h.ok).length}. A failure also emails you.</p>
+      )}
+    </section>
+  )
+}
+
 function SecurityCard() {
   const [d, setD] = useState<{ failed24h: number; rows: SecRow[] } | null>(null)
   const [all, setAll] = useState(false)
