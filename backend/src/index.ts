@@ -68,6 +68,7 @@ import { highlightsFor, highlightsStatus, lastCandidates } from './services/high
 import { rebuildPlayerQuality, playerQualityTable } from './services/playerQuality';
 import { db } from './db';
 import { trackVisit, visitorStats } from './services/visitors';
+import { startGeo } from './services/geo';
 import { seoPage, renderIndex, sitemapXml } from './services/seo';
 import { fontRoute, warmFonts } from './services/fonts';
 import { listFavorites, addFavorites, removeFavorite, MAX_FAVORITES } from './services/favorites';
@@ -2432,6 +2433,8 @@ server.listen(PORT, () => {
   footballDataAPI.startBackgroundRefresh();
   // Daily database backup (services/backup.ts)
   startBackups();
+  // Visitor countries: DB-IP country data, refreshed monthly (services/geo.ts)
+  startGeo();
   // Settle finished matches every 10 minutes (first run after 1 minute)
   const settle = () =>
     settlePending(

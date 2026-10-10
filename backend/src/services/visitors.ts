@@ -1,10 +1,12 @@
 import crypto from 'crypto';
 import type express from 'express';
 import { db } from '../db';
+import { countryOf, geoStatus } from './geo';
 
 /**
  * Visitor counts for the admin page (Oct 2026): who is on the site now, and unique visitors per day / 7 / 30 days.
- * A visitor is one IP address. IPs are never stored: only a salted hash, and rows older than 90 days are deleted.
+ * A visitor is one IP address. IPs are never stored: only a salted hash and the visitor's country (services/geo.ts),
+ * and rows older than 90 days are deleted.
  * Admins, maintenance tokens and bots are not counted.
  */
 
@@ -15,6 +17,11 @@ db.exec(`
   );
   CREATE TABLE IF NOT EXISTS visit_salt (id INTEGER PRIMARY KEY CHECK (id = 1), salt TEXT NOT NULL);
 `);
+// Oct 2026: visitor country (2-letter code from services/geo.ts; the IP itself is never stored)
+{
+  const cols = new Set((db.prepare('PRAGMA table_info(visits)').all() as any[]).map(c => c.name));
+  if (!cols.has('country')) db.exec('ALTER TABLE visits ADD COLUMN country TEXT');
+}
 
 function salt(): string {
   const row = db.prepare('SELECT salt FROM visit_salt WHERE id = 1').get();
@@ -32,8 +39,9 @@ const online = new Map<string, { at: number; signedIn: boolean }>();
 const written = new Map<string, number>(); // vid|day → last DB write (at most once a minute per visitor)
 
 const upsert = db.prepare(`
-  INSERT INTO visits (day, vid, hits, signed_in, first_seen, last_seen) VALUES (?, ?, 1, ?, ?, ?)
-  ON CONFLICT(day, vid) DO UPDATE SET hits = hits + 1, signed_in = MAX(signed_in, excluded.signed_in), last_seen = excluded.last_seen
+  INSERT INTO visits (day, vid, hits, signed_in, first_seen, last_seen, country) VALUES (?, ?, 1, ?, ?, ?, ?)
+  ON CONFLICT(day, vid) DO UPDATE SET hits = hits + 1, signed_in = MAX(signed_in, excluded.signed_in), last_seen = excluded.last_seen,
+    country = COALESCE(excluded.country, country)
 `);
 
 /** Express middleware: counts browser visits to the API (the site calls it on every page). */
@@ -52,7 +60,7 @@ export function trackVisit(req: express.Request, _res: express.Response, next: e
     if ((written.get(k) || 0) < now - 60000) {
       written.set(k, now);
       const iso = new Date(now).toISOString();
-      upsert.run(day, vid, signedIn ? 1 : 0, iso, iso);
+      upsert.run(day, vid, signedIn ? 1 : 0, iso, iso, countryOf(ip));
     }
   } catch { /* counting never breaks a request */ }
   next();
@@ -79,9 +87,17 @@ export function visitorStats() {
   `).all(since(30)) as { day: string; visitors: number; signedIn: number; hits: number }[];
   const returning = db.prepare('SELECT COUNT(*) AS n FROM (SELECT vid FROM visits WHERE day >= ? GROUP BY vid HAVING COUNT(*) > 1)').get(since(30)).n as number;
   const first = db.prepare('SELECT MIN(day) AS d FROM visits').get()?.d || null;
+  // visitors by country (one row per visitor: the country of their latest day)
+  const byCountry = (days: number) => db.prepare(`
+    SELECT COALESCE(country, '??') AS country, COUNT(*) AS visitors, SUM(signed) AS signedIn FROM (
+      SELECT vid, MAX(signed_in) AS signed, (SELECT v2.country FROM visits v2 WHERE v2.vid = v.vid AND v2.day >= ? AND v2.country IS NOT NULL ORDER BY v2.day DESC LIMIT 1) AS country
+      FROM visits v WHERE day >= ? GROUP BY vid
+    ) GROUP BY COALESCE(country, '??') ORDER BY visitors DESC`).all(since(days), since(days)) as { country: string; visitors: number; signedIn: number }[];
+  const countriesSince = db.prepare('SELECT MIN(day) AS d FROM visits WHERE country IS NOT NULL').get()?.d || null;
   return {
     onlineNow, onlineSignedIn, onlineWindowMin: ONLINE_MS / 60000,
     today: uniq(1), last7: uniq(7), last30: uniq(30), returning30: returning,
-    daily, countingSince: first
+    daily, countingSince: first,
+    countries: { last7: byCountry(7), last30: byCountry(30), since: countriesSince, geo: geoStatus() }
   };
 }

@@ -142,7 +142,9 @@ export function Privacy() {
         <p>
           <span className="text-ink font-semibold">Visitor counts:</span> to know how many people use the site, we count visits per day using
           a scrambled version of the IP address (a one-way code with a secret key). It cannot be turned back into the IP address, is not
-          linked to your account, and is deleted after 90 days.
+          linked to your account, and is deleted after 90 days. We also note which country the visit came from, looked up from the IP
+          address at the moment of the visit (the address itself is not kept). Country data:{' '}
+          <a href="https://db-ip.com" target="_blank" rel="noreferrer" className="text-accent hover:underline">IP Geolocation by DB-IP</a> (CC BY 4.0).
         </p>
         <p>
           <span className="text-ink font-semibold">Cookies and browser storage:</span> one cookie keeps you signed in (needed for accounts to

@@ -7,6 +7,51 @@ interface Visitors {
   today: number; last7: number; last30: number; returning30: number
   daily: { day: string; visitors: number; signedIn: number; hits: number }[]
   countingSince: string | null
+  countries?: { last7: CountryRow[]; last30: CountryRow[]; since: string | null; geo: { loaded: boolean; status: string; source: string } }
+}
+interface CountryRow { country: string; visitors: number; signedIn: number }
+const flagOf = (cc: string) => (/^[A-Z]{2}$/.test(cc) ? String.fromCodePoint(...[...cc].map(c => 0x1f1e6 + c.charCodeAt(0) - 65)) : '🌐')
+let regionNames: Intl.DisplayNames | null = null
+try { regionNames = new Intl.DisplayNames(['en'], { type: 'region' }) } catch { /* old browser */ }
+const nameOf = (cc: string) => (cc === '??' ? 'Unknown' : (() => { try { return regionNames?.of(cc) || cc } catch { return cc } })())
+
+/** Visitors by country (from the IP at the moment of the visit; only the country is kept). */
+function Countries({ c }: { c: NonNullable<Visitors['countries']> }) {
+  const [range, setRange] = useState<'last7' | 'last30'>('last30')
+  const [all, setAll] = useState(false)
+  const rows = c[range]
+  const total = rows.reduce((a, r) => a + r.visitors, 0)
+  const shown = all ? rows : rows.slice(0, 10)
+  const max = Math.max(1, ...rows.map(r => r.visitors))
+  return (
+    <div className="mt-6 pt-5 border-t border-line/60">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <h3 className="font-display font-bold text-ink">Visitors by country</h3>
+        <div className="seg">
+          <button type="button" onClick={() => setRange('last7')} className={`seg-btn ${range === 'last7' ? 'seg-btn-active' : ''}`}>7 days</button>
+          <button type="button" onClick={() => setRange('last30')} className={`seg-btn ${range === 'last30' ? 'seg-btn-active' : ''}`}>30 days</button>
+        </div>
+      </div>
+      {!c.geo.loaded && <p className="text-xs text-draw mb-2">Country data not loaded yet ({c.geo.status}). It downloads by itself a minute after the server starts.</p>}
+      {rows.length === 0 ? <p className="text-sm text-faint">No visits yet.</p> : (
+        <ul className="space-y-1.5">
+          {shown.map(r => (
+            <li key={r.country} className="flex items-center gap-3 text-sm">
+              <span className="w-6 text-center text-base leading-none" aria-hidden>{flagOf(r.country)}</span>
+              <span className="w-40 truncate text-ink">{nameOf(r.country)}</span>
+              <span className="flex-1 h-2 rounded-full bg-surface2 overflow-hidden"><span className="block h-full rounded-full bg-accent/70" style={{ width: `${(r.visitors / max) * 100}%` }} /></span>
+              <span className="w-10 text-right num text-ink">{r.visitors}</span>
+              <span className="w-12 text-right num text-[11px] text-faint">{total ? Math.round((r.visitors / total) * 100) : 0}%</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {rows.length > 10 && <button type="button" onClick={() => setAll(v => !v)} className="mt-2 text-xs font-semibold text-accent">{all ? 'Show top 10' : `Show all ${rows.length} countries`}</button>}
+      <p className="mt-3 text-[10px] text-faint">
+        Only the country is kept, never the IP{c.since ? ` · countries since ${new Date(c.since).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''} · "Unknown" = visits before countries were counted or unlisted addresses · IP data by <a href="https://db-ip.com" target="_blank" rel="noreferrer" className="underline">DB-IP</a> (CC BY 4.0)
+      </p>
+    </div>
+  )
 }
 
 /** Admin: people on the site now, and unique visitors (one per IP) today / 7 / 30 days, with a 30-day bar chart. */
@@ -70,6 +115,7 @@ export default function VisitorsCard() {
           <span>Today</span>
         </div>
       </div>
+      {v?.countries && <Countries c={v.countries} />}
     </section>
   )
 }
