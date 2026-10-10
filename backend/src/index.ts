@@ -29,7 +29,7 @@ import { ADMIN_2FA_REQUIRED, checkCode, revealSetup, twoFactorEnabled, twoFactor
 import { securityLog, securityLogList } from './services/securityLog';
 import { inboxList, inboxThread, reply, addNote, setStatus, assign, canOpen, searchCustomers, customerProfile, signOutEverywhere, segmentPreview, campaignList, sendTest, startCampaign, revenue, unsubscribe, CrmError, type Viewer } from './services/crm';
 import { roleByKey, listRoles, listStaff, createRole, updateRole, deleteRole, RoleError, type Perm } from './services/roles';
-import { consoleRow, sessionUnlocked, lockSession, setupOwn, setFor, consoleLogin, changeOwn, resetOwn, removeFor, consoleUsers, ConsoleError } from './services/staffConsole';
+import { consoleRow, sessionUnlocked, lockSession, setupOwn, setFor, renameFor, consoleLogin, changeOwn, resetOwn, removeFor, consoleUsers, ConsoleError } from './services/staffConsole';
 import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestRows, backtestRunsList } from './services/historyModel';
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
 import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler, squadCompetitions } from './services/squadValues';
@@ -493,6 +493,7 @@ app.post('/api/crm/console/login', rateLimit('console', 10, 15 * 60000, r => Str
 app.post('/api/crm/console/change', rateLimit('console', 10, 15 * 60000, r => String(r.user?.id)), jsonOnly, (req, res) => {
   try {
     if (!sessionUnlocked(tokenHashOf(req))) return res.status(423).json({ error: 'Sign in to the staff console first.', console: 'locked' });
+    if (req.staff !== 'admin') return res.status(403).json({ error: 'Your console password is set by your manager. Ask them to change it.' });
     changeOwn(req.user!.id, req.body?.current, req.body?.next);
     securityLog(req, 'console_password_changed', req.user);
     res.json({ data: { ok: true } });
@@ -673,9 +674,17 @@ app.post('/api/crm/team/console', need('team'), needSudo, jsonOnly, (req, res) =
     if (target.id === req.user!.id) return res.status(400).json({ error: 'Change your own console password from the CRM header.' });
     if (!target.role) return res.status(400).json({ error: 'Add them to the team first.' });
     if (roleByKey(target.role)?.perms.includes('team') && !isAdminReq(req)) return res.status(403).json({ error: 'Only the admin can set this person’s console login.' });
-    const u = setFor(target.id, req.body?.username, req.body?.password, req.user!.id);
+    const existing = consoleRow(target.id);
+    const pw = String(req.body?.password || '');
+    // no new password: only the username changes (when there already is a login)
+    if (!pw && existing) {
+      const r = renameFor(target.id, req.body?.username, req.user!.id);
+      securityLog(req, 'console_username_changed', req.user, `${target.email}: ${r.before} → ${r.username}`);
+      return res.json({ data: { ok: true, username: r.username, passwordChanged: false } });
+    }
+    const u = setFor(target.id, req.body?.username || existing?.username, pw, req.user!.id);
     securityLog(req, 'console_login_set', req.user, `${target.email} → username ${u}`);
-    res.json({ data: { ok: true, username: u } });
+    res.json({ data: { ok: true, username: u, passwordChanged: true } });
   } catch (e) { consoleFail(res, e); }
 });
 app.post('/api/crm/team/roles', need('team'), needSudo, jsonOnly, (req, res) => {

@@ -153,7 +153,7 @@ export default function ConsoleGate({ children }: { children: ReactNode }) {
     setPw(''); await load()
   }) }
   return (
-    <Box title="Staff console" sub="Sign in with your console username and password (not your account password).">
+    <Box title="Staff console" sub="Sign in with your console username and password (not your account password). Your manager gives you these.">
       <form onSubmit={submit} className="space-y-3">
         <input className={input} value={username} onChange={e => setUsername(e.target.value)} placeholder="Console username" autoCapitalize="none" spellCheck={false} autoComplete="username" required autoFocus />
         <input className={input} type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="Console password" autoComplete="current-password" required />

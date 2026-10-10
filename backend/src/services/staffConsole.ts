@@ -5,9 +5,9 @@
  *   password. After each account sign-in (each session), opening the CRM or Users asks for them once; the session is
  *   then marked console-unlocked (sessions.console_ok). /api/crm/* and /api/admin/* refuse locked sessions.
  * - Usernames are chosen by the company (whoever sets the login). The admin sets up their own on first use.
- * - People with the 'team' permission can set / reset another staff member's console login (with a fresh two-step
- *   code, like every team change). Only the admin can do it for someone whose role manages the team. A login set by
- *   someone else must be changed by its owner at the next console sign-in.
+ * - People with the 'team' permission set / change another staff member's console username and password (with a fresh
+ *   two-step code, like every team change). Only the admin can do it for someone whose role manages the team. Staff
+ *   can't change their own console password (Yarin's rule); only the admin changes his own.
  * - Forgot it: the admin can reset their own with account password + two-step code; staff ask a manager.
  * - Passwords: scrypt (same as accounts), at least 10 characters, not the account password, not the username.
  *   5 wrong tries per 15 minutes per account. Everything goes to the security log.
@@ -25,6 +25,8 @@ db.exec(`
   const cols = new Set((db.prepare('PRAGMA table_info(sessions)').all() as any[]).map(c => c.name));
   if (!cols.has('console_ok')) db.exec('ALTER TABLE sessions ADD COLUMN console_ok INTEGER NOT NULL DEFAULT 0');
 }
+// Oct 2026 (Yarin): staff don't choose their own console password — the manager's password is final
+db.exec('UPDATE staff_console SET must_change = 0 WHERE must_change = 1');
 
 export class ConsoleError extends Error { constructor(public status: number, msg: string) { super(msg); } }
 
@@ -70,12 +72,24 @@ export function setupOwn(userId: number, tokenHash: string, username: unknown, p
   return u;
 }
 
-/** A manager (or the admin) sets / resets someone else's console login; the owner must change the password next time. */
+/** A manager (or the admin) sets / resets someone else's console login. Staff can't change it themselves. */
 export function setFor(targetId: number, username: unknown, password: unknown, by: number) {
-  const u = save(targetId, username, password, by, true);
+  const u = save(targetId, username, password, by, false);
   // their open console sessions close: they sign in again with the new login
   db.prepare('UPDATE sessions SET console_ok = 0 WHERE user_id = ?').run(targetId);
   return u;
+}
+
+/** Change only the console username (password and "must change" stay as they are). */
+export function renameFor(targetId: number, usernameIn: unknown, by: number) {
+  const row = db.prepare('SELECT username FROM staff_console WHERE user_id = ?').get(targetId) as any;
+  if (!row) throw new ConsoleError(400, 'They have no console login yet. Set a username and a password.');
+  const username = String(usernameIn || '').trim();
+  if (!USER_RE.test(username)) throw new ConsoleError(400, 'Username: 3–32 letters, numbers, dots, dashes or underscores.');
+  const taken = db.prepare('SELECT user_id FROM staff_console WHERE username = ? COLLATE NOCASE').get(username) as any;
+  if (taken && taken.user_id !== targetId) throw new ConsoleError(409, 'That username is taken.');
+  db.prepare('UPDATE staff_console SET username = ?, updated_at = ?, updated_by = ? WHERE user_id = ?').run(username, now(), by, targetId);
+  return { username, before: row.username as string };
 }
 
 const fails = new Map<number, number[]>();
@@ -94,7 +108,7 @@ export function consoleLogin(userId: number, tokenHash: string, username: unknow
   return { mustChange: !!row.must_change };
 }
 
-/** The owner changes their console password (required after a manager set it). */
+/** The admin changes his own console password (staff can't — their manager sets it). */
 export function changeOwn(userId: number, current: unknown, next: unknown) {
   const row = db.prepare('SELECT username, pass_hash FROM staff_console WHERE user_id = ?').get(userId) as any;
   if (!row) throw new ConsoleError(400, 'You have no console login yet.');

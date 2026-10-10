@@ -66,7 +66,7 @@ export default function Crm() {
           {con.username && (
             <p className="text-[11px] text-faint mt-1">
               Console: <b className="text-muted">{con.username}</b> ·{' '}
-              <button type="button" onClick={con.changePassword} className="underline hover:text-ink">Change console password</button> ·{' '}
+              {staff === 'admin' && <><button type="button" onClick={con.changePassword} className="underline hover:text-ink">Change console password</button> ·{' '}</>}
               <button type="button" onClick={con.lock} className="underline hover:text-ink">Lock</button>
             </p>
           )}
@@ -780,21 +780,43 @@ function Team() {
                   </span>
                 </span>
                 {(!m.twoFactor || !m.emailVerified) && <span className="text-[11px] text-draw font-semibold">{!m.emailVerified ? 'email not confirmed' : 'no two-step login yet'}</span>}
-                {m.console?.mustChange && <span className="text-[11px] font-semibold text-draw">must change console password</span>}
-                <button type="button" disabled={busy} onClick={() => { setConFor(conFor === m.id ? null : m.id); setConUser(m.console?.username || ''); setConPw('') }} className="text-xs text-accent font-semibold">{m.console ? 'Reset console login' : 'Set console login'}</button>
+                <button type="button" disabled={busy} onClick={() => { setConFor(conFor === m.id ? null : m.id); setConUser(m.console?.username || ''); setConPw('') }} className="text-xs text-accent font-semibold">{m.console ? 'Edit console login' : 'Set console login'}</button>
                 <select value={m.role} disabled={busy} onChange={e => act(async () => { await axios.post(`${API_URL}/crm/team/member`, { email: m.email, role: e.target.value }); return `${m.email} is now ${d.roles.find(r => r.key === e.target.value)?.name}.` })} className="rounded-lg border border-line bg-surface2/60 px-2 py-1.5 text-xs text-ink">
                   {d.roles.map(r => <option key={r.key} value={r.key}>{r.name}</option>)}
                 </select>
                 <button type="button" disabled={busy} onClick={() => { if (window.confirm(`Remove ${m.email} from the team? Their access stops at once.`)) act(async () => { await axios.post(`${API_URL}/crm/team/member`, { email: m.email, role: null }); return 'Removed from the team.' }) }} className="text-xs text-muted hover:text-loss">Remove</button>
               {conFor === m.id && (
                   <form
-                    onSubmit={e => { e.preventDefault(); const id = m.id, u = conUser, p = conPw; act(async () => { const r = await axios.post(`${API_URL}/crm/team/console`, { userId: id, username: u, password: p }); setConFor(null); setConPw(''); return `Console login for ${m.email}: username ${r.data.data.username}. Give them the password in person or by phone (not by email). They must change it the first time.` }) }}
-                    className="basis-full flex flex-wrap gap-2 pt-1"
+                    onSubmit={e => {
+                      e.preventDefault()
+                      const id = m.id, u = conUser.trim(), p = conPw
+                      if (m.console && !p && u === m.console.username) { setConFor(null); return }
+                      act(async () => {
+                        const r = await axios.post(`${API_URL}/crm/team/console`, { userId: id, username: u, password: p || undefined })
+                        setConFor(null); setConPw('')
+                        return r.data.data.passwordChanged
+                          ? `Console login for ${m.email}: username ${r.data.data.username}, new password saved. Give it to them in person or by phone (not by email).`
+                          : `Console username for ${m.email} is now ${r.data.data.username}. Their password did not change.`
+                      })
+                    }}
+                    className="basis-full rounded-xl border border-line bg-surface2/40 p-3 space-y-2"
                   >
-                    <input className={`${input} flex-1 min-w-[160px]`} value={conUser} onChange={e => setConUser(e.target.value)} placeholder="Console username" autoCapitalize="none" spellCheck={false} autoComplete="off" required />
-                    <input className={`${input} flex-1 min-w-[160px]`} type="text" value={conPw} onChange={e => setConPw(e.target.value)} placeholder="Temporary password (10+ characters)" autoComplete="off" minLength={10} required />
-                    <button type="submit" disabled={busy} className="rounded-xl bg-accent text-bg font-semibold px-4 py-2 text-sm disabled:opacity-60">Save</button>
-                    <button type="button" onClick={() => setConFor(null)} className="rounded-xl px-3 py-2 text-sm text-muted">Cancel</button>
+                    <div className="text-xs font-semibold text-ink">{m.console ? 'Edit console login' : 'Set console login'}</div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <label className="block">
+                        <span className="block text-[11px] text-faint mb-1">Console username</span>
+                        <input className={input} value={conUser} onChange={e => setConUser(e.target.value)} placeholder="e.g. dana.s" autoCapitalize="none" spellCheck={false} autoComplete="off" required />
+                      </label>
+                      <label className="block">
+                        <span className="block text-[11px] text-faint mb-1">{m.console ? 'New password (leave empty to keep it)' : 'Password'}</span>
+                        <input className={input} type="text" value={conPw} onChange={e => setConPw(e.target.value)} placeholder="10+ characters" autoComplete="off" minLength={10} required={!m.console} />
+                      </label>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button type="submit" disabled={busy} className="rounded-xl bg-accent text-bg font-semibold px-4 py-2 text-sm disabled:opacity-60">Save</button>
+                      <button type="button" onClick={() => setConFor(null)} className="rounded-xl px-3 py-2 text-sm text-muted">Cancel</button>
+                      <span className="text-[11px] text-faint">Only managers set console passwords — staff can't change their own. A new password signs them out of the console.</span>
+                    </div>
                   </form>
                 )}
               </li>
