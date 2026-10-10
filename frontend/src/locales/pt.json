@@ -1539,5 +1539,8 @@
  "Feedback": "Feedback",
  "What happened, or what would make it better?": "O que aconteceu ou o que tornaria isto melhor?",
  "We also get the page you're on.": "Também recebemos a página em que você está.",
- "Nothing in play in this league. Live elsewhere:": "Nada em jogo nesta liga. Ao vivo noutras:"
+ "Nothing in play in this league. Live elsewhere:": "Nada em jogo nesta liga. Ao vivo noutras:",
+ "This match was abandoned or cancelled. It does not count in our record.": "Este jogo foi abandonado ou cancelado. Não conta no nosso registo.",
+ "This match was suspended. It does not count in our record unless it is completed later.": "Este jogo foi suspenso. Não conta no nosso registo a menos que seja concluído mais tarde.",
+ "This match was postponed. Our prediction stays until the new date.": "Este jogo foi adiado. A nossa previsão mantém-se até à nova data."
 }

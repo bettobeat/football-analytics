@@ -1539,5 +1539,8 @@
  "Feedback": "Avis",
  "What happened, or what would make it better?": "Que s'est-il passé, ou qu'est-ce qui l'améliorerait ?",
  "We also get the page you're on.": "Nous recevons aussi la page où vous êtes.",
- "Nothing in play in this league. Live elsewhere:": "Rien en cours dans cette ligue. En direct ailleurs :"
+ "Nothing in play in this league. Live elsewhere:": "Rien en cours dans cette ligue. En direct ailleurs :",
+ "This match was abandoned or cancelled. It does not count in our record.": "Ce match a été arrêté ou annulé. Il ne compte pas dans notre bilan.",
+ "This match was suspended. It does not count in our record unless it is completed later.": "Ce match a été suspendu. Il ne compte pas dans notre bilan sauf s'il est terminé plus tard.",
+ "This match was postponed. Our prediction stays until the new date.": "Ce match a été reporté. Notre pronostic reste valable jusqu'à la nouvelle date."
 }

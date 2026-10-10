@@ -530,6 +530,7 @@ function MatchDetail() {
   const away = m.awayTeam
   const live = LIVE.has(m.status)
   const done = DONE.has(m.status)
+  const halted = ['SUSPENDED', 'POSTPONED', 'CANCELLED'].includes(m.status)
   const showScore = live || done
   // v1 (standings) is a fallback only: shown when no other model covers the match
   const allModels = details.predictions && details.predictions.length ? details.predictions : details.prediction ? [details.prediction] : []
@@ -636,12 +637,21 @@ function MatchDetail() {
             )}
             <div
               className={`mt-3 inline-flex items-center gap-1.5 text-[11px] font-bold tracking-wider px-3 py-1 rounded-full border ${
-                live ? 'bg-live/10 text-live border-live/30' : done ? 'bg-surface2 text-muted border-line' : 'bg-accent/10 text-accent border-accent/30'
+                live ? 'bg-live/10 text-live border-live/30' : halted ? 'bg-loss/10 text-loss border-loss/30' : done ? 'bg-surface2 text-muted border-line' : 'bg-accent/10 text-accent border-accent/30'
               }`}
             >
               {live && <span className="w-1.5 h-1.5 rounded-full bg-live animate-pulseDot" />}
-              {live ? statusLabel(m).toUpperCase() : done ? tt("FULL-TIME") : tt("KICK-OFF")}
+              {live ? statusLabel(m).toUpperCase() : halted ? tt(statusLabel(m)).toUpperCase() : done ? tt("FULL-TIME") : tt("KICK-OFF")}
             </div>
+            {halted && (
+              <p className="mt-2 max-w-[260px] mx-auto text-[11px] text-muted">
+                {m.status === 'CANCELLED'
+                  ? tt("This match was abandoned or cancelled. It does not count in our record.")
+                  : m.status === 'SUSPENDED'
+                    ? tt("This match was suspended. It does not count in our record unless it is completed later.")
+                    : tt("This match was postponed. Our prediction stays until the new date.")}
+              </p>
+            )}
           </div>
           <TeamHero team={away} align="left" code={m.competition?.code} />
         </div>

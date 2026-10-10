@@ -98,6 +98,14 @@ export const CONV = {
   eloDivTransfer: 1, // backtest 2025-26: gap to market 33.7 → 31.6 Brier points
   eloPromoPct: 0.2,
   eloRelegPct: 0.75,
+  // a club relegated into its current division (first season after dropping) keeps an expensive squad on paper but
+  // plays below it (sales, turmoil): its squad value is multiplied by this before ranking. 1 = off.
+  // Tested 10 Oct 2026 on 2025-26 + 2026-27 (6 countries, all divisions): x0.7/0.5/0.3, rank cap 7/5, Elo percentile
+  // 0.6/0.5 — none moved the Brier by more than 0.2 points overall (relegated-club games: -1.7 in 25-26, +1.9 in 26-27).
+  // Squad value is ranked within the division, so a relegated club stays near the top whatever the multiplier. Left off.
+  relegSquadMult: 1,
+  relegSquadGames: 0, // 0 = whole first season; N = the discount fades out linearly over the club's first N games in the division
+  relegSquadCap: 10, // squad-value rank (1–10) a relegated club may reach in its first season after dropping; 10 = off
   eloK: 20,
   formCurDiv: 0, // 1 = form (last 6) only from games in the team's current division
   // big favourites were too cautious (Porto 60% vs market 67% vs actual 82%): stretch large gaps.
@@ -381,6 +389,22 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string, div
     }
   }
   if (divHint && CONV.useDivHint) divHint.forEach((d, t) => divOf.set(t, d));
+  // clubs in their first season after relegation (division one tier lower than last season's), with games played in it
+  const relegNow = new Map<string, number>();
+  if (CONV.relegSquadMult !== 1 || CONV.relegSquadCap < 10) {
+    const prevSeason = (sn: string) => (sn.length === 4 ? `${String(Number(sn.slice(0, 2)) - 1).padStart(2, '0')}${String(Number(sn.slice(2)) - 1).padStart(2, '0')}` : String(Number(sn) - 1));
+    const lastSeasonDiv = new Map<string, string>();
+    const played = new Map<string, number>();
+    const prev = prevSeason(season);
+    for (const m of past) for (const t of [m.home, m.away]) {
+      if (m.season === prev) lastSeasonDiv.set(t, m.division);
+      if (m.season === season && m.division === divOf.get(t)) played.set(t, (played.get(t) || 0) + 1);
+    }
+    divOf.forEach((d, t) => {
+      const ld = lastSeasonDiv.get(t);
+      if (ld && ld !== d && divisions.indexOf(ld) >= 0 && divisions.indexOf(ld) < divisions.indexOf(d)) relegNow.set(t, played.get(t) || 0);
+    });
+  }
   // teams whose only appearances are in older seasons and not in this one: still keep (early season)
   const ensure = (name: string) => {
     let t = teams.get(name);
@@ -569,7 +593,13 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string, div
     // squad value: log scale (a €900m squad vs €300m is the same step as €300m vs €100m); neutral when unknown
     // pitSquad: squad value as known at the time (monthly history) instead of today's snapshot — no look-ahead in backtests
     const sq = (n: string) => (CONV.pitSquad ? squadValueAt(group, n, asOf) : squadValueFor(group, n)?.top) || 0;
-    const withValue = list.map(t => ({ name: t.name, raw: sq(t.name) })).filter(x => x.raw > 0);
+    const relegMult = (n: string) => {
+      const g = relegNow.get(n);
+      if (g === undefined) return 1;
+      const fade = CONV.relegSquadGames > 0 ? Math.min(1, g / CONV.relegSquadGames) : 0;
+      return CONV.relegSquadMult + (1 - CONV.relegSquadMult) * fade;
+    };
+    const withValue = list.map(t => ({ name: t.name, raw: sq(t.name) * relegMult(t.name) })).filter(x => x.raw > 0);
     const floored = new Map<string, number>();
     const logs = withValue.map(x => ({ name: x.name, raw: Math.log(x.raw) }));
     if (CONV.squadFloorRatio > 0 && logs.length >= 8) {
@@ -592,7 +622,7 @@ export function buildState(group: string, all: HistoryMatch[], asOf: string, div
       t.v = {
         strength: strength.get(t.name)!, attack: att.get(t.name)!, defence: def.get(t.name)!, form: form.get(t.name)!,
         home: home.get(t.name)!, away: away.get(t.name)!, draws: draws.get(t.name)!,
-        squad: squad.get(t.name) ?? squadMissing,
+        squad: relegNow.has(t.name) && CONV.relegSquadCap < 10 ? Math.min(CONV.relegSquadCap, squad.get(t.name) ?? squadMissing) : (squad.get(t.name) ?? squadMissing),
         pq: pqVals.get(t.name) ?? 5.5,
         fresh: t.gamesLast8 === 0 ? 8 : t.gamesLast8 === 1 ? 6 : t.gamesLast8 === 2 ? 4 : 2
       };
@@ -1216,7 +1246,7 @@ export function parseCompactVariants(text: string): SweepVariant[] {
  */
 export let sweepProgress: { done: number; total: number } | null = null;
 
-export async function sweepV3(season: string, variants: SweepVariant[], baseConv: Partial<typeof CONV> = {}, groups?: string[]) {
+export async function sweepV3(season: string, variants: SweepVariant[], baseConv: Partial<typeof CONV> = {}, groups?: string[], allDivisions = false) {
   const savedConv = { ...CONV, drawBase: { ...CONV.drawBase }, drawCap: { ...CONV.drawCap } };
   const savedRel = REL_OVERRIDE;
   const t0 = Date.now();
@@ -1229,7 +1259,7 @@ export async function sweepV3(season: string, variants: SweepVariant[], baseConv
       const divs = GROUPS[group]?.divisions || [];
       if (!divs.length) continue;
       const all = loadGroupMatches(group);
-      const target = all.filter(m => m.season === season && m.division === divs[0]);
+      const target = all.filter(m => m.season === season && (allDivisions ? divs.includes(m.division) : m.division === divs[0]));
       if (!target.length) continue;
       let cursor = new Date(target[0].date);
       const last = new Date(target[target.length - 1].date);
