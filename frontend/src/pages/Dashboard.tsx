@@ -185,7 +185,11 @@ function Dashboard() {
   )
   const favCount = useMemo(() => matches.filter(m => reasons(m).length > 0).length, [matches, reasons])
 
-  const live = matches.filter(m => LIVE.has(m.status)) // all leagues, always
+  // Live box: on a league page, that league's live games only; other leagues' games only when it has none (Yarin, 10 Oct)
+  const liveAll = matches.filter(m => LIVE.has(m.status))
+  const liveOwn = league === 'ALL' || favMode ? [] : liveAll.filter(m => m.competition.code === league)
+  const live = liveOwn.length ? liveOwn : liveAll
+  const liveOther = league !== 'ALL' && !favMode && !liveOwn.length && liveAll.length > 0
   // finished / cancelled games leave the list (they are in Latest results); live ones have their own row
   const upcoming = visible.filter(m => !LIVE.has(m.status) && !ENDED.has(m.status))
 
@@ -254,6 +258,17 @@ function Dashboard() {
             </div>
             {live.length === 0 ? (
               <p className="text-xs text-faint">{tt("No matches in play right now.")}</p>
+            ) : liveOther ? (
+              <>
+                <p className="text-[11px] text-faint mb-2">{tt("Nothing in play in this league. Live elsewhere:")}</p>
+                <ul className="space-y-1 max-h-60 overflow-y-auto">
+                  {live.map(m => (
+                    <li key={m.id}>
+                      <LiveRow match={m} />
+                    </li>
+                  ))}
+                </ul>
+              </>
             ) : (
               <ul className="space-y-1 max-h-60 overflow-y-auto">
                 {live.map(m => (
