@@ -27,6 +27,7 @@ import { backtestUpsets, upsetWatchReport, upsetWatchBacktest } from './services
 import { submitContact, contactInbox, markContact, ContactError } from './services/contact';
 import { ADMIN_2FA_REQUIRED, checkCode, revealSetup, twoFactorEnabled, twoFactorStatus, startSetup, confirmSetup, newRecovery, disableTwoFactor, issueTicket, redeemTicket, securePastSessions, TwoFactorError } from './services/twoFactor';
 import { securityLog, securityLogList } from './services/securityLog';
+import { inboxList, inboxThread, reply, addNote, setStatus, segmentPreview, campaignList, sendTest, startCampaign, revenue, unsubscribe, CrmError } from './services/crm';
 import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestRows, backtestRunsList } from './services/historyModel';
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
 import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler, squadCompetitions } from './services/squadValues';
@@ -73,7 +74,7 @@ import { dataHealth, startDataHealthScheduler } from './services/dataHealth';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures, afGet, afRemaining, xgCoverage } from './services/apiFootball';
 import {
   signup, login, changePassword, setPlan, adminResetPassword, listUsers, userStats, createSession, destroySession, userForToken,
-  parseCookies, setSessionCookie, clearSessionCookie, SESSION_COOKIE, userById, checkPassword, sessionHash, startEmailChange, confirmEmailChange, accessOf, canSeeFull, isPaid, teaseDeep, teaseDeepExcept, AuthError, Access, User,
+  parseCookies, setSessionCookie, clearSessionCookie, SESSION_COOKIE, staffOf, setRole, Staff, userById, checkPassword, sessionHash, startEmailChange, confirmEmailChange, accessOf, canSeeFull, isPaid, teaseDeep, teaseDeepExcept, AuthError, Access, User,
   sendVerification, verifyEmail, requestPasswordReset, resetPassword, setMarketingOptIn, usersCsv, verificationRequired, exportUserData, deleteAccount, cancelPlan, resumePlan, leaveFeedback
 } from './services/auth';
 import { playerDataStatus, teamPlayers } from './services/playerData';
@@ -190,6 +191,7 @@ declare global {
     interface Request {
       user?: User | null;
       access?: Access;
+      staff?: Staff;
     }
   }
 }
@@ -204,6 +206,7 @@ app.use((req, _res, next) => {
   }
   req.user = user;
   req.access = accessOf(user);
+  req.staff = staffOf(user);
   // Maintenance tokens (GET only): admin reads, never the user data (/api/admin/*). The read token cannot start jobs.
   const kind = req.method === 'GET' ? tokenKind(req.query.token) : null;
   if (kind) {
@@ -272,7 +275,7 @@ app.use('/api', rateLimit('api', 600, 60000)); // ~10 a second, far above a pers
 app.use(['/api/team-page', '/api/player-page'], rateLimit('pages', 60, 10 * 60000));
 app.use('/api/unlocks', (req, res, next) => (req.method === 'POST' ? rateLimit('unlock', 30, 60000, r => String(r.user?.id || r.ip))(req, res, next) : next()));
 
-const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|contact$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|basketball\/|public\/(summary|results|record)$|unlocks(\/|$)|billing\/)/;
+const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|contact$|unsubscribe$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|basketball\/|public\/(summary|results|record)$|unlocks(\/|$)|billing\/)/;
 const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|history\/status|clv|draw-alerts|upset-watch)$/; // past seasons and backtests are admin only (Oct 2026)
 
 app.use('/api', (req, res, next) => {
@@ -291,6 +294,8 @@ app.use('/api', (req, res, next) => {
     return next();
   }
   if (access === 'admin') return next();
+  // CRM: support staff too (each route checks admin-only parts itself)
+  if (p.startsWith('/api/crm/') && req.staff) return next();
   if (req.method === 'GET' && PREMIUM_GET_API.test(p)) {
     // draw alerts are a Pro feature; the rest is open to every paid plan
     const proOnly = p.startsWith('/api/draw-alerts') || p.startsWith('/api/upset-watch');
@@ -307,7 +312,7 @@ function authFail(res: express.Response, e: any) {
 }
 
 function sessionPayload(user: User | null) {
-  return { user, access: accessOf(user), verificationRequired };
+  return { user, access: accessOf(user), staff: staffOf(user), verificationRequired };
 }
 
 // Only JSON bodies on auth POSTs (with SameSite=Lax cookies this blocks cross-site form posts)
@@ -441,6 +446,63 @@ app.post('/api/favorites/remove', jsonOnly, (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Sign in required' });
   res.json({ data: removeFavorite(req.user.id, req.body?.kind, req.body?.ref) });
 });
+
+// ---------- CRM (support inbox: admin + support staff; campaigns and revenue: admin only) ----------
+const staffName = (req: express.Request) => ({ id: req.user!.id, name: req.user!.name || req.user!.email.split('@')[0] });
+const crmFail = (res: express.Response, e: any) => (e instanceof CrmError ? res.status(e.status).json({ error: e.message }) : sendError(res, e, 'CRM error'));
+const adminOnly = (req: express.Request, res: express.Response, next: express.NextFunction) => (req.staff === 'admin' ? next() : res.status(403).json({ error: 'Admins only' }));
+app.get('/api/crm/inbox', (req, res) => {
+  try { res.set('Cache-Control', 'no-store'); res.json({ data: inboxList(String(req.query.status || '') || null) }); } catch (e) { crmFail(res, e); }
+});
+app.get('/api/crm/inbox/:id(\\d+)', (req, res) => {
+  try { res.set('Cache-Control', 'no-store'); res.json({ data: inboxThread(parseInt(req.params.id, 10)) }); } catch (e) { crmFail(res, e); }
+});
+app.post('/api/crm/inbox/:id(\\d+)/reply', rateLimit('crm-reply', 60, 60 * 60000, r => String(r.user?.id)), jsonOnly, async (req, res) => {
+  try { await reply(parseInt(req.params.id, 10), staffName(req), req.body?.body, req.body?.close === true); res.json({ data: { ok: true } }); } catch (e) { crmFail(res, e); }
+});
+app.post('/api/crm/inbox/:id(\\d+)/note', jsonOnly, (req, res) => {
+  try { addNote(parseInt(req.params.id, 10), staffName(req), req.body?.body); res.json({ data: { ok: true } }); } catch (e) { crmFail(res, e); }
+});
+app.post('/api/crm/inbox/:id(\\d+)/status', jsonOnly, (req, res) => {
+  try { setStatus(parseInt(req.params.id, 10), req.body?.status); res.json({ data: { ok: true } }); } catch (e) { crmFail(res, e); }
+});
+app.post('/api/crm/segment', adminOnly, jsonOnly, (req, res) => {
+  try { res.json({ data: segmentPreview(req.body?.segment) }); } catch (e) { crmFail(res, e); }
+});
+app.get('/api/crm/campaigns', adminOnly, (_req, res) => {
+  try { res.set('Cache-Control', 'no-store'); res.json({ data: campaignList() }); } catch (e) { crmFail(res, e); }
+});
+app.post('/api/crm/campaigns/test', adminOnly, jsonOnly, async (req, res) => {
+  try { await sendTest(req.body?.subject, req.body?.body, { id: req.user!.id, email: req.user!.email, name: req.user!.name }); res.json({ data: { sentTo: req.user!.email } }); } catch (e) { crmFail(res, e); }
+});
+app.post('/api/crm/campaigns', adminOnly, jsonOnly, async (req, res) => {
+  try {
+    if (req.body?.confirm !== true) return res.status(400).json({ error: 'Confirm before sending.' });
+    const r = await startCampaign(req.body?.subject, req.body?.body, req.body?.segment, req.user!.id);
+    securityLog(req, 'campaign_sent', req.user, `#${r.id} to ${r.total}: ${String(req.body?.subject || '').slice(0, 80)}`);
+    res.json({ data: r });
+  } catch (e) { crmFail(res, e); }
+});
+app.get('/api/crm/revenue', adminOnly, (_req, res) => {
+  try { res.set('Cache-Control', 'no-store'); res.json({ data: revenue() }); } catch (e) { crmFail(res, e); }
+});
+app.post('/api/admin/users/:id(\\d+)/role', jsonOnly, (req, res) => {
+  try {
+    const role = req.body?.role === 'support' ? 'support' : null;
+    const u = setRole(parseInt(req.params.id, 10), role);
+    securityLog(req, 'role_changed', req.user, `account #${u.id} → ${role || 'no role'}`);
+    res.json({ data: u });
+  } catch (e) { authFail(res, e); }
+});
+// One-click unsubscribe from campaign emails (link + List-Unsubscribe-Post)
+const unsubPage = (ok: boolean) => `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>SportLikely</title>
+<body style="font-family:Segoe UI,Arial,sans-serif;background:#0b0e13;color:#e8eaee;display:grid;place-items:center;min-height:100vh;margin:0">
+<div style="max-width:420px;padding:24px;text-align:center"><div style="font-weight:800;font-size:20px">Sport<span style="color:#c6f432">Likely</span></div>
+<h1 style="font-size:20px">${ok ? 'You are unsubscribed' : 'This link is not valid'}</h1>
+<p style="color:#9aa1ad">${ok ? 'You will not get update emails any more. Account emails (codes, security) still arrive. You can turn updates back on in your account.' : 'Turn updates off in your account settings instead.'}</p>
+<a href="/" style="color:#c6f432">Back to SportLikely</a></div></body>`;
+app.get('/api/unsubscribe', (req, res) => { res.type('html').set('Cache-Control', 'no-store').send(unsubPage(unsubscribe(req.query.u, req.query.t))); });
+app.post('/api/unsubscribe', (req, res) => { const ok = unsubscribe(req.query.u, req.query.t); res.status(ok ? 200 : 400).json({ ok }); });
 
 // Contact form → support inbox (anyone; signed-in users send from their account email)
 app.post('/api/contact', rateLimit('contact', 5, 60 * 60000), jsonOnly, async (req, res) => {

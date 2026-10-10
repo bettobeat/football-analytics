@@ -30,6 +30,7 @@ export interface User {
   createdAt: string;
   cancelAt: string | null; // asked to cancel: the paid plan runs until premiumUntil and is not renewed
   twoFactor: boolean; // two-step login is on
+  role: 'support' | null; // staff role (support inbox); needs two-step login to be used
   mfa?: boolean; // this session passed two-step login
 }
 
@@ -85,9 +86,14 @@ db.exec(`
   for (const [c, t] of [['totp_secret', 'TEXT'], ['totp_pending', 'TEXT'], ['totp_enabled_at', 'TEXT'], ['totp_last_step', 'INTEGER'], ['totp_recovery', 'TEXT']])
     if (!cols.has(c)) db.exec(`ALTER TABLE users ADD COLUMN ${c} ${t}`);
   const sc = new Set(db.prepare('PRAGMA table_info(sessions)').all().map((c: any) => c.name));
+  if (!cols.has('role')) db.exec('ALTER TABLE users ADD COLUMN role TEXT'); // staff role: 'support' (CRM inbox) — admins come from ADMIN_EMAILS
   if (!cols.has('pending_email')) db.exec('ALTER TABLE users ADD COLUMN pending_email TEXT'); // email change waiting for its code
   if (!sc.has('mfa')) db.exec('ALTER TABLE sessions ADD COLUMN mfa INTEGER NOT NULL DEFAULT 0'); // 1 = this sign-in passed two-step
 }
+db.exec(`CREATE TABLE IF NOT EXISTS plan_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, user_id INTEGER NOT NULL, from_plan TEXT, to_plan TEXT NOT NULL,
+  until TEXT, source TEXT NOT NULL, amount REAL
+)`);
 // Admins with two-step login on (or everyone when ADMIN_2FA_REQUIRED=1) get admin access only from a session that passed it
 const ADMIN_2FA_REQUIRED = process.env.ADMIN_2FA_REQUIRED === '1';
 
@@ -179,7 +185,8 @@ function rowToUser(r: any): User {
     marketingOptIn: !!r.marketing_opt_in,
     createdAt: r.created_at,
     cancelAt: r.cancel_at || null,
-    twoFactor: !!r.totp_secret
+    twoFactor: !!r.totp_secret,
+    role: r.role === 'support' ? 'support' : null
   };
 }
 
@@ -194,6 +201,25 @@ export function accessOf(user: User | null): Access {
     return 'admin';
   }
   return user.plan;
+}
+
+/**
+ * Staff permission for the CRM: 'admin' (admin access, i.e. after two-step when required) or 'support' (role set by an
+ * admin, confirmed email, two-step login on AND used for this session). Anything else: null.
+ */
+export type Staff = 'admin' | 'support' | null;
+export function staffOf(user: User | null): Staff {
+  if (!user) return null;
+  if (accessOf(user) === 'admin') return 'admin';
+  if (user.role === 'support' && user.emailVerified && user.twoFactor && user.mfa) return 'support';
+  return null;
+}
+
+/** Admin: give or take the support role. */
+export function setRole(userId: number, role: 'support' | null): User {
+  const r = db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, userId);
+  if (!Number(r.changes)) throw new AuthError(404, 'Account not found.');
+  return rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(userId));
 }
 
 /** Every prediction in full, no counting: Pro and admins. ($15 Premium sees a match in full once it is unlocked.) */
@@ -270,10 +296,14 @@ export function changePassword(userId: number, current: unknown, next: unknown):
 }
 
 /** Set a user's plan (admin screen now, payment webhooks later). until = ISO date or null for no end. */
-export function setPlan(userId: number, plan: Plan, until: string | null): User {
+export function setPlan(userId: number, plan: Plan, until: string | null, source: 'admin' | 'test' | 'payment' = 'admin', amount: number | null = null): User {
   if (!['free', 'premium', 'pro'].includes(plan)) throw new AuthError(400, 'Unknown plan.');
+  const before: any = db.prepare('SELECT plan FROM users WHERE id = ?').get(userId);
   const r = db.prepare('UPDATE users SET plan = ?, premium_until = ? WHERE id = ?').run(plan, plan === 'free' ? null : until, userId);
   if (!Number(r.changes)) throw new AuthError(404, 'Account not found.');
+  // history for the revenue dashboard (only source 'payment' counts as money)
+  db.prepare('INSERT INTO plan_events (at, user_id, from_plan, to_plan, until, source, amount) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(new Date().toISOString(), userId, before?.plan || null, plan, plan === 'free' ? null : until, source, amount);
   return rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(userId));
 }
 

@@ -123,7 +123,7 @@ export function testCheckout(user: User, planId: string) {
   if (!target || !['free', 'premium', 'pro'].includes(target)) throw new AuthError(400, 'Unknown plan.');
   const days = plan?.period === 'year' ? 365 : plan?.period === '6 months' ? 183 : 31;
   const until = target === 'free' ? null : new Date(Date.now() + days * 86400000).toISOString();
-  return setPlan(user.id, target, until);
+  return setPlan(user.id, target, until, 'test');
 }
 
 export function unlockStats() {

@@ -76,5 +76,7 @@ export function contactInbox(limit = 100) {
 }
 
 export function markContact(id: number, handled: boolean) {
-  db.prepare(`UPDATE contact_messages SET handled = ? WHERE id = ?`).run(handled ? 1 : 0, id);
+  // keep the CRM status in step (column added by crm.ts)
+  try { db.prepare(`UPDATE contact_messages SET handled = ?, status = ?, updated_at = ? WHERE id = ?`).run(handled ? 1 : 0, handled ? 'closed' : 'open', new Date().toISOString(), id); }
+  catch { db.prepare(`UPDATE contact_messages SET handled = ? WHERE id = ?`).run(handled ? 1 : 0, id); }
 }

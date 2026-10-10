@@ -20,21 +20,27 @@ function parseFrom(from: string): { name: string; email: string } {
 }
 
 export async function sendEmail(to: string, subject: string, html: string, text: string, replyTo?: string): Promise<void> {
+  return sendMail({ to, subject, html, text, replyTo });
+}
+
+/** Full options: a different From (e.g. support@), Reply-To, extra headers (List-Unsubscribe for campaigns). */
+export async function sendMail(o: { to: string; subject: string; html: string; text: string; replyTo?: string; from?: string; headers?: Record<string, string> }): Promise<void> {
   if (!emailProvider) throw new Error('Email is not configured');
+  const from = o.from || FROM;
   if (emailProvider === 'resend') {
     await axios.post(
       'https://api.resend.com/emails',
-      { from: FROM, to: [to], subject, html, text, ...(replyTo ? { reply_to: replyTo } : {}) },
+      { from, to: [o.to], subject: o.subject, html: o.html, text: o.text, ...(o.replyTo ? { reply_to: o.replyTo } : {}), ...(o.headers ? { headers: o.headers } : {}) },
       { headers: { Authorization: `Bearer ${RESEND_KEY}` }, timeout: 15000 }
     );
   } else {
     await axios.post(
       'https://api.brevo.com/v3/smtp/email',
-      { sender: parseFrom(FROM), to: [{ email: to }], subject, htmlContent: html, textContent: text, ...(replyTo ? { replyTo: { email: replyTo } } : {}) },
+      { sender: parseFrom(from), to: [{ email: o.to }], subject: o.subject, htmlContent: o.html, textContent: o.text, ...(o.replyTo ? { replyTo: { email: o.replyTo } } : {}), ...(o.headers ? { headers: o.headers } : {}) },
       { headers: { 'api-key': BREVO_KEY }, timeout: 15000 }
     );
   }
-  logger.info(`Email sent (${emailProvider}): ${subject}`);
+  logger.info(`Email sent (${emailProvider}): ${o.subject}`);
 }
 
 /* ---------- shared look for every email we send ---------- */

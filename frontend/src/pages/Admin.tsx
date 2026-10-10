@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { errorText, useAuth, type User } from '../lib/auth'
@@ -51,6 +51,16 @@ export default function Admin() {
     try {
       await axios.post(`${API_URL}/admin/users/${u.id}/plan`, { plan, until })
       load()
+    } catch (e) {
+      setError(errorText(e))
+    }
+  }
+
+  const setRole = async (u: Row, role: 'support' | null) => {
+    if (role && !window.confirm(`Make ${u.email} support staff? They will see and answer messages in the CRM inbox (after setting up two-step login).`)) return
+    try {
+      await axios.post(`${API_URL}/admin/users/${u.id}/role`, { role })
+      await load()
     } catch (e) {
       setError(errorText(e))
     }
@@ -191,6 +201,11 @@ export default function Admin() {
                         </button>
                       )}
                     </>}
+                  {!u.isAdmin && (
+                    <button onClick={() => setRole(u, u.role === 'support' ? null : 'support')} className={`text-xs mr-3 ${u.role === 'support' ? 'text-draw font-semibold' : 'text-muted hover:text-ink'}`} title={u.role === 'support' ? 'Support staff (needs two-step login). Click to remove.' : 'Make this account support staff (CRM inbox)'}>
+                      {u.role === 'support' ? 'Support ✓' : 'Make support'}
+                    </button>
+                  )}
                   <button onClick={() => resetPw(u)} className="text-xs text-muted hover:text-ink">
                     Reset password
                   </button>
@@ -228,10 +243,10 @@ const EVENT_LABEL: Record<string, string> = {
   login_ok: 'Signed in', login_ok_recovery_code: 'Signed in with a recovery code', login_password_ok: 'Password OK, waiting for code',
   login_fail: 'Wrong email or password', '2fa_fail': 'Wrong two-step code', '2fa_on': 'Two-step login turned on', '2fa_off': 'Two-step login turned off',
   '2fa_recovery_new': 'New recovery codes', password_reset: 'Password reset by email', password_change: 'Password changed',
-  admin_set_password: 'Admin set a user password', '2fa_device_added': 'Two-step: another device added',
+  admin_set_password: 'Admin set a user password', role_changed: 'Staff role changed', campaign_sent: 'Email campaign sent', '2fa_device_added': 'Two-step: another device added',
   email_change_started: 'Email change started', email_changed: 'Email changed'
 }
-const BAD = new Set(['login_fail', '2fa_fail', '2fa_off', 'login_ok_recovery_code', 'admin_set_password', 'email_changed', '2fa_device_added'])
+const BAD = new Set(['role_changed', 'login_fail', '2fa_fail', '2fa_off', 'login_ok_recovery_code', 'admin_set_password', 'email_changed', '2fa_device_added'])
 function browserOf(ua: string | null) {
   if (!ua) return ''
   const os = /iPhone|iPad/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac OS/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : ''
@@ -294,7 +309,7 @@ function ContactCard() {
   return (
     <section className="card p-5 sm:p-6 mb-8">
       <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
-        <h2 className="font-display text-lg font-bold text-ink">Contact messages</h2>
+        <h2 className="font-display text-lg font-bold text-ink">Contact messages <Link to="/crm" className="ml-2 text-xs font-semibold text-accent">Open CRM inbox →</Link></h2>
         <span className="text-xs text-faint">
           {d.open} open · {d.rows.length} total ·{' '}
           <button type="button" onClick={() => setAll(v => !v)} className="text-accent font-semibold">{all ? 'Open only' : 'Show all'}</button>

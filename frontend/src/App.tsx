@@ -26,6 +26,7 @@ import Assistant from './components/Assistant'
 import AccessibilityMenu, { initA11y } from './components/Accessibility'
 import Accessibility from './pages/Accessibility'
 import Contact from './pages/Contact'
+import Crm from './pages/Crm'
 import SportSoon from './pages/SportSoon'
 import SportSwitch from './components/SportSwitch'
 import BbHome from './pages/bb/BbHome'
@@ -232,7 +233,7 @@ function DataLine() {
 }
 
 function NavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
-  const { access } = useAuth()
+  const { access, staff } = useAuth()
   const bb = useBbOpen()
   if (bb) return <BbNavLinks cls={cls} />
   return (
@@ -262,6 +263,10 @@ function NavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
           <NavLink to="/admin" className={cls}>
             {tt("Users")}</NavLink>
         </>
+      )}
+      {staff && (
+        <NavLink to="/crm" className={cls}>
+          CRM</NavLink>
       )}
     </>
   )
@@ -482,6 +487,7 @@ function Shell() {
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/accessibility" element={<Accessibility />} />
             <Route path="/contact" element={<Contact />} />
+            <Route path="/crm" element={<Crm />} />
             <Route path="/basketball/*" element={<BbRoutes />} />
             <Route path="/tennis/*" element={<SportSoon sport="tennis" />} />
             <Route path="/american-football/*" element={<SportSoon sport="american-football" />} />

@@ -23,7 +23,12 @@ export interface User {
   twoFactor?: boolean
   /** this session passed two-step login */
   mfa?: boolean
+  /** staff role set by an admin (support inbox) */
+  role?: 'support' | null
 }
+
+/** CRM permission: admin, or support staff (role + two-step login used for this session) */
+export type Staff = 'admin' | 'support' | null
 
 /** Sign-in step result: a ticket means a two-step code is still needed. */
 export interface SignInStep { ticket?: string }
@@ -31,12 +36,14 @@ export interface SignInStep { ticket?: string }
 interface SessionPayload {
   user: User | null
   access: Access
+  staff?: Staff
   verificationRequired?: boolean
 }
 
 interface AuthState {
   user: User | null
   access: Access
+  staff: Staff
   loading: boolean
   /** Pro or admin: every prediction in full, no counting */
   full: boolean
@@ -72,12 +79,14 @@ function reconnectSocket() {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [access, setAccess] = useState<Access>('anon')
+  const [staff, setStaff] = useState<Staff>(null)
   const [loading, setLoading] = useState(true)
   const [verificationRequired, setVerificationRequired] = useState(false)
 
   const apply = (d: SessionPayload) => {
     setUser(d.user)
     setAccess(d.access)
+    setStaff(d.staff ?? null)
     if (typeof d.verificationRequired === 'boolean') setVerificationRequired(d.verificationRequired)
   }
 
@@ -169,7 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, access, loading, full, paid, needsVerification, login, loginCode, signup, verify, resendCode, resetPassword, setOptIn, logout, refresh }}
+      value={{ user, access, staff, loading, full, paid, needsVerification, login, loginCode, signup, verify, resendCode, resetPassword, setOptIn, logout, refresh }}
     >
       {children}
     </AuthContext.Provider>
