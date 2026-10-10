@@ -450,7 +450,7 @@ app.post('/api/favorites/remove', jsonOnly, (req, res) => {
 // ---------- CRM (support inbox: admin + support staff; campaigns and revenue: admin only) ----------
 const staffName = (req: express.Request) => ({ id: req.user!.id, name: req.user!.name || req.user!.email.split('@')[0] });
 const crmFail = (res: express.Response, e: any) => (e instanceof CrmError ? res.status(e.status).json({ error: e.message }) : sendError(res, e, 'CRM error'));
-const adminOnly = (req: express.Request, res: express.Response, next: express.NextFunction) => (req.staff === 'admin' ? next() : res.status(403).json({ error: 'Founder only' }));
+const adminOnly = (req: express.Request, res: express.Response, next: express.NextFunction) => (req.staff === 'admin' ? next() : res.status(403).json({ error: 'Admins only' }));
 app.get('/api/crm/inbox', (req, res) => {
   try { res.set('Cache-Control', 'no-store'); res.json({ data: inboxList(String(req.query.status || '') || null) }); } catch (e) { crmFail(res, e); }
 });
@@ -613,7 +613,7 @@ app.post('/api/auth/2fa/recovery', rateLimit('2fa-setup', 10, 15 * 60000), jsonO
 app.post('/api/auth/2fa/disable', rateLimit('2fa-setup', 10, 15 * 60000), jsonOnly, (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Sign in required' });
   try {
-    if (req.user.isAdmin && ADMIN_2FA_REQUIRED) return res.status(400).json({ error: 'The founder account must keep two-step login on (ADMIN_2FA_REQUIRED).' });
+    if (req.user.isAdmin && ADMIN_2FA_REQUIRED) return res.status(400).json({ error: 'Admin accounts must keep two-step login on (ADMIN_2FA_REQUIRED).' });
     checkPassword(req.user.id, req.body?.password);
     disableTwoFactor(req.user.id, req.body?.code);
     securityLog(req, '2fa_off', req.user);

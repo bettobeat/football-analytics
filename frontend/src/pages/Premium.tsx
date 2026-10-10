@@ -67,7 +67,7 @@ export default function Premium() {
 
   const button = (plan: string, label: string, primary: boolean) => {
     const target = plan === 'pro-year' ? 'pro' : plan
-    if (access === 'admin') return <div className="rounded-xl bg-surface2/70 text-center py-2.5 text-sm text-muted">{t("Founder: full access")}</div>
+    if (access === 'admin') return <div className="rounded-xl bg-surface2/70 text-center py-2.5 text-sm text-muted">{t("Admin: full access")}</div>
     if (access === target) return <div className="rounded-xl bg-accent/15 text-accent text-center py-2.5 text-sm font-semibold">{t("Your plan")}</div>
     if (!user)
       return (

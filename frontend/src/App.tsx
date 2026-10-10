@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link, NavLink, useLocation } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
 import Home from './pages/Home'
@@ -62,7 +62,7 @@ function AdminOnly({ children }: { children: ReactNode }) {
         <p className="text-sm text-muted">
           {user.twoFactor
             ? 'This device signed in without the two-step code. Sign out and sign in again with your password and the code from your app.'
-            : 'Founder access needs two-step login. Set it up on your account page, then come back.'}
+            : 'Admin access needs two-step login. Set it up on your account page, then come back.'}
         </p>
         {user.twoFactor ? (
           <button type="button" onClick={() => logout()} className="rounded-xl bg-accent text-bg font-semibold px-4 py-2 text-sm">Sign out</button>
@@ -140,8 +140,19 @@ function LangSwitch({ compact = false }: { compact?: boolean }) {
 }
 
 function UserMenu() {
-  const { user, access, loading } = useAuth()
+  const { user, access, staff, loading, logout } = useAuth()
   const loc = useLocation()
+  const [open, setOpen] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => setOpen(false), [loc.pathname, loc.search])
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [open])
   if (loading) return <div className="w-9 h-9" />
   if (!user)
     return (
@@ -151,17 +162,54 @@ function UserMenu() {
         {tt("Sign in")}</Link>
     )
   const badge = access === 'admin' ? 'Admin' : access === 'pro' ? 'Pro' : access === 'premium' ? 'Premium' : 'Free'
+  const bbPast = sportOfPath(loc.pathname).id === 'basketball'
+  const item = 'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-ink hover:bg-surface2'
+  const icon = (d: string) => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted shrink-0" aria-hidden><path d={d} /></svg>
+  )
   return (
-    <Link
-      to="/account"
-      className="flex items-center gap-2 pl-1 pr-2.5 py-1 rounded-xl border border-line/80 bg-surface hover:border-faint transition-colors"
-      title={user.email}
-    >
-      <span className="w-7 h-7 rounded-lg bg-accent/15 text-accent grid place-items-center text-xs font-bold uppercase">
-        {(user.name || user.email).charAt(0)}
-      </span>
-      <span className={`text-[11px] font-semibold ${access === 'free' ? 'text-muted' : 'text-accent'}`}>{badge}</span>
-    </Link>
+    <div ref={box} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-xl border border-line/80 bg-surface hover:border-faint transition-colors"
+        title={user.email}
+      >
+        <span className="w-7 h-7 rounded-lg bg-accent/15 text-accent grid place-items-center text-xs font-bold uppercase">
+          {(user.name || user.email).charAt(0)}
+        </span>
+        <span className={`text-[11px] font-semibold ${access === 'free' ? 'text-muted' : 'text-accent'}`}>{badge}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`text-muted transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden><path d="m6 9 6 6 6-6" /></svg>
+      </button>
+      {open && (
+        <div role="menu" className="absolute right-0 mt-2 w-60 z-50 card p-1.5 shadow-xl">
+          <div className="px-3 py-2 border-b border-line/60 mb-1">
+            <div className="text-sm font-semibold text-ink truncate">{user.name || user.email.split('@')[0]}</div>
+            <div className="text-[11px] text-faint truncate">{user.email}</div>
+          </div>
+          <Link to="/account" role="menuitem" className={item}>{icon('M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z')}{tt("Settings")}</Link>
+          {staff && (
+            <>
+              <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-faint">Staff</div>
+              <Link to="/crm" role="menuitem" className={item}>{icon('M4 4h16v12H5.2L4 17.2V4zM8 9h8M8 12h5')}CRM</Link>
+              {access === 'admin' && (
+                <>
+                  <Link to="/admin" role="menuitem" className={item}>{icon('M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8')}Users</Link>
+                  <Link to={bbPast ? '/basketball/past' : '/past'} role="menuitem" className={item}>{icon('M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2')}Past seasons</Link>
+                </>
+              )}
+            </>
+          )}
+          <div className="border-t border-line/60 mt-1 pt-1">
+            <button type="button" role="menuitem" onClick={() => { setOpen(false); logout() }} className={`${item} w-full text-left text-muted`}>
+              {icon('M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9')}{tt("Sign out")}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -213,7 +261,6 @@ function BbNavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
       <NavLink to="/basketball/favorites" className={cls}>{tt("Favorites")}</NavLink>
       <NavLink to="/basketball/accuracy" className={cls}>{tt("Accuracy")}</NavLink>
       {access !== 'pro' && access !== 'admin' && <NavLink to="/premium" className={cls}>{access === 'premium' ? tt("Go Pro") : tt("Premium")}</NavLink>}
-      {access === 'admin' && <NavLink to="/basketball/past" className={cls}>{tt("Past seasons")}</NavLink>}
     </>
   )
 }
@@ -233,7 +280,7 @@ function DataLine() {
 }
 
 function NavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
-  const { access, staff } = useAuth()
+  const { access } = useAuth()
   const bb = useBbOpen()
   if (bb) return <BbNavLinks cls={cls} />
   return (
@@ -255,19 +302,7 @@ function NavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
           {access === 'premium' ? tt("Go Pro") : tt("Premium")}
         </NavLink>
       )}
-      {access === 'admin' && (
-        <>
-          {/* Oct 2026: past-season tests are internal only (the model then had less information than now) */}
-          <NavLink to="/past" className={cls}>
-            {tt("Past seasons")}</NavLink>
-          <NavLink to="/admin" className={cls}>
-            {tt("Users")}</NavLink>
-        </>
-      )}
-      {staff && (
-        <NavLink to="/crm" className={cls}>
-          CRM</NavLink>
-      )}
+      {/* Oct 2026: Past seasons, Users and CRM live in the account menu (top right), staff only */}
     </>
   )
 }

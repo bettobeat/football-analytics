@@ -38,7 +38,7 @@ export default function Admin() {
   }, [access])
 
   if (loading) return null
-  if (access !== 'admin') return <div className="max-w-3xl mx-auto px-4 sm:px-6 py-16 text-sm text-muted">Founder only.</div>
+  if (access !== 'admin') return <div className="max-w-3xl mx-auto px-4 sm:px-6 py-16 text-sm text-muted">Admins only.</div>
 
   const setPlan = async (u: Row, plan: 'free' | 'premium' | 'pro') => {
     let until: string | null = null
@@ -90,7 +90,7 @@ export default function Admin() {
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink">Founder panel</h1>
+        <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink">Admin</h1>
         <nav className="flex gap-1 rounded-full border border-line/60 bg-surface p-1">
           {(['overview', 'users'] as const).map(x => (
             <button key={x} type="button" onClick={() => go(x)} aria-current={tab === x ? 'page' : undefined}
@@ -169,7 +169,7 @@ export default function Admin() {
                 </td>
                 <td className="px-4 py-3">
                   {u.isAdmin ? (
-                    <span className="text-xs font-semibold text-accent">Founder</span>
+                    <span className="text-xs font-semibold text-accent">Admin</span>
                   ) : u.plan !== 'free' ? (
                     <span className="text-xs font-semibold text-accent">
                       {u.plan === 'pro' ? 'Pro' : 'Premium'}{u.premiumUntil ? <span className="text-faint font-normal"> · until {fmt(u.premiumUntil)}</span> : null}
@@ -243,7 +243,7 @@ const EVENT_LABEL: Record<string, string> = {
   login_ok: 'Signed in', login_ok_recovery_code: 'Signed in with a recovery code', login_password_ok: 'Password OK, waiting for code',
   login_fail: 'Wrong email or password', '2fa_fail': 'Wrong two-step code', '2fa_on': 'Two-step login turned on', '2fa_off': 'Two-step login turned off',
   '2fa_recovery_new': 'New recovery codes', password_reset: 'Password reset by email', password_change: 'Password changed',
-  admin_set_password: 'Founder set a user password', role_changed: 'Staff role changed', campaign_sent: 'Email campaign sent', '2fa_device_added': 'Two-step: another device added',
+  admin_set_password: 'Admin set a user password', role_changed: 'Staff role changed', campaign_sent: 'Email campaign sent', '2fa_device_added': 'Two-step: another device added',
   email_change_started: 'Email change started', email_changed: 'Email changed'
 }
 const BAD = new Set(['role_changed', 'login_fail', '2fa_fail', '2fa_off', 'login_ok_recovery_code', 'admin_set_password', 'email_changed', '2fa_device_added'])
