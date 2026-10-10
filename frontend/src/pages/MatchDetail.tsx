@@ -576,6 +576,7 @@ function MatchDetail() {
   const tableShow = tableInvolving.length ? tableInvolving : tableTotals
   const tabs: { id: TabId; label: string; short?: string; hint: string; live?: boolean }[] = [
     { id: 'prediction', label: tt('Prediction'), hint: '' },
+    ...(done ? [{ id: 'highlights' as TabId, label: tt('Highlights'), short: tt('Video'), hint: tt("Official match highlights") }] : []),
     { id: 'stats', label: tt('Statistics'), short: tt('Stats'), hint: live ? tt("Live stats, match events and averages") : done ? tt("Match stats, events and averages") : tt("Averages from the last 10 games"), live },
     { id: 'lineups', label: tt('Lineups & injuries'), short: tt('Lineups'), hint: hasLineups ? tt("Official lineups") : done ? tt('Lineups') : tt("Expected XI from the last 5 games") },
     { id: 'rest', label: tt('Schedule & rest'), short: tt('Rest'), hint: tt("Days of rest, recent and next games") },
@@ -859,6 +860,8 @@ function MatchDetail() {
           </>
         )}
 
+        {tab === 'highlights' && done && <Highlights matchId={matchId} />}
+
         {tab === 'stats' && (
           <>
               {live && (
@@ -901,7 +904,6 @@ function MatchDetail() {
                   <StatsPanel home={home} away={away} hs={homeStats} as={awayStats} keys={statKeys} />
                 </Section>
               )}
-            {done && <Highlights matchId={matchId} />}
 
             <section>
               <div className="flex items-baseline justify-between gap-3 mb-3 px-1">
@@ -1217,14 +1219,27 @@ function TeamHero({ team, align, code }: { team: Team; align: 'left' | 'right'; 
 /** Free / signed-out view: the pick and confidence; percentages, value and the breakdown are Premium. */
 /** Official highlights (YouTube), click-to-play: nothing loads from YouTube until the viewer presses play. */
 function Highlights({ matchId }: { matchId: number }) {
-  const [h, setH] = useState<{ videoId: string; title: string; channel: string } | null>(null)
+  const [h, setH] = useState<{ videoId: string; title: string; channel: string } | null | undefined>(undefined)
   const [play, setPlay] = useState(false)
   useEffect(() => {
     let off = false
-    axios.get(`${API_URL}/matches/${matchId}/highlights`).then(r => { if (!off) setH(r.data.data || null) }).catch(() => undefined)
+    setH(undefined)
+    axios.get(`${API_URL}/matches/${matchId}/highlights`).then(r => { if (!off) setH(r.data.data || null) }).catch(() => { if (!off) setH(null) })
     return () => { off = true }
   }, [matchId])
-  if (!h) return null
+  if (h === undefined) return <div className="card aspect-video max-h-[420px] animate-pulse" aria-label={tt("Loading…")} />
+  if (!h)
+    return (
+      <div className="card p-8 sm:p-10 text-center space-y-3">
+        <div className="w-14 h-14 mx-auto rounded-2xl bg-surface2 text-muted grid place-items-center">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <rect x="2" y="5" width="15" height="14" rx="2" /><path d="M17 10l5-3v10l-5-3z" />
+          </svg>
+        </div>
+        <div className="font-display text-lg font-bold text-ink">{tt("There is no official highlight for this game yet")}</div>
+        <p className="text-sm text-muted max-w-md mx-auto">{tt("Official highlights usually come out a few hours after the final whistle. We keep checking the league and club channels, so come back later.")}</p>
+      </div>
+    )
   return (
     <Section title={tt("Highlights")} note={tt("Official video · {0}", { 0: h.channel })}>
       <div className="relative aspect-video rounded-2xl overflow-hidden bg-black border border-line/60">
@@ -1978,8 +1993,8 @@ interface TableRow extends StandingRow {
   team: { id: number; name: string; shortName?: string; crest?: string }
 }
 
-type TabId = 'prediction' | 'stats' | 'lineups' | 'rest' | 'h2h' | 'table'
-const TAB_IDS: TabId[] = ['prediction', 'stats', 'lineups', 'rest', 'h2h', 'table']
+type TabId = 'prediction' | 'highlights' | 'stats' | 'lineups' | 'rest' | 'h2h' | 'table'
+const TAB_IDS: TabId[] = ['prediction', 'highlights', 'stats', 'lineups', 'rest', 'h2h', 'table']
 
 type StandingsTable = { type: string; group?: string | null; table: TableRow[] }
 
