@@ -18,6 +18,7 @@ import path from 'path';
 import zlib from 'zlib';
 import https from 'https';
 import crypto from 'crypto';
+import os from 'os';
 import { pipeline } from 'stream/promises';
 import { once } from 'events';
 import { db } from '../db';
@@ -156,46 +157,85 @@ export function runBackup(trigger: 'daily' | 'startup' | 'manual') {
   return running;
 }
 
+/** Free / total bytes of the disk holding a folder (null when the platform can't tell). */
+function diskOf(dir: string): { free: number; total: number } | null {
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const st = (fs as any).statfsSync(dir);
+    return { free: Number(st.bavail) * Number(st.bsize), total: Number(st.blocks) * Number(st.bsize) };
+  } catch { return null; }
+}
+const DB_FILE = process.env.DB_FILE || path.join(DATA_DIR, 'bet-to-beat.sqlite');
+function dbSize() {
+  let n = 0;
+  for (const f of [DB_FILE, DB_FILE + '-wal']) try { n += fs.statSync(f).size; } catch { /* none */ }
+  return n;
+}
+const sameDisk = (a: string, b: string) => { try { return fs.statSync(a).dev === fs.statSync(b).dev; } catch { return false; } };
+/** Disk space picture for the admin card (and for the backup itself). */
+export function diskStatus() {
+  const tmp = path.join(os.tmpdir(), 'sl-backup');
+  return { dbBytes: dbSize(), volume: diskOf(DATA_DIR), temp: diskOf(tmp), tempDir: tmp };
+}
+const GB = (n: number) => `${(n / 1e9).toFixed(2)} GB`;
+
 async function doBackup(trigger: string) {
   const t0 = Date.now();
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
   const name = `sportlikely-${stamp}.sqlite.gz`;
   fs.mkdirSync(BACKUP_DIR, { recursive: true });
-  const raw = path.join(BACKUP_DIR, `tmp-${stamp}.sqlite`);
-  const gz = path.join(BACKUP_DIR, name);
-  let dbBytes = 0, gzBytes = 0, remote: string | null = null;
+  // Work where there is room for a full copy: the container's temp disk first (not the volume, which holds the live
+  // database and must never fill up), the volume only when it has plenty of space left.
+  const d = diskStatus();
+  const need = d.dbBytes * 1.5 + 50e6;
+  const tempSeparate = !sameDisk(d.tempDir, DATA_DIR);
+  const work = d.temp && d.temp.free > need && tempSeparate ? d.tempDir
+    : d.volume && d.volume.free > need + 500e6 ? BACKUP_DIR
+    : d.temp && d.temp.free > need ? d.tempDir
+    : null;
+  const raw = path.join(work || d.tempDir, `tmp-${stamp}.sqlite`);
+  const gzWork = path.join(work || d.tempDir, `work-${name}`);
+  const gzKeep = path.join(BACKUP_DIR, name);
+  let dbBytes = 0, gzBytes = 0, remote: string | null = null, local = false;
   try {
+    if (!work) throw new Error(`Not enough disk space for a copy: the database is ${GB(d.dbBytes)}, the volume has ${d.volume ? GB(d.volume.free) : '?'} free, the temp disk ${d.temp ? GB(d.temp.free) : '?'}.`);
     fs.rmSync(raw, { force: true });
     db.exec(`VACUUM INTO '${raw.replace(/'/g, "''")}'`); // consistent snapshot, the live file is not touched
     dbBytes = fs.statSync(raw).size;
-    await pipeline(fs.createReadStream(raw), zlib.createGzip({ level: 6 }), fs.createWriteStream(gz));
-    gzBytes = fs.statSync(gz).size;
+    await pipeline(fs.createReadStream(raw), zlib.createGzip({ level: 6 }), fs.createWriteStream(gzWork));
+    gzBytes = fs.statSync(gzWork).size;
     fs.rmSync(raw, { force: true });
-    // keep the newest LOCAL_KEEP local copies
-    for (const old of localList().slice(LOCAL_KEEP)) fs.rmSync(path.join(BACKUP_DIR, old.name), { force: true });
     if (remoteReady()) {
       try {
-        await upload(gz, name);
+        await upload(gzWork, name);
         remote = 'uploaded';
         await pruneRemote().catch(e => logger.warn(`backup: pruning old off-site copies failed: ${e.message}`));
       } catch (e: any) {
         remote = `failed: ${e.message}`;
       }
     } else remote = remoteConfigured() ? 'skipped: BACKUP_KEY not set' : 'not set up';
-    const ok = !remote.startsWith('failed');
+    // server copy on the volume only while it keeps a safe margin (old copies are removed first)
+    for (const old of localList().slice(LOCAL_KEEP - 1)) fs.rmSync(path.join(BACKUP_DIR, old.name), { force: true });
+    const vol = diskOf(DATA_DIR);
+    if (work === BACKUP_DIR) { fs.renameSync(gzWork, gzKeep); local = true; }
+    else if (vol && vol.free > gzBytes + 1e9) { fs.copyFileSync(gzWork, gzKeep); local = true; }
+    fs.rmSync(gzWork, { force: true });
+    const ok = remote === 'uploaded' || (local && !remote.startsWith('failed'));
+    const note = local ? remote : `${remote}; server copy skipped (volume nearly full)`;
     db.prepare('INSERT INTO backup_log (at, ok, trigger, file, db_bytes, gz_bytes, ms, remote, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(new Date().toISOString(), ok ? 1 : 0, trigger, name, dbBytes, gzBytes, Date.now() - t0, remote, ok ? null : remote);
-    logger.info(`backup ${name}: ${(dbBytes / 1e6).toFixed(1)} MB → ${(gzBytes / 1e6).toFixed(1)} MB gz in ${Date.now() - t0} ms, off-site ${remote}`);
-    if (!ok) await alert(`The backup was saved on the server, but the off-site copy failed: ${remote}`);
-    return { ok, name, dbBytes, gzBytes, remote };
+      .run(new Date().toISOString(), ok ? 1 : 0, trigger, local ? name : null, dbBytes, gzBytes, Date.now() - t0, note, ok ? null : note);
+    logger.info(`backup ${name}: ${(dbBytes / 1e6).toFixed(1)} MB → ${(gzBytes / 1e6).toFixed(1)} MB gz in ${Date.now() - t0} ms, off-site ${remote}, server copy ${local}`);
+    if (!ok) await alert(`The database backup did not complete: ${note}`);
+    return { ok, name, dbBytes, gzBytes, remote, local };
   } catch (e: any) {
     fs.rmSync(raw, { force: true });
-    fs.rmSync(gz, { force: true });
+    fs.rmSync(gzWork, { force: true });
+    const msg = /full/i.test(String(e.message)) ? `${e.message} — disk: database ${GB(d.dbBytes)}, volume free ${d.volume ? GB(d.volume.free) : '?'}, temp free ${d.temp ? GB(d.temp.free) : '?'}` : String(e.message || e);
     db.prepare('INSERT INTO backup_log (at, ok, trigger, file, db_bytes, gz_bytes, ms, remote, error) VALUES (?, 0, ?, NULL, ?, NULL, ?, NULL, ?)')
-      .run(new Date().toISOString(), trigger, dbBytes || null, Date.now() - t0, String(e.message || e));
-    logger.error(`backup failed: ${e.message}`);
-    await alert(`The database backup failed: ${e.message}`);
-    return { ok: false, error: String(e.message || e) };
+      .run(new Date().toISOString(), trigger, dbBytes || null, Date.now() - t0, msg);
+    logger.error(`backup failed: ${msg}`);
+    await alert(`The database backup failed: ${msg}`);
+    return { ok: false, error: msg };
   }
 }
 
@@ -221,6 +261,7 @@ export function backupStatus() {
     schedule: `daily at ${String(HOUR).padStart(2, '0')}:${MINUTE} UTC`,
     local: localList(),
     localKeep: LOCAL_KEEP,
+    disk: diskStatus(),
     history
   };
 }

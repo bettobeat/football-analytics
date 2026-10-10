@@ -247,6 +247,7 @@ interface BackupData {
   running: boolean; healthy: boolean; lastOkAt: string | null; lastError: string | null; schedule: string; localKeep: number
   remote: { configured: boolean; encrypted: boolean; ready: boolean; keepDays: number; copies?: number; bytes?: number; latest?: { key: string; at: string } | null; listError?: string }
   local: { name: string; size: number; at: string }[]; history: BackupRow[]
+  disk?: { dbBytes: number; volume: { free: number; total: number } | null; temp: { free: number; total: number } | null }
 }
 const mb = (n: number | null | undefined) => (n == null ? '–' : n >= 1e9 ? `${(n / 1e9).toFixed(2)} GB` : `${(n / 1e6).toFixed(1)} MB`)
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '–')
@@ -322,6 +323,16 @@ function BackupsCard() {
         </div>
       </div>
 
+      {d.disk && (() => {
+        const v = d.disk.volume
+        const low = !!v && (v.free < 500e6 || v.free / v.total < 0.1)
+        return (
+          <div className={`rounded-xl border px-3 py-2 text-xs mb-3 ${low ? 'border-loss/40 bg-loss/10 text-loss' : 'border-line text-muted'}`}>
+            <b className={low ? '' : 'text-ink'}>Disk:</b> database {mb(d.disk.dbBytes)} · volume {v ? `${mb(v.free)} free of ${mb(v.total)}` : 'unknown'} · temp disk {d.disk.temp ? `${mb(d.disk.temp.free)} free` : 'unknown'}
+            {low && <> — <b>the volume is almost full.</b> The site saves everything there: make the volume bigger in Railway (service → Settings → Volume).</>}
+          </div>
+        )
+      })()}
       {d.lastError && <div className="rounded-xl border border-loss/40 bg-loss/10 px-3 py-2 text-sm text-loss mb-3">Last attempt: {d.lastError}</div>}
       {err && <div className="rounded-xl border border-loss/40 bg-loss/10 px-3 py-2 text-sm text-loss mb-3">{err}</div>}
 
