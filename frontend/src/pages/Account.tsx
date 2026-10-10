@@ -45,7 +45,7 @@ export default function Account() {
 
   const input =
     'w-full rounded-xl border border-line bg-surface2/60 px-3.5 py-2.5 text-sm text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20'
-  const planLabel = access === 'admin' ? t("Admin (full access)") : user.plan === 'pro' ? 'Pro' : user.plan === 'premium' ? 'Premium' : 'Free'
+  const planLabel = access === 'admin' ? t("Founder (full access)") : user.plan === 'pro' ? 'Pro' : user.plan === 'premium' ? 'Premium' : 'Free'
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-10 space-y-6">
@@ -183,7 +183,7 @@ function EmailCard() {
           <button type="button" onClick={() => setStep('form')} className="shrink-0 rounded-xl bg-surface2 border border-line px-3 py-1.5 text-sm font-semibold text-ink">{t("Change")}</button>
         )}
       </div>
-      {user.isAdmin && step === 'idle' && <p className="text-[11px] text-faint">Admin account: add the new address to ADMIN_EMAILS in Railway first (keep the old one too), then change it here.</p>}
+      {user.isAdmin && step === 'idle' && <p className="text-[11px] text-faint">Founder account: add the new address to ADMIN_EMAILS in Railway first (keep the old one too), then change it here.</p>}
       {step === 'form' && (
         <form onSubmit={start} className="space-y-3">
           <label className="block">

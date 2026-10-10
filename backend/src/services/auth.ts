@@ -430,7 +430,7 @@ export async function startEmailChange(user: User, password: unknown, newEmailIn
   const email = normEmail(newEmailIn);
   // admin rights come from ADMIN_EMAILS: the new address must be listed there first, or the account would lose them
   if ((user.isAdmin || ADMIN_EMAILS.has(user.email.toLowerCase())) && !ADMIN_EMAILS.has(email))
-    throw new AuthError(400, 'Admin account: first add the new address to ADMIN_EMAILS in Railway (keep the old one too), then change it here.');
+    throw new AuthError(400, 'Founder account: first add the new address to ADMIN_EMAILS in Railway (keep the old one too), then change it here.');
   if (!EMAIL_RE.test(email) || email.length > 200) throw new AuthError(400, 'Please enter a valid email address.');
   if (email === user.email) throw new AuthError(400, 'That is already your email.');
   if (limited(`email-change:${user.id}`, 5, 3600000)) throw new AuthError(429, 'Too many tries. Try again in an hour.');

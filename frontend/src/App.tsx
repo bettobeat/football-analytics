@@ -62,7 +62,7 @@ function AdminOnly({ children }: { children: ReactNode }) {
         <p className="text-sm text-muted">
           {user.twoFactor
             ? 'This device signed in without the two-step code. Sign out and sign in again with your password and the code from your app.'
-            : 'Admin access needs two-step login. Set it up on your account page, then come back.'}
+            : 'Founder access needs two-step login. Set it up on your account page, then come back.'}
         </p>
         {user.twoFactor ? (
           <button type="button" onClick={() => logout()} className="rounded-xl bg-accent text-bg font-semibold px-4 py-2 text-sm">Sign out</button>

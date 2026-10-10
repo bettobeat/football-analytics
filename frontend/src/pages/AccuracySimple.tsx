@@ -345,7 +345,7 @@ export default function AccuracySimple() {
       {access === 'admin' && (
         <div className="text-center">
           <button onClick={() => setDetailed(true)} className="text-sm text-muted hover:text-ink underline underline-offset-4">
-            {t("Admin: detailed statistics (calibration, backtests, all models)")}</button>
+            {t("Founder: detailed statistics (calibration, backtests, all models)")}</button>
         </div>
       )}
     </div>

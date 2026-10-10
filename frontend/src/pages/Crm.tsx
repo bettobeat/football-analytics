@@ -53,7 +53,7 @@ export default function Crm() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink">CRM</h1>
-          <p className="text-sm text-muted mt-1">{staff === 'admin' ? 'Admin' : 'Support staff'} · {user?.email}</p>
+          <p className="text-sm text-muted mt-1">{staff === 'admin' ? 'Founder' : 'Support staff'} · {user?.email}</p>
         </div>
         <div className="seg">
           {tabs.map(t => (
@@ -295,7 +295,7 @@ function Campaigns() {
           {num('inactiveForDays', 'No sign-in for … days (win back)')}
           <label className="flex items-center gap-2 text-sm text-muted">
             <input type="checkbox" checked={seg.includeStaff} onChange={e => setSeg(s => ({ ...s, includeStaff: e.target.checked }))} className="w-4 h-4 accent-[rgb(var(--accent))]" />
-            Include admin and staff accounts
+            Include founder and staff accounts
           </label>
           <div className="rounded-xl bg-surface2/60 border border-line px-3 py-2">
             <div className="num text-2xl font-extrabold text-ink">{preview ? preview.count : '–'}</div>

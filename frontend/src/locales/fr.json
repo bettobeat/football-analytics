@@ -1490,5 +1490,9 @@
  "Save these recovery codes somewhere safe (not on the same phone). If you lose your phone, each code lets you sign in once. They are shown only now.": "Conservez ces codes de récupération en lieu sûr (pas sur le même téléphone). Si vous perdez votre téléphone, chaque code permet une connexion. Ils ne sont affichés que maintenant.",
  "Download": "Télécharger",
  "Copy": "Copier",
- "I saved my recovery codes": "J'ai enregistré mes codes de récupération"
+ "I saved my recovery codes": "J'ai enregistré mes codes de récupération",
+ "Founder (full access)": "Fondateur (accès complet)",
+ "Founder: full access": "Fondateur : accès complet",
+ "Founder preview · not public yet": "Aperçu fondateur · pas encore public",
+ "Founder: detailed statistics (calibration, backtests, all models)": "Fondateur : statistiques détaillées (calibration, backtests, tous les modèles)"
 }
