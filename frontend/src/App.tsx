@@ -50,9 +50,27 @@ export function LogoMark({ size = 36 }: { size?: number }) {
 
 /** Pages only the admin sees; everyone else gets "not found". */
 function AdminOnly({ children }: { children: ReactNode }) {
-  const { access, loading } = useAuth()
+  const { access, loading, user, logout } = useAuth()
   if (loading) return null
-  return access === 'admin' ? <>{children}</> : <NotFound />
+  if (access === 'admin') return <>{children}</>
+  // an admin whose session did not pass two-step login: sign in again with the code
+  if (user?.isAdmin)
+    return (
+      <div className="max-w-md mx-auto px-4 py-16 text-center space-y-3">
+        <h1 className="font-display text-2xl font-extrabold text-ink">Two-step login needed</h1>
+        <p className="text-sm text-muted">
+          {user.twoFactor
+            ? 'This device signed in without the two-step code. Sign out and sign in again with your password and the code from your app.'
+            : 'Admin access needs two-step login. Set it up on your account page, then come back.'}
+        </p>
+        {user.twoFactor ? (
+          <button type="button" onClick={() => logout()} className="rounded-xl bg-accent text-bg font-semibold px-4 py-2 text-sm">Sign out</button>
+        ) : (
+          <Link to="/account" className="inline-block rounded-xl bg-accent text-bg font-semibold px-4 py-2 text-sm">Go to account</Link>
+        )}
+      </div>
+    )
+  return <NotFound />
 }
 
 function Logo() {
@@ -459,7 +477,7 @@ function Shell() {
             <Route path="/verify" element={<Verify />} />
             <Route path="/forgot" element={<Forgot />} />
             <Route path="/premium" element={<Premium />} />
-            <Route path="/admin" element={<Admin />} />
+            <Route path="/admin" element={<AdminOnly><Admin /></AdminOnly>} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/accessibility" element={<Accessibility />} />

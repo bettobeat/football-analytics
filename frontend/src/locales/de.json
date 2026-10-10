@@ -1453,5 +1453,13 @@
  "Something is broken": "Etwas funktioniert nicht",
  "Idea / feedback": "Idee / Feedback",
  "Business / partnership": "Geschäftliches / Partnerschaft",
- "Other": "Sonstiges"
+ "Other": "Sonstiges",
+ "Two-step login": "Zwei-Schritt-Anmeldung",
+ "Enter one of your recovery codes. Each code works once.": "Gib einen deiner Wiederherstellungscodes ein. Jeder Code funktioniert einmal.",
+ "Open your authenticator app and enter the 6-digit code for SportLikely.": "Öffne deine Authenticator-App und gib den 6-stelligen Code für SportLikely ein.",
+ "Recovery code": "Wiederherstellungscode",
+ "6-digit code": "6-stelliger Code",
+ "Use the app code instead": "Stattdessen den App-Code verwenden",
+ "Lost your phone? Use a recovery code": "Handy verloren? Wiederherstellungscode verwenden",
+ "Back": "Zurück"
 }

@@ -4,6 +4,7 @@ import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { errorText, useAuth } from '../lib/auth'
 import { t } from '../lib/i18n'
+import { TwoFactorStep } from '../components/TwoFactor'
 
 /** Forgot password: email → 6-digit code + new password → signed in. */
 export default function Forgot() {
@@ -15,6 +16,7 @@ export default function Forgot() {
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [ticket, setTicket] = useState<string | null>(null) // new password saved; two-step code still needed
 
   useEffect(() => {
     if (user && step === 'email') nav('/account', { replace: true })
@@ -43,7 +45,8 @@ export default function Forgot() {
     if (password.length < 8) return setError(t("Password must be at least 8 characters."))
     setBusy(true)
     try {
-      await resetPassword(email, code, password)
+      const r = await resetPassword(email, code, password)
+      if (r.ticket) { setTicket(r.ticket); return }
       nav('/', { replace: true })
     } catch (err) {
       setError(errorText(err))
@@ -55,8 +58,10 @@ export default function Forgot() {
   return (
     <div className="max-w-md mx-auto px-4 sm:px-6 py-12 sm:py-16">
       <div className="card p-6 sm:p-8">
-        <h1 className="font-display text-2xl font-extrabold text-ink">{t("Reset your password")}</h1>
-        {step === 'email' ? (
+        <h1 className="font-display text-2xl font-extrabold text-ink">{ticket ? t("Two-step login") : t("Reset your password")}</h1>
+        {ticket ? (
+          <TwoFactorStep ticket={ticket} onDone={() => nav('/', { replace: true })} onCancel={() => nav('/login', { replace: true })} />
+        ) : step === 'email' ? (
           <form onSubmit={sendCode} className="mt-6 space-y-3">
             <p className="text-sm text-muted">{t("Enter your account email and we’ll send you a 6-digit code.")}</p>
             <label className="block">

@@ -29,6 +29,8 @@ export interface User {
   marketingOptIn: boolean;
   createdAt: string;
   cancelAt: string | null; // asked to cancel: the paid plan runs until premiumUntil and is not renewed
+  twoFactor: boolean; // two-step login is on
+  mfa?: boolean; // this session passed two-step login
 }
 
 db.exec(`
@@ -79,7 +81,14 @@ db.exec(`
   if (!cols.has('marketing_opt_in_at')) db.exec('ALTER TABLE users ADD COLUMN marketing_opt_in_at TEXT');
   if (!cols.has('cancel_at')) db.exec('ALTER TABLE users ADD COLUMN cancel_at TEXT');
   if (!cols.has('terms_at')) db.exec('ALTER TABLE users ADD COLUMN terms_at TEXT'); // when the user confirmed 18+ and accepted the terms
+  // two-step login (services/twoFactor.ts): encrypted secret, pending secret during setup, replay guard, recovery code hashes
+  for (const [c, t] of [['totp_secret', 'TEXT'], ['totp_pending', 'TEXT'], ['totp_enabled_at', 'TEXT'], ['totp_last_step', 'INTEGER'], ['totp_recovery', 'TEXT']])
+    if (!cols.has(c)) db.exec(`ALTER TABLE users ADD COLUMN ${c} ${t}`);
+  const sc = new Set(db.prepare('PRAGMA table_info(sessions)').all().map((c: any) => c.name));
+  if (!sc.has('mfa')) db.exec('ALTER TABLE sessions ADD COLUMN mfa INTEGER NOT NULL DEFAULT 0'); // 1 = this sign-in passed two-step
 }
+// Admins with two-step login on (or everyone when ADMIN_2FA_REQUIRED=1) get admin access only from a session that passed it
+const ADMIN_2FA_REQUIRED = process.env.ADMIN_2FA_REQUIRED === '1';
 
 export const SESSION_COOKIE = 'b2b_session';
 const SESSION_DAYS = 30;
@@ -168,7 +177,8 @@ function rowToUser(r: any): User {
     emailVerified: !!r.email_verified,
     marketingOptIn: !!r.marketing_opt_in,
     createdAt: r.created_at,
-    cancelAt: r.cancel_at || null
+    cancelAt: r.cancel_at || null,
+    twoFactor: !!r.totp_secret
   };
 }
 
@@ -178,7 +188,10 @@ export const verificationRequired = emailEnabled;
 export function accessOf(user: User | null): Access {
   if (!user) return 'anon';
   if (verificationRequired && !user.emailVerified) return 'free'; // unconfirmed: free view only
-  if (user.isAdmin) return 'admin';
+  if (user.isAdmin) {
+    if ((user.twoFactor || ADMIN_2FA_REQUIRED) && !user.mfa) return user.plan; // admin only after two-step login
+    return 'admin';
+  }
   return user.plan;
 }
 
@@ -230,6 +243,18 @@ export function login(emailIn: unknown, password: unknown, ip: string): User {
   }
   db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(new Date().toISOString(), row.id);
   return rowToUser(row);
+}
+
+/** The account by id, or null. */
+export function userById(userId: number): User | null {
+  const r = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+  return r ? rowToUser(r) : null;
+}
+
+/** Password check for sensitive changes (two-step setup / switch-off). */
+export function checkPassword(userId: number, password: unknown): void {
+  const row: any = db.prepare('SELECT pass_hash FROM users WHERE id = ?').get(userId);
+  if (!row || !verifyPassword(String(password || ''), row.pass_hash)) throw new AuthError(401, 'Wrong password.');
 }
 
 export function changePassword(userId: number, current: unknown, next: unknown): void {
@@ -396,7 +421,7 @@ const sha = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
 const MAX_DEVICES = parseInt(process.env.MAX_DEVICES || '2', 10);
 const MAX_DEVICES_ADMIN = 6;
 
-export function createSession(userId: number, userAgent?: string): { token: string; expires: Date } {
+export function createSession(userId: number, userAgent?: string, mfa = false): { token: string; expires: Date } {
   const u: any = db.prepare('SELECT email, email_verified FROM users WHERE id = ?').get(userId);
   const admin = !!u && ADMIN_EMAILS.has(String(u.email).toLowerCase()) && !!u.email_verified;
   const keep = (admin ? MAX_DEVICES_ADMIN : MAX_DEVICES) - 1;
@@ -405,12 +430,13 @@ export function createSession(userId: number, userAgent?: string): { token: stri
   const token = crypto.randomBytes(32).toString('base64url');
   const now = new Date();
   const expires = new Date(now.getTime() + SESSION_DAYS * 86400000);
-  db.prepare('INSERT INTO sessions (token_hash, user_id, created_at, expires_at, user_agent) VALUES (?, ?, ?, ?, ?)').run(
+  db.prepare('INSERT INTO sessions (token_hash, user_id, created_at, expires_at, user_agent, mfa) VALUES (?, ?, ?, ?, ?, ?)').run(
     sha(token),
     userId,
     now.toISOString(),
     expires.toISOString(),
-    (userAgent || '').slice(0, 200)
+    (userAgent || '').slice(0, 200),
+    mfa ? 1 : 0
   );
   return { token, expires };
 }
@@ -426,7 +452,7 @@ export function userForToken(token: string | undefined): User | null {
   if (!token) return null;
   const h = sha(token);
   const row = db
-    .prepare('SELECT u.*, s.expires_at AS s_expires FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?')
+    .prepare('SELECT u.*, s.expires_at AS s_expires, s.mfa AS s_mfa FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?')
     .get(h);
   if (!row) return null;
   const now = Date.now();
@@ -438,8 +464,11 @@ export function userForToken(token: string | undefined): User | null {
     lastTouch.set(h, now);
     db.prepare('UPDATE sessions SET expires_at = ? WHERE token_hash = ?').run(new Date(now + SESSION_DAYS * 86400000).toISOString(), h);
   }
-  return rowToUser(row);
+  return { ...rowToUser(row), mfa: !!row.s_mfa };
 }
+
+/** SHA-256 of a session token (sessions are stored by hash). */
+export const sessionHash = (token: string) => sha(token);
 
 setInterval(() => {
   try {
@@ -540,6 +569,7 @@ export function exportUserData(userId: number) {
     }) : [],
     unlockedMatches: tableExists('match_unlocks') ? safeAll('SELECT match_id AS matchId, at FROM match_unlocks WHERE user_id = ? ORDER BY at', userId) : [],
     waitlists: tableExists('sport_waitlist') ? safeAll('SELECT sport, lang, created_at AS joinedAt FROM sport_waitlist WHERE user_id = ? OR email = ?', userId, u.email) : [],
+    securityLog: tableExists('security_log') ? safeAll('SELECT at, event, ip, ua AS device FROM security_log WHERE user_id = ? ORDER BY id DESC LIMIT 500', userId) : [],
     cancellationFeedback: tableExists('leave_feedback') ? safeAll('SELECT plan, reason, details, at FROM leave_feedback WHERE user_id = ?', userId) : [],
     contactMessages: tableExists('contact_messages') ? safeAll('SELECT at, topic, message FROM contact_messages WHERE user_id = ? OR email = ? ORDER BY at', userId, u.email) : [],
     assistantUsage: tableExists('assistant_log') ? safeAll('SELECT at, match_id AS matchId FROM assistant_log WHERE user_id = ? ORDER BY at', userId) : [],
@@ -607,6 +637,7 @@ export function deleteAccount(userId: number, password: unknown, reason?: unknow
     if (tableExists('match_unlocks')) db.prepare('DELETE FROM match_unlocks WHERE user_id = ?').run(userId);
     if (tableExists('sport_waitlist')) db.prepare('DELETE FROM sport_waitlist WHERE user_id = ? OR email = ?').run(userId, u.email);
     if (tableExists('assistant_log')) db.prepare('DELETE FROM assistant_log WHERE user_id = ?').run(userId);
+    if (tableExists('security_log')) db.prepare('DELETE FROM security_log WHERE user_id = ?').run(userId);
     if (tableExists('contact_messages')) db.prepare('DELETE FROM contact_messages WHERE user_id = ? OR email = ?').run(userId, u.email);
     db.prepare('DELETE FROM email_codes WHERE user_id = ?').run(userId);
     db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);

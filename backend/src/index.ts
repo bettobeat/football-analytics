@@ -25,6 +25,8 @@ import { historyStatus, teamMapStatus, GROUPS, syncAll, syncH2HArchive, h2hArchi
 import { withLive, liveHalfTimeTest } from './services/liveChance';
 import { backtestUpsets, upsetWatchReport, upsetWatchBacktest } from './services/upsetAlerts';
 import { submitContact, contactInbox, markContact, ContactError } from './services/contact';
+import { ADMIN_2FA_REQUIRED, twoFactorEnabled, twoFactorStatus, startSetup, confirmSetup, newRecovery, disableTwoFactor, issueTicket, redeemTicket, securePastSessions, TwoFactorError } from './services/twoFactor';
+import { securityLog, securityLogList } from './services/securityLog';
 import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestRows, backtestRunsList } from './services/historyModel';
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
 import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler, squadCompetitions } from './services/squadValues';
@@ -71,7 +73,7 @@ import { dataHealth, startDataHealthScheduler } from './services/dataHealth';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures, afGet, afRemaining, xgCoverage } from './services/apiFootball';
 import {
   signup, login, changePassword, setPlan, adminResetPassword, listUsers, userStats, createSession, destroySession, userForToken,
-  parseCookies, setSessionCookie, clearSessionCookie, SESSION_COOKIE, accessOf, canSeeFull, isPaid, teaseDeep, teaseDeepExcept, AuthError, Access, User,
+  parseCookies, setSessionCookie, clearSessionCookie, SESSION_COOKIE, userById, checkPassword, sessionHash, accessOf, canSeeFull, isPaid, teaseDeep, teaseDeepExcept, AuthError, Access, User,
   sendVerification, verifyEmail, requestPasswordReset, resetPassword, setMarketingOptIn, usersCsv, verificationRequired, exportUserData, deleteAccount, cancelPlan, resumePlan, leaveFeedback
 } from './services/auth';
 import { playerDataStatus, teamPlayers } from './services/playerData';
@@ -299,7 +301,7 @@ app.use('/api', (req, res, next) => {
 });
 
 function authFail(res: express.Response, e: any) {
-  if (e instanceof AuthError) return res.status(e.status).json({ error: e.message });
+  if (e instanceof AuthError || e instanceof TwoFactorError) return res.status(e.status).json({ error: e.message });
   logger.error('Auth error', { message: e?.message });
   return res.status(500).json({ error: 'Something went wrong. Please try again.' });
 }
@@ -344,7 +346,7 @@ app.post('/api/auth/signup', jsonOnly, async (req, res) => {
 app.post('/api/auth/verify', jsonOnly, (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Sign in required' });
   try {
-    res.json(sessionPayload(verifyEmail(req.user, req.body?.code)));
+    res.json(sessionPayload({ ...verifyEmail(req.user, req.body?.code), mfa: req.user.mfa }));
   } catch (e) {
     authFail(res, e);
   }
@@ -372,6 +374,9 @@ app.post('/api/auth/forgot', jsonOnly, async (req, res) => {
 app.post('/api/auth/reset', jsonOnly, (req, res) => {
   try {
     const user = resetPassword(req.body?.email, req.body?.code, req.body?.password, req.ip || '');
+    securityLog(req, 'password_reset', user);
+    // a new password does not skip two-step login
+    if (twoFactorEnabled(user.id)) return res.json({ twoFactor: true, ticket: issueTicket(user.id) });
     const s = createSession(user.id, req.headers['user-agent']);
     setSessionCookie(res, s.token, s.expires, req.secure);
     res.json(sessionPayload(user));
@@ -383,7 +388,7 @@ app.post('/api/auth/reset', jsonOnly, (req, res) => {
 app.post('/api/auth/preferences', jsonOnly, (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Sign in required' });
   try {
-    res.json(sessionPayload(setMarketingOptIn(req.user.id, req.body?.optIn === true)));
+    res.json(sessionPayload({ ...setMarketingOptIn(req.user.id, req.body?.optIn === true), mfa: req.user.mfa }));
   } catch (e) {
     authFail(res, e);
   }
@@ -471,12 +476,95 @@ app.get('/api/admin/news', (_req, res) => res.json({ data: newsStatus() }));
 app.post('/api/auth/login', jsonOnly, (req, res) => {
   try {
     const user = login(req.body?.email, req.body?.password, req.ip || '');
+    // two-step login on: no session yet, only a short ticket for the code step
+    if (twoFactorEnabled(user.id)) {
+      securityLog(req, 'login_password_ok', user, 'waiting for two-step code');
+      return res.json({ twoFactor: true, ticket: issueTicket(user.id) });
+    }
     const s = createSession(user.id, req.headers['user-agent']);
     setSessionCookie(res, s.token, s.expires, req.secure);
+    securityLog(req, 'login_ok', user);
     res.json(sessionPayload(user));
+  } catch (e) {
+    if (e instanceof AuthError && (e.status === 401 || e.status === 429))
+      securityLog(req, 'login_fail', { email: String(req.body?.email || '').trim().slice(0, 254) || null }, e.status === 429 ? 'rate limited' : 'wrong email or password');
+    authFail(res, e);
+  }
+});
+
+// Two-step login, step 2: the ticket from /auth/login (or /auth/reset) + a 6-digit code or a recovery code
+app.post('/api/auth/2fa/login', rateLimit('login2fa', 20, 15 * 60000), jsonOnly, (req, res) => {
+  try {
+    const { userId, via } = redeemTicket(req.body?.ticket, req.body?.code);
+    const s = createSession(userId, req.headers['user-agent'], true);
+    setSessionCookie(res, s.token, s.expires, req.secure);
+    const user = { ...userById(userId)!, mfa: true };
+    securityLog(req, via === 'recovery' ? 'login_ok_recovery_code' : 'login_ok', user, 'two-step passed');
+    res.json(sessionPayload(user));
+  } catch (e) {
+    if (e instanceof TwoFactorError) securityLog(req, '2fa_fail', null, e.message);
+    authFail(res, e);
+  }
+});
+
+// Two-step login settings (signed in)
+app.get('/api/auth/2fa', (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: twoFactorStatus(req.user.id) });
+});
+app.post('/api/auth/2fa/setup', rateLimit('2fa-setup', 10, 15 * 60000), jsonOnly, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  try {
+    if (req.user.twoFactor) return res.status(400).json({ error: 'Two-step login is already on.' });
+    checkPassword(req.user.id, req.body?.password);
+    res.set('Cache-Control', 'no-store');
+    res.json({ data: startSetup(req.user.id, req.user.email) });
   } catch (e) {
     authFail(res, e);
   }
+});
+app.post('/api/auth/2fa/confirm', rateLimit('2fa-setup', 10, 15 * 60000), jsonOnly, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  try {
+    const codes = confirmSetup(req.user.id, req.body?.code);
+    const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
+    securePastSessions(req.user.id, token ? sessionHash(token) : null); // this device stays signed in; every other device is signed out
+    securityLog(req, '2fa_on', req.user);
+    res.set('Cache-Control', 'no-store');
+    res.json({ data: { recoveryCodes: codes }, ...sessionPayload({ ...userById(req.user.id)!, mfa: true }) });
+  } catch (e) {
+    authFail(res, e);
+  }
+});
+app.post('/api/auth/2fa/recovery', rateLimit('2fa-setup', 10, 15 * 60000), jsonOnly, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  try {
+    const codes = newRecovery(req.user.id, req.body?.code);
+    securityLog(req, '2fa_recovery_new', req.user);
+    res.set('Cache-Control', 'no-store');
+    res.json({ data: { recoveryCodes: codes } });
+  } catch (e) {
+    authFail(res, e);
+  }
+});
+app.post('/api/auth/2fa/disable', rateLimit('2fa-setup', 10, 15 * 60000), jsonOnly, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  try {
+    if (req.user.isAdmin && ADMIN_2FA_REQUIRED) return res.status(400).json({ error: 'Admin accounts must keep two-step login on (ADMIN_2FA_REQUIRED).' });
+    checkPassword(req.user.id, req.body?.password);
+    disableTwoFactor(req.user.id, req.body?.code);
+    securityLog(req, '2fa_off', req.user);
+    res.json(sessionPayload({ ...userById(req.user.id)!, mfa: req.user.mfa }));
+  } catch (e) {
+    authFail(res, e);
+  }
+});
+// Admin: security log (sign-ins, two-step, account changes; IPs kept 90 days)
+app.get('/api/admin/security-log', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const uid = parseInt(String(req.query.user || ''), 10);
+  res.json({ data: securityLogList(200, Number.isFinite(uid) ? uid : undefined) });
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -512,11 +600,11 @@ app.post('/api/auth/delete', jsonOnly, (req, res) => {
 // the payment provider's cancel call goes here later.
 app.post('/api/auth/cancel', jsonOnly, (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Sign in required' });
-  try { res.json(sessionPayload(cancelPlan(req.user.id, req.body?.reason, req.body?.details))); } catch (e) { authFail(res, e); }
+  try { res.json(sessionPayload({ ...cancelPlan(req.user.id, req.body?.reason, req.body?.details), mfa: req.user.mfa })); } catch (e) { authFail(res, e); }
 });
 app.post('/api/auth/cancel/undo', jsonOnly, (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Sign in required' });
-  try { res.json(sessionPayload(resumePlan(req.user.id))); } catch (e) { authFail(res, e); }
+  try { res.json(sessionPayload({ ...resumePlan(req.user.id), mfa: req.user.mfa })); } catch (e) { authFail(res, e); }
 });
 app.get('/api/admin/leave-feedback', (_req, res) => res.json({ data: leaveFeedback() }));
 
@@ -524,7 +612,8 @@ app.post('/api/auth/password', jsonOnly, (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Sign in required' });
   try {
     changePassword(req.user.id, req.body?.current, req.body?.next);
-    const s = createSession(req.user.id, req.headers['user-agent']);
+    securityLog(req, 'password_change', req.user);
+    const s = createSession(req.user.id, req.headers['user-agent'], !!req.user.mfa);
     setSessionCookie(res, s.token, s.expires, req.secure);
     res.json({ ok: true });
   } catch (e) {
@@ -581,7 +670,7 @@ app.post('/api/billing/test-checkout', jsonOnly, (req, res) => {
   try {
     const user = testCheckout(req.user, String(req.body?.plan || ''));
     logger.info(`Test checkout: user #${user.id} → ${user.plan}`);
-    res.json(sessionPayload(user));
+    res.json(sessionPayload({ ...user, mfa: req.user.mfa }));
   } catch (e) {
     authFail(res, e);
   }
@@ -590,7 +679,9 @@ app.get('/api/admin/unlocks', (_req, res) => res.json({ data: unlockStats() }));
 
 app.post('/api/admin/users/:id(\\d+)/password', jsonOnly, (req, res) => {
   try {
-    adminResetPassword(parseInt(req.params.id, 10), req.body?.password);
+    const target = parseInt(req.params.id, 10);
+    adminResetPassword(target, req.body?.password);
+    securityLog(req, 'admin_set_password', req.user, `for account #${target}`);
     res.json({ ok: true });
   } catch (e) {
     authFail(res, e);

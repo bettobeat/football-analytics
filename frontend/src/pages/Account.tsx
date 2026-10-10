@@ -6,6 +6,7 @@ import { errorText, useAuth } from '../lib/auth'
 import { useGuessFirst } from '../lib/reveal'
 import { useUnlocks, resetDay } from '../lib/unlocks'
 import { t, LOCALE } from '../lib/i18n'
+import { TwoFactorCard } from '../components/TwoFactor'
 
 function fmtDay(iso: string | null) {
   return iso ? new Date(iso).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short', year: 'numeric' }) : ''
@@ -123,6 +124,8 @@ export default function Account() {
           {busy ? t("Saving…") : t("Change password")}
         </button>
       </form>
+
+      {user.isAdmin && <TwoFactorCard />}
 
       <DataCard />
 

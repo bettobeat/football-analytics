@@ -19,7 +19,14 @@ export interface User {
   marketingOptIn: boolean
   createdAt: string
   cancelAt?: string | null
+  /** two-step login is on */
+  twoFactor?: boolean
+  /** this session passed two-step login */
+  mfa?: boolean
 }
+
+/** Sign-in step result: a ticket means a two-step code is still needed. */
+export interface SignInStep { ticket?: string }
 
 interface SessionPayload {
   user: User | null
@@ -37,11 +44,13 @@ interface AuthState {
   paid: boolean
   /** signed in but the email is not confirmed yet */
   needsVerification: boolean
-  login: (email: string, password: string) => Promise<void>
+  login: (email: string, password: string) => Promise<SignInStep>
+  /** two-step login: the ticket from login / reset + a 6-digit code or a recovery code */
+  loginCode: (ticket: string, code: string) => Promise<void>
   signup: (email: string, password: string, name?: string, optIn?: boolean, adult?: boolean) => Promise<void>
   verify: (code: string) => Promise<void>
   resendCode: () => Promise<void>
-  resetPassword: (email: string, code: string, password: string) => Promise<void>
+  resetPassword: (email: string, code: string, password: string) => Promise<SignInStep>
   setOptIn: (on: boolean) => Promise<void>
   logout: () => Promise<void>
   refresh: () => Promise<void>
@@ -107,8 +116,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     reconnectSocket()
   }, [access])
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string): Promise<SignInStep> => {
     const r = await axios.post(`${API_URL}/auth/login`, { email, password })
+    if (r.data?.twoFactor) return { ticket: r.data.ticket }
+    apply(r.data)
+    return {}
+  }
+
+  const loginCode = async (ticket: string, code: string) => {
+    const r = await axios.post(`${API_URL}/auth/2fa/login`, { ticket, code })
     apply(r.data)
   }
 
@@ -126,9 +142,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await axios.post(`${API_URL}/auth/verify/resend`)
   }
 
-  const resetPassword = async (email: string, code: string, password: string) => {
+  const resetPassword = async (email: string, code: string, password: string): Promise<SignInStep> => {
     const r = await axios.post(`${API_URL}/auth/reset`, { email, code, password })
+    if (r.data?.twoFactor) return { ticket: r.data.ticket }
     apply(r.data)
+    return {}
   }
 
   const setOptIn = async (on: boolean) => {
@@ -151,7 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, access, loading, full, paid, needsVerification, login, signup, verify, resendCode, resetPassword, setOptIn, logout, refresh }}
+      value={{ user, access, loading, full, paid, needsVerification, login, loginCode, signup, verify, resendCode, resetPassword, setOptIn, logout, refresh }}
     >
       {children}
     </AuthContext.Provider>

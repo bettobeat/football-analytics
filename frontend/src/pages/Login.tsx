@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { errorText, useAuth } from '../lib/auth'
 import { safeNext } from '../lib/nav'
 import { t } from '../lib/i18n'
+import { TwoFactorStep } from '../components/TwoFactor'
 
 /** Sign in and create account on one page: /login and /signup. */
 export default function Login({ mode: initial }: { mode: 'login' | 'signup' }) {
@@ -19,6 +20,7 @@ export default function Login({ mode: initial }: { mode: 'login' | 'signup' }) {
   const [showPw, setShowPw] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [ticket, setTicket] = useState<string | null>(null) // password OK, two-step code still needed
 
   useEffect(() => setMode(initial), [initial])
   useEffect(() => {
@@ -35,8 +37,10 @@ export default function Login({ mode: initial }: { mode: 'login' | 'signup' }) {
     if (mode === 'signup' && !adult) return setError(t("Please confirm you are 18 or older and accept the terms."))
     setBusy(true)
     try {
-      if (mode === 'login') await login(email, password)
-      else await signup(email, password, name, optIn, adult)
+      if (mode === 'login') {
+        const step = await login(email, password)
+        if (step.ticket) { setTicket(step.ticket); setPassword('') }
+      } else await signup(email, password, name, optIn, adult)
     } catch (err) {
       setError(errorText(err))
     } finally {
@@ -50,6 +54,13 @@ export default function Login({ mode: initial }: { mode: 'login' | 'signup' }) {
   return (
     <div className="max-w-md mx-auto px-4 sm:px-6 py-12 sm:py-16">
       <div className="card p-6 sm:p-8">
+        {ticket ? (
+          <>
+            <h1 className="font-display text-2xl font-extrabold text-ink">{t("Two-step login")}</h1>
+            <TwoFactorStep ticket={ticket} onDone={() => setTicket(null)} onCancel={() => setTicket(null)} />
+          </>
+        ) : (
+        <>
         <h1 className="font-display text-2xl font-extrabold text-ink">{mode === 'login' ? t("Sign in") : t("Create your account")}</h1>
         <p className="text-sm text-muted mt-1">
           {mode === 'login' ? t("Welcome back.") : t("Free account: every match, live scores, the model’s pick and 2 full predictions a week.")}
@@ -154,6 +165,8 @@ export default function Login({ mode: initial }: { mode: 'login' | 'signup' }) {
             <Link to="/forgot" className="text-muted hover:text-ink">
               {t("Forgot your password?")}</Link>
           </p>
+        )}
+        </>
         )}
       </div>
     </div>

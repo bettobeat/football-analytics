@@ -107,6 +107,7 @@ export default function Admin() {
             </div>
           </section>
           <ContactCard />
+          <SecurityCard />
           <LeaveCard />
           <DataHealth />
         </>
@@ -222,6 +223,55 @@ interface Leave {
 }
 
 /** Why people cancel or delete (last 12 months). */
+interface SecRow { id: number; at: string; userId: number | null; email: string | null; event: string; ip: string | null; ua: string | null; detail: string | null }
+const EVENT_LABEL: Record<string, string> = {
+  login_ok: 'Signed in', login_ok_recovery_code: 'Signed in with a recovery code', login_password_ok: 'Password OK, waiting for code',
+  login_fail: 'Wrong email or password', '2fa_fail': 'Wrong two-step code', '2fa_on': 'Two-step login turned on', '2fa_off': 'Two-step login turned off',
+  '2fa_recovery_new': 'New recovery codes', password_reset: 'Password reset by email', password_change: 'Password changed',
+  admin_set_password: 'Admin set a user password'
+}
+const BAD = new Set(['login_fail', '2fa_fail', '2fa_off', 'login_ok_recovery_code', 'admin_set_password'])
+function browserOf(ua: string | null) {
+  if (!ua) return ''
+  const os = /iPhone|iPad/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac OS/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : ''
+  const b = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : ''
+  return [b, os].filter(Boolean).join(' · ')
+}
+
+/** Sign-ins and account security events with IP (kept 90 days). */
+function SecurityCard() {
+  const [d, setD] = useState<{ failed24h: number; rows: SecRow[] } | null>(null)
+  const [all, setAll] = useState(false)
+  useEffect(() => { axios.get(`${API_URL}/admin/security-log`).then(r => setD(r.data.data)).catch(() => setD(null)) }, [])
+  if (!d) return null
+  const rows = all ? d.rows : d.rows.slice(0, 12)
+  return (
+    <section className="card p-5 sm:p-6 mb-8">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+        <h2 className="font-display text-lg font-bold text-ink">Security log</h2>
+        <span className={`text-xs ${d.failed24h > 5 ? 'text-loss font-semibold' : 'text-faint'}`}>{d.failed24h} failed sign-ins in the last 24 h · IPs kept 90 days</span>
+      </div>
+      {d.rows.length === 0 ? <p className="text-sm text-faint">Nothing logged yet.</p> : (
+        <>
+          <ul className="divide-y divide-line/50 text-sm">
+            {rows.map(r => (
+              <li key={r.id} className="py-2 flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                <span className="w-32 shrink-0 text-[11px] text-faint num">{fmt(r.at)}</span>
+                <span className={`font-semibold ${BAD.has(r.event) ? 'text-loss' : 'text-ink'}`}>{EVENT_LABEL[r.event] || r.event}</span>
+                <span className="text-muted truncate">{r.email || '—'}</span>
+                <span className="ml-auto text-[11px] text-faint num">{r.ip || ''}{r.ua ? ` · ${browserOf(r.ua)}` : ''}</span>
+              </li>
+            ))}
+          </ul>
+          {d.rows.length > 12 && (
+            <button type="button" onClick={() => setAll(v => !v)} className="mt-3 text-xs font-semibold text-accent">{all ? 'Show less' : `Show all ${d.rows.length}`}</button>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
 interface ContactMsg { id: number; at: string; userId: number | null; name: string | null; email: string; topic: string; message: string; page: string | null; sent: boolean; handled: boolean }
 const TOPIC_LABEL: Record<string, string> = {
   question: 'Question', account: 'Account / sign-in', billing: 'Billing / plan', privacy: 'Privacy / my data',

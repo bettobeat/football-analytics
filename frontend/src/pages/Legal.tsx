@@ -134,8 +134,10 @@ export function Privacy() {
           (if given) and message to answer you and to improve the service. Messages linked to an account are deleted with it.
         </p>
         <p>
-          <span className="text-ink font-semibold">Security:</span> the IP address of sign-in and sign-up attempts is held in memory for about
-          15 minutes to stop password guessing. Server logs keep the pages requested, for troubleshooting.
+          <span className="text-ink font-semibold">Security:</span> when you sign in, use two-step login or change your password or
+          security settings, we record the time, your IP address and your browser in a security log, to protect accounts from
+          break-ins. It is kept for 90 days and included in "Download my data". Failed sign-in attempts are also counted in memory for
+          about 15 minutes to stop password guessing. Server logs keep the pages requested, for troubleshooting.
         </p>
         <p>
           <span className="text-ink font-semibold">Visitor counts:</span> to know how many people use the site, we count visits per day using

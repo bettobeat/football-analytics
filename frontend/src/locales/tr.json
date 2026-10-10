@@ -1453,5 +1453,13 @@
  "Something is broken": "Bir şey bozuk",
  "Idea / feedback": "Fikir / geri bildirim",
  "Business / partnership": "İş / ortaklık",
- "Other": "Diğer"
+ "Other": "Diğer",
+ "Two-step login": "İki adımlı giriş",
+ "Enter one of your recovery codes. Each code works once.": "Kurtarma kodlarınızdan birini girin. Her kod bir kez çalışır.",
+ "Open your authenticator app and enter the 6-digit code for SportLikely.": "Doğrulama uygulamanızı açın ve SportLikely için 6 haneli kodu girin.",
+ "Recovery code": "Kurtarma kodu",
+ "6-digit code": "6 haneli kod",
+ "Use the app code instead": "Bunun yerine uygulama kodunu kullan",
+ "Lost your phone? Use a recovery code": "Telefonunuzu mu kaybettiniz? Kurtarma kodu kullanın",
+ "Back": "Geri"
 }
