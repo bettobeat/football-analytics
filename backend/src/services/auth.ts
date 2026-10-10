@@ -333,6 +333,7 @@ export function adminResetPassword(userId: number, next: unknown): void {
   if (!row) throw new AuthError(404, 'Account not found.');
   const bad = checkCredentials(row.email, next);
   if (bad) throw new AuthError(400, bad);
+  notConsolePassword(userId, String(next));
   db.prepare('UPDATE users SET pass_hash = ? WHERE id = ?').run(hashPassword(String(next)), userId);
   db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
 }
