@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { Fragment, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
@@ -9,7 +9,7 @@ import { errorText, useAuth } from '../lib/auth'
  * Replies go out by email from support@; customers' answers arrive in the support@ Gmail inbox.
  */
 
-type Tab = 'inbox' | 'campaigns' | 'revenue'
+type Tab = 'inbox' | 'customers' | 'campaigns' | 'revenue' | 'security' | 'team'
 const fmt = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'
 const fmtDay = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—')
@@ -22,10 +22,8 @@ const input =
 const Err = ({ e }: { e: string | null }) => (e ? <div className="rounded-xl border border-loss/40 bg-loss/10 px-3 py-2 text-sm text-loss">{e}</div> : null)
 
 export default function Crm() {
-  const { staff, user, loading } = useAuth()
+  const { staff, user, loading, can } = useAuth()
   const [params, setParams] = useSearchParams()
-  const want = (params.get('tab') as Tab) || 'inbox'
-  const tab: Tab = staff === 'admin' ? want : 'inbox'
   useEffect(() => { document.title = 'CRM · SportLikely' }, [])
 
   if (loading) return null
@@ -34,36 +32,49 @@ export default function Crm() {
       <div className="max-w-md mx-auto px-4 py-16 text-center space-y-3">
         <h1 className="font-display text-2xl font-extrabold text-ink">CRM</h1>
         <p className="text-sm text-muted">
-          {user?.role === 'support'
+          {user?.role
             ? user.twoFactor
               ? 'Sign out and sign in again with your two-step code to open the CRM.'
-              : 'Support staff need two-step login. Turn it on in your account, then come back.'
+              : 'Staff need two-step login. Turn it on in your account settings, then come back.'
             : 'Staff only.'}
         </p>
-        {user?.role === 'support' && !user.twoFactor && <Link to="/account" className="inline-block rounded-xl bg-accent text-bg font-semibold px-4 py-2 text-sm">Go to account</Link>}
+        {user?.role && !user.twoFactor && <Link to="/account" className="inline-block rounded-xl bg-accent text-bg font-semibold px-4 py-2 text-sm">Go to settings</Link>}
       </div>
     )
 
-  const tabs: { k: Tab; label: string }[] = staff === 'admin'
-    ? [{ k: 'inbox', label: 'Support inbox' }, { k: 'campaigns', label: 'Campaigns' }, { k: 'revenue', label: 'Revenue & churn' }]
-    : [{ k: 'inbox', label: 'Support inbox' }]
+  const all: { k: Tab; label: string; ok: boolean }[] = [
+    { k: 'inbox', label: 'Support inbox', ok: can('inbox.read') },
+    { k: 'customers', label: 'Customers', ok: can('customers.view') },
+    { k: 'campaigns', label: 'Campaigns', ok: can('campaigns') },
+    { k: 'revenue', label: 'Revenue & churn', ok: can('revenue') },
+    { k: 'security', label: 'Security log', ok: can('security') },
+    { k: 'team', label: 'Team & roles', ok: can('team') }
+  ]
+  const tabs = all.filter(t => t.ok)
+  const want = params.get('tab') as Tab | null
+  const tab: Tab | null = tabs.find(t => t.k === want)?.k || tabs[0]?.k || null
+  const roleName = staff === 'admin' ? 'Admin' : staff.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink">CRM</h1>
-          <p className="text-sm text-muted mt-1">{staff === 'admin' ? 'Admin' : 'Support staff'} · {user?.email}</p>
+          <p className="text-sm text-muted mt-1">{roleName} · {user?.email}</p>
         </div>
-        <div className="seg">
+        <div className="seg flex-wrap">
           {tabs.map(t => (
-            <button key={t.k} type="button" onClick={() => setParams(t.k === 'inbox' ? {} : { tab: t.k }, { replace: true })} className={`seg-btn ${tab === t.k ? 'seg-btn-active' : ''}`}>{t.label}</button>
+            <button key={t.k} type="button" onClick={() => setParams({ tab: t.k }, { replace: true })} className={`seg-btn ${tab === t.k ? 'seg-btn-active' : ''}`}>{t.label}</button>
           ))}
         </div>
       </div>
+      {!tab && <div className="card p-6 text-sm text-muted">Your role has no CRM permissions yet. Ask the admin.</div>}
       {tab === 'inbox' && <Inbox />}
-      {tab === 'campaigns' && staff === 'admin' && <Campaigns />}
-      {tab === 'revenue' && staff === 'admin' && <Revenue />}
+      {tab === 'customers' && <Customers />}
+      {tab === 'campaigns' && <Campaigns />}
+      {tab === 'revenue' && <Revenue />}
+      {tab === 'security' && <SecurityLog />}
+      {tab === 'team' && <Team />}
     </div>
   )
 }
@@ -72,9 +83,10 @@ export default function Crm() {
 /* Inbox                                                              */
 /* ================================================================== */
 
-interface ThreadRow { id: number; at: string; updatedAt: string | null; userId: number | null; name: string | null; email: string; topic: string; preview: string; status: string; replies: number; plan: string | null }
+interface ThreadRow { id: number; at: string; updatedAt: string | null; userId: number | null; name: string | null; email: string; topic: string; preview: string; status: string; replies: number; plan: string | null; assignedTo: number | null; assignedName: string | null }
+interface StaffRef { id: number; name: string }
 interface Thread {
-  message: { id: number; at: string; name: string | null; email: string; topic: string; message: string; page: string | null; status: string; sent: boolean; userId: number | null }
+  message: { id: number; at: string; name: string | null; email: string; topic: string; message: string; page: string | null; status: string; sent: boolean; userId: number | null; assignedTo: number | null }
   replies: { id: number; at: string; byName: string; kind: 'reply' | 'note'; body: string; sent: boolean }[]
   account: { id: number; plan: string; premiumUntil: string | null; createdAt: string; lastLoginAt: string | null; cancelAt: string | null } | null
   others: { id: number; at: string; topic: string; status: string }[]
@@ -82,7 +94,7 @@ interface Thread {
 
 function Inbox() {
   const [status, setStatus] = useState<'open' | 'waiting' | 'closed' | ''>('open')
-  const [list, setList] = useState<{ counts: Record<string, number>; rows: ThreadRow[] } | null>(null)
+  const [list, setList] = useState<{ counts: Record<string, number>; rows: ThreadRow[]; staff: StaffRef[] } | null>(null)
   const [openId, setOpenId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const load = () => axios.get(`${API_URL}/crm/inbox`, { params: { status: status || undefined } }).then(r => { setList(r.data.data); setError(null) }).catch(e => setError(errorText(e)))
@@ -114,19 +126,23 @@ function Inbox() {
                   </div>
                   <div className="text-sm font-semibold text-ink truncate mt-0.5">{r.name || r.email}</div>
                   <div className="text-xs text-muted line-clamp-2">{r.preview}</div>
-                  {r.replies > 0 && <div className="text-[11px] text-faint mt-0.5">{r.replies} {r.replies === 1 ? 'reply' : 'replies'} sent</div>}
+                  <div className="flex gap-3 text-[11px] text-faint mt-0.5">
+                    {r.replies > 0 && <span>{r.replies} {r.replies === 1 ? 'reply' : 'replies'} sent</span>}
+                    <span className={r.assignedTo ? 'text-ink/80' : ''}>{r.assignedName ? `→ ${r.assignedName}` : 'Unassigned'}</span>
+                  </div>
                 </button>
               </li>
             ))}
           </ul>
         )}
       </section>
-      {openId ? <ThreadView id={openId} onChange={load} /> : <section className="card p-8 text-sm text-faint hidden lg:block">Pick a message on the left.</section>}
+      {openId ? <ThreadView id={openId} onChange={load} staff={list?.staff || []} /> : <section className="card p-8 text-sm text-faint hidden lg:block">Pick a message on the left.</section>}
     </div>
   )
 }
 
-function ThreadView({ id, onChange }: { id: number; onChange: () => void }) {
+function ThreadView({ id, onChange, staff }: { id: number; onChange: () => void; staff: StaffRef[] }) {
+  const { user, can } = useAuth()
   const [t, setT] = useState<Thread | null>(null)
   const [text, setText] = useState('')
   const [mode, setMode] = useState<'reply' | 'note'>('reply')
@@ -147,6 +163,8 @@ function ThreadView({ id, onChange }: { id: number; onChange: () => void }) {
     })
   }
   const setStatus = (s: string) => act(() => axios.post(`${API_URL}/crm/inbox/${id}/status`, { status: s }))
+  const assignTo = (to: number | null) => act(() => axios.post(`${API_URL}/crm/inbox/${id}/assign`, { to }))
+  const canReply = can('inbox.reply'), manage = can('inbox.manage')
   if (!t) return <section className="card p-6 text-sm text-faint">{error || 'Loading…'}</section>
   const m = t.message
 
@@ -158,10 +176,22 @@ function ThreadView({ id, onChange }: { id: number; onChange: () => void }) {
           <h2 className="font-display text-xl font-bold text-ink truncate">{m.name || m.email}</h2>
           <a href={`mailto:${m.email}`} className="text-sm text-accent">{m.email}</a>
         </div>
+        <div className="flex flex-col items-end gap-2">
         <div className="flex gap-1">
           {['open', 'waiting', 'closed'].map(s => (
-            <button key={s} type="button" disabled={busy || m.status === s} onClick={() => setStatus(s)} className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${m.status === s ? STATUS_TONE[s] : 'text-muted hover:text-ink border border-line'}`}>{s}</button>
+            <button key={s} type="button" disabled={busy || m.status === s || !canReply} onClick={() => setStatus(s)} className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${m.status === s ? STATUS_TONE[s] : 'text-muted hover:text-ink border border-line'}`}>{s}</button>
           ))}
+        </div>
+        {manage ? (
+          <select value={m.assignedTo ?? ''} disabled={busy} onChange={e => assignTo(e.target.value ? Number(e.target.value) : null)} className="rounded-lg border border-line bg-surface2/60 px-2 py-1 text-xs text-ink">
+            <option value="">Unassigned</option>
+            {staff.map(p => <option key={p.id} value={p.id}>{p.id === user?.id ? `${p.name} (me)` : p.name}</option>)}
+          </select>
+        ) : m.assignedTo === user?.id ? (
+          <span className="text-xs text-muted">Assigned to you</span>
+        ) : canReply && !m.assignedTo ? (
+          <button type="button" disabled={busy} onClick={() => assignTo(user!.id)} className="rounded-lg border border-line px-2.5 py-1 text-xs font-semibold text-ink">Take it</button>
+        ) : null}
         </div>
       </div>
 
@@ -193,7 +223,7 @@ function ThreadView({ id, onChange }: { id: number; onChange: () => void }) {
         )}
       </div>
 
-      <form onSubmit={send(false)} className="space-y-2">
+      {canReply && <form onSubmit={send(false)} className="space-y-2">
         <div className="flex gap-1">
           <button type="button" onClick={() => setMode('reply')} className={`rounded-lg px-3 py-1 text-xs font-semibold ${mode === 'reply' ? 'bg-accent text-bg' : 'text-muted border border-line'}`}>Reply by email</button>
           <button type="button" onClick={() => setMode('note')} className={`rounded-lg px-3 py-1 text-xs font-semibold ${mode === 'note' ? 'bg-draw text-bg' : 'text-muted border border-line'}`}>Internal note</button>
@@ -209,7 +239,7 @@ function ThreadView({ id, onChange }: { id: number; onChange: () => void }) {
           )}
         </div>
         {mode === 'reply' && <p className="text-[11px] text-faint">Sent from support@sportlikely.com with your message quoted below it.</p>}
-      </form>
+      </form>}
 
       {t.others.length > 0 && (
         <div className="text-xs text-muted">
@@ -438,6 +468,324 @@ function Revenue() {
             })}
           </ul>
         )}
+      </section>
+    </div>
+  )
+}
+
+/* ================================================================== */
+/* Customers                                                          */
+/* ================================================================== */
+
+interface CustRow { id: number; email: string; name: string | null; plan: string; premiumUntil: string | null; createdAt: string; lastLoginAt: string | null; cancelAt: string | null; emailVerified: boolean }
+interface CustProfile extends CustRow {
+  role: string | null; emailUpdates: boolean; twoFactor: boolean; devices: number; unlocksThisMonth: number; favorites: number
+  planHistory: { at: string; fromPlan: string | null; toPlan: string; until: string | null; source: string }[]
+  messages: { id: number; at: string; topic: string; status: string }[]
+  security: { at: string; event: string; ip: string | null; ua: string | null }[] | null
+}
+const PLAN_TONE: Record<string, string> = { free: 'text-muted', premium: 'text-accent', pro: 'text-accent font-bold' }
+
+function Customers() {
+  const [q, setQ] = useState('')
+  const [rows, setRows] = useState<CustRow[] | null>(null)
+  const [openId, setOpenId] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    const t = setTimeout(() => { axios.get(`${API_URL}/crm/customers`, { params: { q } }).then(r => { setRows(r.data.data); setError(null) }).catch(e => setError(errorText(e))) }, 250)
+    return () => clearTimeout(t)
+  }, [q])
+  return (
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,380px)_1fr] items-start">
+      <section className="card overflow-hidden">
+        <div className="p-2 border-b border-line/60">
+          <input className={input} value={q} onChange={e => setQ(e.target.value)} placeholder="Search email or name" autoCapitalize="none" autoCorrect="off" spellCheck={false} />
+        </div>
+        <Err e={error} />
+        {!rows ? <div className="p-6 text-sm text-faint">Loading…</div> : rows.length === 0 ? <div className="p-6 text-sm text-faint">No accounts found.</div> : (
+          <ul className="divide-y divide-line/50 max-h-[70vh] overflow-y-auto">
+            {rows.map(r => (
+              <li key={r.id}>
+                <button type="button" onClick={() => setOpenId(r.id)} className={`w-full text-left px-4 py-2.5 hover:bg-surface2/50 ${openId === r.id ? 'bg-surface2/70' : ''}`}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-ink truncate flex-1">{r.email}</span>
+                    <span className={`text-[11px] uppercase ${PLAN_TONE[r.plan] || ''}`}>{r.plan}</span>
+                  </div>
+                  <div className="text-[11px] text-faint">{r.name ? `${r.name} · ` : ''}joined {fmtDay(r.createdAt)} · last seen {fmtDay(r.lastLoginAt)}{r.cancelAt ? ' · cancelled' : ''}</div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      {openId ? <CustomerView id={openId} /> : <section className="card p-8 text-sm text-faint hidden lg:block">Pick an account on the left.</section>}
+    </div>
+  )
+}
+
+function CustomerView({ id }: { id: number }) {
+  const { can } = useAuth()
+  const [c, setC] = useState<CustProfile | null>(null)
+  const [plan, setPlan] = useState<'premium' | 'pro' | 'free'>('premium')
+  const [days, setDays] = useState('7')
+  const [busy, setBusy] = useState(false)
+  const [info, setInfo] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const load = () => axios.get(`${API_URL}/crm/customers/${id}`).then(r => { setC(r.data.data); setError(null) }).catch(e => setError(errorText(e)))
+  useEffect(() => { setC(null); setInfo(null); load() }, [id])
+  const act = async (fn: () => Promise<string>) => {
+    setBusy(true); setError(null); setInfo(null)
+    try { setInfo(await fn()); await load() } catch (e) { setError(errorText(e)) } finally { setBusy(false) }
+  }
+  if (!c) return <section className="card p-6 text-sm text-faint">{error || 'Loading…'}</section>
+  const staffAcct = !!c.role
+  const row = (k: string, v: ReactNode) => <div className="flex justify-between gap-3 py-1.5 border-b border-line/40 text-sm"><span className="text-muted">{k}</span><span className="text-ink text-right">{v}</span></div>
+
+  return (
+    <section className="card p-5 sm:p-6 space-y-5">
+      <div>
+        <div className="text-[11px] text-faint">Account #{c.id}{staffAcct ? ` · staff (${c.role})` : ''}</div>
+        <h2 className="font-display text-xl font-bold text-ink truncate">{c.name || c.email}</h2>
+        <div className="text-sm text-muted truncate">{c.email}</div>
+      </div>
+      <div>
+        {row('Plan', <span className={PLAN_TONE[c.plan]}>{c.plan}{c.premiumUntil ? ` · until ${fmtDay(c.premiumUntil)}` : ''}{c.cancelAt ? ' · cancelled' : ''}</span>)}
+        {row('Joined', fmtDay(c.createdAt))}
+        {row('Last sign-in', fmt(c.lastLoginAt))}
+        {row('Email confirmed', c.emailVerified ? 'Yes' : 'No')}
+        {row('Email updates', c.emailUpdates ? 'Yes' : 'No')}
+        {row('Two-step login', c.twoFactor ? 'On' : 'Off')}
+        {row('Signed-in devices', c.devices)}
+        {row('Unlocks this month', c.unlocksThisMonth)}
+        {row('Favorites', c.favorites)}
+      </div>
+
+      {can('customers.plan') && !staffAcct && (
+        <div className="rounded-2xl border border-line p-4 space-y-3">
+          <div className="font-semibold text-ink text-sm">Change plan</div>
+          <div className="flex flex-wrap items-end gap-2">
+            <select value={plan} onChange={e => setPlan(e.target.value as any)} className="rounded-lg border border-line bg-surface2/60 px-2 py-2 text-sm text-ink">
+              <option value="premium">Premium</option><option value="pro">Pro</option><option value="free">Free</option>
+            </select>
+            {plan !== 'free' && (
+              <label className="text-xs text-muted">Days<input value={days} onChange={e => setDays(e.target.value.replace(/\D/g, '').slice(0, 3))} className="ml-1 w-16 rounded-lg border border-line bg-surface2/60 px-2 py-2 text-sm text-ink num" inputMode="numeric" /></label>
+            )}
+            <button type="button" disabled={busy} onClick={() => {
+              if (!window.confirm(plan === 'free' ? `Set ${c.email} back to Free?` : `Give ${c.email} ${plan} for ${days} days?`)) return
+              act(async () => { await axios.post(`${API_URL}/crm/customers/${id}/plan`, { plan, days: Number(days) || 7 }); return 'Plan updated.' })
+            }} className="rounded-xl bg-accent text-bg font-semibold px-4 py-2 text-sm disabled:opacity-60">Apply</button>
+          </div>
+          <p className="text-[11px] text-faint">Same plan already running: the days are added to its end date. Recorded as a manual change (not revenue).</p>
+        </div>
+      )}
+
+      {can('customers.security') && !staffAcct && (
+        <div className="flex flex-wrap gap-2">
+          <button type="button" disabled={busy} onClick={() => act(async () => { const r = await axios.post(`${API_URL}/crm/customers/${id}/reset-email`); return `Password-reset code sent to ${r.data.data.sentTo}.` })} className="rounded-xl border border-line px-3 py-2 text-sm font-semibold text-ink">Send password reset email</button>
+          <button type="button" disabled={busy} onClick={() => { if (window.confirm('Sign this customer out on every device?')) act(async () => { const r = await axios.post(`${API_URL}/crm/customers/${id}/sign-out`); return `Signed out on ${r.data.data.devices} device(s).` }) }} className="rounded-xl border border-line px-3 py-2 text-sm font-semibold text-ink">Sign out everywhere</button>
+        </div>
+      )}
+      <Err e={error} />
+      {info && <div className="rounded-xl border border-win/40 bg-win/10 px-3 py-2 text-sm text-win">{info}</div>}
+
+      {c.planHistory.length > 0 && (
+        <div>
+          <div className="label pb-1">Plan history</div>
+          <ul className="text-xs text-muted space-y-1">
+            {c.planHistory.map((h, i) => <li key={i}>{fmt(h.at)} · {h.fromPlan || '—'} → <b className="text-ink">{h.toPlan}</b>{h.until ? ` until ${fmtDay(h.until)}` : ''} · {h.source}</li>)}
+          </ul>
+        </div>
+      )}
+      {c.messages.length > 0 && (
+        <div>
+          <div className="label pb-1">Messages</div>
+          <ul className="text-xs text-muted space-y-1">
+            {c.messages.map(m => <li key={m.id}>#{m.id} · {fmt(m.at)} · {TOPIC[m.topic] || m.topic} · {m.status}</li>)}
+          </ul>
+        </div>
+      )}
+      {c.security && c.security.length > 0 && (
+        <div>
+          <div className="label pb-1">Recent sign-ins and security events</div>
+          <ul className="text-xs text-muted space-y-1">
+            {c.security.slice(0, 12).map((x, i) => <li key={i}>{fmt(x.at)} · <span className="text-ink">{x.event.replace(/_/g, ' ')}</span>{x.ip ? ` · ${x.ip}` : ''}</li>)}
+          </ul>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/* ================================================================== */
+/* Security log                                                       */
+/* ================================================================== */
+
+function SecurityLog() {
+  const [d, setD] = useState<{ failed24h: number; rows: { id: number; at: string; email: string | null; event: string; ip: string | null; ua: string | null; detail: string | null }[] } | null>(null)
+  const [q, setQ] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => { axios.get(`${API_URL}/crm/security`).then(r => setD(r.data.data)).catch(e => setError(errorText(e))) }, [])
+  if (error) return <Err e={error} />
+  if (!d) return <div className="card p-6 text-sm text-faint">Loading…</div>
+  const term = q.trim().toLowerCase()
+  const rows = d.rows.filter(r => !term || `${r.email} ${r.event} ${r.ip} ${r.detail}`.toLowerCase().includes(term))
+  const bad = (e: string) => /fail|off|deleted|role_|signed_out|reset|recovery/.test(e)
+  return (
+    <section className="card overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-b border-line/60">
+        <span className={`text-sm ${d.failed24h > 5 ? 'text-loss font-semibold' : 'text-muted'}`}>{d.failed24h} failed sign-ins in the last 24 h · IPs kept 90 days</span>
+        <input className={`${input} max-w-xs`} value={q} onChange={e => setQ(e.target.value)} placeholder="Filter (email, IP, event)" />
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[640px]">
+          <tbody className="divide-y divide-line/50">
+            {rows.slice(0, 300).map(r => (
+              <tr key={r.id}>
+                <td className="px-5 py-2 text-[11px] text-faint whitespace-nowrap num">{fmt(r.at)}</td>
+                <td className={`px-2 py-2 font-semibold whitespace-nowrap ${bad(r.event) ? 'text-loss' : 'text-ink'}`}>{r.event.replace(/_/g, ' ')}</td>
+                <td className="px-2 py-2 text-muted truncate max-w-[220px]">{r.email || '—'}</td>
+                <td className="px-2 py-2 text-[11px] text-faint truncate max-w-[260px]">{r.detail || ''}</td>
+                <td className="px-5 py-2 text-[11px] text-faint num whitespace-nowrap">{r.ip || ''}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
+/* ================================================================== */
+/* Team & roles                                                       */
+/* ================================================================== */
+
+interface PermDef { key: string; group: string; label: string; help: string }
+interface RoleDef { key: string; name: string; perms: string[]; members?: number; locked?: boolean }
+interface StaffRow { id: number; email: string; name: string | null; role: string; roleName: string; emailVerified: boolean; twoFactor: boolean; lastLoginAt: string | null }
+interface TeamData { perms: PermDef[]; admin: RoleDef; roles: RoleDef[]; staff: StaffRow[]; isAdmin: boolean }
+
+function Team() {
+  const [d, setD] = useState<TeamData | null>(null)
+  const [email, setEmail] = useState('')
+  const [role, setRole] = useState('')
+  const [newName, setNewName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
+  const load = () => axios.get(`${API_URL}/crm/team`).then(r => { setD(r.data.data); setError(null) }).catch(e => setError(errorText(e)))
+  useEffect(() => { load() }, [])
+  const act = async (fn: () => Promise<string | void>) => {
+    setBusy(true); setError(null); setInfo(null)
+    try { const m = await fn(); if (m) setInfo(m); await load() } catch (e) { setError(errorText(e)) } finally { setBusy(false) }
+  }
+  if (!d) return <div className="card p-6 text-sm text-faint">{error || 'Loading…'}</div>
+  const groups = [...new Set(d.perms.map(p => p.group))]
+  const toggle = (r: RoleDef, perm: string) => {
+    const perms = r.perms.includes(perm) ? r.perms.filter(x => x !== perm) : [...r.perms, perm]
+    act(async () => { await axios.post(`${API_URL}/crm/team/roles/${r.key}`, { perms }) })
+  }
+  const cols: RoleDef[] = [d.admin, ...d.roles]
+
+  return (
+    <div className="space-y-5">
+      <Err e={error} />
+      {info && <div className="rounded-xl border border-win/40 bg-win/10 px-3 py-2 text-sm text-win">{info}</div>}
+
+      {/* staff members */}
+      <section className="card overflow-hidden">
+        <div className="px-5 py-3 border-b border-line/60 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="font-display font-bold text-ink">Team ({d.staff.length})</h2>
+          <span className="text-[11px] text-faint">Staff need a confirmed email and two-step login before their role works.</span>
+        </div>
+        <form onSubmit={e => { e.preventDefault(); act(async () => { await axios.post(`${API_URL}/crm/team/member`, { email, role: role || null }); setEmail(''); return 'Saved.' }) }} className="flex flex-wrap gap-2 p-4 border-b border-line/60">
+          <input className={`${input} flex-1 min-w-[220px]`} type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="Their account email (they sign up first)" autoCapitalize="none" spellCheck={false} />
+          <select value={role} onChange={e => setRole(e.target.value)} className="rounded-xl border border-line bg-surface2/60 px-3 py-2 text-sm text-ink">
+            <option value="">Choose a role…</option>
+            {d.roles.map(r => <option key={r.key} value={r.key}>{r.name}</option>)}
+          </select>
+          <button type="submit" disabled={busy || !role} className="rounded-xl bg-accent text-bg font-semibold px-4 py-2 text-sm disabled:opacity-60">Add to team</button>
+        </form>
+        {d.staff.length === 0 ? <p className="p-5 text-sm text-faint">No staff yet. You (admin) have every permission.</p> : (
+          <ul className="divide-y divide-line/50">
+            {d.staff.map(m => (
+              <li key={m.id} className="flex flex-wrap items-center gap-3 px-5 py-3 text-sm">
+                <span className="flex-1 min-w-[200px]">
+                  <span className="block text-ink truncate">{m.name || m.email}</span>
+                  <span className="block text-[11px] text-faint truncate">{m.email} · last seen {fmtDay(m.lastLoginAt)}</span>
+                </span>
+                {(!m.twoFactor || !m.emailVerified) && <span className="text-[11px] text-draw font-semibold">{!m.emailVerified ? 'email not confirmed' : 'no two-step login yet'}</span>}
+                <select value={m.role} disabled={busy} onChange={e => act(async () => { await axios.post(`${API_URL}/crm/team/member`, { email: m.email, role: e.target.value }); return `${m.email} is now ${d.roles.find(r => r.key === e.target.value)?.name}.` })} className="rounded-lg border border-line bg-surface2/60 px-2 py-1.5 text-xs text-ink">
+                  {d.roles.map(r => <option key={r.key} value={r.key}>{r.name}</option>)}
+                </select>
+                <button type="button" disabled={busy} onClick={() => { if (window.confirm(`Remove ${m.email} from the team? Their access stops at once.`)) act(async () => { await axios.post(`${API_URL}/crm/team/member`, { email: m.email, role: null }); return 'Removed from the team.' }) }} className="text-xs text-muted hover:text-loss">Remove</button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* permissions matrix */}
+      <section className="card overflow-hidden">
+        <div className="px-5 py-3 border-b border-line/60 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="font-display font-bold text-ink">Roles & permissions</h2>
+          <span className="text-[11px] text-faint">Click a box to switch a permission on or off. Changes apply at once. Admin always has everything.</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[760px]">
+            <thead>
+              <tr className="text-[11px] text-faint">
+                <th className="text-left px-5 py-2 font-semibold w-[260px]">Permission</th>
+                {cols.map(r => (
+                  <th key={r.key} className="px-2 py-2 font-semibold text-center align-bottom">
+                    <span className="block text-ink">{r.name}</span>
+                    <span className="block font-normal">{r.locked ? 'locked' : `${r.members ?? 0} ${(r.members ?? 0) === 1 ? 'person' : 'people'}`}</span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {groups.map(g => (
+                <Fragment key={g}>
+                  <tr><td colSpan={cols.length + 1} className="px-5 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wide text-faint">{g}</td></tr>
+                  {d.perms.filter(p => p.group === g).map(p => (
+                    <tr key={p.key} className="border-t border-line/40">
+                      <td className="px-5 py-2"><span className="block text-ink">{p.label}</span><span className="block text-[11px] text-faint">{p.help}</span></td>
+                      {cols.map(r => {
+                        const on = r.perms.includes(p.key)
+                        const locked = !!r.locked || (p.key === 'team' && !d.isAdmin)
+                        return (
+                          <td key={r.key} className="px-2 py-2 text-center">
+                            <button type="button" disabled={busy || locked} onClick={() => toggle(r, p.key)} aria-pressed={on} aria-label={`${p.label} for ${r.name}`}
+                              className={`w-7 h-7 rounded-lg border grid place-items-center mx-auto transition-colors ${on ? 'bg-accent border-accent text-bg' : 'border-line text-transparent hover:border-faint'} ${locked ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12l5 5L20 7" /></svg>
+                            </button>
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </Fragment>
+              ))}
+              <tr className="border-t border-line/60">
+                <td className="px-5 py-3 text-[11px] text-faint">Rename / delete</td>
+                {cols.map(r => (
+                  <td key={r.key} className="px-2 py-3 text-center">
+                    {!r.locked && (
+                      <span className="inline-flex flex-col gap-1">
+                        <button type="button" disabled={busy} onClick={() => { const n = window.prompt('New name for this role', r.name); if (n && n.trim() !== r.name) act(async () => { await axios.post(`${API_URL}/crm/team/roles/${r.key}`, { name: n }) }) }} className="text-[11px] text-accent">Rename</button>
+                        <button type="button" disabled={busy} onClick={() => { if (window.confirm(`Delete the role "${r.name}"?`)) act(async () => { await axios.delete(`${API_URL}/crm/team/roles/${r.key}`); return 'Role deleted.' }) }} className="text-[11px] text-muted hover:text-loss">Delete</button>
+                      </span>
+                    )}
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <form onSubmit={e => { e.preventDefault(); act(async () => { await axios.post(`${API_URL}/crm/team/roles`, { name: newName, perms: [] }); setNewName(''); return 'Role created. Tick its permissions in the table.' }) }} className="flex flex-wrap gap-2 p-4 border-t border-line/60">
+          <input className={`${input} max-w-xs`} value={newName} onChange={e => setNewName(e.target.value)} placeholder="New role name (e.g. Finance)" maxLength={40} />
+          <button type="submit" disabled={busy || newName.trim().length < 2} className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-ink disabled:opacity-60">Create role</button>
+        </form>
       </section>
     </div>
   )

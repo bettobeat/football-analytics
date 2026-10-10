@@ -58,27 +58,37 @@ type Status = (typeof STATUSES)[number];
 /* Support inbox                                                      */
 /* ================================================================== */
 
-export function inboxList(status: string | null) {
-  const where = STATUSES.includes(status as Status) ? `WHERE m.status = ?` : '';
+/** Who is looking: their id and whether they may see everyone's messages (inbox.manage). */
+export interface Viewer { id: number; manage: boolean }
+const visible = (v: Viewer) => (v.manage ? '1 = 1' : `(m.assigned_to IS NULL OR m.assigned_to = ${Number(v.id)})`);
+
+export function inboxList(status: string | null, v: Viewer = { id: 0, manage: true }) {
+  const where = `WHERE ${visible(v)}${STATUSES.includes(status as Status) ? ` AND m.status = ?` : ''}`;
   const rows = db.prepare(`
     SELECT m.id, m.at, m.updated_at AS updatedAt, m.user_id AS userId, m.name, m.email, m.topic, m.message, m.status, m.sent,
            (SELECT COUNT(*) FROM support_replies r WHERE r.message_id = m.id AND r.kind = 'reply') AS replies,
-           u.plan
+           u.plan, m.assigned_to AS assignedTo, (SELECT COALESCE(a.name, a.email) FROM users a WHERE a.id = m.assigned_to) AS assignedName
     FROM contact_messages m LEFT JOIN users u ON u.id = m.user_id
     ${where} ORDER BY COALESCE(m.updated_at, m.at) DESC LIMIT 200
-  `).all(...(where ? [status] : [])) as any[];
-  const counts = Object.fromEntries((db.prepare(`SELECT status, COUNT(*) AS n FROM contact_messages GROUP BY status`).all() as any[]).map(r => [r.status, r.n]));
+  `).all(...(STATUSES.includes(status as Status) ? [status] : [])) as any[];
+  const counts = Object.fromEntries((db.prepare(`SELECT status, COUNT(*) AS n FROM contact_messages m WHERE ${visible(v)} GROUP BY status`).all() as any[]).map(r => [r.status, r.n]));
   return { counts: { open: counts.open || 0, waiting: counts.waiting || 0, closed: counts.closed || 0 }, rows: rows.map(r => ({ ...r, preview: String(r.message).slice(0, 160), message: undefined, sent: !!r.sent })) };
 }
 
-export function inboxThread(id: number) {
+/** The message if this viewer may open it (404 otherwise, so ids can't be probed). */
+export function canOpen(id: number, v: Viewer): any {
   const m = db.prepare(`SELECT * FROM contact_messages WHERE id = ?`).get(id) as any;
-  if (!m) throw new CrmError(404, 'Message not found.');
+  if (!m || (!v.manage && m.assigned_to && m.assigned_to !== v.id)) throw new CrmError(404, 'Message not found.');
+  return m;
+}
+
+export function inboxThread(id: number, v: Viewer = { id: 0, manage: true }) {
+  const m = canOpen(id, v);
   const replies = db.prepare(`SELECT id, at, by_name AS byName, kind, body, sent FROM support_replies WHERE message_id = ? ORDER BY id`).all(id) as any[];
   const acct = m.user_id ? db.prepare(`SELECT id, email, plan, premium_until, created_at, last_login_at, cancel_at FROM users WHERE id = ?`).get(m.user_id) as any : null;
   const others = db.prepare(`SELECT id, at, topic, status FROM contact_messages WHERE email = ? AND id != ? ORDER BY id DESC LIMIT 10`).all(m.email, id);
   return {
-    message: { id: m.id, at: m.at, name: m.name, email: m.email, topic: m.topic, message: m.message, page: m.page, status: m.status, sent: !!m.sent, userId: m.user_id },
+    message: { id: m.id, at: m.at, name: m.name, email: m.email, topic: m.topic, message: m.message, page: m.page, status: m.status, sent: !!m.sent, userId: m.user_id, assignedTo: m.assigned_to || null },
     replies: replies.map(r => ({ ...r, sent: !!r.sent })),
     account: acct && { id: acct.id, plan: acct.plan, premiumUntil: acct.premium_until, createdAt: acct.created_at, lastLoginAt: acct.last_login_at, cancelAt: acct.cancel_at },
     others
@@ -124,6 +134,58 @@ export async function reply(id: number, by: { id: number; name: string }, body: 
     throw new CrmError(502, 'The reply was saved but the email could not be sent. Try again in a minute.');
   }
   db.prepare(`UPDATE contact_messages SET status = ?, handled = ?, updated_at = ? WHERE id = ?`).run(close ? 'closed' : 'waiting', close ? 1 : 0, now(), id);
+}
+
+/** Assign a message: managers to anyone with inbox access; others may only take an unassigned one for themselves. */
+export function assign(id: number, to: number | null, v: Viewer, staffIds: Set<number>) {
+  const m = canOpen(id, v);
+  if (!v.manage) {
+    if (to !== v.id || (m.assigned_to && m.assigned_to !== v.id)) throw new CrmError(403, 'Only a manager can assign messages to others.');
+  }
+  if (to !== null && !staffIds.has(to)) throw new CrmError(400, 'That person has no inbox access.');
+  db.prepare(`UPDATE contact_messages SET assigned_to = ?, updated_at = ? WHERE id = ?`).run(to, now(), id);
+}
+
+/* ================================================================== */
+/* Customers                                                          */
+/* ================================================================== */
+
+export function searchCustomers(q: unknown) {
+  const term = String(q || '').trim().toLowerCase().slice(0, 100);
+  const rows = term
+    ? db.prepare(`SELECT id, email, name, plan, premium_until, created_at, last_login_at, cancel_at, email_verified FROM users WHERE lower(email) LIKE ? OR lower(COALESCE(name, '')) LIKE ? ORDER BY last_login_at DESC LIMIT 50`).all(`%${term}%`, `%${term}%`)
+    : db.prepare(`SELECT id, email, name, plan, premium_until, created_at, last_login_at, cancel_at, email_verified FROM users ORDER BY created_at DESC LIMIT 50`).all();
+  const nowIso = now();
+  return (rows as any[]).map(r => ({
+    id: r.id, email: r.email, name: r.name || null,
+    plan: (r.plan === 'premium' || r.plan === 'pro') && (!r.premium_until || r.premium_until > nowIso) ? r.plan : 'free',
+    premiumUntil: r.premium_until || null, createdAt: r.created_at, lastLoginAt: r.last_login_at || null, cancelAt: r.cancel_at || null, emailVerified: !!r.email_verified
+  }));
+}
+
+export function customerProfile(id: number, withSecurity: boolean) {
+  const r = db.prepare(`SELECT * FROM users WHERE id = ?`).get(id) as any;
+  if (!r) throw new CrmError(404, 'Account not found.');
+  const nowIso = now();
+  const safe = (sql: string, ...a: any[]) => { try { return db.prepare(sql).all(...a); } catch { return []; } };
+  const one = (sql: string, ...a: any[]) => { try { return db.prepare(sql).get(...a) as any; } catch { return null; } };
+  return {
+    id: r.id, email: r.email, name: r.name || null, role: r.role || null,
+    plan: (r.plan === 'premium' || r.plan === 'pro') && (!r.premium_until || r.premium_until > nowIso) ? r.plan : 'free',
+    premiumUntil: r.premium_until || null, cancelAt: r.cancel_at || null, createdAt: r.created_at, lastLoginAt: r.last_login_at || null,
+    emailVerified: !!r.email_verified, emailUpdates: !!r.marketing_opt_in, twoFactor: !!r.totp_secret,
+    devices: one(`SELECT COUNT(*) AS n FROM sessions WHERE user_id = ?`, id)?.n ?? 0,
+    unlocksThisMonth: one(`SELECT COUNT(*) AS n FROM match_unlocks WHERE user_id = ? AND at >= ?`, id, nowIso.slice(0, 7) + '-01')?.n ?? 0,
+    favorites: one(`SELECT COUNT(*) AS n FROM user_favorites WHERE user_id = ?`, id)?.n ?? 0,
+    planHistory: safe(`SELECT at, from_plan AS fromPlan, to_plan AS toPlan, until, source FROM plan_events WHERE user_id = ? ORDER BY id DESC LIMIT 20`, id),
+    messages: safe(`SELECT id, at, topic, status FROM contact_messages WHERE user_id = ? OR email = ? ORDER BY id DESC LIMIT 20`, id, r.email),
+    security: withSecurity ? safe(`SELECT at, event, ip, ua FROM security_log WHERE user_id = ? ORDER BY id DESC LIMIT 30`, id) : null
+  };
+}
+
+export function signOutEverywhere(id: number) {
+  const r = db.prepare(`DELETE FROM sessions WHERE user_id = ?`).run(id);
+  return Number(r.changes) || 0;
 }
 
 /* ================================================================== */

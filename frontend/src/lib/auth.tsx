@@ -23,12 +23,14 @@ export interface User {
   twoFactor?: boolean
   /** this session passed two-step login */
   mfa?: boolean
-  /** staff role set by an admin (support inbox) */
-  role?: 'support' | null
+  /** staff role key (Team & roles in the CRM) */
+  role?: string | null
 }
 
-/** CRM permission: admin, or support staff (role + two-step login used for this session) */
-export type Staff = 'admin' | 'support' | null
+/** CRM: 'admin', the staff member's role key, or null */
+export type Staff = string | null
+/** staff permission keys (backend services/roles.ts) */
+export type Perm = 'inbox.read' | 'inbox.reply' | 'inbox.manage' | 'customers.view' | 'customers.plan' | 'customers.security' | 'campaigns' | 'revenue' | 'security' | 'model' | 'team'
 
 /** Sign-in step result: a ticket means a two-step code is still needed. */
 export interface SignInStep { ticket?: string }
@@ -37,6 +39,7 @@ interface SessionPayload {
   user: User | null
   access: Access
   staff?: Staff
+  perms?: Perm[]
   verificationRequired?: boolean
 }
 
@@ -44,6 +47,8 @@ interface AuthState {
   user: User | null
   access: Access
   staff: Staff
+  /** what this staff member may do (empty for customers) */
+  can: (p: Perm) => boolean
   loading: boolean
   /** Pro or admin: every prediction in full, no counting */
   full: boolean
@@ -80,6 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [access, setAccess] = useState<Access>('anon')
   const [staff, setStaff] = useState<Staff>(null)
+  const [perms, setPerms] = useState<Perm[]>([])
   const [loading, setLoading] = useState(true)
   const [verificationRequired, setVerificationRequired] = useState(false)
 
@@ -87,6 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(d.user)
     setAccess(d.access)
     setStaff(d.staff ?? null)
+    setPerms(d.perms ?? [])
     if (typeof d.verificationRequired === 'boolean') setVerificationRequired(d.verificationRequired)
   }
 
@@ -178,7 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, access, staff, loading, full, paid, needsVerification, login, loginCode, signup, verify, resendCode, resetPassword, setOptIn, logout, refresh }}
+      value={{ user, access, staff, can: (p: Perm) => perms.includes(p), loading, full, paid, needsVerification, login, loginCode, signup, verify, resendCode, resetPassword, setOptIn, logout, refresh }}
     >
       {children}
     </AuthContext.Provider>

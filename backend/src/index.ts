@@ -27,7 +27,8 @@ import { backtestUpsets, upsetWatchReport, upsetWatchBacktest } from './services
 import { submitContact, contactInbox, markContact, ContactError } from './services/contact';
 import { ADMIN_2FA_REQUIRED, checkCode, revealSetup, twoFactorEnabled, twoFactorStatus, startSetup, confirmSetup, newRecovery, disableTwoFactor, issueTicket, redeemTicket, securePastSessions, TwoFactorError } from './services/twoFactor';
 import { securityLog, securityLogList } from './services/securityLog';
-import { inboxList, inboxThread, reply, addNote, setStatus, segmentPreview, campaignList, sendTest, startCampaign, revenue, unsubscribe, CrmError } from './services/crm';
+import { inboxList, inboxThread, reply, addNote, setStatus, assign, canOpen, searchCustomers, customerProfile, signOutEverywhere, segmentPreview, campaignList, sendTest, startCampaign, revenue, unsubscribe, CrmError, type Viewer } from './services/crm';
+import { roleByKey, listRoles, listStaff, createRole, updateRole, deleteRole, RoleError, type Perm } from './services/roles';
 import { modelV2Status, runBacktest, runBacktestAll, backtestProgress, backtestRows, backtestRunsList } from './services/historyModel';
 import { oddsTick, oddsStatus, fetchCompetitionOdds, SPORT_KEYS } from './services/odds';
 import { syncSquadValues, squadValuesStatus, startSquadValuesScheduler, squadCompetitions } from './services/squadValues';
@@ -74,7 +75,7 @@ import { dataHealth, startDataHealthScheduler } from './services/dataHealth';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures, afGet, afRemaining, xgCoverage } from './services/apiFootball';
 import {
   signup, login, changePassword, setPlan, adminResetPassword, listUsers, userStats, createSession, destroySession, userForToken,
-  parseCookies, setSessionCookie, clearSessionCookie, SESSION_COOKIE, staffOf, setRole, Staff, userById, checkPassword, sessionHash, startEmailChange, confirmEmailChange, accessOf, canSeeFull, isPaid, teaseDeep, teaseDeepExcept, AuthError, Access, User,
+  parseCookies, setSessionCookie, clearSessionCookie, SESSION_COOKIE, staffOf, permsOf, setRole, Staff, userById, checkPassword, sessionHash, startEmailChange, confirmEmailChange, accessOf, canSeeFull, isPaid, teaseDeep, teaseDeepExcept, AuthError, Access, User,
   sendVerification, verifyEmail, requestPasswordReset, resetPassword, setMarketingOptIn, usersCsv, verificationRequired, exportUserData, deleteAccount, cancelPlan, resumePlan, leaveFeedback
 } from './services/auth';
 import { playerDataStatus, teamPlayers } from './services/playerData';
@@ -192,6 +193,7 @@ declare global {
       user?: User | null;
       access?: Access;
       staff?: Staff;
+      perms?: Set<Perm>;
     }
   }
 }
@@ -207,6 +209,7 @@ app.use((req, _res, next) => {
   req.user = user;
   req.access = accessOf(user);
   req.staff = staffOf(user);
+  req.perms = new Set(permsOf(user));
   // Maintenance tokens (GET only): admin reads, never the user data (/api/admin/*). The read token cannot start jobs.
   const kind = req.method === 'GET' ? tokenKind(req.query.token) : null;
   if (kind) {
@@ -294,8 +297,11 @@ app.use('/api', (req, res, next) => {
     return next();
   }
   if (access === 'admin') return next();
-  // CRM: support staff too (each route checks admin-only parts itself)
-  if (p.startsWith('/api/crm/') && req.staff) return next();
+  // CRM: any staff member (each route checks its own permission)
+  if (p.startsWith('/api/crm/') && req.perms?.size) return next();
+  // 'Model & data' permission: read-only statistics (GET, no jobs, nothing under /api/admin)
+  if (req.perms?.has('model') && req.method === 'GET' && !p.startsWith('/api/admin') && !isActionGet(req)
+      && !['sync', 'apply', 'run', 'reload', 'clear', 'tune'].some(k => req.query[k] !== undefined)) return next();
   if (req.method === 'GET' && PREMIUM_GET_API.test(p)) {
     // draw alerts are a Pro feature; the rest is open to every paid plan
     const proOnly = p.startsWith('/api/draw-alerts') || p.startsWith('/api/upset-watch');
@@ -312,7 +318,7 @@ function authFail(res: express.Response, e: any) {
 }
 
 function sessionPayload(user: User | null) {
-  return { user, access: accessOf(user), staff: staffOf(user), verificationRequired };
+  return { user, access: accessOf(user), staff: staffOf(user), perms: permsOf(user), verificationRequired };
 }
 
 // Only JSON bodies on auth POSTs (with SameSite=Lax cookies this blocks cross-site form posts)
@@ -447,35 +453,99 @@ app.post('/api/favorites/remove', jsonOnly, (req, res) => {
   res.json({ data: removeFavorite(req.user.id, req.body?.kind, req.body?.ref) });
 });
 
-// ---------- CRM (support inbox: admin + support staff; campaigns and revenue: admin only) ----------
+// ---------- CRM: every route checks its own permission (services/roles.ts); admin has all ----------
 const staffName = (req: express.Request) => ({ id: req.user!.id, name: req.user!.name || req.user!.email.split('@')[0] });
-const crmFail = (res: express.Response, e: any) => (e instanceof CrmError ? res.status(e.status).json({ error: e.message }) : sendError(res, e, 'CRM error'));
-const adminOnly = (req: express.Request, res: express.Response, next: express.NextFunction) => (req.staff === 'admin' ? next() : res.status(403).json({ error: 'Admins only' }));
-app.get('/api/crm/inbox', (req, res) => {
-  try { res.set('Cache-Control', 'no-store'); res.json({ data: inboxList(String(req.query.status || '') || null) }); } catch (e) { crmFail(res, e); }
+const crmFail = (res: express.Response, e: any) =>
+  e instanceof CrmError || e instanceof RoleError ? res.status(e.status).json({ error: e.message }) : e instanceof AuthError ? authFail(res, e) : sendError(res, e, 'CRM error');
+const need = (perm: Perm) => (req: express.Request, res: express.Response, next: express.NextFunction) =>
+  req.perms?.has(perm) ? next() : res.status(403).json({ error: 'Your role does not allow this.' });
+const viewer = (req: express.Request): Viewer => ({ id: req.user!.id, manage: !!req.perms?.has('inbox.manage') });
+const isAdminReq = (req: express.Request) => req.staff === 'admin';
+/** Everyone who may work the inbox (for assigning): admins and staff whose role has inbox.read. */
+function inboxStaff() {
+  return listUsers().filter(u => u.isAdmin || (u.role && roleByKey(u.role)?.perms.includes('inbox.read'))).map(u => ({ id: u.id, name: u.name || u.email.split('@')[0] }));
+}
+
+app.get('/api/crm/me', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: { staff: req.staff, perms: [...(req.perms || [])], role: req.staff === 'admin' ? 'Admin' : roleByKey(req.user?.role)?.name || null } });
 });
-app.get('/api/crm/inbox/:id(\\d+)', (req, res) => {
-  try { res.set('Cache-Control', 'no-store'); res.json({ data: inboxThread(parseInt(req.params.id, 10)) }); } catch (e) { crmFail(res, e); }
+// Support inbox
+app.get('/api/crm/inbox', need('inbox.read'), (req, res) => {
+  try { res.set('Cache-Control', 'no-store'); res.json({ data: { ...inboxList(String(req.query.status || '') || null, viewer(req)), staff: inboxStaff() } }); } catch (e) { crmFail(res, e); }
 });
-app.post('/api/crm/inbox/:id(\\d+)/reply', rateLimit('crm-reply', 60, 60 * 60000, r => String(r.user?.id)), jsonOnly, async (req, res) => {
-  try { await reply(parseInt(req.params.id, 10), staffName(req), req.body?.body, req.body?.close === true); res.json({ data: { ok: true } }); } catch (e) { crmFail(res, e); }
+app.get('/api/crm/inbox/:id(\\d+)', need('inbox.read'), (req, res) => {
+  try { res.set('Cache-Control', 'no-store'); res.json({ data: inboxThread(parseInt(req.params.id, 10), viewer(req)) }); } catch (e) { crmFail(res, e); }
 });
-app.post('/api/crm/inbox/:id(\\d+)/note', jsonOnly, (req, res) => {
-  try { addNote(parseInt(req.params.id, 10), staffName(req), req.body?.body); res.json({ data: { ok: true } }); } catch (e) { crmFail(res, e); }
+app.post('/api/crm/inbox/:id(\\d+)/reply', need('inbox.reply'), rateLimit('crm-reply', 60, 60 * 60000, r => String(r.user?.id)), jsonOnly, async (req, res) => {
+  try { canOpen(parseInt(req.params.id, 10), viewer(req)); await reply(parseInt(req.params.id, 10), staffName(req), req.body?.body, req.body?.close === true); res.json({ data: { ok: true } }); } catch (e) { crmFail(res, e); }
 });
-app.post('/api/crm/inbox/:id(\\d+)/status', jsonOnly, (req, res) => {
-  try { setStatus(parseInt(req.params.id, 10), req.body?.status); res.json({ data: { ok: true } }); } catch (e) { crmFail(res, e); }
+app.post('/api/crm/inbox/:id(\\d+)/note', need('inbox.reply'), jsonOnly, (req, res) => {
+  try { canOpen(parseInt(req.params.id, 10), viewer(req)); addNote(parseInt(req.params.id, 10), staffName(req), req.body?.body); res.json({ data: { ok: true } }); } catch (e) { crmFail(res, e); }
 });
-app.post('/api/crm/segment', adminOnly, jsonOnly, (req, res) => {
+app.post('/api/crm/inbox/:id(\\d+)/status', need('inbox.reply'), jsonOnly, (req, res) => {
+  try { canOpen(parseInt(req.params.id, 10), viewer(req)); setStatus(parseInt(req.params.id, 10), req.body?.status); res.json({ data: { ok: true } }); } catch (e) { crmFail(res, e); }
+});
+app.post('/api/crm/inbox/:id(\\d+)/assign', need('inbox.reply'), jsonOnly, (req, res) => {
+  try {
+    const to = req.body?.to === null ? null : parseInt(String(req.body?.to), 10);
+    assign(parseInt(req.params.id, 10), Number.isFinite(to as number) ? (to as number) : null, viewer(req), new Set(inboxStaff().map(s => s.id)));
+    res.json({ data: { ok: true } });
+  } catch (e) { crmFail(res, e); }
+});
+// Customers
+app.get('/api/crm/customers', need('customers.view'), (req, res) => {
+  try { res.set('Cache-Control', 'no-store'); res.json({ data: searchCustomers(req.query.q) }); } catch (e) { crmFail(res, e); }
+});
+app.get('/api/crm/customers/:id(\\d+)', need('customers.view'), (req, res) => {
+  try { res.set('Cache-Control', 'no-store'); res.json({ data: customerProfile(parseInt(req.params.id, 10), !!req.perms?.has('security')) }); } catch (e) { crmFail(res, e); }
+});
+app.post('/api/crm/customers/:id(\\d+)/plan', need('customers.plan'), jsonOnly, (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const target = userById(id);
+    if (!target) return res.status(404).json({ error: 'Account not found.' });
+    if (target.isAdmin || (target.role && !isAdminReq(req))) return res.status(403).json({ error: 'Staff plans are changed by the admin only.' });
+    const plan = req.body?.plan === 'premium' || req.body?.plan === 'pro' ? req.body.plan : 'free';
+    const days = Math.max(1, Math.min(400, parseInt(String(req.body?.days || '30'), 10) || 30));
+    const base = target.premiumUntil && target.premiumUntil > new Date().toISOString() && target.plan === plan ? new Date(target.premiumUntil).getTime() : Date.now();
+    const until = plan === 'free' ? null : new Date(base + days * 86400000).toISOString();
+    const u = setPlan(id, plan, until, 'admin');
+    securityLog(req, 'staff_plan_change', req.user, `account #${id} → ${plan}${until ? ` until ${until.slice(0, 10)}` : ''}`);
+    res.json({ data: u });
+  } catch (e) { crmFail(res, e); }
+});
+app.post('/api/crm/customers/:id(\\d+)/reset-email', need('customers.security'), async (req, res) => {
+  try {
+    const target = userById(parseInt(req.params.id, 10));
+    if (!target) return res.status(404).json({ error: 'Account not found.' });
+    if (target.isAdmin || (target.role && !isAdminReq(req))) return res.status(403).json({ error: 'Not for staff accounts.' });
+    await requestPasswordReset(target.email, req.ip || '');
+    securityLog(req, 'staff_sent_reset', req.user, `account #${target.id}`);
+    res.json({ data: { sentTo: target.email } });
+  } catch (e) { crmFail(res, e); }
+});
+app.post('/api/crm/customers/:id(\\d+)/sign-out', need('customers.security'), (req, res) => {
+  try {
+    const target = userById(parseInt(req.params.id, 10));
+    if (!target) return res.status(404).json({ error: 'Account not found.' });
+    if (target.isAdmin || (target.role && !isAdminReq(req))) return res.status(403).json({ error: 'Not for staff accounts.' });
+    const n = signOutEverywhere(target.id);
+    securityLog(req, 'staff_signed_out_user', req.user, `account #${target.id} (${n} devices)`);
+    res.json({ data: { devices: n } });
+  } catch (e) { crmFail(res, e); }
+});
+// Campaigns
+app.post('/api/crm/segment', need('campaigns'), jsonOnly, (req, res) => {
   try { res.json({ data: segmentPreview(req.body?.segment) }); } catch (e) { crmFail(res, e); }
 });
-app.get('/api/crm/campaigns', adminOnly, (_req, res) => {
+app.get('/api/crm/campaigns', need('campaigns'), (_req, res) => {
   try { res.set('Cache-Control', 'no-store'); res.json({ data: campaignList() }); } catch (e) { crmFail(res, e); }
 });
-app.post('/api/crm/campaigns/test', adminOnly, jsonOnly, async (req, res) => {
+app.post('/api/crm/campaigns/test', need('campaigns'), jsonOnly, async (req, res) => {
   try { await sendTest(req.body?.subject, req.body?.body, { id: req.user!.id, email: req.user!.email, name: req.user!.name }); res.json({ data: { sentTo: req.user!.email } }); } catch (e) { crmFail(res, e); }
 });
-app.post('/api/crm/campaigns', adminOnly, jsonOnly, async (req, res) => {
+app.post('/api/crm/campaigns', need('campaigns'), jsonOnly, async (req, res) => {
   try {
     if (req.body?.confirm !== true) return res.status(400).json({ error: 'Confirm before sending.' });
     const r = await startCampaign(req.body?.subject, req.body?.body, req.body?.segment, req.user!.id);
@@ -483,16 +553,57 @@ app.post('/api/crm/campaigns', adminOnly, jsonOnly, async (req, res) => {
     res.json({ data: r });
   } catch (e) { crmFail(res, e); }
 });
-app.get('/api/crm/revenue', adminOnly, (_req, res) => {
+// Revenue, security log
+app.get('/api/crm/revenue', need('revenue'), (_req, res) => {
   try { res.set('Cache-Control', 'no-store'); res.json({ data: revenue() }); } catch (e) { crmFail(res, e); }
 });
-app.post('/api/admin/users/:id(\\d+)/role', jsonOnly, (req, res) => {
+app.get('/api/crm/security', need('security'), (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const uid = parseInt(String(req.query.user || ''), 10);
+  res.json({ data: securityLogList(300, Number.isFinite(uid) ? uid : undefined) });
+});
+// Team & roles
+app.get('/api/crm/team', need('team'), (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: { ...listRoles(), staff: listStaff(), isAdmin: isAdminReq(req) } });
+});
+app.post('/api/crm/team/member', need('team'), jsonOnly, (req, res) => {
   try {
-    const role = req.body?.role === 'support' ? 'support' : null;
-    const u = setRole(parseInt(req.params.id, 10), role);
-    securityLog(req, 'role_changed', req.user, `account #${u.id} → ${role || 'no role'}`);
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const target = listUsers().find(u => u.email.toLowerCase() === email);
+    if (!target) return res.status(404).json({ error: 'No account with this email. They need to sign up first.' });
+    const role = req.body?.role ? String(req.body.role) : null;
+    if (target.id === req.user!.id) return res.status(400).json({ error: 'You cannot change your own role.' });
+    // only the admin may hand out or take away a role that can manage the team
+    const touchesTeam = (k: string | null) => !!k && !!roleByKey(k)?.perms.includes('team');
+    if ((touchesTeam(role) || touchesTeam(target.role)) && !isAdminReq(req)) return res.status(403).json({ error: 'Only the admin can change who manages the team.' });
+    const u = setRole(target.id, role);
+    securityLog(req, 'role_changed', req.user, `${target.email} → ${role ? roleByKey(role)?.name : 'no role'}`);
     res.json({ data: u });
-  } catch (e) { authFail(res, e); }
+  } catch (e) { crmFail(res, e); }
+});
+app.post('/api/crm/team/roles', need('team'), jsonOnly, (req, res) => {
+  try {
+    const r = createRole(req.body?.name, req.body?.perms, isAdminReq(req));
+    securityLog(req, 'role_created', req.user, `${r.name}: ${r.perms.join(', ')}`);
+    res.json({ data: r });
+  } catch (e) { crmFail(res, e); }
+});
+app.post('/api/crm/team/roles/:key', need('team'), jsonOnly, (req, res) => {
+  try {
+    if (!isAdminReq(req) && req.user!.role === String(req.params.key)) return res.status(403).json({ error: 'You cannot change your own role. Ask the admin.' });
+    const r = updateRole(String(req.params.key), req.body?.name, req.body?.perms, isAdminReq(req));
+    securityLog(req, 'role_updated', req.user, `${r.name}: ${r.perms.join(', ') || 'no permissions'}`);
+    res.json({ data: r });
+  } catch (e) { crmFail(res, e); }
+});
+app.delete('/api/crm/team/roles/:key', need('team'), (req, res) => {
+  try {
+    if (!isAdminReq(req) && req.user!.role === String(req.params.key)) return res.status(403).json({ error: 'You cannot delete your own role.' });
+    deleteRole(String(req.params.key), isAdminReq(req));
+    securityLog(req, 'role_deleted', req.user, String(req.params.key));
+    res.json({ data: { ok: true } });
+  } catch (e) { crmFail(res, e); }
 });
 // One-click unsubscribe from campaign emails (link + List-Unsubscribe-Post)
 const unsubPage = (ok: boolean) => `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>SportLikely</title>

@@ -74,6 +74,13 @@ function AdminOnly({ children }: { children: ReactNode }) {
   return <NotFound />
 }
 
+/** Model & data pages (past seasons): admin, or staff whose role has the 'Model & data' permission. */
+function ModelOnly({ children }: { children: ReactNode }) {
+  const { access, loading, can } = useAuth()
+  if (loading) return null
+  return access === 'admin' || can('model') ? <>{children}</> : <NotFound />
+}
+
 function Logo() {
   return (
     <Link to="/" className="flex items-center gap-2.5 group shrink-0 whitespace-nowrap" aria-label={tt("SportLikely home")}>
@@ -140,7 +147,7 @@ function LangSwitch({ compact = false }: { compact?: boolean }) {
 }
 
 function UserMenu() {
-  const { user, access, staff, loading, logout } = useAuth()
+  const { user, access, staff, can, loading, logout } = useAuth()
   const loc = useLocation()
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement>(null)
@@ -163,6 +170,7 @@ function UserMenu() {
     )
   const badge = access === 'admin' ? 'Admin' : access === 'pro' ? 'Pro' : access === 'premium' ? 'Premium' : 'Free'
   const bbPast = sportOfPath(loc.pathname).id === 'basketball'
+  const roleName = access === 'admin' ? 'Admin' : staff ? staff.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : ''
   const item = 'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-ink hover:bg-surface2'
   const icon = (d: string) => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted shrink-0" aria-hidden><path d={d} /></svg>
@@ -190,15 +198,15 @@ function UserMenu() {
             <div className="text-[11px] text-faint truncate">{user.email}</div>
           </div>
           <Link to="/account" role="menuitem" className={item}>{icon('M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z')}{tt("Settings")}</Link>
-          {staff && (
+          {(staff || can('model')) && (
             <>
-              <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-faint">Staff</div>
-              <Link to="/crm" role="menuitem" className={item}>{icon('M4 4h16v12H5.2L4 17.2V4zM8 9h8M8 12h5')}CRM</Link>
+              <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-faint">Staff{roleName ? ` · ${roleName}` : ''}</div>
+              {staff && <Link to="/crm" role="menuitem" className={item}>{icon('M4 4h16v12H5.2L4 17.2V4zM8 9h8M8 12h5')}CRM</Link>}
               {access === 'admin' && (
-                <>
-                  <Link to="/admin" role="menuitem" className={item}>{icon('M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8')}Users</Link>
-                  <Link to={bbPast ? '/basketball/past' : '/past'} role="menuitem" className={item}>{icon('M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2')}Past seasons</Link>
-                </>
+                <Link to="/admin" role="menuitem" className={item}>{icon('M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8')}Users</Link>
+              )}
+              {(access === 'admin' || can('model')) && (
+                <Link to={bbPast ? '/basketball/past' : '/past'} role="menuitem" className={item}>{icon('M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2')}Past seasons</Link>
               )}
             </>
           )}
@@ -509,7 +517,7 @@ function Shell() {
             />
             <Route
               path="/past"
-              element={<AdminOnly><Past /></AdminOnly>}
+              element={<ModelOnly><Past /></ModelOnly>}
             />
             <Route path="/login" element={<Login mode="login" />} />
             <Route path="/signup" element={<Login mode="signup" />} />
@@ -571,7 +579,7 @@ function BbRoutes() {
       <Route path="player/:id" element={<BbPlayer />} />
       <Route path="favorites" element={<BbFavorites />} />
       <Route path="accuracy" element={<BbAccuracy />} />
-      <Route path="past" element={<AdminOnly><BbPast /></AdminOnly>} />
+      <Route path="past" element={<ModelOnly><BbPast /></ModelOnly>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   )

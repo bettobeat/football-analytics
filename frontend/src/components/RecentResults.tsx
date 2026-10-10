@@ -102,12 +102,6 @@ function ResultRow({ r, compact }: { r: Settled; compact?: boolean }) {
           {tt("Pick")}{' '}<span className={`font-semibold ${PICK_COLOR[r.pick]}`}>{pickName}</span>
           {!compact && r.p && <span className="num"> {Math.round(r.p[r.pick])}%</span>}
         </span>
-        <span
-          className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${r.hit ? 'bg-win/15 text-win' : 'bg-loss/15 text-loss'}`}
-          aria-label={r.hit ? tt("Pick was right") : tt("Pick was wrong")}
-        >
-          {r.hit ? tt("✓ Hit") : tt("✗ Miss")}
-        </span>
       </div>
     </Link>
   )

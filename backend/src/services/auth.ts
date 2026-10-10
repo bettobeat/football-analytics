@@ -12,6 +12,7 @@ import crypto from 'crypto';
 import type express from 'express';
 import { db } from '../db';
 import logger from '../utils/logger';
+import { roleByKey, ALL_PERMS, type Perm } from './roles';
 import { emailEnabled, sendVerificationCode, sendResetCode, sendEmailChangeCode, sendEmailChangedNotice } from './email';
 
 /** premium = $15 plan with a monthly allowance of match unlocks; pro = $30 plan, unlimited (see services/billing.ts) */
@@ -30,7 +31,7 @@ export interface User {
   createdAt: string;
   cancelAt: string | null; // asked to cancel: the paid plan runs until premiumUntil and is not renewed
   twoFactor: boolean; // two-step login is on
-  role: 'support' | null; // staff role (support inbox); needs two-step login to be used
+  role: string | null; // staff role key (services/roles.ts); its permissions need two-step login to be used
   mfa?: boolean; // this session passed two-step login
 }
 
@@ -186,7 +187,7 @@ function rowToUser(r: any): User {
     createdAt: r.created_at,
     cancelAt: r.cancel_at || null,
     twoFactor: !!r.totp_secret,
-    role: r.role === 'support' ? 'support' : null
+    role: r.role || null
   };
 }
 
@@ -204,21 +205,31 @@ export function accessOf(user: User | null): Access {
 }
 
 /**
- * Staff permission for the CRM: 'admin' (admin access, i.e. after two-step when required) or 'support' (role set by an
- * admin, confirmed email, two-step login on AND used for this session). Anything else: null.
+ * Staff permissions (services/roles.ts). Admin = every permission (admin access already needs two-step login when
+ * required). Other staff: their role's permissions, only with a confirmed email AND two-step login on AND used for this
+ * session. staffOf = 'admin', the role key, or null.
  */
-export type Staff = 'admin' | 'support' | null;
+export type Staff = string | null;
+export function permsOf(user: User | null): Perm[] {
+  if (!user) return [];
+  if (accessOf(user) === 'admin') return ALL_PERMS;
+  const r = roleByKey(user.role);
+  if (!r || !user.emailVerified || !user.twoFactor || !user.mfa) return [];
+  return r.perms;
+}
 export function staffOf(user: User | null): Staff {
   if (!user) return null;
   if (accessOf(user) === 'admin') return 'admin';
-  if (user.role === 'support' && user.emailVerified && user.twoFactor && user.mfa) return 'support';
-  return null;
+  return permsOf(user).length ? user.role : null;
 }
 
-/** Admin: give or take the support role. */
-export function setRole(userId: number, role: 'support' | null): User {
-  const r = db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, userId);
-  if (!Number(r.changes)) throw new AuthError(404, 'Account not found.');
+/** Give a staff role (a key from the roles table) or take it away (null). Admin accounts have no role. */
+export function setRole(userId: number, role: string | null): User {
+  const row: any = db.prepare('SELECT email FROM users WHERE id = ?').get(userId);
+  if (!row) throw new AuthError(404, 'Account not found.');
+  if (ADMIN_EMAILS.has(String(row.email).toLowerCase())) throw new AuthError(400, 'The admin account has every permission already.');
+  if (role !== null && !roleByKey(role)) throw new AuthError(400, 'Unknown role.');
+  db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, userId); // permissions are read on every request: effective at once
   return rowToUser(db.prepare('SELECT * FROM users WHERE id = ?').get(userId));
 }
 
