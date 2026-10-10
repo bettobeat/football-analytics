@@ -774,11 +774,13 @@ function Team() {
                 <span className="flex-1 min-w-[200px]">
                   <span className="block text-ink truncate">{m.name || m.email}</span>
                   <span className="block text-[11px] text-faint truncate">{m.email} · last seen {fmtDay(m.lastLoginAt)}</span>
+                  <span className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface2/60 px-2 py-0.5 text-xs">
+                    <span className="text-faint">Console username</span>
+                    {m.console ? <b className="num text-ink select-all">{m.console.username}</b> : <span className="text-loss font-semibold">not set</span>}
+                  </span>
                 </span>
                 {(!m.twoFactor || !m.emailVerified) && <span className="text-[11px] text-draw font-semibold">{!m.emailVerified ? 'email not confirmed' : 'no two-step login yet'}</span>}
-                <span className={`text-[11px] font-semibold ${m.console ? (m.console.mustChange ? 'text-draw' : 'text-muted') : 'text-loss'}`}>
-                  {m.console ? `console: ${m.console.username}${m.console.mustChange ? ' (must change password)' : ''}` : 'no console login'}
-                </span>
+                {m.console?.mustChange && <span className="text-[11px] font-semibold text-draw">must change console password</span>}
                 <button type="button" disabled={busy} onClick={() => { setConFor(conFor === m.id ? null : m.id); setConUser(m.console?.username || ''); setConPw('') }} className="text-xs text-accent font-semibold">{m.console ? 'Reset console login' : 'Set console login'}</button>
                 <select value={m.role} disabled={busy} onChange={e => act(async () => { await axios.post(`${API_URL}/crm/team/member`, { email: m.email, role: e.target.value }); return `${m.email} is now ${d.roles.find(r => r.key === e.target.value)?.name}.` })} className="rounded-lg border border-line bg-surface2/60 px-2 py-1.5 text-xs text-ink">
                   {d.roles.map(r => <option key={r.key} value={r.key}>{r.name}</option>)}
