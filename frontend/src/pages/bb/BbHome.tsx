@@ -16,6 +16,9 @@ interface RecordData { since: string | null; total: Rec }
 
 const hasPct = (g: BbGame) => !!g.prediction && !g.prediction.locked && typeof g.prediction.pHome === 'number'
 const top = (g: BbGame) => Math.max(g.prediction!.pHome!, g.prediction!.pAway!)
+// EuroLeague clubs that make a game "big" (both sides needed), and NBA teams that make a game more featured
+const EL_BIG = [/real madrid/i, /barcelona/i, /olympiacos|olympiakos/i, /panathinaikos/i, /fenerbah/i, /efes/i, /zalgiris/i, /monaco/i, /partizan/i, /zvezda|red star/i, /olimpia milano|^milano|ea7/i, /virtus|bologna/i, /bayern/i, /baskonia/i]
+const NBA_FAME = [/lakers/i, /warriors/i, /celtics/i, /knicks/i, /bucks/i, /nuggets/i, /thunder/i, /76ers|sixers/i, /mavericks/i, /suns/i, /heat/i, /cavaliers/i, /spurs/i, /timberwolves/i, /bulls/i]
 
 function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
   return (
@@ -146,15 +149,21 @@ export default function BbHome() {
   const live = games.filter(g => g.state === 'live')
   const notStarted = useMemo(() => games.filter(g => g.state === 'upcoming' && new Date(g.kickoff).getTime() > Date.now()), [games])
 
-  // featured: the biggest league playing this week (NBA > EuroLeague > ACB > Serie A), then the closest game, then the soonest
+  // featured (Yarin, 11 Oct): ONLY the NBA, or a really big EuroLeague game (two big clubs, or play-offs / Final Four).
+  // Order: NBA season → big EuroLeague → NBA pre-season → none (the brand card). Within a group: famous teams first,
+  // then the closest game, then the soonest.
   const featured = useMemo(() => {
-    const pool = notStarted.filter(g => g.prediction && !g.preseason)
-    const list = pool.length ? pool : notStarted.filter(g => g.prediction)
-    if (!list.length) return null
-    const best = Math.min(...list.map(g => bbRank(g.league.code)))
-    return [...list.filter(g => (bbRank(g.league.code)) === best)].sort((a, b) =>
-      (hasPct(a) && hasPct(b) ? top(a) - top(b) : 0) || a.kickoff.localeCompare(b.kickoff)
-    )[0]
+    const withP = notStarted.filter(g => g.prediction)
+    const fameOf = (g: BbGame) => (g.league.code === 'NBA' ? NBA_FAME : EL_BIG).filter(re => re.test(g.home.name) || re.test(g.away.name)).length
+    const bigEl = (g: BbGame) => g.league.code === 'EL' && ((EL_BIG.some(re => re.test(g.home.name)) && EL_BIG.some(re => re.test(g.away.name))) || /play|final/i.test(g.round || ''))
+    const groups = [
+      withP.filter(g => g.league.code === 'NBA' && !g.preseason),
+      withP.filter(bigEl),
+      withP.filter(g => g.league.code === 'NBA' && g.preseason)
+    ]
+    const list = groups.find(x => x.length)
+    if (!list) return null
+    return [...list].sort((a, b) => fameOf(b) - fameOf(a) || (hasPct(a) && hasPct(b) ? top(a) - top(b) : 0) || a.kickoff.localeCompare(b.kickoff))[0]
   }, [notStarted])
 
   const favs = useBbFavorites()

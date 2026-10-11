@@ -70,6 +70,7 @@ const RULES: Rule[] = [
   { m: 'POST', re: /^\/api\/admin\/users\/(\d+)\/plan$/, action: 'customer_plan', label: 'Changed a customer’s plan (Users)', user: x => +x[1], detail: (_x, b) => (b?.plan ? `→ ${String(b.plan).slice(0, 20)}` : null) },
   { m: 'POST', re: /^\/api\/admin\/users\/(\d+)\/password$/, action: 'customer_password', label: 'Set a customer’s account password', user: x => +x[1] },
   { m: 'POST', re: /^\/api\/admin\/contact\/(\d+)$/, action: 'inbox_status', label: 'Marked a contact message', target: x => `message #${x[1]}`, user: x => msgOwner(+x[1]) },
+  { m: 'POST', re: /^\/api\/admin\/bb\/game\/(\d+)\/result$/, action: 'bb_result', label: 'Corrected a basketball result', target: x => `game ${x[1]}`, detail: (_x, b) => [b?.action, b?.hs != null ? `${num(b.hs)}-${num(b.as_)}` : null].filter(Boolean).join(' ') || null },
   { m: 'POST', re: /^\/api\/admin\/backups\/run$/, action: 'backup_run', label: 'Started a database backup' },
   { m: 'GET', re: /^\/api\/admin\/backups\/download\/(.+)$/, action: 'backup_download', label: 'Downloaded a database backup', target: x => decodeURIComponent(x[1]).slice(0, 80) }
 ];

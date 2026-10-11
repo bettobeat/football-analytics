@@ -12,6 +12,7 @@ import logger from '../utils/logger';
 import { db } from '../db';
 import { buildAll, recordBbPredictions } from './bbModel';
 import { refreshNbaInjuries, nbaInjuryStatus } from './bbInjuries';
+import { applyResultFixes, checkResults } from './bbResults';
 
 const BASE = 'https://v1.basketball.api-sports.io';
 const KEY = () => process.env.API_BASKETBALL_KEY || process.env.API_FOOTBALL_KEY || '';
@@ -210,6 +211,7 @@ function upsertGames(code: string, leagueId: number, season: string, list: any[]
     db.exec('ROLLBACK');
     throw e;
   }
+  applyResultFixes(); // our corrections win over the provider's numbers (services/bbResults.ts)
   return { n, done };
 }
 
@@ -336,6 +338,12 @@ async function bbTickInner() {
   } catch (e: any) {
     lastError = `box scores: ${e.message}`;
     logger.warn(`API-Basketball box scores: ${e.message}`);
+  }
+  try {
+    const r = await checkResults();
+    if (r.fixedAuto || r.open) logger.info(`bb result checks: ${r.checked} games, ${r.fixedAuto} corrected, ${r.open} open`);
+  } catch (e: any) {
+    logger.warn(`bb result checks: ${e.message}`);
   }
 }
 

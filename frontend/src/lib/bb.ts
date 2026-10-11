@@ -40,6 +40,10 @@ export interface BbGame {
   away: BbSide
   score: { home: number; away: number } | null
   quarters: { home: (number | null)[]; away: (number | null)[] } | null
+  /** final score under review (doesn't count until checked) */
+  resultCheck?: boolean
+  /** final score corrected by us (provider was wrong) */
+  corrected?: boolean
   /** live: minutes played / left in the current period (whole minutes) */
   clock?: { played: number; left: number } | null
   prediction: BbPrediction | null

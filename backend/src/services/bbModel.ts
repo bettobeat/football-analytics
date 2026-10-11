@@ -566,6 +566,7 @@ export function bbRecord(days = 3650, code?: string) {
     SELECT p.*, g.hs, g.as_, g.home_name, g.away_name, g.home_logo, g.away_logo, g.status
     FROM bb_predictions p JOIN bb_games g ON g.game_id = p.game_id
     WHERE g.status IN ('FT','AOT') AND g.hs IS NOT NULL AND p.made_at <= p.kickoff AND p.kickoff >= ? ${code ? 'AND p.code = ?' : ''}
+      AND p.game_id NOT IN (SELECT game_id FROM bb_result_check WHERE resolved_at IS NULL)
     ORDER BY p.kickoff DESC`).all(...[new Date(Date.now() - days * 86400000).toISOString(), ...(code ? [code] : [])]) as any[];
   const list = rows.filter(r => !isPreseason({ code: r.code, kickoff: r.kickoff }));
   const by = new Map<string, { n: number; hits: number; strongN: number; strongHits: number }>();

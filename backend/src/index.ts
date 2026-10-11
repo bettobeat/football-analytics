@@ -59,6 +59,7 @@ import { goalsCalibration } from './services/goalsCalibration';
 import { runDataAudit, lastDataAudit, startDataAuditScheduler } from './services/dataAudit';
 import { newsFor, newsStatus, startNewsScheduler, bbTeamNames, footballTeamNames } from './services/news';
 import { bbGet, bbStatus, bbSyncNow, startBasketballScheduler } from './services/basketball';
+import { adminResult, resultChecksList, checkResults, openCheck, resultFix, ResultError } from './services/bbResults';
 import { bdlGet, refreshNbaInjuries, nbaInjuryStatus } from './services/bbInjuries';
 import { bbPublic, bbLeagues, bbGames, bbGame, bbStandings, bbTeam } from './services/bbSite';
 import { bbPlayer, nbaLeaders, bbSearch } from './services/bbPlayers';
@@ -1864,6 +1865,27 @@ app.get('/api/basketball/game/:id(\\d+)', async (req, res) => {
     res.json({ data, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Failed to load game');
+  }
+});
+// Basketball results: checks and admin corrections (services/bbResults.ts)
+app.get('/api/admin/bb/result-checks', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json({ data: resultChecksList() }); });
+app.post('/api/admin/bb/result-checks/run', async (_req, res) => {
+  try { res.json({ data: await checkResults(30) }); } catch (e) { sendError(res, e, 'Check failed'); }
+});
+app.get('/api/admin/bb/game/:id(\\d+)/result', (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: { check: openCheck(id), fix: resultFix(id) } });
+});
+app.post('/api/admin/bb/game/:id(\\d+)/result', jsonOnly, (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const r = adminResult(id, String(req.body?.action || ''), req.body, req.user?.email || 'admin');
+    securityLog(req, 'bb_result_corrected', req.user, `game ${id}: ${req.body?.action}${req.body?.hs != null ? ` ${req.body.hs}-${req.body.as_}` : ''}`);
+    res.json({ data: r });
+  } catch (e: any) {
+    if (e instanceof ResultError) return res.status(e.status).json({ error: e.message });
+    sendError(res, e, 'Correction failed');
   }
 });
 app.get('/api/basketball/standings/:code([A-Za-z]{2,4})', async (req, res) => {

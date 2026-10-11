@@ -95,6 +95,7 @@ export default function Admin() {
         <>
           <VisitorsCard />
           <BackupsCard />
+          <BbResultsCard />
           <section className="card p-5 sm:p-6 mb-8">
             <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
               <h2 className="font-display text-lg font-bold text-ink">Accounts</h2>
@@ -363,6 +364,41 @@ function BackupsCard() {
       )}
       {d.history.some(h => !h.ok) && (
         <p className="mt-3 text-[11px] text-faint">Failed in the last {d.history.length} attempts: {d.history.filter(h => !h.ok).length}. A failure also emails you.</p>
+      )}
+    </section>
+  )
+}
+
+/** Basketball results the provider may have wrong (swapped / quarters don't add up), and recent corrections. */
+function BbResultsCard() {
+  const [d, setD] = useState<{ open: any[]; fixes: any[] } | null>(null)
+  useEffect(() => { axios.get(`${API_URL}/admin/bb/result-checks`).then(r => setD(r.data.data)).catch(() => setD(null)) }, [])
+  if (!d) return null
+  const day = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  return (
+    <section className="card p-5 sm:p-6 mb-8">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+        <h2 className="font-display text-lg font-bold text-ink">Basketball results to check</h2>
+        <span className="text-xs text-faint">Checked every 30 min · NBA corrected automatically from balldontlie · flagged games don't count until checked</span>
+      </div>
+      {d.open.length === 0 ? <p className="text-sm text-faint">Nothing to check.</p> : (
+        <ul className="divide-y divide-line/50 text-sm">
+          {d.open.map(x => (
+            <li key={x.game_id} className="py-2 flex flex-wrap items-baseline gap-x-3">
+              <span className="w-16 text-[11px] text-faint num">{day(x.kickoff)}</span>
+              <Link to={`/basketball/game/${x.game_id}`} className="font-semibold text-draw hover:underline">{x.home_name} {x.hs}–{x.as_} {x.away_name}</Link>
+              <span className="text-[11px] text-muted">{x.code} · {x.detail}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {d.fixes.length > 0 && (
+        <details className="mt-3 text-xs text-muted">
+          <summary className="cursor-pointer">Corrections ({d.fixes.length})</summary>
+          <ul className="mt-2 space-y-1">
+            {d.fixes.map(f => <li key={f.game_id}>{day(f.kickoff)} · <Link to={`/basketball/game/${f.game_id}`} className="underline">{f.home_name} – {f.away_name}</Link>: {f.provider_hs}–{f.provider_as} → <b className="text-ink">{f.hs}–{f.as_}</b> ({f.source}{f.by_user ? `, ${f.by_user}` : ''})</li>)}
+          </ul>
+        </details>
       )}
     </section>
   )

@@ -5,6 +5,7 @@
  */
 import { db } from '../db';
 import { BB_LEAGUES, bbGet } from './basketball';
+import { fillOvertime, openCheck, resultFix } from './bbResults';
 import { predictGame, teamRating, isPreseason, leagueRatings, BB_MODEL, leagueModelInfo, normCdf, normInv, BB_TRIAL, teamTalent, V3 } from './bbModel';
 import { nbaInjuries } from './bbInjuries';
 import { bbSquad, nbaBoxExtras } from './bbPlayers';
@@ -43,7 +44,9 @@ function shape(g: Row, full: boolean) {
   }
   const pick = pred ? (pred.pHome >= 0.5 ? 'H' : 'A') : null;
   const r1 = (x: number) => Math.round(x * 10) / 10;
-  const q = (() => { try { return JSON.parse(g.quarters || 'null'); } catch { return null; } })();
+  const q = fillOvertime((() => { try { return JSON.parse(g.quarters || 'null'); } catch { return null; } })(), g.hs, g.as_);
+  const check = state === 'done' ? openCheck(g.game_id) : null;
+  const fixed = state === 'done' ? resultFix(g.game_id) : null;
   const showAll = full || state === 'done';
   return {
     id: g.game_id,
@@ -57,6 +60,8 @@ function shape(g: Row, full: boolean) {
     away: { id: g.away_id, name: g.away_name, logo: g.away_logo },
     score: g.hs !== null && g.as_ !== null ? { home: g.hs, away: g.as_ } : null,
     quarters: q,
+    resultCheck: !!check,
+    corrected: !!fixed,
     // live clock: minutes left in the period (NBA quarters 12 min, FIBA 10, overtime 5); the provider gives whole minutes
     clock: state === 'live' && g.timer != null && ['Q1', 'Q2', 'Q3', 'Q4', 'OT'].includes(status)
       ? (() => { const len = status === 'OT' ? 5 : g.code === 'NBA' ? 12 : 10; return { played: g.timer, left: Math.max(0, len - g.timer) }; })()
@@ -71,7 +76,7 @@ function shape(g: Row, full: boolean) {
         restHome: pred.restHome ?? null, restAway: pred.restAway ?? null, b2bHome: !!pred.b2bHome, b2bAway: !!pred.b2bAway,
         injHome: pred.injHome || 0, injAway: pred.injAway || 0
       } : {}),
-      hit: state === 'done' && g.hs !== null ? (pick === 'H') === (g.hs > g.as_) : null
+      hit: state === 'done' && g.hs !== null && !check ? (pick === 'H') === (g.hs > g.as_) : null
     } : null
   };
 }

@@ -1542,5 +1542,8 @@
  "Nothing in play in this league. Live elsewhere:": "Rien en cours dans cette ligue. En direct ailleurs :",
  "This match was abandoned or cancelled. It does not count in our record.": "Ce match a été arrêté ou annulé. Il ne compte pas dans notre bilan.",
  "This match was suspended. It does not count in our record unless it is completed later.": "Ce match a été suspendu. Il ne compte pas dans notre bilan sauf s'il est terminé plus tard.",
- "This match was postponed. Our prediction stays until the new date.": "Ce match a été reporté. Notre pronostic reste valable jusqu'à la nouvelle date."
+ "This match was postponed. Our prediction stays until the new date.": "Ce match a été reporté. Notre pronostic reste valable jusqu'à la nouvelle date.",
+ "Result being checked": "Résultat en vérification",
+ "The final score from our data provider looks wrong. This game doesn’t count in our record until it is checked.": "Le score final de notre fournisseur de données semble faux. Ce match ne compte pas dans notre bilan tant qu'il n'est pas vérifié.",
+ "Final score corrected by us: our data provider had it wrong.": "Score final corrigé par nous : notre fournisseur de données s'était trompé."
 }

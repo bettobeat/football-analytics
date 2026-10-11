@@ -156,6 +156,9 @@ export default function BbGame() {
         )}
       </div>
 
+      {g.corrected && done && <p className="mt-2 text-center text-[11px] text-faint">{t('Final score corrected by us: our data provider had it wrong.')}</p>}
+      {access === 'admin' && done && <ResultAdmin game={g} onDone={() => axios.get(`${API_URL}/basketball/game/${id}`).then(r => setD(r.data.data)).catch(() => undefined)} />}
+
       {/* ---------- tabs ---------- */}
       <div className="sticky top-16 sm:top-[72px] z-30 -mx-4 sm:mx-0 mt-6 px-4 sm:px-0 py-2 bg-bg/80 backdrop-blur-xl">
         <nav className="flex gap-1 p-1 rounded-full bg-surface2/60 border border-line/60 overflow-x-auto no-scrollbar" aria-label={t('Game sections')}>
@@ -286,6 +289,7 @@ function PredictionSection({ d }: { d: Detail }) {
                 </span>
                 <span className="text-muted">{team.name} <span className="num text-ink font-semibold">{Math.round(topV)}%</span></span>
                 {p.hit !== null && <span className={`ml-auto rounded-full px-3 py-1 text-xs font-bold ${p.hit ? 'bg-win/15 text-win' : 'bg-loss/15 text-loss'}`}>{p.hit ? t('Right') : t('Wrong')}</span>}
+                {g.resultCheck && <span title={t('The final score from our data provider looks wrong. This game doesn’t count in our record until it is checked.')} className="ml-auto rounded-full px-3 py-1 text-xs font-bold bg-draw/15 text-draw">{t('Result being checked')}</span>}
               </div>
             )
           })()}
@@ -573,4 +577,40 @@ function MarketsGate({ d }: { d: Detail }) {
   const { hidden } = useReveal(rid(g), rstatus(g), !!g.prediction && !g.prediction.locked)
   if (!d.markets || hidden) return null
   return <MarketsCard g={g} m={d.markets} />
+}
+
+/** Admin only: correct a wrong final score (swap home/away, set it, or confirm the provider). */
+function ResultAdmin({ game, onDone }: { game: Game; onDone: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [hs, setHs] = useState(String(game.score?.home ?? ''))
+  const [as_, setAs] = useState(String(game.score?.away ?? ''))
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+  const act = async (action: string, extra: Record<string, unknown> = {}) => {
+    setBusy(true); setMsg(null)
+    try { await axios.post(`${API_URL}/admin/bb/game/${game.id}/result`, { action, ...extra }); setMsg('Saved.'); onDone() }
+    catch (e: any) { setMsg(e?.response?.data?.error || 'Failed.') } finally { setBusy(false) }
+  }
+  const btn = 'rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:border-faint disabled:opacity-60'
+  return (
+    <div className="mt-2 text-center">
+      {!open ? (
+        <button type="button" onClick={() => setOpen(true)} className="text-[11px] text-faint hover:text-ink underline">{game.resultCheck ? 'Admin: result flagged — check it' : 'Admin: correct the result'}</button>
+      ) : (
+        <div className="inline-flex flex-wrap items-center justify-center gap-2 rounded-xl border border-line bg-surface2/50 px-3 py-2 text-xs">
+          <span className="text-muted">{game.home.name}</span>
+          <input value={hs} onChange={e => setHs(e.target.value.replace(/\D/g, ''))} className="w-14 rounded-md border border-line bg-bg px-2 py-1 text-center num" inputMode="numeric" />
+          <span className="text-faint">:</span>
+          <input value={as_} onChange={e => setAs(e.target.value.replace(/\D/g, ''))} className="w-14 rounded-md border border-line bg-bg px-2 py-1 text-center num" inputMode="numeric" />
+          <span className="text-muted">{game.away.name}</span>
+          <button type="button" disabled={busy} onClick={() => act('set', { hs: Number(hs), as_: Number(as_) })} className={btn}>Save score</button>
+          <button type="button" disabled={busy} onClick={() => act('swap')} className={btn}>Swap home/away</button>
+          {game.resultCheck && <button type="button" disabled={busy} onClick={() => act('confirm')} className={btn}>Provider is right</button>}
+          {game.corrected && <button type="button" disabled={busy} onClick={() => act('undo')} className={btn}>Undo correction</button>}
+          <button type="button" onClick={() => setOpen(false)} className="text-faint">Close</button>
+          {msg && <span className="text-muted">{msg}</span>}
+        </div>
+      )}
+    </div>
+  )
 }
