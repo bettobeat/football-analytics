@@ -1255,8 +1255,9 @@ function Highlights({ matchId }: { matchId: number }) {
       <div className="relative aspect-video rounded-2xl overflow-hidden bg-black border border-line/60">
         {play ? (
           <iframe
-            src={`https://www.youtube-nocookie.com/embed/${h.videoId}?autoplay=1&rel=0&modestbranding=1`}
+            src={`https://www.youtube-nocookie.com/embed/${h.videoId}?autoplay=1&rel=0&modestbranding=1&origin=${encodeURIComponent(window.location.origin)}`}
             title={h.title}
+            referrerPolicy="strict-origin-when-cross-origin"
             className="absolute inset-0 w-full h-full"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen

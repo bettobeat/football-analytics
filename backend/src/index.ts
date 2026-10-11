@@ -141,7 +141,8 @@ io.use((socket, next) => {
 // Middleware (CSP off: the site loads Google Fonts and club crests from other hosts)
 // Railway terminates TLS in front of us: trust the first proxy so req.ip / req.secure are real
 app.set('trust proxy', 1);
-app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+// referrerPolicy: helmet's default "no-referrer" breaks embedded YouTube players (error 153 — YouTube needs the site's origin)
+app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false, referrerPolicy: { policy: 'strict-origin-when-cross-origin' } }));
 app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
