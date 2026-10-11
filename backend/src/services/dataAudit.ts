@@ -99,7 +99,7 @@ async function checkPlayer(id: number, code: string, name: string, s: any, leagu
   let ok = 0;
   let p: any;
   try {
-    p = await playerPage(id, true);
+    p = await playerPage(id, true, true);
   } catch (e: any) {
     issues.push({ kind: 'error', league: code, player: name, detail: `His page didn't load (${e.message})` });
     return 0;

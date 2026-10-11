@@ -431,9 +431,13 @@ async function build(pid: number) {
 }
 
 /*
- * A page is rebuilt as soon as the player's club has finished a game since it was built (plus 2 hours for the
- * provider to update the player stats), instead of waiting for the 12-hour refresh. Only the current seasons are
- * fetched again; the rest of the career comes from our store.
+ * A page is rebuilt as soon as the player's club has finished a game since it was built (2 hours after kick-off),
+ * instead of waiting for the 12-hour refresh. Only the current seasons are fetched again; the rest of the career
+ * comes from our store.
+ * Fix (Oct 2026): 2 hours after kick-off is the final whistle — the provider updates the player's season numbers
+ * later (often hours later). A page built in the 30 hours after one of his club's games is therefore rebuilt again
+ * whenever it is more than 3 hours old, until the provider's numbers have caught up. (The daily data check fell from
+ * 97% to 85% after a full matchday because of this: pages were saved with the numbers from before the game.)
  */
 const playedCache = new Map<string, { at: number; v: boolean }>();
 function playedSince(data: any): boolean {
@@ -446,13 +450,19 @@ function playedSince(data: any): boolean {
   try {
     const cutoff = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
     v = !!db.prepare(`SELECT 1 FROM af_fixtures WHERE (home_id = ? OR away_id = ?) AND status IN ('FT','AET','PEN') AND kickoff > ? AND kickoff < ? LIMIT 1`).get(teamId, teamId, data.builtAt, cutoff);
+    // built soon after a game: the provider may not have counted it yet — rebuild every 3 hours for 30 hours
+    const built = new Date(data.builtAt).getTime();
+    if (!v && Date.now() - built > 3 * 3600 * 1000) {
+      v = !!db.prepare(`SELECT 1 FROM af_fixtures WHERE (home_id = ? OR away_id = ?) AND status IN ('FT','AET','PEN') AND kickoff > ? AND kickoff <= ? LIMIT 1`)
+        .get(teamId, teamId, new Date(built - 30 * 3600 * 1000).toISOString(), data.builtAt);
+    }
   } catch { /* table missing */ }
   playedCache.set(key, { at: Date.now(), v });
   if (playedCache.size > 5000) playedCache.delete(playedCache.keys().next().value as string);
   return v;
 }
 
-async function pageData(pid: number) {
+async function pageData(pid: number, wait = false) {
   const mem = cache.get(pid);
   if (mem && Date.now() - mem.at < PAGE_TTL && mem.data.v === PAGE_VERSION && !playedSince(mem.data)) return mem.data;
   const stored: any = db.prepare(`SELECT json, built_at FROM player_page_store WHERE player_id = ?`).get(pid);
@@ -470,7 +480,7 @@ async function pageData(pid: number) {
   }
   // Speed (Oct 2026): a saved page of the current version is shown at once while the new one is built in the
   // background (the next visit gets it) — instead of making this visitor wait ~15 s for the rebuild.
-  if (stored && storedData?.v === PAGE_VERSION) {
+  if (!wait && stored && storedData?.v === PAGE_VERSION) {
     running.catch(() => undefined);
     return storedData;
   }
@@ -566,9 +576,10 @@ function tidySeasons(data: any) {
   return { ...data, seasons, career };
 }
 
-export async function playerPage(rawId: number, full: boolean) {
+/** wait: always the up-to-date page (the data check), never the saved copy while it is being rebuilt */
+export async function playerPage(rawId: number, full: boolean, wait = false) {
   const pid = rawId >= AF_OFFSET ? rawId - AF_OFFSET : rawId;
-  const data: any = tidySeasons(await pageData(pid));
+  const data: any = tidySeasons(await pageData(pid, wait));
   if (full) return { ...data, premium: true };
   const lite = (r: any) => ({ league: r.league, team: r.team, position: r.position, apps: r.apps, goals: r.goals });
   return {
