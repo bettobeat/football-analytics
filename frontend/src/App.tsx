@@ -15,6 +15,7 @@ import { sportOfPath } from './lib/sports'
 import { socket } from './lib/socket'
 import { useTheme } from './lib/theme'
 import { useUnlocks, resetDay } from './lib/unlocks'
+import { reportError } from './lib/report'
 import { t as tt, basename, applyHeadLang, LANGS, lang, setLang, type Lang } from './lib/i18n'
 
 /**
@@ -82,7 +83,7 @@ const NotFound = page(() => import('./pages/Legal').then(m => ({ default: m.NotF
 class PageBoundary extends Component<{ children?: ReactNode }, { failed: boolean }> {
   state = { failed: false }
   static getDerivedStateFromError() { return { failed: true } }
-  componentDidCatch(err: unknown) { console.error('page error', err) }
+  componentDidCatch(err: unknown) { console.error('page error', err); reportError(err, 'page') }
   render() {
     if (!this.state.failed) return this.props.children
     return (

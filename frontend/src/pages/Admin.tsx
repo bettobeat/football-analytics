@@ -94,6 +94,7 @@ export default function Admin() {
       {tab === 'overview' && (
         <>
           <VisitorsCard />
+          <SiteErrorsCard />
           <BackupsCard />
           <BbResultsCard />
           <section className="card p-5 sm:p-6 mb-8">
@@ -370,6 +371,62 @@ function BackupsCard() {
 }
 
 /** Basketball results the provider may have wrong (swapped / quarters don't add up), and recent corrections. */
+type SiteError = { sig: string; message: string; where: string | null; pageKind: string; kind: string; count: number; firstAt: string; lastAt: string; pages: string[]; browsers: string[]; version: string | null; resolvedAt: string | null }
+/** Pages that broke in visitors' browsers (sent by the site itself). "Mark fixed" after a fix is deployed: it reopens if it happens again. */
+function SiteErrorsCard() {
+  const [d, setD] = useState<{ rows: SiteError[]; open: number; last24h: number } | null>(null)
+  const [showFixed, setShowFixed] = useState(false)
+  const load = () => axios.get(`${API_URL}/admin/client-errors`).then(r => setD(r.data.data)).catch(() => setD(null))
+  useEffect(() => { load() }, [])
+  if (!d) return null
+  const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  const mark = (sig: string, resolved: boolean) => axios.post(`${API_URL}/admin/client-errors/${sig}`, { resolved }).then(load).catch(() => undefined)
+  const rows = d.rows.filter(r => showFixed || !r.resolvedAt)
+  const fixed = d.rows.length - d.open
+  return (
+    <section className="card p-5 sm:p-6 mb-8">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+        <h2 className="font-display text-lg font-bold text-ink">Site errors</h2>
+        <span className={`text-xs ${d.open ? 'text-loss font-semibold' : 'text-faint'}`}>
+          {d.open ? `${d.open} open problem${d.open === 1 ? '' : 's'} · ${d.last24h} time${d.last24h === 1 ? '' : 's'} in the last 24 h` : 'No open problems'} · pages that broke for visitors · kept 30 days
+        </span>
+      </div>
+      {rows.length === 0 ? <p className="text-sm text-faint">Nothing broke. 🎉</p> : (
+        <ul className="divide-y divide-line/50 text-sm">
+          {rows.map(r => (
+            <li key={r.sig} className={`py-3 ${r.resolvedAt ? 'opacity-60' : ''}`}>
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span className="font-semibold text-ink">{r.pageKind}</span>
+                <span className="text-[11px] num text-loss font-bold">{r.count}×</span>
+                <span className="text-[11px] text-faint">last {when(r.lastAt)} · first {when(r.firstAt)}{r.browsers.length ? ` · ${r.browsers.join(', ')}` : ''}</span>
+                <button type="button" onClick={() => mark(r.sig, !r.resolvedAt)} className="ml-auto text-xs font-semibold text-accent hover:underline">
+                  {r.resolvedAt ? 'Reopen' : 'Mark fixed'}
+                </button>
+              </div>
+              <div className="mt-1 text-xs text-muted break-words">{r.message}</div>
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
+                {r.pages.slice(0, 6).map(p => <a key={p} href={p} target="_blank" rel="noreferrer" className="text-accent hover:underline">{p}</a>)}
+                {r.pages.length > 6 && <span className="text-faint">+{r.pages.length - 6} more</span>}
+              </div>
+              {r.where && (
+                <details className="mt-1 text-[11px] text-faint">
+                  <summary className="cursor-pointer">Code location (for Claude)</summary>
+                  <pre className="mt-1 whitespace-pre-wrap break-all">{r.where}{r.version ? `\nsite version ${r.version}` : ''}</pre>
+                </details>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {fixed > 0 && (
+        <button type="button" onClick={() => setShowFixed(v => !v)} className="mt-3 text-xs text-muted hover:text-ink underline">
+          {showFixed ? 'Hide fixed' : `Show fixed (${fixed})`}
+        </button>
+      )}
+    </section>
+  )
+}
+
 function BbResultsCard() {
   const [d, setD] = useState<{ open: any[]; fixes: any[] } | null>(null)
   useEffect(() => { axios.get(`${API_URL}/admin/bb/result-checks`).then(r => setD(r.data.data)).catch(() => setD(null)) }, [])

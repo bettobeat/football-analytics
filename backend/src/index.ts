@@ -30,6 +30,7 @@ import { securityLog, securityLogList } from './services/securityLog';
 import { recordActivity, activityList } from './services/activity';
 import { createInvite, setInviteOpen, inviteInfo, joinAsTester, testerOf, testerOverview, TesterError } from './services/testers';
 import { runBackup, backupStatus, localPath, startBackups, remoteList, remoteReady } from './services/backup';
+import { reportClientError, clientErrorList, resolveClientError } from './services/clientErrors';
 import { inboxList, inboxThread, reply, addNote, setStatus, assign, canOpen, searchCustomers, customerProfile, signOutEverywhere, segmentPreview, campaignList, sendTest, startCampaign, revenue, unsubscribe, CrmError, type Viewer } from './services/crm';
 import { roleByKey, listRoles, listStaff, createRole, updateRole, deleteRole, RoleError, type Perm } from './services/roles';
 import { consoleRow, sessionUnlocked, lockSession, setupOwn, setFor, renameFor, consoleLogin, changeOwn, resetOwn, removeFor, consoleUsers, ConsoleError } from './services/staffConsole';
@@ -285,7 +286,7 @@ app.use('/api', rateLimit('api', 600, 60000)); // ~10 a second, far above a pers
 app.use(['/api/team-page', '/api/player-page'], rateLimit('pages', 60, 10 * 60000));
 app.use('/api/unlocks', (req, res, next) => (req.method === 'POST' ? rateLimit('unlock', 30, 60000, r => String(r.user?.id || r.ip))(req, res, next) : next()));
 
-const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|contact$|feedback$|testers\/|unsubscribe$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|basketball\/|public\/(summary|results|record)$|unlocks(\/|$)|billing\/)/;
+const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|contact$|feedback$|client-error$|testers\/|unsubscribe$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|basketball\/|public\/(summary|results|record)$|unlocks(\/|$)|billing\/)/;
 const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|history\/status|clv|draw-alerts|upset-watch)$/; // past seasons and backtests are admin only (Oct 2026)
 
 app.use('/api', (req, res, next) => {
@@ -765,6 +766,18 @@ app.post('/api/testers/join', rateLimit('tester-join', 10, 15 * 60000), jsonOnly
 });
 // Feedback button (testers and staff): straight into the CRM support inbox, topic 'feedback'
 const feedbackCount = new Map<number, number[]>();
+// Site crash reports from visitors' browsers (no IP, no user stored) — see services/clientErrors.ts
+app.post('/api/client-error', rateLimit('client-error', 20, 10 * 60000), jsonOnly, (req, res) => {
+  try { res.json({ data: reportClientError(req.body) }); } catch { res.json({ data: { ok: false } }); }
+});
+app.get('/api/admin/client-errors', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: clientErrorList(Math.min(30, parseInt(String(req.query.days || '30'), 10) || 30)) });
+});
+app.post('/api/admin/client-errors/:sig([a-f0-9]{16})', jsonOnly, (req, res) => {
+  resolveClientError(req.params.sig, !!req.body?.resolved);
+  res.json({ data: { ok: true } });
+});
 app.post('/api/feedback', jsonOnly, (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Sign in first.' });
   const message = String(req.body?.message || '').replace(/\r/g, '').trim().slice(0, 3000);

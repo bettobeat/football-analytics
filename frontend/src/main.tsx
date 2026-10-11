@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import './index.css'
 import { loadLocale, redirectToPreferred } from './lib/i18n'
+import { watchErrors } from './lib/report'
 
 // Broken pictures (Oct 2026): some teams and players have no image at our data provider. Instead of the browser's
 // broken-image icon, every picture that fails to load is swapped for a neutral badge, once.
@@ -16,6 +17,8 @@ window.addEventListener('error', e => {
     img.src = NO_IMAGE
   }
 }, true)
+
+watchErrors()
 
 // The language comes from the address (/es/...). First visit without one: follow the browser's language.
 // The dictionary is loaded before the app's modules run, so labels built at module level are translated too.
