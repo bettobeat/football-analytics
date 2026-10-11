@@ -2407,6 +2407,9 @@ if (fs.existsSync(path.join(STATIC_DIR, 'index.html'))) {
     try { res.type('application/xml').set('Cache-Control', 'public, max-age=3600').send(sitemapXml()); }
     catch (e: any) { logger.warn(`sitemap: ${e.message}`); res.sendFile(path.join(STATIC_DIR, 'sitemap.xml')); }
   });
+  // files under /assets have a content hash in their name (a new version gets a new name): cache them for a year,
+  // so returning visitors never download or re-check them. Other files (logo, icons) keep 7 days.
+  app.use('/assets', express.static(path.join(STATIC_DIR, 'assets'), { index: false, maxAge: '365d', immutable: true, fallthrough: false }));
   app.use(express.static(STATIC_DIR, { index: false, maxAge: '7d' }));
   const indexHtml = fs.readFileSync(path.join(STATIC_DIR, 'index.html'), 'utf8');
   app.get(/^(?!\/api\/|\/socket\.io\/).*/, (req, res) => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import RecentResults from '../components/RecentResults'
 import { Link } from 'react-router-dom'
 import axios from 'axios'
@@ -189,13 +189,14 @@ export default function Home() {
   const [alerts, setAlerts] = useState<Alert[]>([])
   useRevealState()
 
+  // Speed (Oct 2026): the lists load at once, together with the sign-in check — the login cookie goes with every
+  // request, so the first answer is already the right one for this user. They are loaded again only when the user
+  // signs in or out on this page.
+  const loadMatches = useCallback(() => {
+    axios.get(`${API_URL}/matches/upcoming`, { params: { days: 14 } }).then(r => setUpcoming(r.data.data || [])).catch(() => undefined)
+    axios.get(`${API_URL}/matches/live`).then(r => setLive(r.data.data || [])).catch(() => undefined)
+  }, [])
   useEffect(() => {
-    // wait until we know who is signed in: otherwise every list is loaded twice (as a visitor, then as the user)
-    if (authLoading) return
-    const loadMatches = () => {
-      axios.get(`${API_URL}/matches/upcoming`, { params: { days: 14 } }).then(r => setUpcoming(r.data.data || [])).catch(() => undefined)
-      axios.get(`${API_URL}/matches/live`).then(r => setLive(r.data.data || [])).catch(() => undefined)
-    }
     loadMatches()
     // the live box must match the Matches page even if the live socket drops: re-check every minute
     const timer = setInterval(loadMatches, 60 * 1000)
@@ -204,7 +205,13 @@ export default function Home() {
     const onLive = (msg: { data: Match[] }) => setLive(msg.data || [])
     socket.on('matches:live', onLive)
     return () => { socket.off('matches:live', onLive); clearInterval(timer) }
-  }, [access, authLoading])
+  }, [loadMatches])
+  const firstAccess = useRef<string | null>(null)
+  useEffect(() => {
+    if (authLoading) return
+    if (firstAccess.current === null) { firstAccess.current = access; return } // first answer: lists already match it
+    if (firstAccess.current !== access) { firstAccess.current = access; loadMatches() }
+  }, [access, authLoading, loadMatches])
 
   useEffect(() => {
     if (!full) { setAlerts([]); return }

@@ -1,52 +1,83 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link, NavLink, useLocation } from 'react-router-dom'
-import Dashboard from './pages/Dashboard'
 import Home from './pages/Home'
-import Team from './pages/Team'
-import League from './pages/League'
-import Player from './pages/Player'
 import SearchBox from './components/SearchBox'
-import MatchDetail from './pages/MatchDetail'
-import AccuracySimple from './pages/AccuracySimple'
-import Past from './pages/Past'
-import DrawAlerts from './pages/DrawAlerts'
-import UpsetWatch from './pages/UpsetWatch'
-import { Terms, Privacy, NotFound } from './pages/Legal'
-import Login from './pages/Login'
-import Account from './pages/Account'
-import Premium from './pages/Premium'
-import Admin from './pages/Admin'
-import Verify from './pages/Verify'
-import Forgot from './pages/Forgot'
 import PremiumGate from './components/PremiumGate'
 import { AuthProvider, useAuth } from './lib/auth'
 import { FavoritesProvider } from './lib/favorites'
-import Favorites from './pages/Favorites'
 import Assistant from './components/Assistant'
 import AccessibilityMenu, { initA11y } from './components/Accessibility'
-import Accessibility from './pages/Accessibility'
-import Contact from './pages/Contact'
-import Join from './pages/Join'
 import FeedbackButton from './components/FeedbackButton'
-import Crm from './pages/Crm'
 import ConsoleGate from './components/ConsoleGate'
-import SportSoon from './pages/SportSoon'
 import SportSwitch from './components/SportSwitch'
-import BbHome from './pages/bb/BbHome'
-import BbGames from './pages/bb/BbGames'
-import BbGame from './pages/bb/BbGame'
-import BbLeague from './pages/bb/BbLeague'
-import BbTeam from './pages/bb/BbTeam'
-import BbPlayer from './pages/bb/BbPlayer'
-import BbAccuracy from './pages/bb/BbAccuracy'
-import BbPast from './pages/bb/BbPast'
-import BbFavorites from './pages/bb/BbFavorites'
 import { useBbConfig } from './lib/bb'
 import { sportOfPath } from './lib/sports'
 import { socket } from './lib/socket'
 import { useTheme } from './lib/theme'
 import { useUnlocks, resetDay } from './lib/unlocks'
 import { t as tt, basename, applyHeadLang, LANGS, lang, setLang, type Lang } from './lib/i18n'
+
+/**
+ * Speed (Oct 2026): every page is its own small file, loaded when it is first opened, so the home page no longer
+ * downloads the whole site (admin, CRM, basketball…) before showing anything. The most visited pages are fetched
+ * quietly in the background a moment after the first page is up.
+ * After a new version is deployed, the old page files no longer exist: a tab that was open from before reloads once
+ * and gets the new version (instead of a blank page).
+ */
+const RELOAD_KEY = 'sl-chunk-reload'
+function page<T extends ComponentType<any>>(load: () => Promise<{ default: T }>) {
+  return lazy(() =>
+    load().then(
+      m => { try { sessionStorage.removeItem(RELOAD_KEY) } catch { /* ignore */ } return m },
+      err => {
+        let tried = false
+        try { tried = sessionStorage.getItem(RELOAD_KEY) === '1'; sessionStorage.setItem(RELOAD_KEY, '1') } catch { /* ignore */ }
+        if (!tried) { window.location.reload(); return new Promise<{ default: T }>(() => undefined) }
+        throw err
+      }
+    )
+  )
+}
+const loadDashboard = () => import('./pages/Dashboard')
+const loadMatch = () => import('./pages/MatchDetail')
+const loadLeague = () => import('./pages/League')
+const Dashboard = page(loadDashboard)
+const MatchDetail = page(loadMatch)
+const League = page(loadLeague)
+const Team = page(() => import('./pages/Team'))
+const Player = page(() => import('./pages/Player'))
+const AccuracySimple = page(() => import('./pages/AccuracySimple'))
+const Past = page(() => import('./pages/Past'))
+const DrawAlerts = page(() => import('./pages/DrawAlerts'))
+const UpsetWatch = page(() => import('./pages/UpsetWatch'))
+const Login = page(() => import('./pages/Login'))
+const Account = page(() => import('./pages/Account'))
+const Premium = page(() => import('./pages/Premium'))
+const Admin = page(() => import('./pages/Admin'))
+const Verify = page(() => import('./pages/Verify'))
+const Forgot = page(() => import('./pages/Forgot'))
+const Favorites = page(() => import('./pages/Favorites'))
+const Accessibility = page(() => import('./pages/Accessibility'))
+const Contact = page(() => import('./pages/Contact'))
+const Join = page(() => import('./pages/Join'))
+const Crm = page(() => import('./pages/Crm'))
+const SportSoon = page(() => import('./pages/SportSoon'))
+const BbHome = page(() => import('./pages/bb/BbHome'))
+const BbGames = page(() => import('./pages/bb/BbGames'))
+const BbGame = page(() => import('./pages/bb/BbGame'))
+const BbLeague = page(() => import('./pages/bb/BbLeague'))
+const BbTeam = page(() => import('./pages/bb/BbTeam'))
+const BbPlayer = page(() => import('./pages/bb/BbPlayer'))
+const BbAccuracy = page(() => import('./pages/bb/BbAccuracy'))
+const BbPast = page(() => import('./pages/bb/BbPast'))
+const BbFavorites = page(() => import('./pages/bb/BbFavorites'))
+const Terms = page(() => import('./pages/Legal').then(m => ({ default: m.Terms })))
+const Privacy = page(() => import('./pages/Legal').then(m => ({ default: m.Privacy })))
+const NotFound = page(() => import('./pages/Legal').then(m => ({ default: m.NotFound })))
+
+function PageLoading() {
+  return <div className="min-h-[70vh] grid place-items-center"><span className="w-8 h-8 rounded-full border-2 border-line border-t-accent animate-spin" aria-label={tt('Loading…')} /></div>
+}
 
 export function LogoMark({ size = 36 }: { size?: number }) {
   return <img src="/logo-mark.png" width={size} height={size} alt="" aria-hidden className="flex-shrink-0 rounded-[10px]" />
@@ -451,6 +482,12 @@ function Shell() {
     }
   }, [])
 
+  // fetch the most visited pages in the background once the first page is up (instant when clicked)
+  useEffect(() => {
+    const t = setTimeout(() => { loadDashboard().catch(() => undefined); loadMatch().catch(() => undefined); loadLeague().catch(() => undefined) }, 3000)
+    return () => clearTimeout(t)
+  }, [])
+
   const navCls = ({ isActive }: { isActive: boolean }) =>
     `px-2.5 2xl:px-3 py-1.5 rounded-full text-[13px] transition-colors whitespace-nowrap ${isActive ? 'bg-ink text-bg font-bold' : 'text-muted font-medium hover:text-ink'}`
 
@@ -490,6 +527,7 @@ function Shell() {
         <VerifyBanner />
         <UnlocksBanner />
         <main id="main" tabIndex={-1}>
+          <Suspense fallback={<PageLoading />}>
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/matches" element={<Dashboard />} />
@@ -540,6 +578,7 @@ function Shell() {
             <Route path="/american-football/*" element={<SportSoon sport="american-football" />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </Suspense>
         </main>
 
         <footer className="max-w-7xl mx-auto px-4 sm:px-6 pt-10 pb-28 xl:pb-10 text-xs text-faint space-y-2">

@@ -1545,5 +1545,6 @@
  "This match was postponed. Our prediction stays until the new date.": "Este partido fue aplazado. Nuestra predicción se mantiene hasta la nueva fecha.",
  "Result being checked": "Resultado en revisión",
  "The final score from our data provider looks wrong. This game doesn’t count in our record until it is checked.": "El marcador final de nuestro proveedor de datos parece incorrecto. Este partido no cuenta en nuestro registro hasta que se revise.",
- "Final score corrected by us: our data provider had it wrong.": "Marcador final corregido por nosotros: nuestro proveedor de datos lo tenía mal."
+ "Final score corrected by us: our data provider had it wrong.": "Marcador final corregido por nosotros: nuestro proveedor de datos lo tenía mal.",
+ "Watch on YouTube": "Ver en YouTube"
 }

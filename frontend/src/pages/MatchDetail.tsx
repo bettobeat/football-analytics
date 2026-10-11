@@ -1273,7 +1273,12 @@ function Highlights({ matchId }: { matchId: number }) {
           </button>
         )}
       </div>
-      <p className="mt-2 text-[11px] text-faint">{tt("Played by YouTube from the official channel. Some videos are only available in certain countries.")}</p>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        <p className="text-[11px] text-faint">{tt("Played by YouTube from the official channel. Some videos are only available in certain countries.")}</p>
+        <a href={`https://www.youtube.com/watch?v=${h.videoId}`} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-accent hover:underline whitespace-nowrap">
+          {tt("Watch on YouTube")} ↗
+        </a>
+      </div>
     </Section>
   )
 }

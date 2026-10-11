@@ -1545,5 +1545,6 @@
  "This match was postponed. Our prediction stays until the new date.": "Bu maç ertelendi. Tahminimiz yeni tarihe kadar geçerli.",
  "Result being checked": "Sonuç kontrol ediliyor",
  "The final score from our data provider looks wrong. This game doesn’t count in our record until it is checked.": "Veri sağlayıcımızdan gelen final skoru yanlış görünüyor. Bu maç kontrol edilene kadar kayıtlarımızda sayılmaz.",
- "Final score corrected by us: our data provider had it wrong.": "Final skoru tarafımızca düzeltildi: veri sağlayıcımız yanlış vermişti."
+ "Final score corrected by us: our data provider had it wrong.": "Final skoru tarafımızca düzeltildi: veri sağlayıcımız yanlış vermişti.",
+ "Watch on YouTube": "YouTube'da izle"
 }

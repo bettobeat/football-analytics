@@ -463,11 +463,18 @@ async function pageData(pid: number) {
     return data;
   }
   // several visitors (or the warm-up) asking for the same player share one build
-  const running = inflight.get(pid);
-  if (running) return running;
-  const job = buildAndStore(pid, stored).finally(() => inflight.delete(pid));
-  inflight.set(pid, job);
-  return job;
+  let running = inflight.get(pid);
+  if (!running) {
+    running = buildAndStore(pid, stored).finally(() => inflight.delete(pid));
+    inflight.set(pid, running);
+  }
+  // Speed (Oct 2026): a saved page of the current version is shown at once while the new one is built in the
+  // background (the next visit gets it) — instead of making this visitor wait ~15 s for the rebuild.
+  if (stored && storedData?.v === PAGE_VERSION) {
+    running.catch(() => undefined);
+    return storedData;
+  }
+  return running;
 }
 
 const inflight = new Map<number, Promise<any>>();
