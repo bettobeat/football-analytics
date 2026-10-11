@@ -1546,5 +1546,8 @@
  "Result being checked": "Sonuç kontrol ediliyor",
  "The final score from our data provider looks wrong. This game doesn’t count in our record until it is checked.": "Veri sağlayıcımızdan gelen final skoru yanlış görünüyor. Bu maç kontrol edilene kadar kayıtlarımızda sayılmaz.",
  "Final score corrected by us: our data provider had it wrong.": "Final skoru tarafımızca düzeltildi: veri sağlayıcımız yanlış vermişti.",
- "Watch on YouTube": "YouTube'da izle"
+ "Watch on YouTube": "YouTube'da izle",
+ "Something went wrong on this page": "Bu sayfada bir sorun oluştu",
+ "The rest of the site works. Try again, or go back to the home page.": "Sitenin geri kalanı çalışıyor. Tekrar deneyin veya ana sayfaya dönün.",
+ "Try again": "Tekrar dene"
 }

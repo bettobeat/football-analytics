@@ -934,8 +934,10 @@ function MatchDetail() {
         {tab === 'h2h' && (
           <>
             {(() => {
-              const h2h = xH2H || details.head2head
-              if (xH2H === undefined && !details.head2head) return <p className="text-sm text-muted text-center py-10">{tt("Loading head-to-head…")}</p>
+              // the copy inside the match details can come without totals (some competitions): only used when complete
+              const early = details.head2head?.aggregates && Array.isArray(details.head2head.matches) ? details.head2head : null
+              const h2h = xH2H?.aggregates && Array.isArray(xH2H.matches) ? xH2H : early
+              if (xH2H === undefined && !early) return <p className="text-sm text-muted text-center py-10">{tt("Loading head-to-head…")}</p>
               return h2h && h2h.aggregates.numberOfMatches > 0 ? (
                 <Section title={tt("Last {0} meetings", { 0: h2h.matches.length })} note={h2h.matches.length ? tt("since {0}", { 0: new Date(h2h.matches[h2h.matches.length - 1].utcDate).getFullYear() }) : undefined}>
                   <H2H h2h={h2h} home={home} away={away} />

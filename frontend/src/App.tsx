@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react'
+import { Component, lazy, Suspense, useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link, NavLink, useLocation } from 'react-router-dom'
 import Home from './pages/Home'
 import SearchBox from './components/SearchBox'
@@ -74,6 +74,35 @@ const BbFavorites = page(() => import('./pages/bb/BbFavorites'))
 const Terms = page(() => import('./pages/Legal').then(m => ({ default: m.Terms })))
 const Privacy = page(() => import('./pages/Legal').then(m => ({ default: m.Privacy })))
 const NotFound = page(() => import('./pages/Legal').then(m => ({ default: m.NotFound })))
+
+/**
+ * Safety net (Oct 2026): if something on a page breaks, only that page shows a short message (with "try again"),
+ * instead of the whole site going blank. Reset when the visitor goes to another page.
+ */
+class PageBoundary extends Component<{ children?: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+  static getDerivedStateFromError() { return { failed: true } }
+  componentDidCatch(err: unknown) { console.error('page error', err) }
+  render() {
+    if (!this.state.failed) return this.props.children
+    return (
+      <div className="min-h-[60vh] grid place-items-center px-4">
+        <div className="card p-8 text-center space-y-3 max-w-md">
+          <div className="font-display text-lg font-bold text-ink">{tt("Something went wrong on this page")}</div>
+          <p className="text-sm text-muted">{tt("The rest of the site works. Try again, or go back to the home page.")}</p>
+          <div className="flex justify-center gap-2 pt-1">
+            <button type="button" onClick={() => window.location.reload()} className="px-4 py-2 rounded-xl bg-accent text-bg font-semibold text-sm">{tt("Try again")}</button>
+            <a href={basename + '/'} className="px-4 py-2 rounded-xl border border-line text-ink font-semibold text-sm">{tt("Home")}</a>
+          </div>
+        </div>
+      </div>
+    )
+  }
+}
+function PageGuard({ children }: { children: ReactNode }) {
+  const loc = useLocation()
+  return <PageBoundary key={loc.pathname}>{children}</PageBoundary>
+}
 
 function PageLoading() {
   return <div className="min-h-[70vh] grid place-items-center"><span className="w-8 h-8 rounded-full border-2 border-line border-t-accent animate-spin" aria-label={tt('Loading…')} /></div>
@@ -527,6 +556,7 @@ function Shell() {
         <VerifyBanner />
         <UnlocksBanner />
         <main id="main" tabIndex={-1}>
+          <PageGuard>
           <Suspense fallback={<PageLoading />}>
           <Routes>
             <Route path="/" element={<Home />} />
@@ -579,6 +609,7 @@ function Shell() {
             <Route path="*" element={<NotFound />} />
           </Routes>
           </Suspense>
+          </PageGuard>
         </main>
 
         <footer className="max-w-7xl mx-auto px-4 sm:px-6 pt-10 pb-28 xl:pb-10 text-xs text-faint space-y-2">

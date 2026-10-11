@@ -1546,5 +1546,8 @@
  "Result being checked": "Ergebnis wird geprüft",
  "The final score from our data provider looks wrong. This game doesn’t count in our record until it is checked.": "Das Endergebnis unseres Datenanbieters scheint falsch. Dieses Spiel zählt erst nach der Prüfung in unserer Bilanz.",
  "Final score corrected by us: our data provider had it wrong.": "Endergebnis von uns korrigiert: Unser Datenanbieter hatte es falsch.",
- "Watch on YouTube": "Auf YouTube ansehen"
+ "Watch on YouTube": "Auf YouTube ansehen",
+ "Something went wrong on this page": "Auf dieser Seite ist etwas schiefgelaufen",
+ "The rest of the site works. Try again, or go back to the home page.": "Der Rest der Seite funktioniert. Versuche es erneut oder gehe zur Startseite.",
+ "Try again": "Erneut versuchen"
 }
