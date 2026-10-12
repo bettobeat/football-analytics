@@ -58,6 +58,7 @@ const Admin = page(() => import('./pages/Admin'))
 const Verify = page(() => import('./pages/Verify'))
 const Forgot = page(() => import('./pages/Forgot'))
 const Favorites = page(() => import('./pages/Favorites'))
+const MyPicks = page(() => import('./pages/MyPicks'))
 const Accessibility = page(() => import('./pages/Accessibility'))
 const Contact = page(() => import('./pages/Contact'))
 const Join = page(() => import('./pages/Join'))
@@ -261,6 +262,7 @@ function UserMenu() {
             <div className="text-sm font-semibold text-ink truncate">{user.name || user.email.split('@')[0]}</div>
             <div className="text-[11px] text-faint truncate">{user.email}</div>
           </div>
+          <Link to="/my-picks" role="menuitem" className={item}>{icon('M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9')}{tt("My picks")}</Link>
           <Link to="/account" role="menuitem" className={item}>{icon('M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z')}{tt("Settings")}</Link>
           {(staff || can('model')) && (
             <>
@@ -563,6 +565,7 @@ function Shell() {
             <Route path="/" element={<Home />} />
             <Route path="/matches" element={<Dashboard />} />
             <Route path="/favorites" element={<Favorites />} />
+            <Route path="/my-picks" element={<MyPicks />} />
             <Route path="/team/:id" element={<Team />} />
             <Route path="/league/:code" element={<League />} />
             <Route path="/player/:id" element={<Player />} />

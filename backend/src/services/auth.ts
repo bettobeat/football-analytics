@@ -720,6 +720,7 @@ export function deleteAccount(userId: number, password: unknown, reason?: unknow
   try {
     if (tableExists('user_favorites')) db.prepare('DELETE FROM user_favorites WHERE user_id = ?').run(userId);
     if (tableExists('match_unlocks')) db.prepare('DELETE FROM match_unlocks WHERE user_id = ?').run(userId);
+    if (tableExists('user_picks')) db.prepare('DELETE FROM user_picks WHERE user_id = ?').run(userId);
     if (tableExists('sport_waitlist')) db.prepare('DELETE FROM sport_waitlist WHERE user_id = ? OR email = ?').run(userId, u.email);
     if (tableExists('assistant_log')) db.prepare('DELETE FROM assistant_log WHERE user_id = ?').run(userId);
     if (tableExists('security_log')) db.prepare('DELETE FROM security_log WHERE user_id = ?').run(userId);

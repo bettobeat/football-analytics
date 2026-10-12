@@ -6,6 +6,7 @@ import { t, LOCALE } from '../../lib/i18n'
 import { useAuth } from '../../lib/auth'
 import { useReveal, justRevealed, guessFirstOn, hideMatch } from '../../lib/reveal'
 import CountUp from '../../components/CountUp'
+import YourPicks from '../../components/YourPicks'
 import { RevealCover } from '../../components/Reveal'
 import { BB_STATUS, liveLabel, spreadText, bbTeamFav, bbLeagueFav, useBbConfig, type BbGame as Game } from '../../lib/bb'
 import { FavStar } from '../../lib/favorites'
@@ -176,6 +177,7 @@ export default function BbGame() {
         {tab === 'prediction' && (
           <>
             <PredictionSection d={d} />
+            <YourPicks sport="bb" gameId={g.id} home={g.home.name} away={g.away.name} />
             <MarketsGate d={d} />
             {d.preview && <CompareCard g={g} home={d.preview.home} away={d.preview.away} table={d.standings ? d.standings.groups.flatMap(x => x.rows) : null} form={d.stats.home && d.stats.away ? { home: d.stats.home.form, away: d.stats.away.form } : null} />}
             {d.players && <PlayersCard g={g} home={d.players.home} away={d.players.away} limit={4} title={t('Players to watch')} />}

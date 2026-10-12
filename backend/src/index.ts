@@ -31,6 +31,7 @@ import { recordActivity, activityList } from './services/activity';
 import { createInvite, setInviteOpen, inviteInfo, joinAsTester, testerOf, testerOverview, TesterError } from './services/testers';
 import { runBackup, backupStatus, localPath, startBackups, remoteList, remoteReady } from './services/backup';
 import { reportClientError, clientErrorList, resolveClientError } from './services/clientErrors';
+import { gamePicks, setPick, personalRecord, PickError } from './services/userPicks';
 import { inboxList, inboxThread, reply, addNote, setStatus, assign, canOpen, searchCustomers, customerProfile, signOutEverywhere, segmentPreview, campaignList, sendTest, startCampaign, revenue, unsubscribe, CrmError, type Viewer } from './services/crm';
 import { roleByKey, listRoles, listStaff, createRole, updateRole, deleteRole, RoleError, type Perm } from './services/roles';
 import { consoleRow, sessionUnlocked, lockSession, setupOwn, setFor, renameFor, consoleLogin, changeOwn, resetOwn, removeFor, consoleUsers, ConsoleError } from './services/staffConsole';
@@ -286,7 +287,7 @@ app.use('/api', rateLimit('api', 600, 60000)); // ~10 a second, far above a pers
 app.use(['/api/team-page', '/api/player-page'], rateLimit('pages', 60, 10 * 60000));
 app.use('/api/unlocks', (req, res, next) => (req.method === 'POST' ? rateLimit('unlock', 30, 60000, r => String(r.user?.id || r.ip))(req, res, next) : next()));
 
-const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|contact$|feedback$|client-error$|testers\/|unsubscribe$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|basketball\/|public\/(summary|results|record)$|unlocks(\/|$)|billing\/)/;
+const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|contact$|feedback$|client-error$|picks(\/|$)|testers\/|unsubscribe$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|basketball\/|public\/(summary|results|record)$|unlocks(\/|$)|billing\/)/;
 const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|history\/status|clv|draw-alerts|upset-watch)$/; // past seasons and backtests are admin only (Oct 2026)
 
 app.use('/api', (req, res, next) => {
@@ -464,6 +465,26 @@ app.post('/api/assistant/chat', jsonOnly, async (req, res) => {
 app.get('/api/admin/assistant', (_req, res) => res.json({ data: assistantStats() }));
 
 // Favorites (signed-in users; visitors keep them in the browser and they are merged here on sign-in)
+// Your picks + personal record (every signed-in account) — services/userPicks.ts
+const pickErr = (res: express.Response, e: any) => e instanceof PickError ? res.status(e.status).json({ error: e.message }) : sendError(res, e, 'Picks failed');
+app.get('/api/picks/game/:sport(fb|bb)/:id(\\d+)', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try { res.json({ data: { signedIn: !!req.user, ...gamePicks(req.user?.id ?? null, req.params.sport, parseInt(req.params.id, 10), req.access || 'anon') } }); }
+  catch (e: any) { pickErr(res, e); }
+});
+app.post('/api/picks', rateLimit('picks', 120, 60000, r => String(r.user?.id || r.ip)), jsonOnly, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in to make your own picks.' });
+  try {
+    const b = req.body || {};
+    const pick = b.pick === null || b.pick === undefined || b.pick === '' ? null : String(b.pick);
+    res.json({ data: { signedIn: true, ...setPick(req.user.id, String(b.sport), parseInt(String(b.id), 10), String(b.market), pick, req.access || 'anon') } });
+  } catch (e: any) { pickErr(res, e); }
+});
+app.get('/api/picks/record', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!req.user) return res.status(401).json({ error: 'Sign in to see your record.' });
+  try { res.json({ data: personalRecord(req.user.id, req.access || 'anon') }); } catch (e: any) { pickErr(res, e); }
+});
 app.get('/api/favorites', (req, res) => {
   res.set('Cache-Control', 'no-store');
   if (!req.user) return res.status(401).json({ error: 'Sign in required' });

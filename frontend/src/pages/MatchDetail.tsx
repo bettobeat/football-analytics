@@ -1,3 +1,4 @@
+import YourPicks from '../components/YourPicks'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import axios from 'axios'
@@ -853,6 +854,8 @@ function MatchDetail() {
                   <p className="text-sm text-faint">{tt("No prediction available for this match yet.")}</p>
                 )}
               </Section>
+
+              <YourPicks sport="fb" gameId={m.id} home={home.shortName || home.name} away={away.shortName || away.name} />
 
               {(live || done) && p && !p.locked && !hidden && !unlockAnim && (
                 <Section title={live ? tt("Live win probability") : tt("How the game swung")} note={tt("From our pre-match prediction, updated with the score, time and red cards")}>
