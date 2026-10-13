@@ -99,6 +99,7 @@ export default function Admin() {
           <BackupsCard />
           <BbResultsCard />
           <LeaguesCard />
+          <LeaguesCard sport="basketball" />
           <section className="card p-5 sm:p-6 mb-8">
             <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
               <h2 className="font-display text-lg font-bold text-ink">Accounts</h2>

@@ -7,7 +7,7 @@ import { useFavorites, type Favorite } from './favorites'
 
 /** Basketball site (Oct 2026): types and helpers shared by the /basketball pages. */
 
-export interface BbLeague { code: string; name: string; country: string; logo: string | null }
+export interface BbLeague { code: string; name: string; country: string; logo: string | null; flag?: string | null }
 export interface BbConfig { public: boolean; open: boolean; leagues: BbLeague[] }
 export interface BbSide { id: number; name: string; logo: string | null }
 export interface BbPrediction {
@@ -62,7 +62,12 @@ export function useBbConfig(): BbConfig | null {
     if (configUser !== who) { configUser = who; configValue = null; configPromise = null }
     if (configValue) { setCfg(configValue); return }
     configPromise ||= axios.get(`${API_URL}/basketball/config`, { withCredentials: true })
-      .then(r => (configValue = r.data.data as BbConfig))
+      .then(r => {
+        configValue = r.data.data as BbConfig
+        // leagues added from the admin panel bring their own flag for the countries menu
+        for (const l of configValue.leagues || []) if (l.flag && !BB_COUNTRY[l.code]) BB_COUNTRY[l.code] = l.flag
+        return configValue
+      })
       .catch(() => (configValue = { public: false, open: false, leagues: [] }))
     let alive = true
     configPromise.then(v => alive && setCfg(v))

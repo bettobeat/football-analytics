@@ -13,6 +13,7 @@
 import logger from '../utils/logger';
 import { db } from '../db';
 import { injuryLoss } from './bbInjuries';
+import { onBbExtraLeague, onBbExtraTrial } from './bbLeagueConfig';
 
 export const BB_MODEL = 'bb-v3';
 const FINISHED = ['FT', 'AOT'];
@@ -31,6 +32,9 @@ type Pred = { pHome: number; margin: number; total: number; home: number; away: 
  * so their picks are shown with a badge and kept out of the overall record. Override with BB_TRIAL_LEAGUES=BSN,XYZ (or "none").
  */
 export const BB_TRIAL = new Set((process.env.BB_TRIAL_LEAGUES ?? 'BSN').split(',').map(x => x.trim().toUpperCase()).filter(x => x && x !== 'NONE'));
+// leagues added from the admin panel start in testing; the admin switch moves them in or out of the record
+onBbExtraLeague(l => { if (l.trial) BB_TRIAL.add(l.code); else BB_TRIAL.delete(l.code); });
+onBbExtraTrial((code, trial) => { if (trial) BB_TRIAL.add(code); else BB_TRIAL.delete(code); });
 
 /**
  * bb-v3 (8 Oct 2026 research, 14,308 test games in 18 leagues; log loss 0.5817 → 0.5765, picks 68.5% → 69.2%):

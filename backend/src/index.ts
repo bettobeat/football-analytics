@@ -83,6 +83,8 @@ import { dataHealth, startDataHealthScheduler } from './services/dataHealth';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures, afGet, afRemaining, xgCoverage } from './services/apiFootball';
 import { leagueCoverage, pickForAdding } from './services/leagueCoverage';
 import { addExtraLeague, removeExtraLeague, setExtraTrial } from './services/leagueConfig';
+import { bbLeagueCoverage, bbPickForAdding } from './services/bbLeagueCoverage';
+import { addBbExtraLeague, removeBbExtraLeague, setBbExtraTrial } from './services/bbLeagueConfig';
 import {
   signup, login, changePassword, setPlan, adminResetPassword, listUsers, userStats, createSession, destroySession, userForToken,
   parseCookies, setSessionCookie, clearSessionCookie, SESSION_COOKIE, staffOf, permsOf, setRole, Staff, userById, checkPassword, sessionHash, startEmailChange, confirmEmailChange, accessOf, canSeeFull, isPaid, teaseDeep, teaseDeepExcept, AuthError, Access, User,
@@ -839,6 +841,31 @@ app.post('/api/admin/extra-leagues/:id(\\d+)/remove', jsonOnly, (req, res) => {
 });
 app.post('/api/admin/extra-leagues/:id(\\d+)/trial', jsonOnly, (req, res) => {
   res.json({ data: setExtraTrial(parseInt(req.params.id, 10), !!req.body?.trial) });
+});
+// The same for basketball (bbLeagueConfig.ts / bbLeagueCoverage.ts): leagues start in testing, sync begins right away
+app.get('/api/admin/bb-league-coverage', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try { res.json({ data: await bbLeagueCoverage(req.query.refresh === '1') }); }
+  catch (e: any) { res.status(502).json({ error: `Coverage scan failed: ${e.message}` }); }
+});
+app.post('/api/admin/bb-extra-leagues', jsonOnly, async (req, res) => {
+  const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).map((x: any) => parseInt(String(x), 10)).filter((x: number) => Number.isFinite(x) && x > 0).slice(0, 100);
+  if (!ids.length) return res.status(400).json({ error: 'No leagues chosen.' });
+  try {
+    const { ok, skipped } = await bbPickForAdding(ids);
+    const added = ok.map(l => ({ id: l.id, name: l.name, ...addBbExtraLeague({ id: l.id, name: l.name, country: l.country, flag: l.countryCode ? l.countryCode.toLowerCase() : null, trial: true }) }));
+    if (req.user) securityLog(req, 'bb_leagues_added', req.user, added.map(a => `${a.id} ${a.name}`).join(', ').slice(0, 500));
+    if (added.length) void bbSyncNow().catch(() => undefined);
+    res.json({ data: { added, skipped, note: 'Five seasons of games and box scores are loading now; predictions appear after the next model build (usually within an hour).' } });
+  } catch (e: any) { res.status(502).json({ error: e.message }); }
+});
+app.post('/api/admin/bb-extra-leagues/:id(\\d+)/remove', jsonOnly, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (req.user) securityLog(req, 'bb_league_removed', req.user, String(id));
+  res.json({ data: removeBbExtraLeague(id) });
+});
+app.post('/api/admin/bb-extra-leagues/:id(\\d+)/trial', jsonOnly, (req, res) => {
+  res.json({ data: setBbExtraTrial(parseInt(req.params.id, 10), !!req.body?.trial) });
 });
 app.post('/api/feedback', jsonOnly, (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Sign in first.' });

@@ -13,6 +13,7 @@ import { db } from '../db';
 import { buildAll, recordBbPredictions } from './bbModel';
 import { refreshNbaInjuries, nbaInjuryStatus } from './bbInjuries';
 import { applyResultFixes, checkResults } from './bbResults';
+import { onBbExtraLeague } from './bbLeagueConfig';
 
 const BASE = 'https://v1.basketball.api-sports.io';
 const KEY = () => process.env.API_BASKETBALL_KEY || process.env.API_FOOTBALL_KEY || '';
@@ -41,6 +42,12 @@ export const BB_LEAGUES: { code: string; id: number; name: string; country: stri
   { code: 'NBB', id: 26, name: 'NBB', country: 'Brazil', search: '^NBB$' },
   { code: 'BSN', id: 76, name: 'BSN', country: 'Puerto Rico', search: '^BSN$' }
 ];
+// Leagues added from the admin panel (services/bbLeagueConfig.ts): the exact name is the check that the id is right
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+onBbExtraLeague(l => {
+  if (BB_LEAGUES.some(x => x.id === l.id || x.code === l.code)) return;
+  BB_LEAGUES.push({ code: l.code, id: l.id, name: l.name, country: l.country, search: `^${escapeRe(l.name)}$` });
+});
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS bb_leagues (

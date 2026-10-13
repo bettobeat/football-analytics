@@ -30,7 +30,9 @@ const TIER_STYLE: Record<Tier, string> = {
 }
 const STATUS_TEXT: Record<ScanLeague['status'], string> = { predicted: 'Predicted', added: 'Added', shown: 'On site, no model', new: '' }
 
-export default function LeaguesCard() {
+export default function LeaguesCard({ sport = 'football' }: { sport?: 'football' | 'basketball' }) {
+  const bb = sport === 'basketball'
+  const ep = (x: string) => `${API_URL}/admin/${bb ? 'bb-' : ''}${x}`
   const [d, setD] = useState<Coverage | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -43,7 +45,7 @@ export default function LeaguesCard() {
 
   const load = (refresh = false) => {
     setBusy(true); setErr(null)
-    return axios.get(`${API_URL}/admin/league-coverage${refresh ? '?refresh=1' : ''}`)
+    return axios.get(`${ep('league-coverage')}${refresh ? '?refresh=1' : ''}`)
       .then(r => setD(r.data.data))
       .catch(e => setErr(errorText(e)))
       .finally(() => setBusy(false))
@@ -68,7 +70,7 @@ export default function LeaguesCard() {
 
   const add = () => {
     setBusy(true); setMsg(null)
-    axios.post(`${API_URL}/admin/extra-leagues`, { ids: [...picked] })
+    axios.post(ep('extra-leagues'), { ids: [...picked] })
       .then(r => {
         const x = r.data.data
         setMsg(`Added ${x.added.length} league${x.added.length === 1 ? '' : 's'}${x.skipped.length ? ` · skipped ${x.skipped.length}` : ''}. ${x.note}`)
@@ -78,8 +80,8 @@ export default function LeaguesCard() {
       .catch(e => setMsg(errorText(e)))
       .finally(() => setBusy(false))
   }
-  const setTrial = (id: number, trial: boolean) => axios.post(`${API_URL}/admin/extra-leagues/${id}/trial`, { trial }).then(() => load()).catch(e => setMsg(errorText(e)))
-  const remove = (id: number) => axios.post(`${API_URL}/admin/extra-leagues/${id}/remove`, {}).then(r => { setMsg(r.data.data.note); return load() }).catch(e => setMsg(errorText(e)))
+  const setTrial = (id: number, trial: boolean) => axios.post(ep(`extra-leagues/${id}/trial`), { trial }).then(() => load()).catch(e => setMsg(errorText(e)))
+  const remove = (id: number) => axios.post(ep(`extra-leagues/${id}/remove`), {}).then(r => { setMsg(r.data.data.note); return load() }).catch(e => setMsg(errorText(e)))
 
   const tile = (label: string, value: number | undefined, hint?: string) => (
     <div className="rounded-xl border border-line/60 bg-surface2/40 px-3 py-2.5">
@@ -92,21 +94,21 @@ export default function LeaguesCard() {
   return (
     <section className="card p-5 sm:p-6 mb-8">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="font-display text-lg font-bold text-ink">Football leagues</h2>
+        <h2 className="font-display text-lg font-bold text-ink">{bb ? 'Basketball leagues' : 'Football leagues'}</h2>
         <button type="button" onClick={() => setOpen(o => !o)} className="text-xs font-semibold text-accent">
           {open ? 'Hide' : 'Open coverage & add leagues →'}
         </button>
       </div>
       {!open ? (
-        <p className="mt-1 text-xs text-faint">Every league our data plan has, by how much information it gives, and the leagues added from here.</p>
+        <p className="mt-1 text-xs text-faint">Every {bb ? 'basketball' : 'football'} league our data plan has, by how much information it gives, and the leagues added from here.</p>
       ) : (
         <div className="mt-4">
           {err && <p className="text-sm text-loss mb-3">{err}</p>}
           {!d ? <p className="text-sm text-faint">{busy ? 'Scanning API-Football (one request)…' : ''}</p> : (
             <>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                {tile('Full information', d.totals.fullActive, 'playing now · lineups, stats, players')}
-                {tile('Ready to add', d.totals.recommended, `full + 2 past seasons · ${d.totals.recommendedWithInjuries} with injuries`)}
+                {tile('Full information', d.totals.fullActive, bb ? 'playing now · team + player box scores' : 'playing now · lineups, stats, players')}
+                {tile('Ready to add', d.totals.recommended, bb ? 'full + 2 past seasons' : `full + 2 past seasons · ${d.totals.recommendedWithInjuries} with injuries`)}
                 {tile('Predicted now', d.totals.predicted + d.totals.added, d.totals.added ? `${d.totals.added} added from here` : undefined)}
                 {tile('All senior leagues', d.totals.leagues, `${d.totals.good} good · ${d.totals.basic} scores only`)}
               </div>
@@ -119,7 +121,7 @@ export default function LeaguesCard() {
                       <li key={x.id} className={`flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 ${x.enabled ? '' : 'opacity-50'}`}>
                         <span className="text-faint w-28 truncate">{x.country}</span>
                         <span className="font-semibold text-ink">{x.name}</span>
-                        <span className="text-[11px] text-faint num">AF{x.id}</span>
+                        <span className="text-[11px] text-faint num">{bb ? 'BB' : 'AF'}{x.id}</span>
                         {!x.enabled && <span className="text-[11px] text-loss">removed{x.live ? ' · leaves after the next deploy' : ''}</span>}
                         {x.enabled && (
                           <span className="ml-auto flex items-center gap-3">
@@ -163,7 +165,7 @@ export default function LeaguesCard() {
                       <th className="text-left px-2 py-2">Country</th>
                       <th className="text-left px-2 py-2">League</th>
                       <th className="px-2 py-2">Data</th>
-                      <th className="px-2 py-2">Injuries</th>
+                      {!bb && <th className="px-2 py-2">Injuries</th>}
                       <th className="px-2 py-2">Past seasons</th>
                       <th className="px-2 py-2">Season</th>
                       <th className="text-left px-2 py-2" />
@@ -181,7 +183,7 @@ export default function LeaguesCard() {
                         </td>
                         <td className="px-2 py-1.5 text-ink">{l.name}</td>
                         <td className="px-2 py-1.5 text-center"><span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${TIER_STYLE[l.tier]}`}>{l.tier}</span></td>
-                        <td className="px-2 py-1.5 text-center text-xs">{l.injuries ? '✓' : <span className="text-faint">–</span>}</td>
+                        {!bb && <td className="px-2 py-1.5 text-center text-xs">{l.injuries ? '✓' : <span className="text-faint">–</span>}</td>}
                         <td className="px-2 py-1.5 text-center num text-xs">{l.history}</td>
                         <td className="px-2 py-1.5 text-center text-[11px] text-faint whitespace-nowrap">{l.active ? `${l.start.slice(0, 7)} → ${l.end.slice(0, 7)}` : 'not playing'}</td>
                         <td className="px-2 py-1.5 text-[11px] text-faint whitespace-nowrap">{STATUS_TEXT[l.status]}</td>
@@ -207,8 +209,9 @@ export default function LeaguesCard() {
                 {msg && <span className="text-xs text-muted">{msg}</span>}
               </div>
               <p className="mt-2 text-[11px] text-faint">
-                Each league costs about 50–100 API requests a day (fixtures, live scores, lineups, stats). Adding many at once
-                fills their history over the next hours; predictions start once 3 seasons of results are in.
+                {bb
+                  ? 'Each league loads 5 seasons of games and box scores (a few hundred requests once, then a few a day). Predictions start after the next model build.'
+                  : 'Each league costs about 50–100 API requests a day (fixtures, live scores, lineups, stats). Adding many at once fills their history over the next hours; predictions start once 3 seasons of results are in.'}
               </p>
             </>
           )}

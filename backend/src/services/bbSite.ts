@@ -5,6 +5,7 @@
  */
 import { db } from '../db';
 import { BB_LEAGUES, bbGet } from './basketball';
+import { bbExtraFlag } from './bbLeagueConfig';
 import { fillOvertime, openCheck, resultFix } from './bbResults';
 import { predictGame, teamRating, isPreseason, leagueRatings, BB_MODEL, leagueModelInfo, normCdf, normInv, BB_TRIAL, teamTalent, V3 } from './bbModel';
 import { nbaInjuries } from './bbInjuries';
@@ -21,7 +22,7 @@ export function bbLeagues() {
   const rows = db.prepare(`SELECT code, league_id, name, country, logo FROM bb_leagues`).all() as any[];
   return BB_LEAGUES.map(l => {
     const r = rows.find(x => x.code === l.code);
-    return { code: l.code, name: l.name, country: l.country, logo: r?.logo || null };
+    return { code: l.code, name: l.name, country: l.country, logo: r?.logo || null, flag: bbExtraFlag(l.code) };
   });
 }
 const leagueName = (code: string) => BB_LEAGUES.find(l => l.code === code)?.name || code;
