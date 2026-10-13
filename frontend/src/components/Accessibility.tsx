@@ -90,7 +90,7 @@ export default function AccessibilityMenu() {
         aria-controls="a11y-menu"
         aria-label={t("Accessibility menu")}
         title={t("Accessibility")}
-        className={`fixed z-40 left-4 bottom-24 lg:bottom-6 lg:left-6 w-12 h-12 rounded-full grid place-items-center shadow-lift border-2 ${active ? 'bg-accent text-bg border-accent' : 'bg-[#1d4ed8] text-white border-white/70'}`}
+        className={`fixed z-40 left-3 bottom-[4.6rem] lg:bottom-6 lg:left-6 w-9 h-9 lg:w-12 lg:h-12 opacity-80 hover:opacity-100 focus:opacity-100 lg:opacity-100 rounded-full grid place-items-center shadow-lift border-2 ${active ? 'bg-accent text-bg border-accent' : 'bg-[#1d4ed8] text-white border-white/70'}`}
       >
         {/* the universal accessibility icon */}
         <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden>

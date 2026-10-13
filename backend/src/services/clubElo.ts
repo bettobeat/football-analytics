@@ -17,6 +17,13 @@ export const MODEL_EURO = 'elo-euro';
 const AF_OFFSET = 1_000_000_000;
 const CUPS: Record<number, string> = { 2: 'Champions League', 3: 'Europa League', 848: 'Conference League' };
 const K_DOMESTIC = 18, K_CUP = 32, HA = 60;
+/**
+ * Clubs with no Transfermarkt value (Oct 2026) are the small ones — Azerbaijani, Armenian, Faroese champions and the
+ * like, never a top-league side. They count as a €12m squad instead of "unknown = equal", so a club like Sabah is not
+ * made the favourite over Slavia Praha (€94m) because of a few qualifying wins against smaller clubs still.
+ */
+const MISSING_VALUE = 12e6;
+const valueOr = (v: number | null) => v ?? MISSING_VALUE;
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS eur_matches (
@@ -260,7 +267,7 @@ function cfeat(H: ClubState, A: ClubState, cup: number, date: string, vh: number
   const days = (x: string) => (x ? Math.min(10, (new Date(date).getTime() - new Date(x).getTime()) / 86400000) : 10);
   const avg = (a: number[]) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0);
   const h = meetings.get(H.id, A.id, date);
-  return { dElo: (H.elo - A.elo) / 100, lv: vh && va ? Math.log(vh / va) : 0, gl: Math.log(nh.lamH / nh.lamA), form: avg(H.recent) - avg(A.recent), rest: (days(H.last) - days(A.last)) / 10, pDraw: poissonDraw(lamH, lamA), cup, lamH, lamA, h2h: h ? h.x : 0, h2hInfo: h };
+  return { dElo: (H.elo - A.elo) / 100, lv: Math.log(valueOr(vh) / valueOr(va)), gl: Math.log(nh.lamH / nh.lamA), form: avg(H.recent) - avg(A.recent), rest: (days(H.last) - days(A.last)) / 10, pDraw: poissonDraw(lamH, lamA), cup, lamH, lamA, h2h: h ? h.x : 0, h2hInfo: h };
 }
 function cupProbs(f: CFeat, w: CupW = cupW) {
   const z = w.w_elo * f.dElo + w.w_squad * f.lv + w.w_goals * f.gl + w.w_form * f.form + w.w_rest * f.rest + w.w_home + (w.w_h2h || 0) * f.h2h;
@@ -311,12 +318,13 @@ export function buildClubElo() {
   meetings.clear();
   byNorm.clear();
   fdCache.clear();
+  tokenIndex = null;
   const median = 150e6;
   const get = (id: number, name: string) => {
     let r = ratings.get(id);
     if (!r) {
       const v = clubValueFor(name);
-      r = { id, elo: v ? 1500 + 120 * Math.log(v / median) : 1400, name, n: 0, cup: 0, att: 0, def: 0, recent: [], last: '' };
+      r = { id, elo: 1500 + 120 * Math.log(valueOr(v) / median), name, n: 0, cup: 0, att: 0, def: 0, recent: [], last: '' };
       ratings.set(id, r);
       byNorm.set(normalizeName(name), id);
     }
@@ -329,7 +337,7 @@ export function buildClubElo() {
     const o = m.hg > m.ag ? 'H' : m.hg < m.ag ? 'A' : 'D';
     if (m.cup && H.n >= 8 && A.n >= 8) {
       const vh = clubValueFor(H.name), va = clubValueFor(A.name);
-      pre.push({ d, lv: vh && va ? Math.log(vh / va) : 0, o, date: m.date, f: cfeat(H, A, m.cup, m.date, vh, va) });
+      pre.push({ d, lv: Math.log(valueOr(vh) / valueOr(va)), o, date: m.date, f: cfeat(H, A, m.cup, m.date, vh, va) });
     }
     const we = 1 / (1 + Math.pow(10, -d / 400));
     const w = o === 'H' ? 1 : o === 'D' ? 0.5 : 0;
@@ -417,23 +425,72 @@ export function buildClubElo() {
 
 /* ---------- prediction ---------- */
 
+// Football-Data.org spellings that share no word with API-Football's (after the club-word cleanup)
+const FD_ALIASES: Record<string, string> = {
+  'pae aek': 'aek athens', 'aek': 'aek athens', 'shaktar': 'shakhtar donetsk', 'atleti': 'atletico madrid', 'man united': 'manchester united',
+  'man city': 'manchester city', 'barca': 'barcelona', 'inter': 'inter', 'wolves': 'wolverhampton', 'spurs': 'tottenham', 'psg': 'paris saint germain',
+  'sl bratislava': 'slovan bratislava', 'sabah fk': 'sabah', 'sabah fa': 'sabah', 'bodo glimt': 'bodo glimt', 'kobenhavn': 'fc copenhagen', 'fc kobenhavn': 'fc copenhagen'
+};
+const fdTokens = (s: string) => clubTokens(FD_ALIASES[clubNorm(s)] || s);
+let tokenIndex: { id: number; toks: string[]; n: number }[] | null = null;
+function teamIndex() {
+  if (!tokenIndex) tokenIndex = [...ratings.values()].map(r => ({ id: r.id, toks: clubTokens(r.name), n: r.n }));
+  return tokenIndex;
+}
+/**
+ * API-Football team for a Football-Data.org team (Champions League comes from Football-Data.org): exact name, then the
+ * club words ("FC Bayern München" = "Bayern München", "PSV" ⊂ "PSV Eindhoven", "ŠK Slovan Bratislava" = "Slovan
+ * Bratislava"), then the old fuzzy match. A word match must be unique; ties go to the club with the most games.
+ */
+function matchFdTeam(t: { name?: string; shortName?: string; tla?: string }): number | null {
+  const names = [t.name, t.shortName].filter((x): x is string => !!x);
+  for (const n of names) { const id = byNorm.get(normalizeName(n)); if (id) return id; }
+  const idx = teamIndex();
+  const same = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => tokEq(x, b[i]));
+  const subset = (small: string[], big: string[]) => small.length > 0 && small.length < big.length && small.every(x => big.some(y => tokEq(x, y))) && small.some(x => x.length >= 4);
+  for (const n of names) {
+    const toks = fdTokens(n);
+    if (!toks.length) continue;
+    const exact = idx.filter(c => same(toks, c.toks));
+    if (exact.length) return exact.sort((a, b) => b.n - a.n)[0].id;
+  }
+  for (const n of names) {
+    const toks = fdTokens(n);
+    const part = idx.filter(c => subset(toks, c.toks) || subset(c.toks, toks));
+    if (part.length === 1) return part[0].id;
+    if (part.length > 1) { const top = part.sort((a, b) => b.n - a.n); if (top[0].n >= 3 * Math.max(1, top[1].n)) return top[0].id; }
+  }
+  let best: { id: number; s: number; n: number } | null = null;
+  for (const [norm, id] of byNorm) {
+    const s = Math.max(similarity(norm, t.name || ''), t.shortName ? similarity(norm, t.shortName) : 0);
+    const n = ratings.get(id)?.n || 0;
+    if (s >= 0.6 && (!best || s > best.s || (s === best.s && n > best.n))) best = { id, s, n };
+  }
+  return best ? best.id : null;
+}
+
 function findTeam(match: any, side: 'homeTeam' | 'awayTeam') {
   const t = match[side];
   if (!t) return null;
   if (t.id >= AF_OFFSET) { const r = ratings.get(t.id - AF_OFFSET); if (r) return r; }
   // Football-Data.org Champions League: match by name (cached per team id)
   if (fdCache.has(t.id)) { const id = fdCache.get(t.id); return id ? ratings.get(id) || null : null; }
-  let found: number | null = byNorm.get(normalizeName(t.name || '')) || null;
-  if (!found) {
-    let best: { id: number; s: number } | null = null;
-    for (const [norm, id] of byNorm) {
-      const s = Math.max(similarity(norm, t.name || ''), t.shortName ? similarity(norm, t.shortName) : 0);
-      if (s >= 0.7 && (!best || s > best.s)) best = { id, s };
-    }
-    found = best ? best.id : null;
-  }
+  const found = matchFdTeam(t);
   fdCache.set(t.id, found);
   return found ? ratings.get(found) || null : null;
+}
+/** Admin check: how every Football-Data.org team of the given matches maps to a rated club. */
+export function fdTeamMapping(matches: any[]) {
+  const out: { fd: string; af: string | null; games: number; cup: number }[] = [];
+  const seen = new Set<number>();
+  for (const m of matches) for (const side of ['homeTeam', 'awayTeam'] as const) {
+    const t = m[side];
+    if (!t || seen.has(t.id)) continue;
+    seen.add(t.id);
+    const r = findTeam(m, side);
+    out.push({ fd: `${t.name} (${t.shortName || ''})`, af: r ? r.name : null, games: r?.n || 0, cup: r?.cup || 0 });
+  }
+  return out;
 }
 
 function poisson(l: number, k: number) { let p = Math.exp(-l); for (let i = 1; i <= k; i++) p *= l / i; return p; }
@@ -457,9 +514,9 @@ const scale = (x: number, m: { mean: number; sd: number }) => Math.round(Math.ma
 
 export function predictClubEuro(match: any): Prediction | null {
   const H = findTeam(match, 'homeTeam'), A = findTeam(match, 'awayTeam');
-  if (!H || !A || H.n < 8 || A.n < 8) return null;
+  if (!H || !A || H.n < 2 || A.n < 2) return null; // a club with a handful of games still gets a (low-confidence) number instead of the old v1 model
   const vh = clubValueFor(H.name), va = clubValueFor(A.name);
-  const valueTerm = vh && va ? fit.beta * Math.log(vh / va) : 0;
+  const valueTerm = fit.beta * Math.log(valueOr(vh) / valueOr(va));
   const d = H.elo - A.elo + HA + valueTerm;
   const cup = CUP_OF_CODE[match.competition?.code] || 3;
   const f = cfeat(H, A, cup, String(match.utcDate || new Date().toISOString()).slice(0, 10), vh, va);
@@ -483,7 +540,7 @@ export function predictClubEuro(match: any): Prediction | null {
     expectedGoals: { home: Math.round(lamH * 100) / 100, away: Math.round(lamA * 100) / 100 },
     over25: pct(over25), btts: pct(btts),
     topScores: scores.slice(0, 3).map(s => ({ ...s, prob: pct(s.prob) })),
-    confidence: Math.min(H.cup, A.cup) >= 12 ? 'high' : Math.min(H.cup, A.cup) >= 4 ? 'medium' : 'low',
+    confidence: Math.min(H.n, A.n) < 8 ? 'low' : Math.min(H.cup, A.cup) >= 12 ? 'high' : Math.min(H.cup, A.cup) >= 4 ? 'medium' : 'low',
     factors: {
       homeAttack: Math.round(H.elo), homeDefence: 0, awayAttack: Math.round(A.elo), awayDefence: 0,
       homeAdvantage: HA, homeForm: Math.round(valueTerm), awayForm: 1, gamesPlayed: { home: H.n, away: A.n }, leagueAvgGoals: 1.3
@@ -498,7 +555,7 @@ export function predictClubEuro(match: any): Prediction | null {
     const eur = (x: number | null) => (x ? `€${Math.round(x / 1e6)}m` : 'n/a');
     const rows: NonNullable<Prediction['grid']>['rows'] = [
       { id: '#1e', name: 'Strength (rating)', rel: relOf(w.w_elo), home: scale(H.elo, ps.elo), away: scale(A.elo, ps.elo), edge: edge(w.w_elo * f.dElo), note: `rating ${Math.round(H.elo)} vs ${Math.round(A.elo)}` },
-      { id: '#1', name: 'Squad value', rel: relOf(w.w_squad), home: vh ? scale(Math.log(vh), ps.squad) : 5.5, away: va ? scale(Math.log(va), ps.squad) : 5.5, edge: edge(w.w_squad * f.lv), note: `top-15 value ${eur(vh)} vs ${eur(va)}` },
+      { id: '#1', name: 'Squad value', rel: relOf(w.w_squad), home: scale(Math.log(valueOr(vh)), ps.squad), away: scale(Math.log(valueOr(va)), ps.squad), edge: edge(w.w_squad * f.lv), note: `top-15 value ${eur(vh)} vs ${eur(va)}${!vh || !va ? ' (no data = small club)' : ''}` },
       { id: '#19', name: 'Goals: attack vs defence', rel: relOf(w.w_goals), home: scale(H.att + H.def, ps.goals), away: scale(A.att + A.def, ps.goals), edge: edge(w.w_goals * f.gl), note: `expected goals ${out.expectedGoals.home} vs ${out.expectedGoals.away}` },
       { id: '#21', name: 'Form, last 6 (vs expectation)', rel: relOf(w.w_form), home: scale(avg(H.recent), ps.form), away: scale(avg(A.recent), ps.form), edge: edge(w.w_form * f.form) },
       { id: '#10', name: 'Rest days', rel: relOf(w.w_rest), home: Math.round((5.5 + f.rest * 4.5) * 10) / 10, away: Math.round((5.5 - f.rest * 4.5) * 10) / 10, edge: edge(w.w_rest * f.rest) },

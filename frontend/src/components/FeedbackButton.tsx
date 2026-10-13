@@ -46,7 +46,7 @@ export default function FeedbackButton() {
   }
 
   return (
-    <div className="fixed right-4 bottom-20 xl:bottom-5 z-40">
+    <div className="fixed right-3 bottom-[4.6rem] xl:right-4 xl:bottom-5 z-40">
       {open && (
         <form onSubmit={send} className="menu-panel absolute right-0 bottom-12 w-[min(340px,calc(100vw-2rem))] rounded-2xl border border-line p-4 space-y-3 shadow-lift">
           {sent ? (
@@ -72,9 +72,9 @@ export default function FeedbackButton() {
         </form>
       )}
       <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open}
-        className="h-10 px-4 rounded-full bg-accent text-bg font-bold text-sm shadow-lift inline-flex items-center gap-2">
+        className="h-9 w-9 xl:w-auto xl:h-10 xl:px-4 rounded-full bg-accent text-bg font-bold text-sm shadow-lift inline-flex items-center justify-center gap-2 opacity-90 xl:opacity-100" aria-label={tt("Feedback")}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
-        {tt("Feedback")}
+        <span className="hidden xl:inline">{tt("Feedback")}</span>
       </button>
     </div>
   )
