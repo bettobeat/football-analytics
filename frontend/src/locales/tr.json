@@ -1581,5 +1581,7 @@
  "Your picks are private and only for you. Cancelled games are void and not counted.": "Tahminlerin gizli ve sadece senin. İptal edilen maçlar geçersizdir ve sayılmaz.",
  "Your picks are saved in your personal record.": "Tahminlerin kişisel kaydında saklanır.",
  "right in a row": "üst üste doğru",
- "{0} of {1} settled": "{1} sonuçtan {0}"
+ "{0} of {1} settled": "{1} sonuçtan {0}",
+ "Previous match": "Önceki maç",
+ "Featured matches": "Öne çıkan maçlar"
 }

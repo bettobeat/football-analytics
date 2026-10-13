@@ -1581,5 +1581,7 @@
  "Your picks are private and only for you. Cancelled games are void and not counted.": "Vos pronostics sont privés et rien qu'à vous. Les matchs annulés ne comptent pas.",
  "Your picks are saved in your personal record.": "Vos pronostics sont enregistrés dans votre bilan personnel.",
  "right in a row": "justes d'affilée",
- "{0} of {1} settled": "{0} sur {1} réglés"
+ "{0} of {1} settled": "{0} sur {1} réglés",
+ "Previous match": "Match précédent",
+ "Featured matches": "Matchs à la une"
 }

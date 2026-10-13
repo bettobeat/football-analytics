@@ -62,7 +62,7 @@ function priority(m: Match) {
 }
 
 /** Big featured match: the two crests, blown up and blurred, paint the background in the teams' own colours. */
-function FeaturedHero({ m, p }: { m: Match | null; p: Prediction | null }) {
+function FeaturedHero({ m, p, label }: { m: Match | null; p: Prediction | null; label?: string }) {
   if (!m)
     return (
       <div className="relative overflow-hidden rounded-[32px] border border-white/10 min-h-[360px] sm:min-h-[460px] bg-[linear-gradient(160deg,#0F1A2B_0%,#0A0F17_60%,#07090D_100%)] p-10 flex flex-col justify-center gap-3 text-[#EEF1F6]">
@@ -105,7 +105,7 @@ function FeaturedHero({ m, p }: { m: Match | null; p: Prediction | null }) {
 
       <div className="relative h-full p-5 sm:p-9 flex flex-col gap-6 sm:gap-8">
         <div className="flex flex-wrap items-center justify-center sm:justify-between gap-2">
-          <span className="text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#07090D] bg-[#C8FF3D] px-3 py-1.5 rounded-full">{tt("Featured match")}</span>
+          <span className="text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#07090D] bg-[#C8FF3D] px-3 py-1.5 rounded-full">{label || tt("Featured match")}</span>
           <span className="glass !rounded-full inline-flex items-center gap-2 px-3 py-1.5 text-xs sm:text-sm text-[#C9D0DB]">
             {m.competition.emblem && <img src={m.competition.emblem} alt="" width={16} height={16} className="w-4 h-4 object-contain" />}
             {m.competition.name}
@@ -145,6 +145,63 @@ function FeaturedHero({ m, p }: { m: Match | null; p: Prediction | null }) {
         </div>
       </div>
     </div>
+  )
+}
+
+/*
+ * Several big games (Oct 2026): the featured card becomes a swipeable row. Swipe / arrows / dots; it moves on by itself
+ * every 8 s until the visitor touches it (never with reduced motion). The next card peeks in on phones.
+ */
+function FeaturedCarousel({ matches }: { matches: Match[] }) {
+  const track = useRef<HTMLDivElement>(null)
+  const [at, setAt] = useState(0)
+  const [held, setHeld] = useState(false)
+  const go = useCallback((i: number) => {
+    const el = track.current
+    if (!el) return
+    const n = (i + matches.length) % matches.length
+    const slide = el.children[n] as HTMLElement | undefined
+    if (slide) el.scrollTo({ left: slide.offsetLeft, behavior: 'smooth' })
+  }, [matches.length])
+  const onScroll = () => {
+    const el = track.current
+    if (!el) return
+    const kids = [...el.children] as HTMLElement[]
+    let best = 0, dist = Infinity
+    kids.forEach((k, i) => { const d = Math.abs(k.offsetLeft - el.scrollLeft); if (d < dist) { dist = d; best = i } })
+    setAt(best)
+  }
+  useEffect(() => {
+    if (held || matches.length < 2) return
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    const id = window.setTimeout(() => go(at + 1), 8000)
+    return () => window.clearTimeout(id)
+  }, [at, held, go, matches.length])
+  const hold = () => setHeld(true)
+  const arrow = (dir: -1 | 1) => (
+    <button type="button" onClick={() => { hold(); go(at + dir) }} aria-label={dir < 0 ? tt('Previous match') : tt('Next match')}
+      className={`hidden sm:grid absolute top-1/2 -translate-y-1/2 ${dir < 0 ? 'left-3' : 'right-3'} z-10 w-10 h-10 place-items-center rounded-full bg-black/40 border border-white/15 text-white backdrop-blur-md hover:bg-black/60 transition-colors`}>
+      <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">{dir < 0 ? <path d="M15 5l-7 7 7 7" /> : <path d="M9 5l7 7-7 7" />}</svg>
+    </button>
+  )
+  return (
+    <section className="relative min-w-0" aria-roledescription="carousel" aria-label={tt('Featured matches')} onMouseEnter={hold} onTouchStart={hold} onFocus={hold}>
+      <div ref={track} onScroll={onScroll} className="relative flex gap-3 overflow-x-auto snap-x snap-mandatory no-scrollbar scroll-smooth">
+        {matches.map((m, i) => (
+          <div key={m.id} className="shrink-0 basis-[90%] sm:basis-full snap-start min-w-0 [&>*]:h-full" aria-roledescription="slide" aria-label={`${i + 1} / ${matches.length}`}>
+            <FeaturedHero m={m} p={mainPred(m)} label={`${tt('Featured match')} · ${i + 1}/${matches.length}`} />
+          </div>
+        ))}
+      </div>
+      {arrow(-1)}
+      {arrow(1)}
+      <div className="mt-3 flex items-center justify-center gap-1.5">
+        {matches.map((m, i) => (
+          <button key={m.id} type="button" onClick={() => { hold(); go(i) }} aria-label={`${tn(m.homeTeam)} – ${tn(m.awayTeam)}`} aria-current={i === at ? 'true' : undefined}
+            className={`h-1.5 rounded-full transition-all ${i === at ? 'w-6 bg-accent' : 'w-1.5 bg-faint/50 hover:bg-faint'}`} />
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -238,14 +295,28 @@ export default function Home() {
     )[0]
   }, [notStarted, full])
 
+  // more big games for the featured carousel (Oct 2026): the featured one plus up to 5 other big games of the next
+  // 7 days (a famous club on at least one side, not one-sided), shown in kick-off order — swipe to see them
+  const featuredList = useMemo(() => {
+    if (!featured) return []
+    const lopsided = (m: Match) => { const p = mainPred(m); return hasPct(p) && topPct(p) >= 85 }
+    const others = notStarted
+      .filter(m => m.id !== featured.id && new Date(m.utcDate).getTime() < Date.now() + 7 * 86400000 && mainPred(m))
+      .filter(m => matchFame(m.homeTeam, m.awayTeam) >= 8.5 && !lopsided(m))
+      .sort((a, b) => matchFame(b.homeTeam, b.awayTeam) - matchFame(a.homeTeam, a.awayTeam) || priority(a) - priority(b) || a.utcDate.localeCompare(b.utcDate))
+      .slice(0, 5)
+    return [featured, ...others].sort((a, b) => a.utcDate.localeCompare(b.utcDate))
+  }, [notStarted, featured])
+  const featuredIds = useMemo(() => new Set(featuredList.map(m => m.id)), [featuredList])
+
   // next kick-offs: the biggest games of the next 48 hours (then the next ones by time), in kick-off order
   const soonest = useMemo(() => {
-    const rest = notStarted.filter(m => m.id !== featured?.id)
+    const rest = notStarted.filter(m => m.id !== featured?.id && !featuredIds.has(m.id))
     const near = rest.filter(m => new Date(m.utcDate).getTime() < Date.now() + 48 * 3600 * 1000)
       .sort((a, b) => priority(a) - priority(b) || a.utcDate.localeCompare(b.utcDate)).slice(0, 5)
     const fill = rest.filter(m => !near.includes(m)).sort((a, b) => a.utcDate.localeCompare(b.utcDate)).slice(0, 5 - near.length)
     return [...near, ...fill].sort((a, b) => a.utcDate.localeCompare(b.utcDate))
-  }, [notStarted, featured])
+  }, [notStarted, featured, featuredIds])
 
   const { reasons: favReasons } = useFavorites()
   // favorites first: their next games get their own row on top
@@ -255,8 +326,8 @@ export default function Home() {
   )
   const next = useMemo(() => {
     const ranked = [...notStarted].filter(m => !favNext.includes(m)).sort((a, b) => ((a.competition.rank ?? 9) <= 1 ? 0 : 1) - ((b.competition.rank ?? 9) <= 1 ? 0 : 1) || a.utcDate.localeCompare(b.utcDate))
-    return ranked.filter(m => m.id !== featured?.id).slice(0, 10).sort((a, b) => a.utcDate.localeCompare(b.utcDate))
-  }, [notStarted, featured])
+    return ranked.filter(m => m.id !== featured?.id && !featuredIds.has(m.id)).slice(0, 10).sort((a, b) => a.utcDate.localeCompare(b.utcDate))
+  }, [notStarted, featured, featuredIds])
 
 
   const nextCard = (m: Match) => {
@@ -361,7 +432,7 @@ export default function Home() {
 
       {/* ---------- hero: featured match (team colours from the crests) + live / next kick-offs ---------- */}
       <div className="grid gap-5 lg:grid-cols-[1.75fr_1fr]">
-        <FeaturedHero m={featured} p={fp} />
+        {featuredList.length > 1 ? <FeaturedCarousel matches={featuredList} /> : <FeaturedHero m={featured} p={fp} />}
 
         <div className="card p-5 sm:p-6 flex flex-col gap-4">
           <div className="flex items-center justify-between">

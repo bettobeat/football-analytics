@@ -586,6 +586,12 @@ function MatchDetail() {
     ...(tables === null || tableShow.length ? [{ id: 'table' as TabId, label: tt('Standings'), short: tt('Table'), hint: tt('{0} table', { 0: m.competition.name }) }] : [])
   ]
 
+  // "Matchday 2 · League Stage · Group A" (the "·" of the translated "· Matchday" moves to the join)
+  const roundBits = [
+    m.matchday ? `${tt("· Matchday").replace(/^·\s*/, '')} ${m.matchday}` : null,
+    m.stage && m.stage !== 'REGULAR_SEASON' ? m.stage.replace(/_/g, ' ').toLowerCase().replace(/\b([a-z])/g, c => c.toUpperCase()).replace(/ - /g, ' · ') : null,
+    m.group ? m.group.replace(/_/g, ' ') : null
+  ].filter((x): x is string => !!x)
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
       {tabTitle && <h1 className="sr-only">{tabTitle}{m.competition?.name ? ` · ${m.competition.name}` : ''} {tt("prediction")}</h1>}
@@ -600,15 +606,18 @@ function MatchDetail() {
             style={{ background: `radial-gradient(700px 260px at 50% 120%, rgb(var(${pickVar})), transparent 70%)` }}
           />
         )}
-        <div className="relative flex flex-wrap items-center justify-between gap-2 text-sm text-muted mb-6">
-          <div className="flex items-center gap-2">
-            <Link to={`/league/${m.competition.code}`} className="flex items-center gap-2 hover:text-ink">
-              {m.competition.emblem && <img src={m.competition.emblem} alt="" className="w-5 h-5 object-contain" />}
-              <span className="font-medium text-ink/90 hover:underline">{m.competition.name}</span>
+        {/* competition · round · date — centred and stacked on phones, one line on wider screens */}
+        <div className="relative mb-5 sm:mb-6 flex flex-col items-center gap-1 text-center sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:text-left text-sm text-muted">
+          <div className="min-w-0 max-w-full flex flex-col items-center gap-0.5 sm:flex-row sm:items-center sm:gap-2">
+            <Link to={`/league/${m.competition.code}`} className="inline-flex items-center gap-2 max-w-full min-w-0 hover:text-ink">
+              {m.competition.emblem && <img src={m.competition.emblem} alt="" className="w-5 h-5 object-contain shrink-0" />}
+              <span className="font-semibold text-ink/90 hover:underline truncate">{m.competition.name}</span>
             </Link>
-            {m.matchday && <span className="text-faint">{tt("· Matchday")}{' '}{m.matchday}</span>}
-            {m.stage && m.stage !== 'REGULAR_SEASON' && <span className="text-faint">· {m.stage.replace(/_/g, ' ').toLowerCase().replace(/\b([a-z])/g, c => c.toUpperCase()).replace(/ - /g, ' · ')}</span>}
-            {m.group && <span className="text-faint">· {m.group.replace(/_/g, ' ')}</span>}
+            {roundBits.length > 0 && (
+              <span className="text-xs sm:text-sm text-faint sm:whitespace-nowrap"><span className="hidden sm:inline">· </span>{roundBits.join(' · ')}</span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs sm:text-sm">
             {m.competition.trial && (
               <span
                 className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-draw/15 text-draw"
@@ -617,8 +626,8 @@ function MatchDetail() {
                 {tt("New league · in testing")}
               </span>
             )}
+            <span className="text-faint whitespace-nowrap">{fmtDate(m.utcDate)}</span>
           </div>
-          <div className="text-faint">{fmtDate(m.utcDate)}</div>
         </div>
 
         <div className="relative grid grid-cols-[1fr_auto_1fr] items-start sm:items-center gap-2 sm:gap-8">
