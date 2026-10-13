@@ -61,7 +61,7 @@ Backend (`backend/src`, Express + TypeScript, `index.ts` holds every route):
   (out of the public record). `liveChance.ts` = live win chance.
 - Basketball: `basketball.ts` (API-Basketball games/box scores, `BB_LEAGUES`), `bbModel.ts` (**bb-v3**: v1 ratings +
   v2 possession ratings, 50/50 blend, player talent, `BB_TRIAL`), `bbSite.ts` (pages), `bbPlayers.ts`, `bdl.ts`
-  (balldontlie: NBA injuries/players), `bbInjuries.ts`, `bbResults.ts` (result checks), `bbLeagueConfig.ts` /
+  (balldontlie: NBA injuries/players), `bbInjuries.ts`, `bbResults.ts` (result checks), `bbLive.ts` (live win chance + projected score), `bbLeagueConfig.ts` /
   `bbLeagueCoverage.ts` (leagues added from Admin → Basketball leagues, code `BB<id>`). `BASKETBALL_PUBLIC=1` opens
   the basketball site to everyone (admins see it before).
 - Accounts & admin: `auth.ts`, `twoFactor.ts`, `roles.ts`, `staffConsole.ts`, `securityLog.ts`, `crm.ts`, `billing.ts`
@@ -87,7 +87,7 @@ Frontend (`frontend/src`, React + Vite + Tailwind, tokens in `index.css`, colour
 
 ## Planned next (Oct 2026)
 
-1. Basketball live predictions during games (live win chance, like football) — before the 18 Oct launch.
+1. Basketball launch ~18 Oct (`BASKETBALL_PUBLIC=1`); live win chance is built (fix110), check `/api/bb/live-test` first.
 2. Self-learning loop: nightly champion/challenger refit with out-of-sample referee, per-league drift, calibration
    watchdog, logged in Admin.
 3. Weekly automated review (site, model, data) that pushes safe fixes.

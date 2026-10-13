@@ -25,8 +25,11 @@ export interface BbPrediction {
   b2bAway?: boolean
   injHome?: number
   injAway?: number
+  /** while the game is on: win chance now and the projected final score (from the prediction saved at tip-off) */
+  live?: BbLiveChance | null
   hit: boolean | null
 }
+export interface BbLiveChance { pHome: number; pAway: number; score: { home: number; away: number }; total: number; left: number }
 export interface BbGame {
   id: number
   league: { code: string; name: string; trial?: boolean }

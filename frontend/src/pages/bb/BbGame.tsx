@@ -10,7 +10,7 @@ import YourPicks from '../../components/YourPicks'
 import { RevealCover } from '../../components/Reveal'
 import { BB_STATUS, liveLabel, spreadText, bbTeamFav, bbLeagueFav, useBbConfig, type BbGame as Game } from '../../lib/bb'
 import { FavStar } from '../../lib/favorites'
-import { Card, TeamLogo, LockedNote, rid, rstatus } from './parts'
+import { Card, TeamLogo, LockedNote, LiveChanceBox, rid, rstatus } from './parts'
 import type { Standings } from './BbLeague'
 import { StatsTab, RestTab, H2HTab, StandingsTab } from './GameTabs'
 import { MarketsCard, CompareCard, PlayersCard, ModelTable, type Markets, type ModelInfo, type GamePlayer } from './GameExtras'
@@ -157,6 +157,7 @@ export default function BbGame() {
         )}
       </div>
 
+      {live && <LiveChanceBox g={g} />}
       {g.corrected && done && <p className="mt-2 text-center text-[11px] text-faint">{t('Final score corrected by us: our data provider had it wrong.')}</p>}
       {access === 'admin' && done && <ResultAdmin game={g} onDone={() => axios.get(`${API_URL}/basketball/game/${id}`).then(r => setD(r.data.data)).catch(() => undefined)} />}
 

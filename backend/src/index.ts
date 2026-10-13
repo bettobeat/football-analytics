@@ -67,6 +67,7 @@ import { bbPublic, bbLeagues, bbGames, bbGame, bbStandings, bbTeam } from './ser
 import { bbPlayer, nbaLeaders, bbSearch } from './services/bbPlayers';
 import { bdlStatus, startBdlScheduler } from './services/bdl';
 import { bbBacktest, bbRecord, bbExport, bbExportPlayers, bbWalkForward } from './services/bbModel';
+import { bbLiveQuarterTest } from './services/bbLive';
 import { highlightsFor, highlightsStatus, lastCandidates } from './services/highlights';
 import { rebuildPlayerQuality, playerQualityTable } from './services/playerQuality';
 import { db } from './db';
@@ -2034,6 +2035,16 @@ app.get('/api/basketball/record', (req, res) => {
 // Admin: how the model did on past seasons it never saw (internal, like football's past seasons)
 app.get('/api/bb/backtest', (_req, res) => res.json({ data: bbBacktest(), timestamp: new Date().toISOString() }));
 app.get('/api/bb/wf', (req, res) => res.json({ data: bbWalkForward(String(req.query.code || '').toUpperCase()), timestamp: new Date().toISOString() }));
+// live win chance tested at the end of Q1 / Q2 / Q3 on finished games (?tune=1: grid over a / b; ?a=&b= to try values)
+app.get('/api/bb/live-test', (req, res) => {
+  const conf: Record<string, number> = {};
+  for (const k of ['a', 'b']) if (req.query[k] !== undefined && Number.isFinite(Number(req.query[k]))) conf[k] = Number(req.query[k]);
+  try {
+    res.json({ data: bbLiveQuarterTest(conf, req.query.tune === '1'), timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Basketball live test failed');
+  }
+});
 // Admin: research export of one league's games (model research in the browser)
 app.get('/api/bb/export', (req, res) => {
   const code = String(req.query.code || '').toUpperCase();

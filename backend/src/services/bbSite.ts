@@ -11,6 +11,7 @@ import { predictGame, teamRating, isPreseason, leagueRatings, BB_MODEL, leagueMo
 import { nbaInjuries } from './bbInjuries';
 import { bbSquad, nbaBoxExtras } from './bbPlayers';
 import { personKey } from './bdl';
+import { bbLiveFor, periodLen } from './bbLive';
 
 export const bbPublic = () => process.env.BASKETBALL_PUBLIC === '1';
 
@@ -63,9 +64,9 @@ function shape(g: Row, full: boolean) {
     quarters: q,
     resultCheck: !!check,
     corrected: !!fixed,
-    // live clock: minutes left in the period (NBA quarters 12 min, FIBA 10, overtime 5); the provider gives whole minutes
+    // live clock: minutes left in the period (NBA / CBA quarters 12 min, FIBA 10, overtime 5); the provider gives whole minutes
     clock: state === 'live' && g.timer != null && ['Q1', 'Q2', 'Q3', 'Q4', 'OT'].includes(status)
-      ? (() => { const len = status === 'OT' ? 5 : g.code === 'NBA' ? 12 : 10; return { played: g.timer, left: Math.max(0, len - g.timer) }; })()
+      ? (() => { const len = status === 'OT' ? 5 : periodLen(g.code); return { played: g.timer, left: Math.max(0, len - g.timer) }; })()
       : null,
     prediction: pred ? {
       model: BB_MODEL,
@@ -75,7 +76,9 @@ function shape(g: Row, full: boolean) {
         pHome: Math.round(pred.pHome * 1000) / 10, pAway: Math.round((1 - pred.pHome) * 1000) / 10,
         spread: r1(pred.margin), total: r1(pred.total), score: { home: Math.round(pred.home), away: Math.round(pred.away) },
         restHome: pred.restHome ?? null, restAway: pred.restAway ?? null, b2bHome: !!pred.b2bHome, b2bAway: !!pred.b2bAway,
-        injHome: pred.injHome || 0, injAway: pred.injAway || 0
+        injHome: pred.injHome || 0, injAway: pred.injAway || 0,
+        // live win chance + projected final score while the game is on (services/bbLive.ts), from the tip-off prediction
+        live: state === 'live' ? bbLiveFor({ ...g, quarters: q }, { pHome: pred.pHome, home: pred.home, away: pred.away }) : null
       } : {}),
       hit: state === 'done' && g.hs !== null && !check ? (pick === 'H') === (g.hs > g.as_) : null
     } : null

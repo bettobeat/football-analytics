@@ -1583,5 +1583,9 @@
  "right in a row": "giusti di fila",
  "{0} of {1} settled": "{0} su {1} decisi",
  "Previous match": "Partita precedente",
- "Featured matches": "Partite in evidenza"
+ "Featured matches": "Partite in evidenza",
+ "Projected final score": "Punteggio finale previsto",
+ "Projected": "Previsto",
+ "{0} points in total": "{0} punti in totale",
+ "Updated every minute from our prediction at tip-off, the score and the time left.": "Aggiornato ogni minuto dalla nostra previsione pre-partita, dal punteggio e dal tempo rimasto."
 }

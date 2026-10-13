@@ -8,7 +8,7 @@ import { isCovered, revealMatch, useRevealState, justRevealed } from '../../lib/
 import CountUp from '../../components/CountUp'
 import { RevealChip } from '../../components/Reveal'
 import { useBbConfig, useBbFavorites, liveLabel, bbRank, type BbGame } from '../../lib/bb'
-import { TeamLogo, LockIcon, GameRow, rid, rstatus } from './parts'
+import { TeamLogo, LockIcon, GameRow, useLiveChance, rid, rstatus } from './parts'
 import { useNews, NewsLead } from '../../components/NewsList'
 
 interface Rec { n: number; hits: number; hitRate: number | null; strongN: number; strongHits: number; strongHitRate: number | null }
@@ -265,6 +265,7 @@ export default function BbHome() {
                     </div>
                     <div className="flex flex-col items-center gap-2 min-w-0"><TeamLogo team={liveMain.away} size={52} /><span className="text-sm font-bold truncate max-w-full">{liveMain.away.name}</span></div>
                   </div>
+                  <HeroLiveChance g={liveMain} />
                   <div className="text-center text-xs text-muted">{t('Live score and box score →')}</div>
                 </Link>
                 <div className="space-y-1">
@@ -273,6 +274,7 @@ export default function BbHome() {
                       <span className="text-[11px] font-bold text-win w-14 whitespace-nowrap">{liveLabel(g, true)}</span>
                       <span className="truncate flex-1">{g.home.name} – {g.away.name}</span>
                       <b className="font-display">{g.score?.home ?? 0}–{g.score?.away ?? 0}</b>
+                      <LiveLeadPct g={g} />
                     </Link>
                   ))}
                 </div>
@@ -386,4 +388,32 @@ export default function BbHome() {
       </div>
     </div>
   )
+}
+
+/** Home hero: the live win chance of both teams and the projected final score. */
+function HeroLiveChance({ g }: { g: BbGame }) {
+  const l = useLiveChance(g)
+  if (!l) return null
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-xs font-bold num">
+        <span className="text-home">{Math.round(l.pHome)}%</span>
+        <span className="text-[11px] font-semibold text-muted">{t('Live win chance')}</span>
+        <span className="text-away">{Math.round(l.pAway)}%</span>
+      </div>
+      <div className="flex h-1.5 gap-[3px]" aria-hidden>
+        <div className="rounded-full bg-home transition-all duration-700" style={{ width: `calc(${Math.max(1, l.pHome)}% - 2px)` }} />
+        <div className="rounded-full bg-away transition-all duration-700" style={{ width: `calc(${Math.max(1, l.pAway)}% - 2px)` }} />
+      </div>
+      <div className="text-center text-[11px] text-faint num">{t('Projected final score')}: {l.score.home} – {l.score.away}</div>
+    </div>
+  )
+}
+
+/** Short live list on the home hero: the win chance of the team ahead on it. */
+function LiveLeadPct({ g }: { g: BbGame }) {
+  const l = useLiveChance(g)
+  if (!l) return null
+  const home = l.pHome >= 50
+  return <span className={`num text-[11px] font-bold w-9 text-right ${home ? 'text-home' : 'text-away'}`} title={t('Live win chance')}>{Math.round(home ? l.pHome : l.pAway)}%</span>
 }

@@ -153,6 +153,8 @@ export function GameRow({ g, showLeague = false, showDay = false, compact = fals
           <span className="inline-flex items-center gap-1.5 text-xs text-faint">
             <LockIcon /> {pickName ? <span className={`font-semibold truncate max-w-[110px] ${PICK_COLOR[pick!]}`}>{pickName}</span> : t('Locked')}
           </span>
+        ) : isLive && p?.live ? (
+          <LiveRowPct g={g} />
         ) : p && pick && pct !== null ? (
           <>
             {/* phones: the pick and its % */}
@@ -253,6 +255,8 @@ export function dayTitle(iso: string) {
 
 /** Live game in a sidebar box (football's LiveRow). */
 export function LiveRow({ g }: { g: BbGame }) {
+  const live = useLiveChance(g)
+  const lead = live ? (live.pHome >= 50 ? 'H' : 'A') : null
   return (
     <Link to={`/basketball/game/${g.id}`} className="block rounded-xl px-2 py-2 hover:bg-surface2 transition-colors">
       <div className="flex items-center justify-between text-[10px] text-faint mb-1">
@@ -264,11 +268,99 @@ export function LiveRow({ g }: { g: BbGame }) {
         return (
           <div key={s} className="flex items-center justify-between gap-2 py-0.5">
             <span className="flex items-center gap-2 min-w-0"><TeamLogo team={team} size={18} /><span className="text-sm font-medium text-ink truncate">{team.name}</span></span>
-            <span className="num text-sm font-bold text-ink">{g.score ? (s === 'H' ? g.score.home : g.score.away) : 0}</span>
+            <span className="flex items-center gap-2">
+              {live && <span className={`num text-[11px] font-semibold ${lead === s ? 'text-live' : 'text-faint'}`}>{Math.round(s === 'H' ? live.pHome : live.pAway)}%</span>}
+              <span className="num text-sm font-bold text-ink w-7 text-right">{g.score ? (s === 'H' ? g.score.home : g.score.away) : 0}</span>
+            </span>
           </div>
         )
       })}
     </Link>
+  )
+}
+
+/** The live win chance of a game the visitor may see (not covered by the free reveal), else null. */
+export function useLiveChance(g: BbGame) {
+  const p = g.prediction
+  const { hidden } = useReveal(rid(g), rstatus(g), !!p && !p.locked)
+  return g.state === 'live' && p && !p.locked && !hidden && p.live ? p.live : null
+}
+
+/** In a game row while the game is on: who is ahead on win chance now, and the projected final score. */
+function LiveRowPct({ g }: { g: BbGame }) {
+  const l = g.prediction!.live!
+  const lead = l.pHome >= 50 ? 'H' : 'A'
+  const name = lead === 'H' ? g.home.name : g.away.name
+  const pct = Math.round(lead === 'H' ? l.pHome : l.pAway)
+  return (
+    <>
+      <span className="sm:hidden text-right leading-tight" title={t('Live win chance')}>
+        <span className="block text-[11px] font-bold truncate max-w-[84px] text-live">{name}</span>
+        <span className="block num text-[11px] font-semibold text-ink/80">{pct}%</span>
+      </span>
+      <span className="hidden sm:flex items-center gap-1" title={t('Live win chance')}>
+        {(['H', 'A'] as const).map(k => (
+          <span key={k} className={`w-11 h-7 rounded-md grid place-items-center leading-none ${k === lead ? 'bg-live text-bg' : 'bg-surface2/70 text-muted'}`}>
+            <span className="text-[8px] font-bold opacity-75">{k === 'H' ? '1' : '2'}</span>
+            <span className="num text-[11px] font-bold">{Math.round(k === 'H' ? l.pHome : l.pAway)}%</span>
+          </span>
+        ))}
+        <span className="hidden lg:block w-px h-5 bg-line mx-1" aria-hidden />
+        <span className="hidden lg:grid w-[60px] h-7 rounded-md place-items-center leading-none border border-live/40 text-muted" title={t('Projected final score')}>
+          <span className="text-[8px] font-bold opacity-75">{t('Projected')}</span>
+          <span className="num text-[11px] font-bold text-ink">{l.score.home}-{l.score.away}</span>
+        </span>
+      </span>
+    </>
+  )
+}
+
+/** Game page, while the game is on: win chance now vs at tip-off, and the projected final score. */
+export function LiveChanceBox({ g }: { g: BbGame }) {
+  const l = useLiveChance(g)
+  const p = g.prediction
+  if (!l || !p || typeof p.pHome !== 'number') return null
+  const cap = (v: number) => Math.min(99, Math.max(1, Math.round(v)))
+  const rows = [
+    { k: 'H' as const, label: g.home.name, now: l.pHome, before: p.pHome, bar: 'bg-home', pts: l.score.home },
+    { k: 'A' as const, label: g.away.name, now: l.pAway, before: p.pAway ?? 100 - p.pHome, bar: 'bg-away', pts: l.score.away }
+  ]
+  const top = l.pHome >= 50 ? 'H' : 'A'
+  return (
+    <div className="mt-4 rounded-2xl border border-live/40 bg-live/[0.06] p-3 sm:p-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="inline-block w-2 h-2 rounded-full bg-live animate-pulseDot" aria-hidden />
+          <span className="text-sm font-bold text-ink">{t('Live win chance')}</span>
+        </div>
+        <span className="num text-xs font-semibold text-live">{liveLabel(g, true)} · {g.score?.home ?? 0}-{g.score?.away ?? 0}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2 mt-3">
+        {rows.map(r => {
+          const diff = Math.round(r.now) - Math.round(r.before)
+          return (
+            <div key={r.k} className={`rounded-xl px-2 py-2 text-center ${r.k === top ? 'bg-surface border border-line' : ''}`}>
+              <div className="text-[11px] text-muted truncate">{r.label}</div>
+              <div className="num text-xl sm:text-2xl font-extrabold text-ink">{cap(r.now)}%</div>
+              <div className={`num text-[11px] font-semibold ${diff > 0 ? 'text-win' : diff < 0 ? 'text-loss' : 'text-faint'}`}>
+                {diff > 0 ? '▲' : diff < 0 ? '▼' : '='} {Math.abs(diff)} <span className="text-faint font-normal">· {t('was {0}%', { 0: Math.round(r.before) })}</span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <div className="flex h-2 gap-[3px] mt-3" aria-hidden>
+        {rows.map(r => <div key={r.k} className={`rounded-full ${r.bar} transition-all duration-700`} style={{ width: `calc(${Math.max(1, r.now)}% - 3px)` }} />)}
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-surface/70 border border-line/60 px-3 py-2">
+        <span className="text-xs text-muted">{t('Projected final score')}</span>
+        <span className="text-right leading-tight">
+          <span className="block num text-sm font-extrabold text-ink whitespace-nowrap">{l.score.home} – {l.score.away}</span>
+          <span className="block num text-[11px] text-faint whitespace-nowrap">{t('{0} points in total', { 0: l.total })}</span>
+        </span>
+      </div>
+      <p className="text-[11px] text-faint mt-2">{t('Updated every minute from our prediction at tip-off, the score and the time left.')}</p>
+    </div>
   )
 }
 

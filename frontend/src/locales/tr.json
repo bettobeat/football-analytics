@@ -1583,5 +1583,9 @@
  "right in a row": "üst üste doğru",
  "{0} of {1} settled": "{1} sonuçtan {0}",
  "Previous match": "Önceki maç",
- "Featured matches": "Öne çıkan maçlar"
+ "Featured matches": "Öne çıkan maçlar",
+ "Projected final score": "Tahmini maç sonucu",
+ "Projected": "Tahmin",
+ "{0} points in total": "toplam {0} sayı",
+ "Updated every minute from our prediction at tip-off, the score and the time left.": "Maç öncesi tahminimiz, skor ve kalan süreye göre her dakika güncellenir."
 }

@@ -1,9 +1,9 @@
 # SportLikely — backlog and decisions (updated 13 Oct 2026)
 
-Next free fix number: **fix110**. Keep this file current: when you ship something, move it to "Done" with its fix number.
+Next free fix number: **fix111**. Keep this file current: when you ship something, move it to "Done" with its fix number.
 
 ## Now / next
-- **Basketball live predictions during games** (Yarin, 11 Oct): a live win chance while games are on, like football's (`liveChance.ts`), updating with score and time left. Plan with Yarin: what to show (live win %, live predicted final score / total, quarter by quarter), where (game page, live box, basketball home), refresh rate, data (API-Basketball live `timer` + balldontlie for NBA), and test on past games' quarter scores first. Needed before the basketball launch (~18 Oct: set `BASKETBALL_PUBLIC=1`, change "basketball coming" wording).
+- **Basketball launch (~18 Oct)**: set `BASKETBALL_PUBLIC=1`, change "basketball coming" wording. Before that, open `/api/bb/live-test?tune=1` (admin) to check the live win chance on all 18 leagues with bb-v3's own predictions (it was fitted on public NBA data; see basketball.md).
 - **Self-learning loop** (Yarin, 13 Oct, after the basketball launch): nightly champion/challenger refit of v3 / elo-euro / bb-v3 on data up to 30 days ago, scored on the last 30 days (log loss + Brier, 300+ games), swap only when better; per-league settings drift weekly (`/api/model/v3/league-tune`); calibration watchdog per league and market; weekly "why did we miss" factor report; new-league verdict after 150 settled games. Everything logged in Admin with one-click rollback.
 - **Weekly automated review** (scheduled task): site, model, data health, error log, unsettled games, leagues in testing → report + safe fixes pushed.
 - **3-day free trial** on every paid plan (decided 13 Oct) — built with payments (checkout trial in the provider), Plans page badge "3 days free", "Trial ends <date>" in Account, reminder email a day before, one trial per account.
@@ -22,6 +22,7 @@ Next free fix number: **fix110**. Keep this file current: when you ship somethin
 - Model ideas: relegated clubs overrated (squad value ranked within the division) → absolute scale; add League Two / SC2 history; goals model from shots/xG; "Best bet" per match.
 
 ## Done (newest first)
+- fix110 (13 Oct): basketball live win chance (`bbLive.ts`): live win % + projected final score on the game page, game rows, live boxes, basketball home and a new "Live now" card on league pages; from the tip-off prediction, the score and the time left. NBA quarter test (2,495 games out of sample): log loss after Q1 / Q2 / Q3 0.567 / 0.488 / 0.358, 70 / 76 / 84% right, calibrated. Admin test on every league: `/api/bb/live-test?tune=1`.
 - fix109 (13 Oct): Champions League clubs matched to API-Football ratings (`clubElo.matchFdTeam`); clubs without a squad value count as €12m; n<2 instead of n<8 → no more v1 fallback for CL games. Out-of-sample 705 cup games: log loss 0.958 → 0.952, hit 56.2 → 58.4%. Phone: accessibility + feedback buttons shrunk.
 - fix108 (13 Oct): basketball leagues from Admin (`bbLeagueConfig.ts`, `bbLeagueCoverage.ts`, routes `/api/admin/bb-league-coverage`, `/api/admin/bb-extra-leagues`); `LeaguesCard sport="basketball"`.
 - fix107 (13 Oct): featured-match carousel on Home (up to 6 big games of the next 7 days, swipe/arrows/dots, auto-advance 8 s); match page header stacked on phones.

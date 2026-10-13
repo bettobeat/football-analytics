@@ -5,7 +5,7 @@ import { API_URL } from '../../lib/socket'
 import { t } from '../../lib/i18n'
 import { useBbConfig, bbLeagueFav, type BbGame } from '../../lib/bb'
 import { FavStar } from '../../lib/favorites'
-import { Card, GameList, Skeleton, TeamLogo } from './parts'
+import { Card, GameList, Skeleton, TeamLogo, LiveRow } from './parts'
 import { useNews, NewsRows } from '../../components/NewsList'
 
 export interface StandRow { position: number; team: { id: number; name: string; logo: string | null }; played: number; won: number; lost: number; pct: number | null; pointsFor: number | null; pointsAgainst: number | null }
@@ -91,6 +91,16 @@ export default function BbLeague() {
     axios.get(`${API_URL}/basketball/games`, { params: { league: c, days: 10 } }).then(r => setNext((r.data.data || []).filter((g: BbGame) => g.state !== 'done'))).catch(() => setNext([]))
     axios.get(`${API_URL}/basketball/games`, { params: { league: c, days: 21, results: 1 } }).then(r => setResults((r.data.data || []).filter((g: BbGame) => g.state === 'done'))).catch(() => setResults([]))
   }, [code])
+  const live = (next || []).filter(g => g.state === 'live')
+  // live box: refresh the league's games every minute while one is on (score, clock, live win chance)
+  useEffect(() => {
+    if (!live.length) return
+    const c = code.toUpperCase()
+    const iv = setInterval(() => {
+      axios.get(`${API_URL}/basketball/games`, { params: { league: c, days: 10 } }).then(r => setNext((r.data.data || []).filter((g: BbGame) => g.state !== 'done'))).catch(() => undefined)
+    }, 60000)
+    return () => clearInterval(iv)
+  }, [code, live.length > 0])
   useEffect(() => { if (league) document.title = t('{0} · SportLikely', { 0: league.name }) }, [league])
 
   return (
@@ -110,6 +120,11 @@ export default function BbLeague() {
           {table === undefined ? <Skeleton rows={10} h="h-7" /> : table ? <StandingsTable data={table} /> : <p className="text-sm text-faint">{t('No table yet.')}</p>}
         </Card>
         <div className="space-y-6 min-w-0">
+          {live.length > 0 && (
+            <Card title={t('Live now')} action={<span className="inline-flex items-center gap-1.5 text-xs font-bold text-live"><span className="w-1.5 h-1.5 rounded-full bg-live animate-pulseDot" />{t('{0} live', { 0: live.length })}</span>}>
+              <ul className="space-y-1">{live.map(g => <li key={g.id}><LiveRow g={g} /></li>)}</ul>
+            </Card>
+          )}
           {leaders && leaders.lists.length > 0 && <LeadersCard data={leaders} />}
           <Card title={t('Next games')}>
             {!next ? <Skeleton rows={5} /> : <div className="max-h-[520px] overflow-y-auto overscroll-contain pr-1"><GameList games={next} empty={t('No games in the next 10 days.')} /></div>}
