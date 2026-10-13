@@ -5,6 +5,7 @@ import { API_URL } from '../lib/socket'
 import { errorText, useAuth, type User } from '../lib/auth'
 import DataHealth from '../components/DataHealth'
 import VisitorsCard from '../components/VisitorsCard'
+import LeaguesCard from '../components/LeaguesCard'
 
 type Row = User & { lastLoginAt: string | null }
 
@@ -97,6 +98,7 @@ export default function Admin() {
           <SiteErrorsCard />
           <BackupsCard />
           <BbResultsCard />
+          <LeaguesCard />
           <section className="card p-5 sm:p-6 mb-8">
             <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
               <h2 className="font-display text-lg font-bold text-ink">Accounts</h2>

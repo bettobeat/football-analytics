@@ -4,6 +4,7 @@
  */
 import { db } from '../db';
 import logger from '../utils/logger';
+import { onExtraLeague, extraCode } from './leagueConfig';
 
 const BASE = 'https://www.football-data.co.uk/mmz4281';
 
@@ -45,6 +46,19 @@ GROUPS.F.competitions.push('AF62'); // Ligue 2
 export const NEW_FORMAT_DIVS = new Set(['BRA', 'ARG', 'USA', 'MEX', 'JPN', 'DNK', 'POL', 'NOR', 'SWE']);
 /** Leagues played within a calendar year (spring to autumn) rather than August to May. */
 export const CALENDAR_DIVS = new Set(['BRA', 'ARG', 'USA', 'JPN', 'NOR', 'SWE']);
+/**
+ * Leagues added from the admin panel (services/leagueConfig.ts): one group per league, coded AF<id>, with history
+ * built from API-Football fixtures (apiFootball.ts → storeAfHistory) instead of a football-data.co.uk CSV.
+ */
+export const AF_HISTORY_DIVS = new Set<string>();
+onExtraLeague(l => {
+  const code = extraCode(l.id);
+  const owner = Object.entries(GROUPS).find(([, cfg]) => cfg.competitions.includes(code))?.[0];
+  if (owner && owner !== code) return; // already predicted through another group (football-data.co.uk history)
+  if (!GROUPS[code]) GROUPS[code] = { divisions: [code], competitions: [code] };
+  AF_HISTORY_DIVS.add(code);
+  if (l.calendar) CALENDAR_DIVS.add(code);
+});
 
 /**
  * Season code for a match date in a division. August–May leagues roll over in July ("2627" = 2026/27);
@@ -253,6 +267,7 @@ export async function syncAll(seasons: string[] = seasonCodes(3), force: boolean
   const summary: { division: string; season: string; rows: number; skipped?: boolean; error?: string }[] = [];
   for (const cfg of Object.values(GROUPS)) {
     for (const division of cfg.divisions) {
+      if (AF_HISTORY_DIVS.has(division)) continue; // history from API-Football (apiFootball.ts)
       if (NEW_FORMAT_DIVS.has(division)) {
         // one file per country with every season: download it once and keep the seasons asked for
         try {
@@ -289,6 +304,36 @@ export async function syncAll(seasons: string[] = seasonCodes(3), force: boolean
   const total = (db.prepare(`SELECT COUNT(*) AS c FROM history_matches`).get() as any).c;
   logger.info(`History sync done: ${total} matches in database`);
   return { total, summary };
+}
+
+/**
+ * History for an API-Football league (admin-added): finished league matches of one season, written like a
+ * football-data.co.uk row without odds or match stats. Returns rows stored.
+ */
+const insertAfHistory = db.prepare(`
+  INSERT INTO history_matches (division, season, date, home, away, hg, ag) VALUES (?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(division, season, date, home, away) DO UPDATE SET hg = excluded.hg, ag = excluded.ag
+`);
+export function storeAfHistory(division: string, rows: { date: string; home: string; away: string; hg: number; ag: number }[]) {
+  if (!AF_HISTORY_DIVS.has(division)) return 0;
+  const perSeason = new Map<string, number>();
+  db.exec('BEGIN');
+  try {
+    for (const r of rows) {
+      const season = seasonForDivision(division, r.date);
+      insertAfHistory.run(division, season, r.date, r.home, r.away, r.hg, r.ag);
+      perSeason.set(season, (perSeason.get(season) || 0) + 1);
+    }
+    for (const [sc, n] of perSeason) {
+      const total = (db.prepare(`SELECT COUNT(*) AS c FROM history_matches WHERE division = ? AND season = ?`).get(division, sc) as any).c;
+      upsertSync.run(division, sc, Math.max(n, total), new Date().toISOString());
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+  return rows.length;
 }
 
 export interface HistoryMatch {
@@ -582,6 +627,7 @@ export async function syncH2HArchive(back = 10) {
   };
   for (const cfg of Object.values(GROUPS)) {
     for (const division of cfg.divisions) {
+      if (AF_HISTORY_DIVS.has(division)) continue; // no CSV archive for API-Football leagues
       if (NEW_FORMAT_DIVS.has(division)) {
         try { summary.push({ division, season: 'all', rows: store(division, parseCSV(await fetchCSV(division, seasons[0])), null) }); }
         catch (e: any) { summary.push({ division, season: 'all', rows: 0, error: e.message }); }
@@ -638,7 +684,7 @@ export async function syncHalfTimes() {
   const summary: { division: string; season: string; rows: number; error?: string }[] = [];
   for (const cfg of Object.values(GROUPS)) {
     for (const division of cfg.divisions) {
-      if (NEW_FORMAT_DIVS.has(division)) continue;
+      if (NEW_FORMAT_DIVS.has(division) || AF_HISTORY_DIVS.has(division)) continue;
       for (const season of seasons) {
         try {
           const rows = parseCSV(await fetchCSV(division, season));

@@ -20,7 +20,8 @@ import { yieldLoop, timed } from './perf';
 import { db } from '../db';
 import logger from '../utils/logger';
 import { markFresh, markFailed } from './freshness';
-import { GROUPS, ALIASES, similarity, seasonCodes } from './history';
+import { GROUPS, ALIASES, similarity, seasonCodes, AF_HISTORY_DIVS, storeAfHistory } from './history';
+import { onExtraLeague, extraCode } from './leagueConfig';
 import { playerValue } from './squadValues';
 import { syncPlayerData } from './playerData';
 
@@ -70,6 +71,12 @@ export const AF_LEAGUES: { id: number; group: string; division: string; top: boo
 ];
 // second divisions that were fixtures/injuries only: collect their lineups too
 for (const l of AF_LEAGUES) if (['E1', 'SP2', 'I2', 'D2', 'F2'].includes(l.division)) l.top = true;
+// Leagues added from the admin panel (services/leagueConfig.ts): full feed, history from these fixtures
+onExtraLeague(l => {
+  const code = extraCode(l.id);
+  if (AF_LEAGUES.some(x => x.id === l.id) || !AF_HISTORY_DIVS.has(code)) return;
+  AF_LEAGUES.push({ id: l.id, group: code, division: code, top: true });
+});
 
 /** Extra name hints for API-Football spellings (lowercased fd name → hint). */
 const AF_ALIASES: Record<string, string> = {
@@ -271,6 +278,18 @@ async function syncFixtures(league: (typeof AF_LEAGUES)[number], season: number)
   } catch (e) {
     db.exec('ROLLBACK');
     throw e;
+  }
+  // admin-added leagues: their model history is these results (no football-data.co.uk file)
+  if (AF_HISTORY_DIVS.has(league.division)) {
+    const done = ((json.response || []) as any[])
+      .filter(f => ['FT', 'AET', 'PEN'].includes(f.fixture?.status?.short) && f.fixture?.date && f.teams?.home?.name && f.teams?.away?.name)
+      .map(f => ({
+        date: String(f.fixture.date).slice(0, 10),
+        home: String(f.teams.home.name), away: String(f.teams.away.name),
+        hg: f.score?.fulltime?.home ?? f.goals?.home, ag: f.score?.fulltime?.away ?? f.goals?.away
+      }))
+      .filter(r => Number.isFinite(r.hg) && Number.isFinite(r.ag));
+    if (done.length) storeAfHistory(league.division, done);
   }
   markSync(`fixtures|${league.id}|${season}`, { n });
   return n;

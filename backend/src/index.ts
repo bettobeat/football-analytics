@@ -81,13 +81,15 @@ import { normalizeName } from './services/history';
 import { markFresh, markFailed } from './services/freshness';
 import { dataHealth, startDataHealthScheduler } from './services/dataHealth';
 import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures, afGet, afRemaining, xgCoverage } from './services/apiFootball';
+import { leagueCoverage, pickForAdding } from './services/leagueCoverage';
+import { addExtraLeague, removeExtraLeague, setExtraTrial } from './services/leagueConfig';
 import {
   signup, login, changePassword, setPlan, adminResetPassword, listUsers, userStats, createSession, destroySession, userForToken,
   parseCookies, setSessionCookie, clearSessionCookie, SESSION_COOKIE, staffOf, permsOf, setRole, Staff, userById, checkPassword, sessionHash, startEmailChange, confirmEmailChange, accessOf, canSeeFull, isPaid, teaseDeep, teaseDeepExcept, AuthError, Access, User,
   sendVerification, verifyEmail, requestPasswordReset, resetPassword, setMarketingOptIn, usersCsv, verificationRequired, exportUserData, deleteAccount, cancelPlan, resumePlan, leaveFeedback
 } from './services/auth';
 import { playerDataStatus, teamPlayers } from './services/playerData';
-import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, backfillV3, setRelOverride, SweepVariant, tuneLeaguesV3, leagueTuneProgress, leagueConvStatus, clearLeagueConv, tunedStatus, clearTuning, applyStoredTuning } from './services/gridModel';
+import { MODEL_V3, modelV3Status, runBacktestV3, runBacktestV3All, backtestProgressV3, prepareModelV3, CONV, sweepV3, autoVariants, parseCompactVariants, sweepProgress, backfillV3, setRelOverride, SweepVariant, tuneLeaguesV3, leagueTuneProgress, leagueConvStatus, clearLeagueConv, tunedStatus, clearTuning, applyStoredTuning, prepareModelV3Async } from './services/gridModel';
 
 const isDev = (process.env.NODE_ENV || 'development') !== 'production';
 
@@ -798,6 +800,45 @@ app.get('/api/admin/client-errors', (req, res) => {
 app.post('/api/admin/client-errors/:sig([a-f0-9]{16})', jsonOnly, (req, res) => {
   resolveClientError(req.params.sig, !!req.body?.resolved);
   res.json({ data: { ok: true } });
+});
+// More football leagues (Oct 2026): API-Football coverage scan + leagues added from the admin panel (leagueConfig.ts)
+app.get('/api/admin/league-coverage', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try { res.json({ data: await leagueCoverage(req.query.refresh === '1') }); }
+  catch (e: any) { res.status(502).json({ error: `Coverage scan failed: ${e.message}` }); }
+});
+let extraLeagueJob: Promise<void> | null = null;
+/** After adding leagues: pull their fixtures, history, injuries and lineups now, then rebuild the model. */
+function warmExtraLeagues() {
+  if (extraLeagueJob) return;
+  extraLeagueJob = (async () => {
+    try {
+      await afTick(true);
+      await refreshAfWindow().catch(() => undefined);
+      await prepareModelV3Async();
+      rebuildAfFeatures();
+    } catch (e: any) { logger.warn(`extra leagues warm-up: ${e.message}`); }
+    finally { extraLeagueJob = null; }
+  })();
+}
+app.post('/api/admin/extra-leagues', jsonOnly, async (req, res) => {
+  const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).map((x: any) => parseInt(String(x), 10)).filter((x: number) => Number.isFinite(x) && x > 0).slice(0, 200);
+  if (!ids.length) return res.status(400).json({ error: 'No leagues chosen.' });
+  try {
+    const { ok, skipped } = await pickForAdding(ids);
+    const added = ok.map(l => ({ id: l.id, name: l.name, ...addExtraLeague({ id: l.id, name: l.name, country: l.country, calendar: l.calendar, trial: true }) }));
+    if (req.user) securityLog(req, 'leagues_added', req.user, added.map(a => `${a.id} ${a.name}`).join(', ').slice(0, 500));
+    if (added.length) warmExtraLeagues();
+    res.json({ data: { added, skipped, note: 'Fixtures, history and lineups are loading now; predictions appear when the model has rebuilt (usually 10–30 minutes).' } });
+  } catch (e: any) { res.status(502).json({ error: e.message }); }
+});
+app.post('/api/admin/extra-leagues/:id(\\d+)/remove', jsonOnly, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (req.user) securityLog(req, 'league_removed', req.user, String(id));
+  res.json({ data: removeExtraLeague(id) });
+});
+app.post('/api/admin/extra-leagues/:id(\\d+)/trial', jsonOnly, (req, res) => {
+  res.json({ data: setExtraTrial(parseInt(req.params.id, 10), !!req.body?.trial) });
 });
 app.post('/api/feedback', jsonOnly, (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Sign in first.' });

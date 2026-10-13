@@ -22,6 +22,7 @@ import { predictV2 } from './historyModel';
 import { predictV3 } from './gridModel';
 import { predictNational, isNationalTeam } from './nationalElo';
 import { predictClubEuro } from './clubElo';
+import { onExtraLeague } from './leagueConfig';
 
 export const AF_OFFSET = 1_000_000_000;
 export const isAfMatchId = (id: number) => id >= AF_OFFSET;
@@ -68,6 +69,8 @@ export const EXTRA_COMPETITIONS: { id: number; kind: Kind; name?: string }[] = [
   { id: 103, kind: 'league' }, // Norway — Eliteserien
   { id: 113, kind: 'league' } // Sweden — Allsvenskan
 ];
+// Leagues added from the admin panel (services/leagueConfig.ts)
+onExtraLeague(l => { if (!EXTRA_COMPETITIONS.some(c => c.id === l.id)) EXTRA_COMPETITIONS.push({ id: l.id, kind: 'league' }); });
 const KIND_RANK: Record<Kind, number> = { cup: 1, league: 2, national: 3 };
 /** Senior men's teams only: API-Football's "Friendlies" also carries U17–U23 and women's sides. */
 const YOUTH = /\bU-?(1[5-9]|2[0-3])\b|\bUnder[- ]?\d{2}\b|\b(W|Women)$/i;
