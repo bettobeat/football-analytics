@@ -13,6 +13,7 @@ import { RevealCover } from '../components/Reveal'
 import PredictionStory from '../components/PredictionStory'
 import { FavStar, nameKey as favKey } from '../lib/favorites'
 import { t as tt, LOCALE } from '../lib/i18n'
+import StickyBar from '../components/StickyBar'
 
 /* ---------- types (Football-Data.org v4 shapes, loosely) ---------- */
 
@@ -680,7 +681,7 @@ function MatchDetail() {
       </div>
 
       {/* ---------- Tabs ---------- */}
-      <div className="sticky top-16 sm:top-[72px] z-30 -mx-4 sm:mx-0 mt-6 px-4 sm:px-0 py-2 bg-bg/35 backdrop-blur-xl">
+      <StickyBar className="top-16 sm:top-[72px] -mx-4 sm:mx-0 mt-6 px-4 sm:px-0 py-2">
         <nav className="flex gap-1 p-1 rounded-full bg-surface2/60 border border-line/60 overflow-x-auto no-scrollbar" aria-label={tt("Match sections")}>
           {tabs.map(t => (
             <button
@@ -697,7 +698,7 @@ function MatchDetail() {
             </button>
           ))}
         </nav>
-      </div>
+      </StickyBar>
 
       <div className="mt-4 space-y-6 min-w-0">
         {tab === 'prediction' && (

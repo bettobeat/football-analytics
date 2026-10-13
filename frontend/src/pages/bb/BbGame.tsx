@@ -14,6 +14,7 @@ import { Card, TeamLogo, LockedNote, LiveChanceBox, rid, rstatus } from './parts
 import type { Standings } from './BbLeague'
 import { StatsTab, RestTab, H2HTab, StandingsTab } from './GameTabs'
 import { MarketsCard, CompareCard, PlayersCard, ModelTable, type Markets, type ModelInfo, type GamePlayer } from './GameExtras'
+import StickyBar from '../../components/StickyBar'
 
 export interface Avg {
   games: number; won: number; lost: number; pointsFor: number; pointsAgainst: number
@@ -162,7 +163,7 @@ export default function BbGame() {
       {access === 'admin' && done && <ResultAdmin game={g} onDone={() => axios.get(`${API_URL}/basketball/game/${id}`).then(r => setD(r.data.data)).catch(() => undefined)} />}
 
       {/* ---------- tabs ---------- */}
-      <div className="sticky top-16 sm:top-[72px] z-30 -mx-4 sm:mx-0 mt-6 px-4 sm:px-0 py-2 bg-bg/35 backdrop-blur-xl">
+      <StickyBar className="top-16 sm:top-[72px] -mx-4 sm:mx-0 mt-6 px-4 sm:px-0 py-2">
         <nav className="flex gap-1 p-1 rounded-full bg-surface2/60 border border-line/60 overflow-x-auto no-scrollbar" aria-label={t('Game sections')}>
           {tabs.map(x => (
             <button key={x.id} type="button" onClick={() => pickTab(x.id)} aria-current={tab === x.id ? 'page' : undefined}
@@ -172,7 +173,7 @@ export default function BbGame() {
             </button>
           ))}
         </nav>
-      </div>
+      </StickyBar>
 
       <div className="mt-4 space-y-6 min-w-0">
         {tab === 'prediction' && (

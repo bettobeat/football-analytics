@@ -12,6 +12,7 @@ import LeagueSidebar, { MobileLeagueBar, LeagueBar } from '../components/LeagueS
 import { footballCountry, leagueShortName } from '../lib/leagueCountry'
 import { t as tt, LOCALE } from '../lib/i18n'
 import { useAuth } from '../lib/auth'
+import { useStuck, stuckBg } from '../lib/useStuck'
 
 export interface Team {
   id: number
@@ -560,8 +561,9 @@ export function SectionTitle({
   accent?: 'live'
   sticky?: boolean
 }) {
+  const [ref, stuck] = useStuck<HTMLDivElement>()
   return (
-    <div className={`flex items-baseline gap-3 mb-3 ${sticky ? 'sticky top-[113px] sm:top-16 z-30 py-2 -my-2 bg-bg/35 backdrop-blur-lg' : ''}`}>
+    <div ref={sticky ? ref : undefined} className={`flex items-baseline gap-3 mb-3 ${sticky ? `sticky top-[113px] sm:top-16 z-30 py-2 -my-2 ${stuckBg(stuck)}` : ''}`}>
       <h2 className={`font-display text-lg font-bold tracking-tight ${accent === 'live' ? 'text-live' : 'text-ink'}`}>
         {accent === 'live' && <span className="inline-block w-2 h-2 rounded-full bg-live animate-pulseDot mr-2 align-middle" />}
         {label}
