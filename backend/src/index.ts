@@ -1,6 +1,7 @@
 import express from 'express';
 import { joinWaitlist, waitlistStats } from './services/waitlist';
 import { slimForList, clearPredictionCache } from './services/predCache';
+import { withLiveScore, liveBookStatus } from './services/liveScores';
 import { perfStatus, setJob, yieldLoop } from './services/perf';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -46,7 +47,7 @@ import { marketTest, drawTest, anchoredDrawTest } from './services/marketTest';
 import { clvTick, clvReport, startClvScheduler, clvProbe } from './services/clv';
 import {
   isAfMatchId, isAfCode, afUpcoming, afLive, afWithPredictions, getAfMatchDetails, getAfStandings, getAfScorers, getAfRecent,
-  afCompetitions, pollAfLive, startAfMatchesScheduler, afWindowStatus, refreshAfWindow, onAfWindow, isKnownAfFixture, afExtrasForFd, withAfOdds, backfillAfOdds,
+  afCompetitions, pollAfLive, syncFdLiveFromAf, startAfMatchesScheduler, afWindowStatus, refreshAfWindow, onAfWindow, isKnownAfFixture, afExtrasForFd, withAfOdds, backfillAfOdds,
   warmMatchExtras, teamAverages, probableXI, lastMeetings, AF_OFFSET,
   afFixtureInfo, fixtureInjuriesRated, teamSchedule
 } from './services/afMatches';
@@ -1228,7 +1229,7 @@ app.get('/api/health', (_req, res) => {
 app.get('/api/matches/upcoming', async (req, res) => {
   try {
     const days = parseInt(String(req.query.days || '30'), 10) || 30;
-    const fd = footballDataAPI.withPredictions(await footballDataAPI.getUpcomingMatches(days));
+    const fd = footballDataAPI.withPredictions((await footballDataAPI.getUpcomingMatches(days)).map(withLiveScore));
     // + extra competitions from API-Football (national teams, cups, more leagues)
     const matches = [...fd, ...afWithPredictions(afUpcoming(days))].sort((a: any, b: any) => a.utcDate.localeCompare(b.utcDate));
     res.json({
@@ -1245,7 +1246,7 @@ app.get('/api/matches/upcoming', async (req, res) => {
 
 app.get('/api/matches/live', async (_req, res) => {
   try {
-    const matches = [...footballDataAPI.withPredictions(await footballDataAPI.getLiveMatches()), ...afWithPredictions(afLive())].map(slimForList);
+    const matches = [...footballDataAPI.withPredictions((await footballDataAPI.getLiveMatches()).map(withLiveScore)), ...afWithPredictions(afLive())].map(slimForList);
     res.json({ data: matches, count: matches.length, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Failed to fetch live matches');
@@ -1256,7 +1257,7 @@ app.get('/api/matches/:id(\\d+)', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isAfMatchId(id) && !isKnownAfFixture(id)) return res.status(404).json({ error: 'Match not found' });
-    const match = isAfMatchId(id) ? (await getAfMatchDetails(id)).match : await footballDataAPI.getMatch(id);
+    const match = isAfMatchId(id) ? (await getAfMatchDetails(id)).match : withLiveScore(await footballDataAPI.getMatch(id));
     res.json({ data: match, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Failed to fetch match');
@@ -1331,6 +1332,8 @@ app.get('/api/matches/:id(\\d+)/details', async (req, res) => {
         logger.warn('Live extras failed', { id, message: e.message });
       }
     }
+    // one live score everywhere: the fresher of API-Football / Football-Data.org, as in the list (liveScores.ts)
+    if (!isAfMatchId(id) && details?.match) details.match = withLiveScore(details.match);
     // live win chance on the match page (uses the red cards and minute filled in above)
     if (details?.match && details.prediction) {
       const lv = withLive({ ...details.match, prediction: details.prediction, predictions: details.predictions });
@@ -2043,6 +2046,8 @@ app.get('/api/basketball/record', (req, res) => {
 // Admin: how the model did on past seasons it never saw (internal, like football's past seasons)
 app.get('/api/bb/backtest', (_req, res) => res.json({ data: bbBacktest(), timestamp: new Date().toISOString() }));
 app.get('/api/bb/wf', (req, res) => res.json({ data: bbWalkForward(String(req.query.code || '').toUpperCase()), timestamp: new Date().toISOString() }));
+// Live scores: both providers' latest reading of every Football-Data.org match and the one shown (liveScores.ts)
+app.get('/api/admin/live-book', (_req, res) => res.json({ data: liveBookStatus(), timestamp: new Date().toISOString() }));
 // Football: daily self-learning log (last 30 days); ?run=1 runs today's job now, ?report=1 (re)sends the morning report,
 // ?preview=1 builds the report text without sending
 app.get('/api/admin/model-daily', async (req, res) => {
@@ -2523,16 +2528,24 @@ io.on('connection', socket => {
 app.set('io', io);
 
 // Push live scores to all clients every 60s (only when someone is connected)
-const LIVE_POLL_MS = parseInt(process.env.LIVE_POLL_MS || '60000', 10);
+// Every 20 s (Oct 2026, fix115): Football-Data.org's live list is fetched fresh every 3rd tick (rate limit), the last
+// list is reused in between; API-Football's live=all is polled every tick while any match is live, and each
+// Football-Data.org match shows the fresher of the two readings (liveScores.ts) — the same score as the match page.
+const LIVE_POLL_MS = parseInt(process.env.LIVE_POLL_MS || '20000', 10);
 let livePolling = false;
+let liveTick = 0;
 setInterval(async () => {
   if (livePolling) return; // a slow poll (API waits) must not overlap the next one
   livePolling = true;
   try {
     setJob('live poll');
-    const fdLive = footballDataAPI.withPredictions(await footballDataAPI.getLiveMatches(true));
+    const fresh = liveTick++ % 3 === 0;
+    const fdRaw: any[] = fresh ? await footballDataAPI.getLiveMatches(true) : footballDataAPI.liveSnapshot();
+    const afLiveNow = await pollAfLive(fdRaw.length > 0);
+    await syncFdLiveFromAf(fdRaw);
+    const fdLive = footballDataAPI.withPredictions(fdRaw.map(withLiveScore));
     recordPredictions(fdLive); // locks anything that has kicked off (Football-Data.org matches only)
-    const live = [...fdLive, ...afWithPredictions(await pollAfLive())].map(slimForList);
+    const live = [...fdLive, ...afWithPredictions(afLiveNow)].map(slimForList);
     const ts = new Date().toISOString();
     io.to('full').emit('matches:live', { data: live, timestamp: ts });
     io.to('teaser').emit('matches:live', teaseDeep({ data: live, timestamp: ts }));

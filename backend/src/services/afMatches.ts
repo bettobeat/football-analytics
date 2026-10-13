@@ -21,6 +21,7 @@ import { groupForCompetition, buildTeamMap, fdNameFor } from './history';
 import { predictV2 } from './historyModel';
 import { predictV3 } from './gridModel';
 import { mixPredictions } from './featureModel';
+import { reportLive } from './liveScores';
 import { predictNational, isNationalTeam } from './nationalElo';
 import { predictClubEuro } from './clubElo';
 import { onExtraLeague } from './leagueConfig';
@@ -286,6 +287,10 @@ try {
   }
 } catch { /* first run */ }
 let liveById = new Map<number, any>();
+// the whole live=all answer (every fixture in play, ours or not) by API-Football fixture id, and when it was fetched:
+// Football-Data.org matches take their fresher live score from it (syncFdLiveFromAf, liveScores.ts)
+let afLiveRaw = new Map<number, any>();
+let afLiveAt = 0;
 const standingsByCode = new Map<string, any>();
 
 async function currentSeason(leagueId: number): Promise<number | null> {
@@ -428,16 +433,20 @@ function overdue(now: number) {
   return windowMatches.filter(m => !FINAL.includes(m.status) && new Date(m.utcDate).getTime() < now - 150 * 60 * 1000 && new Date(m.utcDate).getTime() > now - 3 * 86400000);
 }
 
-/** Live scores for our extra competitions — one request, only while one of them can be in play. */
-export async function pollAfLive() {
+/**
+ * Live scores for our extra competitions — one request, only while one of them can be in play.
+ * `force`: poll even when none of ours can be (Football-Data.org matches are live and want API-Football's score).
+ */
+export async function pollAfLive(force = false) {
   if (!afConfigured()) return [];
   const now = Date.now();
   const maybeLive = windowMatches.some(m => {
     const t = new Date(m.utcDate).getTime();
     return t <= now + 5 * 60 * 1000 && t >= now - 3 * 3600 * 1000 && !FINAL.includes(m.status);
   });
-  if (!maybeLive) {
+  if (!maybeLive && !force) {
     liveById = new Map();
+    afLiveRaw = new Map();
     const late = overdue(now);
     if (late.length) await confirmStates(late.map(m => m.id));
     return [];
@@ -447,6 +456,8 @@ export async function pollAfLive() {
     const inWindow = new Set(windowMatches.map(m => m.id));
     const fixed = new Set(EXTRA_COMPETITIONS.map(c => c.id));
     const j = await afGet('/fixtures', { live: 'all' });
+    afLiveRaw = new Map((j.response || []).filter((f: any) => f?.fixture?.id).map((f: any) => [f.fixture.id, f]));
+    afLiveAt = Date.now();
     const live = (j.response || [])
       .filter((f: any) => senior(f) && (inWindow.has(AF_OFFSET + f.fixture.id) || fixed.has(f.league?.id) || isNationalLeague(f.league)))
       .map(toFdMatch);
@@ -913,6 +924,28 @@ async function afFixtureForFd(match: any): Promise<number | null> {
 }
 
 /**
+ * Football-Data.org live matches: report API-Football's reading of each (liveScores.ts) — from the last live=all answer,
+ * or, when the fixture has just left it (ended), from /fixtures?id= (cached 45 s, only with ≥ 200 calls left today).
+ */
+export async function syncFdLiveFromAf(fdMatches: any[]) {
+  if (!afConfigured()) return;
+  for (const m of fdMatches) {
+    if (!['IN_PLAY', 'PAUSED'].includes(m?.status)) continue;
+    try {
+      const fid = await afFixtureForFd(m);
+      if (!fid) continue;
+      const raw = afLiveRaw.get(fid);
+      if (raw) { reportLive(m.id, 'af', toFdMatch(raw), afLiveAt); continue; }
+      if (afRemaining() < 200) continue;
+      const one = await cached(`fixture:${fid}`, 45 * 1000, async () => (await afGet('/fixtures', { id: fid })).response?.[0] || null);
+      if (one) reportLive(m.id, 'af', toFdMatch(one));
+    } catch (e: any) {
+      logger.warn(`AF live score for FD ${m?.id}: ${e.message}`);
+    }
+  }
+}
+
+/**
  * Live statistics (possession, shots, xG, corners…), lineups and minute for a Football-Data.org match,
  * from the matching API-Football fixture. Only around the match (1 h before kick-off onwards).
  */
@@ -930,6 +963,7 @@ export async function afExtrasForFd(match: any): Promise<{ home: any; away: any;
     return j.response?.[0] || null;
   });
   if (!raw) return null;
+  reportLive(match.id, 'af', toFdMatch(raw)); // one live score everywhere (liveScores.ts)
   const m = toFdMatchFull(await withStatsAndLineups(raw));
   const pick = (t: any) => ({ statistics: t.statistics || null, formation: t.formation || null, lineup: t.lineup || [], bench: t.bench || [], coach: t.coach || null });
   return { home: pick(m.homeTeam), away: pick(m.awayTeam), minute: m.minute ?? null };

@@ -10,6 +10,7 @@ import { predictFromStandings, Prediction, StandingsResponse } from './predictio
 import { predictV2, prepareModelV2 } from './historyModel';
 import { predictV3, prepareModelV3, prepareModelV3Async } from './gridModel';
 import { mixPredictions } from './featureModel';
+import { reportLive } from './liveScores';
 import { predictClubEuro } from './clubElo';
 import { withMarket, oddsFor } from './odds';
 
@@ -451,6 +452,11 @@ class FootballDataAPI {
     return this.refreshLive();
   }
 
+  /** The last live list fetched, without an API call (the live loop uses it between fresh calls). */
+  liveSnapshot(): any[] {
+    return this.liveLast?.data || [];
+  }
+
   private refreshLive(): Promise<any[]> {
     if (this.liveInFlight) return this.liveInFlight;
     this.liveInFlight = (async () => {
@@ -465,6 +471,7 @@ class FootballDataAPI {
         const live = [...inPlay, ...paused].filter(m => LIVE_STATUSES.has(m.status));
         this.setCached('live', live, LIVE_CACHE_TTL_MS);
         this.liveLast = { data: live, at: Date.now() };
+        for (const m of live) reportLive(m.id, 'fd', m); // one live score everywhere (liveScores.ts)
         return live;
       } catch (error: any) {
         logger.error('Error fetching live matches', { error: error.message });
@@ -538,6 +545,7 @@ class FootballDataAPI {
     if (cached) return cached;
     const response = await this.client.get(`/matches/${matchId}`);
     this.setCached(key, response.data, 60 * 1000);
+    reportLive(matchId, 'fd', response.data);
     return response.data;
   }
 
