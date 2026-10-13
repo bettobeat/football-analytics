@@ -140,3 +140,5 @@ POST /api/backtest/run?season=2425[&group=E] · GET /api/backtest?season=2425[&g
 
 WebSocket events: `matches:live` (all live matches, every 60 s),
 `match:live` (per match, after `subscribe_match`).
+
+Cloud push test
