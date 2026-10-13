@@ -23,6 +23,7 @@ import {
 type Out = 'H' | 'D' | 'A';
 interface Item {
   div: string; season: string; date: string; type: number; // type index 0..3
+  home: string; away: string; // football-data.co.uk names (to join other models' predictions)
   o: Out; mkt: { H: number; D: number; A: number } | null;
   d: Float64Array; // team rows: vh - va
   c: Uint8Array; // counted in Σrel
@@ -67,7 +68,7 @@ async function collect(seasons: string[], allDivs: boolean): Promise<Item[]> {
               const oh = m.close_h ?? m.odds_h, od = m.close_d ?? m.odds_d, oa = m.close_a ?? m.odds_a;
               let mkt: Item['mkt'] = null;
               if (oh && od && oa) { const s = 1 / oh + 1 / od + 1 / oa; mkt = { H: 1 / oh / s, D: 1 / od / s, A: 1 / oa / s }; }
-              out.push({ div: m.division, season, date: m.date, type: TYPES.indexOf(det.type), o: m.hg > m.ag ? 'H' : m.hg < m.ag ? 'A' : 'D', mkt, d, c, dv, pois: det.poisDraw });
+              out.push({ div: m.division, season, date: m.date, home: m.home, away: m.away, type: TYPES.indexOf(det.type), o: m.hg > m.ag ? 'H' : m.hg < m.ag ? 'A' : 'D', mkt, d, c, dv, pois: det.poisDraw });
             }
           });
           await new Promise<void>(resolve => setImmediate(() => resolve()));
@@ -427,6 +428,68 @@ async function fitVector(train: Item[], defs: ParamDef[], x0: Float64Array, free
     await new Promise<void>(resolve => setImmediate(() => resolve()));
   }
   return { x, f, f0, trail, rounds: round };
+}
+
+/* ------------------------------------------------------------------ */
+/* Window runs for the daily champion / challenger job (modelDaily.ts)  */
+/* ------------------------------------------------------------------ */
+
+export interface WindowItem { div: string; date: string; home: string; away: string; o: Out; mkt: [number, number, number] | null }
+export interface WindowRun {
+  items: WindowItem[];                       // games on or after scoreFrom (walk-forward state, like the backtest)
+  live: [number, number, number][];          // the live setting's probabilities for those games
+  fits: Record<string, { probs: [number, number, number][]; x: number[]; setting: { rel: any; conv: any }; train: number }>;
+  vectors: Record<string, [number, number, number][]>; // probabilities from stored vectors (previous champions)
+}
+
+/**
+ * Collect the replayed rows once, then: the live setting's probabilities for every game from `scoreFrom`, plus one
+ * refit per entry of `fits` trained only on games before its `trainBefore` date (so the games it is scored on were
+ * never seen). `vectors`: probabilities from stored parameter vectors (a previous champion, for the guardrail).
+ */
+export async function v3WindowRun(opt: { seasons: string[]; scoreFrom: string; fits: { label: string; trainBefore: string; trainFrom?: string }[]; vectors?: Record<string, number[]>; rounds?: number }): Promise<WindowRun> {
+  if (tuning) throw new Error('A tune is already running');
+  tuning = true;
+  try {
+    const items = await collect(opt.seasons, false);
+    const lcMap = new Map<string, LeagueConv>();
+    for (const l of leagueConvStatus()) lcMap.set(l.division, { ...LC0, ...l.conf });
+    const lcOf = (it: Item) => lcMap.get(it.div) || LC0;
+    const defs = paramDefs(false);
+    const x0 = startVector(defs, false);
+    const cLive = compile(defs, x0, false);
+    const scored = items.filter(i => i.date >= opt.scoreFrom);
+    const out: WindowRun = {
+      items: scored.map(i => ({ div: i.div, date: i.date, home: i.home, away: i.away, o: i.o, mkt: i.mkt ? [i.mkt.H, i.mkt.D, i.mkt.A] : null })),
+      live: scored.map(i => probs(cLive, i, lcOf(i))),
+      fits: {}, vectors: {}
+    };
+    for (const f of opt.fits) {
+      const train = items.filter(i => i.date < f.trainBefore && (!f.trainFrom || i.date >= f.trainFrom));
+      if (train.length < 500) continue;
+      const fit = await fitVector(train, defs, x0, defs.map(() => true), { lambda: 0, useBrier: false, lcOf, rounds: opt.rounds ?? 60, shared: false });
+      const c = compile(defs, fit.x, false);
+      out.fits[f.label] = { probs: scored.map(i => probs(c, i, lcOf(i))), x: Array.from(fit.x), setting: unpack(defs, fit.x, false), train: train.length };
+    }
+    for (const [label, v] of Object.entries(opt.vectors || {})) {
+      if (v.length !== defs.length) continue;
+      const c = compile(defs, Float64Array.from(v), false);
+      out.vectors[label] = scored.map(i => probs(c, i, lcOf(i)));
+    }
+    return out;
+  } finally {
+    tuning = false;
+    tuneProgress = null;
+  }
+}
+
+/** The live setting as a stored vector (for rolling back to it later). */
+export function liveVector(): number[] { return Array.from(startVector(paramDefs(false), false)); }
+/** Put a stored vector live (stored in v3_tuned, then applied). */
+export function applyVector(x: number[], report: any) {
+  const defs = paramDefs(false);
+  const { rel, conv } = unpack(defs, Float64Array.from(x), false);
+  storeTuning(rel, conv, report);
 }
 
 /** Date of the first tracked v3 prediction (the site started recording its predictions then). */

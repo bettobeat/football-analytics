@@ -20,6 +20,7 @@ import { predictFromStandings, Prediction } from './predictionModel';
 import { groupForCompetition, buildTeamMap, fdNameFor } from './history';
 import { predictV2 } from './historyModel';
 import { predictV3 } from './gridModel';
+import { mixPredictions } from './featureModel';
 import { predictNational, isNationalTeam } from './nationalElo';
 import { predictClubEuro } from './clubElo';
 import { onExtraLeague } from './leagueConfig';
@@ -626,6 +627,11 @@ function computeAfPredictions(m: any): Prediction[] {
   if (v1) out.push(v1);
   for (const f of [predictV2, predictV3]) {
     try { const p = f(m); if (p) out.push(p); } catch { /* not covered */ }
+  }
+  // league games with a v3 number: v3-mix and the feature model (featureModel.ts); never national teams or cups
+  const v3 = out.find(p => p.model === 'grid-v3');
+  if (v3 && m.competition?.type !== 'NATIONAL' && m.competition?.type !== 'CUP') {
+    try { out.push(...mixPredictions(m, v3)); } catch { /* feature model not ready */ }
   }
   return out;
 }

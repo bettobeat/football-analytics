@@ -95,6 +95,7 @@ export default function Admin() {
       {tab === 'overview' && (
         <>
           <VisitorsCard />
+          <ModelDailyCard />
           <SiteErrorsCard />
           <BackupsCard />
           <BbResultsCard />
@@ -376,6 +377,63 @@ function BackupsCard() {
 /** Basketball results the provider may have wrong (swapped / quarters don't add up), and recent corrections. */
 type SiteError = { sig: string; message: string; where: string | null; pageKind: string; kind: string; count: number; firstAt: string; lastAt: string; pages: string[]; browsers: string[]; version: string | null; resolvedAt: string | null }
 /** Pages that broke in visitors' browsers (sent by the site itself). "Mark fixed" after a fix is deployed: it reopens if it happens again. */
+interface DailyDay { date: string; ranAt: string | null; decision: string | null; reason: string | null; rollback: boolean; ms: number | null; report: string | null; reportSentAt: string | null }
+interface DailyLog {
+  champion: { mixWeight: number; featCutoff: string | null; since: string; label: string }
+  mixLive: boolean; mixMode: string; running: boolean; days: DailyDay[]
+  feature: { active: { id: number; trained_at: string; cutoff: string; train_games: number } | null }
+}
+
+/** Football model: v3-mix and the daily champion / challenger job (04:00 UTC), with the 07:00 morning report. */
+function ModelDailyCard() {
+  const [d, setD] = useState<DailyLog | null>(null)
+  const [msg, setMsg] = useState<string | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
+  const load = () => axios.get(`${API_URL}/admin/model-daily`).then(r => setD(r.data.data)).catch(() => setD(null))
+  useEffect(() => { load() }, [])
+  if (!d) return null
+  const act = (q: string, note: string) => axios.get(`${API_URL}/admin/${q}`).then(r => { setMsg(note); if (r.data.data?.text) setPreview(r.data.data.text); load() }).catch(e => setMsg(errorText(e)))
+  const latest = d.days.find(x => x.report) || null
+  const tone = (x: string | null) => (x === 'promote' ? 'text-win' : x === 'rollback' || x === 'error' ? 'text-loss' : 'text-muted')
+  return (
+    <section className="card p-5 sm:p-6 mb-8">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+        <h2 className="font-display text-lg font-bold text-ink">Model: daily self-learning</h2>
+        <span className="text-xs text-faint">job 04:00 UTC · report 07:00 Israel time{d.running ? ' · running now' : ''}</span>
+      </div>
+      <p className="text-sm text-muted">
+        Published league model: <b className="text-ink">{d.mixLive ? 'v3-mix' : 'v3 (v3-mix in shadow)'}</b> · switch {d.mixMode} ·
+        feature weight {d.champion.mixWeight} · feature fit {d.feature.active ? `${d.feature.active.cutoff} (${d.feature.active.train_games} games)` : 'not fitted yet'} ·
+        champion since {d.champion.since}
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+        <button type="button" className="px-3 py-1.5 rounded-full border border-line text-muted hover:text-ink" onClick={() => act('model-daily?run=1', 'Daily job started (a few minutes).')}>Run today’s job</button>
+        <button type="button" className="px-3 py-1.5 rounded-full border border-line text-muted hover:text-ink" onClick={() => act('model-daily?preview=1', 'Report preview below.')}>Preview report</button>
+        <button type="button" className="px-3 py-1.5 rounded-full border border-line text-muted hover:text-ink" onClick={() => act('model-daily?report=1', 'Report sent.')}>Send report now</button>
+        {(['auto', 'on', 'off'] as const).map(m => (
+          <button key={m} type="button" onClick={() => act(`v3-mix?mode=${m}`, `v3-mix switch: ${m}.`)}
+            className={`px-3 py-1.5 rounded-full border ${d.mixMode === m ? 'border-accent text-accent' : 'border-line text-muted'}`}>v3-mix {m}</button>
+        ))}
+        <button type="button" className="px-3 py-1.5 rounded-full border border-line text-muted hover:text-ink" onClick={() => act('v3-mix?backtest=1', 'Backtest done — see the network response or /api/admin/v3-mix?backtest=1.')}>Backtest v3-mix (this season)</button>
+      </div>
+      {msg && <p className="mt-2 text-xs text-accent">{msg}</p>}
+      {(preview || latest?.report) && (
+        <pre className="mt-3 text-[11px] leading-relaxed whitespace-pre-wrap break-words rounded-xl bg-surface2/60 p-3 text-ink/90">{preview || latest!.report}</pre>
+      )}
+      <ul className="mt-3 divide-y divide-line/50 text-sm">
+        {d.days.slice(0, 14).map(x => (
+          <li key={x.date} className="py-2 flex flex-wrap gap-x-3 gap-y-1">
+            <span className="num text-faint w-24">{x.date}</span>
+            <span className={`font-semibold ${tone(x.decision)}`}>{x.decision || '—'}{x.rollback ? ' ⚠' : ''}</span>
+            <span className="text-xs text-muted flex-1 min-w-0 break-words">{x.reason || (x.ranAt ? '' : 'job not run')}</span>
+          </li>
+        ))}
+        {d.days.length === 0 && <li className="py-2 text-sm text-faint">No runs yet — the first one is at 04:00 UTC.</li>}
+      </ul>
+    </section>
+  )
+}
+
 function SiteErrorsCard() {
   const [d, setD] = useState<{ rows: SiteError[]; open: number; last24h: number } | null>(null)
   const [showFixed, setShowFixed] = useState(false)

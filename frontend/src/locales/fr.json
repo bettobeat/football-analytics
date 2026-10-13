@@ -1587,5 +1587,6 @@
  "Projected final score": "Score final prévu",
  "Projected": "Prévu",
  "{0} points in total": "{0} points au total",
- "Updated every minute from our prediction at tip-off, the score and the time left.": "Mis à jour chaque minute à partir de notre prédiction d’avant-match, du score et du temps restant."
+ "Updated every minute from our prediction at tip-off, the score and the time left.": "Mis à jour chaque minute à partir de notre prédiction d’avant-match, du score et du temps restant.",
+ "Our second model (team stats, lineups and injuries) gives {0} {1}% instead of {2}%. The numbers above are the average of both.": "Notre second modèle (statistiques d’équipe, compositions et blessures) donne {0} à {1}% au lieu de {2}%. Les chiffres ci-dessus sont la moyenne des deux."
 }

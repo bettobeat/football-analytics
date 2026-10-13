@@ -55,7 +55,7 @@ interface Edition {
 }
 interface Record_ { n: number; hitRate: number | null }
 
-const MAIN = ['grid-v3', 'elo-intl', 'elo-euro']
+const MAIN = ['v3-mix', 'grid-v3', 'elo-intl', 'elo-euro']
 const LIVE = new Set(['IN_PLAY', 'PAUSED', 'LIVE'])
 const tn = (t: Team) => t.shortName || t.name
 interface NewsItem { title: string; link: string; source: string; published: string | null; image?: string | null }

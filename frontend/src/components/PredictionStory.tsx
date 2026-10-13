@@ -171,6 +171,15 @@ export default function PredictionStory({ p, home, away, upcoming, friendly }: {
             {ex.against && <li className="flex gap-2"><span className="text-loss mt-[1px]">−</span><span>{tt("On the other side:")}{' '}{ex.against}</span></li>}
           </ul>
         )}
+        {p.mix?.disagrees && (() => {
+          const k = p.mix.favourite === 'H' ? 'home' : p.mix.favourite === 'A' ? 'away' : 'draw'
+          const who = k === 'home' ? home : k === 'away' ? away : tt("a draw")
+          return (
+            <p className="mt-2 text-sm text-muted">
+              {tt("Our second model (team stats, lineups and injuries) gives {0} {1}% instead of {2}%. The numbers above are the average of both.", { 0: who, 1: Math.round(p.mix.feature[k]), 2: Math.round(p.mix.v3[k]) })}
+            </p>
+          )
+        })()}
       </div>
 
       {/* 2. factor by factor */}

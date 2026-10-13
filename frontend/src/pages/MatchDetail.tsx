@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
-import { modelInfo, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, pickOfPrediction, type Prediction } from '../lib/predict'
+import { modelInfo, isV3, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, pickOfPrediction, type Prediction } from '../lib/predict'
 import { useAuth } from '../lib/auth'
 import WinProbability from '../components/WinProbability'
 import { useReveal, justRevealed, hideMatch, guessFirstOn } from '../lib/reveal'
@@ -541,7 +541,7 @@ function MatchDetail() {
     ? allModels.filter(m => !OLD.includes(m.model))
     : allModels.some(m => m.model === 'dc-history-v2') ? allModels.filter(m => m.model === 'dc-history-v2') : allModels
   // our main model first (v3 for leagues, national teams, European cups); older models only on request
-  const p = (modelId && models.find(m => m.model === modelId)) || models.find(m => ['grid-v3', 'elo-intl', 'elo-euro'].includes(m.model)) || details.prediction || models[0] || null
+  const p = (modelId && models.find(m => m.model === modelId)) || models.find(m => ['v3-mix', 'grid-v3', 'elo-intl', 'elo-euro'].includes(m.model)) || details.prediction || models[0] || null
   const ft = m.score.fullTime
   const ht = m.score.halfTime
   const referee = (m.referees || []).find(r => !r.type || r.type === 'REFEREE') || (m.referees || [])[0]
@@ -789,7 +789,7 @@ function MatchDetail() {
                     {p.live && LIVE.has(m.status) && <LiveChance p={p} home={home} away={away} paused={m.status === 'PAUSED'} />}
 
                     {['SCHEDULED', 'TIMED'].includes(m.status) && (
-                      <LineupTip kickoff={kickoff} lineupsOut={hasLineups} usesLineups={p.model === 'grid-v3'} />
+                      <LineupTip kickoff={kickoff} lineupsOut={hasLineups} usesLineups={isV3(p.model)} />
                     )}
 
                     {p.frozen && (

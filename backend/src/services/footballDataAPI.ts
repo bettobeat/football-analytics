@@ -9,6 +9,7 @@ import { markFresh, markFailed } from './freshness';
 import { predictFromStandings, Prediction, StandingsResponse } from './predictionModel';
 import { predictV2, prepareModelV2 } from './historyModel';
 import { predictV3, prepareModelV3, prepareModelV3Async } from './gridModel';
+import { mixPredictions } from './featureModel';
 import { predictClubEuro } from './clubElo';
 import { withMarket, oddsFor } from './odds';
 
@@ -329,7 +330,7 @@ class FootballDataAPI {
     }
     try {
       const v3 = predictV3(match);
-      if (v3) out.push(v3);
+      if (v3) out.push(v3, ...mixPredictions(match, v3)); // + v3-mix and the feature model (featureModel.ts)
     } catch (error: any) {
       logger.warn('Prediction v3 failed', { matchId: match.id, message: error.message });
     }

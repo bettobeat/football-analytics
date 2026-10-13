@@ -1,6 +1,6 @@
 import express from 'express';
 import { joinWaitlist, waitlistStats } from './services/waitlist';
-import { slimForList } from './services/predCache';
+import { slimForList, clearPredictionCache } from './services/predCache';
 import { perfStatus, setJob, yieldLoop } from './services/perf';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -77,6 +77,8 @@ import { seoPage, renderIndex, sitemapXml } from './services/seo';
 import { fontRoute, warmFonts } from './services/fonts';
 import { listFavorites, addFavorites, removeFavorite, MAX_FAVORITES } from './services/favorites';
 import { tuneV3Full, tuneStatus, isTuning } from './services/v3Tuner';
+import { hiddenModels, v3MixBacktest, featureModelStatus, setConfig as setModelConfig, setMixLive, startFeatureModelScheduler } from './services/featureModel';
+import { runModelDaily, sendMorningReport, modelDailyLog, buildReport, startModelDailyScheduler, dailyRunning } from './services/modelDaily';
 import { askAssistant, assistantConfigured, messagesToday, assistantStats } from './services/assistant';
 import { normalizeName } from './services/history';
 import { markFresh, markFailed } from './services/freshness';
@@ -152,6 +154,12 @@ app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false, referrerPolicy: { policy: 'strict-origin-when-cross-origin' } }));
 app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json());
+// Shadow models (featureModel.ts): feat-v1 always, and v3-mix until it is live (then grid-v3) never reach visitors —
+// they are stored and compared in the admin views only
+app.set('json replacer', (key: string, value: any) =>
+  key === 'predictions' && Array.isArray(value) && value.some(p => p && typeof p.model === 'string')
+    ? (() => { const hide = hiddenModels(); return value.filter(p => !(p && hide.has(p.model))); })()
+    : value);
 app.use(express.urlencoded({ extended: true }));
 
 // API responses are data, not pages: keep them out of search results (robots.txt stays open so tools can read them)
@@ -2035,6 +2043,41 @@ app.get('/api/basketball/record', (req, res) => {
 // Admin: how the model did on past seasons it never saw (internal, like football's past seasons)
 app.get('/api/bb/backtest', (_req, res) => res.json({ data: bbBacktest(), timestamp: new Date().toISOString() }));
 app.get('/api/bb/wf', (req, res) => res.json({ data: bbWalkForward(String(req.query.code || '').toUpperCase()), timestamp: new Date().toISOString() }));
+// Football: daily self-learning log (last 30 days); ?run=1 runs today's job now, ?report=1 (re)sends the morning report,
+// ?preview=1 builds the report text without sending
+app.get('/api/admin/model-daily', async (req, res) => {
+  try {
+    if (req.query.run === '1') { if (dailyRunning()) { res.json({ data: { running: true } }); return; } void runModelDaily(true); res.json({ data: { started: true } }); return; }
+    if (req.query.report === '1') { res.json({ data: await sendMorningReport(true) }); return; }
+    if (req.query.preview === '1') { res.json({ data: { text: buildReport() } }); return; }
+    res.json({ data: { ...modelDailyLog(Math.min(90, Number(req.query.days) || 30)), feature: featureModelStatus() }, timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'Model daily failed');
+  }
+});
+// v3-mix: backtest on this season to date (?from=YYYY-MM-DD&season=2627) and publishing switch (?mode=auto|on|off, ?weight=0.5)
+app.get('/api/admin/v3-mix', async (req, res) => {
+  try {
+    if (req.query.mode !== undefined) {
+      const mode = String(req.query.mode);
+      if (!['auto', 'on', 'off'].includes(mode)) { res.status(400).json({ error: 'mode must be auto, on or off' }); return; }
+      setModelConfig('mix_mode', mode);
+      if (mode === 'on') setMixLive(true);
+      if (mode === 'off') setMixLive(false);
+      clearPredictionCache();
+    }
+    if (req.query.weight !== undefined) {
+      const w = Number(req.query.weight);
+      if (!(w >= 0 && w <= 1)) { res.status(400).json({ error: 'weight must be 0..1' }); return; }
+      setModelConfig('mix_weight', String(w));
+      clearPredictionCache();
+    }
+    const bt = req.query.backtest === '1' ? await v3MixBacktest({ from: req.query.from ? String(req.query.from) : undefined, season: req.query.season ? String(req.query.season) : undefined }) : undefined;
+    res.json({ data: { status: featureModelStatus(), ...(bt ? { backtest: bt } : {}) }, timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    sendError(res, error, 'v3-mix failed');
+  }
+});
 // live win chance tested at the end of Q1 / Q2 / Q3 on finished games (?tune=1: grid over a / b; ?a=&b= to try values)
 app.get('/api/bb/live-test', (req, res) => {
   const conf: Record<string, number> = {};
@@ -2620,6 +2663,9 @@ server.listen(PORT, () => {
   startNationalEloScheduler();
   // European club Elo (UEFA cups + domestic results + squad values)
   startClubEloScheduler();
+  // Feature model + v3-mix (state every 30 min), daily champion / challenger at 04:00 UTC, report at 07:00 Jerusalem
+  startFeatureModelScheduler();
+  startModelDailyScheduler();
 });
 
 export { app, io };

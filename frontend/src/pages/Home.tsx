@@ -36,7 +36,7 @@ const srcLine = (n: News) => [n.source, n.leagues?.[0]?.name].filter(Boolean).jo
 interface Alert { matchId: number; league: string; date: string; home: string; away: string; ourDraw: number }
 
 const LIVE = new Set(['IN_PLAY', 'PAUSED', 'LIVE'])
-const MAIN = ['grid-v3', 'elo-intl', 'elo-euro']
+const MAIN = ['v3-mix', 'grid-v3', 'elo-intl', 'elo-euro']
 const tn = (t: Team) => t.shortName || t.name
 const when = (iso: string) => new Date(iso).toLocaleString(LOCALE, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 const ago = (iso: string | null) => {

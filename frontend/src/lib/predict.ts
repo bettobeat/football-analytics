@@ -30,6 +30,8 @@ export interface Prediction {
   drawStreak?: { home: number; away: number }
   /** Match being played: win chance now, from the pre-match prediction + score, minute and red cards */
   live?: { home: number; draw: number; away: number; minute: number; score: [number, number]; reds: [number, number] }
+  /** v3-mix (v3 + feature model): both models' numbers; `disagrees` = the feature model differs by > 8 points on the favourite */
+  mix?: { weight: number; v3: { home: number; draw: number; away: number }; feature: { home: number; draw: number; away: number }; favourite: 'H' | 'D' | 'A'; gap: number; disagrees: boolean }
   /** Started / finished match: the prediction saved before kick-off (full = with its breakdown) */
   frozen?: { at: string | null; full: boolean }
   grid?: {
@@ -90,11 +92,16 @@ export function bookLabel(m: Market) {
   return BOOK_LABEL[m.bookmaker] || m.bookmaker.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
+/** Our league model: grid-v3, or v3-mix once it is the published one (same "v3" for visitors). */
+export const isV3 = (model?: string) => model === 'grid-v3' || model === 'v3-mix'
+
 /** Short and long labels for each model id. */
 export const MODEL_INFO: Record<string, { tag: string; name: string; desc: string }> = {
   'poisson-dc-v1': { tag: 'v1', name: t('Standings model'), desc: t('Poisson from the current league table') },
   'dc-history-v2': { tag: 'v2', name: t('History model'), desc: t('Dixon-Coles fitted on 3 seasons of results') },
   'grid-v3': { tag: 'v3', name: t('Grid model'), desc: t('Scoring grid: value × relevance per parameter, 1000-point split') },
+  // v3-mix is shown as v3 (Yarin, Oct 2026): the grid averaged with our second model; no new public name
+  'v3-mix': { tag: 'v3', name: t('Grid model'), desc: t('Scoring grid: value × relevance per parameter, 1000-point split') },
   'elo-intl': { tag: 'v3', name: t('v3 · national teams'), desc: t('Our national-team engine: rating from every senior international result since 2014, plus squad value') },
   'elo-euro': { tag: 'v3', name: t('v3 · European cups'), desc: t('Our European-cup engine: cross-league club rating from domestic and UEFA cup results, plus squad value') }
 }
@@ -112,7 +119,7 @@ export function modelInfo(model: string) {
 // maxStreak: skip games where both teams drew 32%+ of their last 20 (bookmakers already over-price those draws)
 export const DRAW_ALERT = { k: 0.75, minEdge: 0.02, maxEdge: 0.2, minV3Draw: 30, maxStreak: 0.32, excluded: ['PD'] }
 export function drawAlert(p: Prediction, m: Market | null | undefined, competitionCode?: string) {
-  if (!m || p.locked || p.model !== 'grid-v3' || p.draw < DRAW_ALERT.minV3Draw) return null
+  if (!m || p.locked || !isV3(p.model) || p.draw < DRAW_ALERT.minV3Draw) return null
   if (competitionCode && DRAW_ALERT.excluded.includes(competitionCode)) return null
   if (p.drawStreak && Math.min(p.drawStreak.home, p.drawStreak.away) >= DRAW_ALERT.maxStreak) return null
   const price = m.best?.draw || m.msw.draw

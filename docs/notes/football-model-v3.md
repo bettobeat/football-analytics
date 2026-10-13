@@ -6,6 +6,43 @@ Code: `backend/src/services/gridModel.ts` (rows, `CONV`, `buildState`, `scoreMat
 Admin endpoints: `/api/model/v3/status`, `/api/backtest/run`, `/api/backtest/sweep`, `/api/model/v3/tune`,
 `/api/model/v3/league-tune`, `/api/model/v3/tuned`, `/api/model/goals-calibration`.
 Rule for every change: accepted only if log loss / Brier improve on games the fit never saw (walk-forward, later seasons).
+Research behind the feature model / v3-mix: `all-data-test-model-oct-2026.md`, `model-sweep-oct-2026.md` (this folder).
+
+## v3-mix + daily self-learning (fix113, 13 Oct 2026) — shadow until it passes
+- **Feature model `feat-v1`** (`featureModel.ts`): second league model from data already in the DB. Walk-forward features per
+  game: Elo diff (margin-weighted, K 20, ×1.5 in a team's first 10 games of a season) + learned home edge per division;
+  EWMA α 0.15 of goals / xG / shots on target for and against (crossed attack vs defence) + their total; luck (goals − xG,
+  last 10); home-only / away-only points; league draw and home rates; squad value log ratio + known flag; confirmed XI
+  value (lineup names → `squad_players` via `playerKey`), XI previous-season rating and goals (`af_player_season`,
+  season − 1; no lineup yet → the team's last known XI, flag 0); injuries count and previous-season minutes × rating.
+  Fit: multinomial logit (standardised, L2 = C 0.5) + gradient-boosted trees (softmax, depth 3, 120 rounds, lr 0.03,
+  min leaf hessian 80 — chosen conservative after a synthetic check showed the trees overfitting with lighter settings),
+  averaged 50/50. Train: the two previous seasons + current season to date (from 1 July two seasons back).
+  Stored in `feature_model` (json, trained_at, cutoff, train_games, test_logloss, active); state rebuilt every 30 min.
+- **v3-mix** = (1 − w) × grid-v3 + w × feat-v1, w = 0.5 (`model_config.mix_weight`), league games only (national teams /
+  UEFA cups stay on elo-intl / elo-euro). grid-v3, feat-v1 and v3-mix are all saved in `predictions` (model column) and
+  compared in Admin → Accuracy. Shown as "v3"; "Why we think so" unchanged + one line when the feature model differs from
+  v3 by > 8 points on the favourite.
+- **Shadow mode** (Yarin, 13 Oct): the server DB can't be reached from the cloud session, so v3-mix went in computed and
+  stored but not published. `model_config.mix_mode` = auto (default) / on / off (`/api/admin/v3-mix?mode=`); in auto the
+  daily job publishes v3-mix once it beats v3 alone in both 60-day windows (≥ 300 games each), and goes back to v3 if it
+  falls behind by > 0.005. Visitors never see feat-v1, nor v3-mix before it is live (JSON replacer in `index.ts`); the
+  public record counts v3-mix only from the day it went live (`mix_live_since`). Backtest: `/api/admin/v3-mix?backtest=1`
+  (feature model fitted before 1 July, scored on this season vs tracked v3 and vs the latest grid-v3 backtest run of
+  2627 when one exists). **To do: run it on the server; the research expects ≈ −0.003 to −0.004 for the mix.**
+- **Daily champion / challenger** (`modelDaily.ts`, 04:00 UTC): refit the feature model (stored, not live); challengers
+  (a) fresher feature fit (scored as a procedure: fit to the window start vs a fit as stale as the live one), (b) v3 row
+  weights refitted with the tuner (`v3WindowRun`: 2 previous seasons + this season, trained before each window), (c) mix
+  weight 0.4 / 0.5 / 0.6. Scored on the last 60 days of settled league games (history replay, walk-forward), log loss,
+  tie-break Brier, hit rate may drop ≤ 0.5 pp. Promote only with ≥ 300 games, ≥ 0.003 better, and better or equal in
+  the previous 60 days. Guardrail: ≥ 100 games after a promotion and worse than the previous champion by > 0.005 →
+  automatic rollback (feature model id, v3 vector, mix weight). Log: `model_daily`, `/api/admin/model-daily`
+  (`?run=1`, `?preview=1`, `?report=1`), Admin → "Model: daily self-learning". `MODEL_DAILY=off` stops the job.
+- **Morning report**: 07:00 Asia/Jerusalem (Intl time zone, DST-aware; waits for the job until 09:00) to ADMIN_EMAILS,
+  plain text: champion, today's change or "No change", yesterday and last 30 days (games, picks right, log loss v3-mix /
+  v3 / feature / bookmakers, 60%+ hit rate), data health + unsettled games, next 3 challengers. Stored in `model_daily`.
+- Synthetic check (no DB here; 8 leagues × 20 teams with known strengths): feature model 1.0462 vs truth 1.0392 vs a fixed
+  guess 1.0753 on 720 test games, mean probabilities match the real rates; backtest / daily job / report run end to end.
 
 ## Full tune (6 Oct 2026) — live
 - Train 2024-25 + 2025-26 (8,005 games, 12 live divisions), test 2026-27 (652 games). Test log loss 0.9913 → 0.9794

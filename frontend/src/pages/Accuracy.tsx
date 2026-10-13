@@ -91,7 +91,9 @@ const OUTCOME_LABEL: Record<Outcome, string> = { H: 'Home', D: 'Draw', A: 'Away'
 const MODEL_LABEL: Record<string, string> = {
   'poisson-dc-v1': 'v1 · standings',
   'dc-history-v2': 'v2 · history (Dixon-Coles)',
-  'grid-v3': 'v3 · scoring grid'
+  'grid-v3': 'v3 · scoring grid',
+  'v3-mix': 'v3-mix · grid + feature model',
+  'feat-v1': 'feature model (logit + trees)'
 }
 // Last complete season (football-data.co.uk code: 2526 = 2025/26)
 const BACKTEST_SEASON = '2526'
@@ -242,7 +244,7 @@ function Accuracy() {
                         </Link>
                         <span className="text-xs text-faint ml-2 hidden md:inline">{r.competition}</span>
                         {model === 'ALL' && (
-                          <span className="text-[10px] text-faint ml-2">{r.model === 'grid-v3' ? 'v3' : r.model === 'dc-history-v2' ? 'v2' : 'v1'}</span>
+                          <span className="text-[10px] text-faint ml-2">{r.model === 'grid-v3' ? 'v3' : r.model === 'v3-mix' ? 'v3-mix' : r.model === 'feat-v1' ? 'feat' : r.model === 'dc-history-v2' ? 'v2' : 'v1'}</span>
                         )}
                       </td>
                       <td className="text-center font-semibold num">{r.score}</td>

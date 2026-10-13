@@ -58,7 +58,8 @@ Backend (`backend/src`, Express + TypeScript, `index.ts` holds every route):
   teams matched to API-Football clubs by name in `matchFdTeam`). `nationalElo.ts` = `elo-intl` for national teams.
   `historyModel.ts` = v2 (hidden), `predictionModel.ts` = v1 (fallback only; should not be visible for big games).
   `v3Tuner.ts` = full tune, `tracking.ts` = saved predictions + public record, `trial.ts` = leagues "in testing"
-  (out of the public record). `liveChance.ts` = live win chance.
+  (out of the public record). `liveChance.ts` = live win chance. `featureModel.ts` = feature model (feat-v1) + v3-mix
+  (shadow until published), `modelDaily.ts` = daily champion / challenger (04:00 UTC) + 07:00 Israel-time report.
 - Basketball: `basketball.ts` (API-Basketball games/box scores, `BB_LEAGUES`), `bbModel.ts` (**bb-v3**: v1 ratings +
   v2 possession ratings, 50/50 blend, player talent, `BB_TRIAL`), `bbSite.ts` (pages), `bbPlayers.ts`, `bdl.ts`
   (balldontlie: NBA injuries/players), `bbInjuries.ts`, `bbResults.ts` (result checks), `bbLive.ts` (live win chance + projected score), `bbLeagueConfig.ts` /
@@ -88,8 +89,8 @@ Frontend (`frontend/src`, React + Vite + Tailwind, tokens in `index.css`, colour
 ## Planned next (Oct 2026)
 
 1. Basketball launch ~18 Oct (`BASKETBALL_PUBLIC=1`); live win chance is built (fix110), check `/api/bb/live-test` first.
-2. Self-learning loop: nightly champion/challenger refit with out-of-sample referee, per-league drift, calibration
-   watchdog, logged in Admin.
+2. Football self-learning is built (fix113, v3-mix in shadow): check `/api/admin/v3-mix?backtest=1` on the server;
+   still open: per-league drift, calibration watchdog, basketball.
 3. Weekly automated review (site, model, data) that pushes safe fixes.
 4. 3-day free trial on paid plans when payments go live (Lemon Squeezy preferred).
 5. Pictures for every basketball player/team (licensed source), AI support chat, DMARC p=reject in early Nov.

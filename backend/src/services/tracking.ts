@@ -2,6 +2,7 @@
  * Prediction tracking: save every prediction, lock it at kick-off,
  * settle it against the result, and compute accuracy metrics.
  */
+import { MIX_MODEL, FEAT_MODEL, mixLive, mixLiveSince } from './featureModel';
 import { TRIAL_COMPETITIONS } from './trial';
 import { db } from '../db';
 import logger from '../utils/logger';
@@ -323,7 +324,13 @@ export interface SettledRow {
  *   market – the same matches seen by the bookmakers (only matches with recorded odds; margin removed)
  */
 const MAIN_PRIORITY = ['grid-v3', 'elo-intl', 'elo-euro', 'dc-history-v2', 'poisson-dc-v1'];
-const mainRank = (m: string) => { const i = MAIN_PRIORITY.indexOf(m); return i < 0 ? 99 : i; };
+// v3-mix counts as the main league model only for games from the day it went live (before that it was a shadow);
+// feat-v1 never does
+const mainRank = (m: string, date?: string) => {
+  if (m === MIX_MODEL) { const since = mixLive() ? mixLiveSince() : ''; return since && date && date >= since ? -1 : 99; }
+  if (m === FEAT_MODEL) return 99;
+  const i = MAIN_PRIORITY.indexOf(m); return i < 0 ? 99 : i;
+};
 function settledRows(days: number, competition?: string, model?: string): SettledRow[] {
   if (model !== 'main' && model !== 'market') return settledRowsRaw(days, competition, model);
   const all = settledRowsRaw(days, competition);
@@ -331,8 +338,9 @@ function settledRows(days: number, competition?: string, model?: string): Settle
   const odds = new Map<number, [number, number, number]>();
   for (const r of all) {
     const cur = best.get(r.match_id);
-    if (!cur || mainRank(r.model) < mainRank(cur.model)) best.set(r.match_id, r);
     if (r.odds_home && r.odds_draw && r.odds_away && !odds.has(r.match_id)) odds.set(r.match_id, [r.odds_home, r.odds_draw, r.odds_away]);
+    if ((r.model === FEAT_MODEL || r.model === MIX_MODEL) && mainRank(r.model, r.utc_date) >= 99) continue; // shadow rows
+    if (!cur || mainRank(r.model, r.utc_date) < mainRank(cur.model, cur.utc_date)) best.set(r.match_id, r);
   }
   let rows = [...best.values()].map(r => {
     const o = odds.get(r.match_id);
