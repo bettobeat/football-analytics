@@ -680,7 +680,7 @@ function MatchDetail() {
       </div>
 
       {/* ---------- Tabs ---------- */}
-      <div className="sticky top-16 sm:top-[72px] z-30 -mx-4 sm:mx-0 mt-6 px-4 sm:px-0 py-2 bg-bg/80 backdrop-blur-xl">
+      <div className="sticky top-16 sm:top-[72px] z-30 -mx-4 sm:mx-0 mt-6 px-4 sm:px-0 py-2 bg-bg/35 backdrop-blur-xl">
         <nav className="flex gap-1 p-1 rounded-full bg-surface2/60 border border-line/60 overflow-x-auto no-scrollbar" aria-label={tt("Match sections")}>
           {tabs.map(t => (
             <button

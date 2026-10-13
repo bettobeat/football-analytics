@@ -33,7 +33,7 @@ export function Card({ title, action, children, className = '' }: { title?: stri
 /** Football-style section title over rails and lists. */
 export function SectionTitle({ label, sub, count, sticky }: { label: string; sub?: string; count?: number; sticky?: boolean }) {
   return (
-    <div className={`flex items-baseline gap-3 mb-3 ${sticky ? 'sticky top-[113px] sm:top-16 z-30 py-2 -my-2 bg-bg/90 backdrop-blur' : ''}`}>
+    <div className={`flex items-baseline gap-3 mb-3 ${sticky ? 'sticky top-[113px] sm:top-16 z-30 py-2 -my-2 bg-bg/35 backdrop-blur-lg' : ''}`}>
       <h2 className="font-display text-lg font-bold tracking-tight text-ink">{label}</h2>
       {count !== undefined && <span className="num text-xs text-faint">{t('{0} games', { 0: count })}</span>}
       {sub && <span className="text-xs text-faint">{sub}</span>}

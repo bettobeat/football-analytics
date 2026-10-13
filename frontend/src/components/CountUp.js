@@ -1,0 +1,54 @@
+import { jsxs as _jsxs } from "react/jsx-runtime";
+import { useEffect, useRef, useState } from 'react';
+/**
+ * A number that "rolls" to its value: a short scramble (like a slot machine), then it eases in to the real
+ * figure. Only animates when `animate` is true (the moment a prediction is revealed); otherwise it just shows it.
+ */
+export default function CountUp({ value, decimals = 0, suffix = '', animate, delay = 0, className }) {
+    const [shown, setShown] = useState(animate ? 0 : value);
+    const raf = useRef(0);
+    useEffect(() => {
+        if (!animate) {
+            setShown(value);
+            return;
+        }
+        // "Stop animations" in the accessibility menu: show the number at once
+        const calm = document.documentElement.classList.contains('a11y-motion');
+        if (calm) {
+            setShown(value);
+            return;
+        }
+        const SCRAMBLE = calm ? 0 : 550, SETTLE = calm ? 700 : 950;
+        const t0 = performance.now() + delay;
+        let last = 0;
+        const tick = (now) => {
+            const t = now - t0;
+            if (t < 0) {
+                raf.current = requestAnimationFrame(tick);
+                return;
+            }
+            if (t < SCRAMBLE) {
+                // scramble: jump around every ~55 ms
+                if (now - last > 55) {
+                    last = now;
+                    setShown(8 + Math.random() * 64);
+                }
+            }
+            else if (t < SCRAMBLE + SETTLE) {
+                const x = (t - SCRAMBLE) / SETTLE;
+                const ease = 1 - Math.pow(1 - x, 4);
+                // overshoot slightly past the value, then land on it
+                const from = calm ? 0 : value < 50 ? value + 18 : value - 18;
+                setShown(from + (value - from) * ease + (calm ? 0 : Math.sin(x * Math.PI) * (value < 50 ? -2.5 : 2.5) * (1 - x)));
+            }
+            else {
+                setShown(value);
+                return;
+            }
+            raf.current = requestAnimationFrame(tick);
+        };
+        raf.current = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf.current);
+    }, [value, animate, delay]);
+    return _jsxs("span", { className: className, children: [Math.max(0, shown).toFixed(decimals), suffix] });
+}

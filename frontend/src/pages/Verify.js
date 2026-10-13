@@ -1,0 +1,71 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { errorText, useAuth } from '../lib/auth';
+import { safeNext } from '../lib/nav';
+import { t as tt } from '../lib/i18n';
+const RESEND_WAIT = 45;
+/** Enter the 6-digit code sent to the new account's email. */
+export default function Verify() {
+    const { user, loading, needsVerification, verify, resendCode, logout } = useAuth();
+    const nav = useNavigate();
+    const loc = useLocation();
+    const next = safeNext(new URLSearchParams(loc.search).get('next'));
+    const [code, setCode] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState(null);
+    const [info, setInfo] = useState(null);
+    const [wait, setWait] = useState(RESEND_WAIT);
+    useEffect(() => {
+        if (loading)
+            return;
+        if (!user)
+            nav('/login', { replace: true });
+        else if (!needsVerification)
+            nav(next, { replace: true });
+    }, [loading, user, needsVerification, next, nav]);
+    useEffect(() => {
+        if (wait <= 0)
+            return;
+        const t = setTimeout(() => setWait(w => w - 1), 1000);
+        return () => clearTimeout(t);
+    }, [wait]);
+    const submit = async (e) => {
+        e?.preventDefault();
+        if (code.length !== 6)
+            return setError(tt("Enter the 6-digit code."));
+        setError(null);
+        setBusy(true);
+        try {
+            await verify(code);
+        }
+        catch (err) {
+            setError(errorText(err));
+            setCode('');
+        }
+        finally {
+            setBusy(false);
+        }
+    };
+    const resend = async () => {
+        setError(null);
+        setInfo(null);
+        try {
+            await resendCode();
+            setInfo(tt("A new code is on its way."));
+            setWait(RESEND_WAIT);
+        }
+        catch (err) {
+            setError(errorText(err));
+        }
+    };
+    if (!user)
+        return null;
+    return (_jsx("div", { className: "max-w-md mx-auto px-4 sm:px-6 py-12 sm:py-16", children: _jsxs("div", { className: "card p-6 sm:p-8", children: [_jsx("div", { className: "w-12 h-12 rounded-2xl bg-accent/15 text-accent grid place-items-center mb-4", children: _jsxs("svg", { width: "22", height: "22", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true, children: [_jsx("rect", { x: "3", y: "5", width: "18", height: "14", rx: "2" }), _jsx("path", { d: "M3 7l9 6 9-6" })] }) }), _jsx("h1", { className: "font-display text-2xl font-extrabold text-ink", children: tt("Confirm your email") }), _jsx("p", { className: "text-sm text-muted mt-1", children: tt("We sent a 6-digit code to {0}. It’s valid for 10 minutes. Check spam if you don’t see it.", { 0: user.email }) }), _jsxs("form", { onSubmit: submit, className: "mt-6 space-y-3", children: [_jsx("input", { value: code, onChange: e => {
+                                const v = e.target.value.replace(/\D/g, '').slice(0, 6);
+                                setCode(v);
+                            }, inputMode: "numeric", autoComplete: "one-time-code", autoFocus: true, placeholder: "000000", "aria-label": tt("Verification code"), className: "w-full rounded-xl border border-line bg-surface2/60 px-4 py-3 text-center num text-3xl tracking-[0.5em] text-ink placeholder:text-faint/60 outline-none focus:border-accent focus:ring-2 focus:ring-accent/20" }), error && _jsx("div", { className: "rounded-xl border border-loss/40 bg-loss/10 px-3 py-2 text-sm text-loss", children: error }), info && !error && _jsx("div", { className: "rounded-xl border border-win/40 bg-win/10 px-3 py-2 text-sm text-win", children: info }), _jsx("button", { type: "submit", disabled: busy || code.length !== 6, className: "w-full rounded-xl bg-accent text-bg font-semibold py-2.5 text-sm disabled:opacity-60 transition-opacity", children: busy ? tt("Checking…") : tt("Confirm") })] }), _jsxs("div", { className: "mt-5 flex items-center justify-between text-sm", children: [_jsx("button", { onClick: resend, disabled: wait > 0, className: "text-accent font-medium disabled:text-faint", children: wait > 0 ? tt("Resend code in {0}s", { 0: wait }) : tt("Resend code") }), _jsx("button", { onClick: async () => {
+                                await logout();
+                                nav('/signup');
+                            }, className: "text-muted hover:text-ink", children: tt("Wrong email?") })] })] }) }));
+}

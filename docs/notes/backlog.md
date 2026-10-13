@@ -1,6 +1,6 @@
 # SportLikely — backlog and decisions (updated 13 Oct 2026)
 
-Next free fix number: **fix111**. Keep this file current: when you ship something, move it to "Done" with its fix number.
+Next free fix number: **fix112**. Keep this file current: when you ship something, move it to "Done" with its fix number.
 
 ## Now / next
 - **Basketball launch (~18 Oct)**: set `BASKETBALL_PUBLIC=1`, change "basketball coming" wording. Before that, open `/api/bb/live-test?tune=1` (admin) to check the live win chance on all 18 leagues with bb-v3's own predictions (it was fitted on public NBA data; see basketball.md).
@@ -22,6 +22,7 @@ Next free fix number: **fix111**. Keep this file current: when you ship somethin
 - Model ideas: relegated clubs overrated (squad value ranked within the division) → absolute scale; add League Two / SC2 history; goals model from shots/xG; "Best bet" per match.
 
 ## Done (newest first)
+- fix111 (13 Oct): sticky bars translucent + blurred, no black stripe over the dark stage gradient: day titles (`SectionTitle` in `Dashboard.tsx` and `bb/parts.tsx`) `bg-bg/35 backdrop-blur-lg`, match/game page tab bars `bg-bg/35`, leagues sheet header `bg-bg/40`; site header kept at `bg-bg/70` (its bottom border hides the edge). Checked dark + light at 375 / 1440 px.
 - fix110 (13 Oct): basketball live win chance (`bbLive.ts`): live win % + projected final score on the game page, game rows, live boxes, basketball home and a new "Live now" card on league pages; from the tip-off prediction, the score and the time left. NBA quarter test (2,495 games out of sample): log loss after Q1 / Q2 / Q3 0.567 / 0.488 / 0.358, 70 / 76 / 84% right, calibrated. Admin test on every league: `/api/bb/live-test?tune=1`.
 - fix109 (13 Oct): Champions League clubs matched to API-Football ratings (`clubElo.matchFdTeam`); clubs without a squad value count as €12m; n<2 instead of n<8 → no more v1 fallback for CL games. Out-of-sample 705 cup games: log loss 0.958 → 0.952, hit 56.2 → 58.4%. Phone: accessibility + feedback buttons shrunk.
 - fix108 (13 Oct): basketball leagues from Admin (`bbLeagueConfig.ts`, `bbLeagueCoverage.ts`, routes `/api/admin/bb-league-coverage`, `/api/admin/bb-extra-leagues`); `LeaguesCard sport="basketball"`.
