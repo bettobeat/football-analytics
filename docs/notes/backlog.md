@@ -1,6 +1,6 @@
 # SportLikely — backlog and decisions (updated 13 Oct 2026)
 
-Next free fix number: **fix116**. Keep this file current: when you ship something, move it to "Done" with its fix number.
+Next free fix number: **fix117**. Keep this file current: when you ship something, move it to "Done" with its fix number.
 
 ## Now / next
 - **Basketball launch (~18 Oct)**: set `BASKETBALL_PUBLIC=1`, change "basketball coming" wording. Before that, open `/api/bb/live-test?tune=1` (admin) to check the live win chance on all 18 leagues with bb-v3's own predictions (it was fitted on public NBA data; see basketball.md).
@@ -22,6 +22,7 @@ Next free fix number: **fix116**. Keep this file current: when you ship somethin
 - Model ideas: relegated clubs overrated (squad value ranked within the division) → absolute scale; add League Two / SC2 history; goals model from shots/xG; "Best bet" per match.
 
 ## Done (newest first)
+- fix116 (13 Oct): visitor countries — `geo.ts` checks every download (gzip / text / web page → error, broken gzip → error), reads CSV or TSV, sorts ranges; sources in order: DB-IP monthly (this, last month) → DB-IP via jsDelivr (v4 + v6 CSV) → iptoasn.com ip2country (public domain); saved data replaced only after a good read; source in `DATA_DIR/geo/source.txt`; retry hourly while nothing is loaded. After deploy: Railway log "geo: country data from … loaded".
 - fix115 (13 Oct): one live score everywhere (`liveScores.ts`): every Football-Data.org match shows the fresher of API-Football / Football-Data.org (AF when finished or ≤ 2 min old, unless FD says finished and is newer) in the list, the live push and the match page; live loop every 20 s (FD fresh every 3rd tick, AF live=all every tick while games are on). Check during live games: `/api/admin/live-book`.
 - fix114 (13 Oct): sticky bars transparent at rest, frosted (`bg-bg/85 backdrop-blur-xl`) only while pinned (`lib/useStuck.ts`, `components/StickyBar.tsx`): day titles (football + basketball `SectionTitle`), match/game page tab bars; leagues sheet header solid `bg-surface`. Checked at 375 / 1440 px: no band at rest, frosted while rows scroll under.
 - fix113 (13 Oct): feature model (`featureModel.ts`, feat-v1: logit + boosted trees on Elo, xG/goals/shots EWMA, luck, home/away points, squad + XI value, XI ratings, injuries) and v3-mix (50/50 with grid-v3, league games only), in shadow until it passes; daily champion / challenger at 04:00 UTC with guardrail rollback (`modelDaily.ts`, `model_daily`, Admin card, `/api/admin/model-daily`); 07:00 Israel-time morning report email. Research notes copied in: `all-data-test-model-oct-2026.md`, `model-sweep-oct-2026.md`.
