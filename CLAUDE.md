@@ -1,0 +1,95 @@
+# SportLikely — instructions for Claude (read first, every session)
+
+SportLikely (sportlikely.com) is a sports-prediction site: football live, basketball launching ~18 Oct 2026, more sports later.
+Owner: Yarin. One repo, one Railway service (`railway.json`, Dockerfile) serving the API and the built site. SQLite on a
+Railway volume (`DATA_DIR=/data`). Push to `main` = deploy.
+
+**Start of every session:** read this file, then `docs/notes/backlog.md` (what is open, what was decided) and the note
+that matches the task. Decisions in `docs/notes/` are Yarin's decisions — follow them unless he changes them in the chat.
+When you finish something durable (a new feature, a model result, a decision), update `docs/notes/backlog.md` and, if it
+is model work, the matching note, in the same commit.
+
+## Hard rules (never break these)
+
+- **No bookmakers on the public site.** No odds, no bookmaker names or links. Odds comparison exists for admins only
+  (model quality). Ads policy reason. Public proof = hit rate, strong picks, calibration.
+- **Never mention Israel.** No Israeli league on the basketball site, no "Israel" anywhere in product copy. Israeli
+  football results exist in the data (Ligat Ha'Al, AF383) and stay as they are; don't add Israel references.
+- **Past seasons / backtests are admin-only** on every sport. The public record starts on launch day.
+- **Secrets:** never print, log, commit or ask for API keys, tokens or passwords. They live in Railway variables.
+  Never change or delete `TOTP_KEY` or `BACKUP_KEY` (two-step login and backups would break).
+- **Accounts and money:** Yarin creates accounts and pays himself. Admin login needs two-step. Staff can't change their
+  own console password. Account deletion must remove the user's picks/favorites.
+- **Privacy:** never store visitor IPs except in the security log (90 days). Visitors are shown by country only.
+- **Images:** don't hotlink NBA headshots (cdn.nba.com) or copy news photos. Crests/logos come from the data providers.
+- **Branding:** the brand is "SportLikely" (sports in general, not "football predictions"). Copy says "sports
+  predictions", "probabilities, not promises", "18+". No "bet"/"wager" wording in the product name or nav.
+- **Model principle (Yarin):** a pick must make sense when someone looks at the stats. Keep home advantage, but a team
+  with clearly worse form / table / head-to-head must not be made the favourite. Every model change is accepted only if
+  it improves log loss / Brier on games it never saw (walk-forward or later seasons), never on the fitting data.
+- **`BILLING_TEST_MODE`** must be removed before real payments go live. Don't wire real payment webhooks without Yarin.
+
+## How to work here
+
+- Branches: for normal fixes and features push to `main` when Yarin says so ("push to main"). For anything touching
+  payments, accounts, auth or data deletion, push a branch and ask him to merge.
+- Commit message style: `fixNNN: short description` (next number: see the top of `docs/notes/backlog.md`). Keep the
+  counter going.
+- Before pushing: `cd backend && npx tsc --noEmit -p .` and `cd frontend && npx tsc --noEmit -p .` must pass
+  (frontend has `noUnusedLocals` / `noUnusedParameters` on). Don't commit `node_modules`, `dist`, `.env`, `*.sqlite`.
+- Copy: short, plain English, no jargon. Six locales in `frontend/src/locales/*.json` (de, es, fr, it, pt, tr; English
+  is the key). A new UI string needs the key used through `t("...")` and a translation in all six files
+  (`json.dumps(..., ensure_ascii=False, indent=1)` keeps the file format).
+- Phones first: check layouts at 375 px. Bottom nav on phones; floating accessibility button bottom-left.
+- Don't add dependencies without a reason; the backend uses Node's built-in `node:sqlite`, no ORM.
+- The server can't be reached from local tests; test model changes on a database copy (admins can download one from
+  Admin → Database backups) with `DATA_DIR` pointing at a folder holding `bet-to-beat.sqlite`, user tables emptied.
+
+## Map of the code
+
+Backend (`backend/src`, Express + TypeScript, `index.ts` holds every route):
+- Football data: `footballDataAPI.ts` (Football-Data.org: top leagues + Champions League), `afMatches.ts` +
+  `apiFootball.ts` (API-Football: extra leagues, cups, national teams, lineups, injuries, match stats, player data),
+  `history.ts` (football-data.co.uk result history + per-league groups), `leagueConfig.ts` / `leagueCoverage.ts`
+  (leagues added from Admin → Football leagues; each = group `AF<id>`, history from API-Football fixtures).
+- Football models: `gridModel.ts` = **v3 (grid-v3)**, the live model for leagues: factor rows (squad value, Elo,
+  attack/defence, confirmed XI, missing players, freshness, home/away record, H2H…) → points → probabilities, with the
+  common-sense guard (`h2hGuard.ts`). `clubElo.ts` = `elo-euro` for UEFA cups (CL fixtures come from Football-Data.org,
+  teams matched to API-Football clubs by name in `matchFdTeam`). `nationalElo.ts` = `elo-intl` for national teams.
+  `historyModel.ts` = v2 (hidden), `predictionModel.ts` = v1 (fallback only; should not be visible for big games).
+  `v3Tuner.ts` = full tune, `tracking.ts` = saved predictions + public record, `trial.ts` = leagues "in testing"
+  (out of the public record). `liveChance.ts` = live win chance.
+- Basketball: `basketball.ts` (API-Basketball games/box scores, `BB_LEAGUES`), `bbModel.ts` (**bb-v3**: v1 ratings +
+  v2 possession ratings, 50/50 blend, player talent, `BB_TRIAL`), `bbSite.ts` (pages), `bbPlayers.ts`, `bdl.ts`
+  (balldontlie: NBA injuries/players), `bbInjuries.ts`, `bbResults.ts` (result checks), `bbLeagueConfig.ts` /
+  `bbLeagueCoverage.ts` (leagues added from Admin → Basketball leagues, code `BB<id>`). `BASKETBALL_PUBLIC=1` opens
+  the basketball site to everyone (admins see it before).
+- Accounts & admin: `auth.ts`, `twoFactor.ts`, `roles.ts`, `staffConsole.ts`, `securityLog.ts`, `crm.ts`, `billing.ts`
+  (plans: Premium $15, Pro $30, Pro 6 months $144, Pro yearly $249; 3-day trial decided, not built), `userPicks.ts`
+  (users' own picks + personal record), `favorites.ts`, `testers.ts`, `backup.ts`, `clientErrors.ts`, `dataHealth.ts`,
+  `dataAudit.ts`, `seo.ts`.
+- `OPEN_API` in `index.ts` lists the public routes; everything else is admin/staff only.
+
+Frontend (`frontend/src`, React + Vite + Tailwind, tokens in `index.css`, colours `accent` (lime), `win`, `loss`, `draw`):
+- `App.tsx` routes (lazy pages). Football pages in `pages/`, basketball in `pages/bb/`. `components/` shared cards.
+- `lib/i18n.ts` (t, LOCALE), `lib/bb.ts` (basketball types, `BB_COUNTRY`), `lib/fame.ts` (how big a club is: used for
+  Spotlight and the featured carousel), `lib/reveal.ts` (free users reveal 2 picks a week).
+- Admin pages: `pages/Admin.tsx` (overview cards incl. Site errors, Football leagues, Basketball leagues, Backups),
+  `pages/Crm.tsx`.
+
+## Model facts you should know (details in docs/notes)
+
+- Football v3 top leagues: hit rate ≈ bookmakers' favourite (≈50%), log loss within 0.002 of the closing odds; second
+  divisions trail the market by 2–6 points (that's the leagues, not a bug). Strong picks (60%+) ≈ 75% right.
+- 15 leagues added 7 Oct 2026 are "in testing" (`TRIAL_COMPETITIONS`), excluded from the public record.
+- Basketball bb-v3: 68.5–69.3% picks right over 14k test games, well calibrated; BSN in testing.
+- Everything tuned is tested out-of-sample; the notes record what was tried and rejected — don't retry those blindly.
+
+## Planned next (Oct 2026)
+
+1. Basketball live predictions during games (live win chance, like football) — before the 18 Oct launch.
+2. Self-learning loop: nightly champion/challenger refit with out-of-sample referee, per-league drift, calibration
+   watchdog, logged in Admin.
+3. Weekly automated review (site, model, data) that pushes safe fixes.
+4. 3-day free trial on paid plans when payments go live (Lemon Squeezy preferred).
+5. Pictures for every basketball player/team (licensed source), AI support chat, DMARC p=reject in early Nov.
