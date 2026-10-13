@@ -42,7 +42,7 @@ export function NewsRows({ items, showLeague = false, max = 12 }: { items: NewsI
               )}
             </span>
             <span className="min-w-0 flex flex-col gap-1">
-              <span className="text-[13px] font-bold leading-snug text-ink line-clamp-2">{n.title}</span>
+              <span className="text-[13px] font-bold leading-snug text-ink break-words">{n.title}</span>
               <span className="text-[11px] text-faint">{[n.source, showLeague ? n.leagues?.[0]?.name : null].filter(Boolean).join(' · ')}{n.published ? ` · ${newsAgo(n.published)}` : ''}</span>
             </span>
           </a>
@@ -69,8 +69,8 @@ export function NewsLead({ items, max = 7 }: { items: NewsItem[]; max?: number }
         )}
         <span className="p-5 flex flex-col gap-2 flex-1">
           {!lead.image && <span className="text-[11px] font-extrabold uppercase tracking-wide text-accent">{lead.source}</span>}
-          <span className="font-display text-lg sm:text-xl font-bold leading-snug text-ink">{lead.title}</span>
-          {lead.summary && <span className="text-sm text-muted line-clamp-3">{lead.summary}</span>}
+          <span className="font-display text-lg sm:text-xl font-bold leading-snug text-ink break-words">{lead.title}</span>
+          {lead.summary && <span className="text-sm text-muted break-words">{lead.summary}</span>}
           <span className="mt-auto pt-2 text-[11px] text-faint">{lead.published ? `${newsAgo(lead.published)} · ` : ''}{t('opens {0}', { 0: lead.source })}</span>
         </span>
       </a>

@@ -475,6 +475,24 @@ function toItem(r: any): NewsItem {
 }
 const when = (r: any) => r.published || r.seen_at;
 
+/**
+ * One story per headline: titles compared lowercase without punctuation or spaces (the same story from two outlets or
+ * under two links). Keeps the first (newest) one in place, but takes the copy with a picture when the first has none.
+ */
+const titleKey = (t: string) => String(t || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+function dedupe(rows: any[]): any[] {
+  const out: any[] = [];
+  const at = new Map<string, number>();
+  for (const r of rows) {
+    const k = titleKey(r.title);
+    if (!k) { out.push(r); continue; }
+    const i = at.get(k);
+    if (i === undefined) { at.set(k, out.length); out.push(r); }
+    else if (!out[i].image && r.image) out[i] = r;
+  }
+  return out;
+}
+
 /** Interleave outlets so one of them doesn't fill the list (each outlet newest first). */
 function mix(rows: any[], limit: number): any[] {
   const bySource = new Map<string, any[]>();
@@ -506,7 +524,7 @@ export async function newsFor(opts: { sport?: Sport; limit?: number; league?: st
     const re = new RegExp(`(?<![\\p{L}\\p{N}])(?:${names.map(esc).join('|')})(?![\\p{L}\\p{N}])`, 'u');
     const rows = db.prepare(`SELECT * FROM news_items WHERE sport = ? AND COALESCE(published, seen_at) >= ? ORDER BY COALESCE(published, seen_at) DESC LIMIT 3000`)
       .all(sport, new Date(Date.now() - 30 * 86400000).toISOString()) as any[];
-    return rows.filter(r => re.test(norm(`${r.title} . ${r.summary}`))).slice(0, limit).map(toItem);
+    return dedupe(rows.filter(r => re.test(norm(`${r.title} . ${r.summary}`)))).slice(0, limit).map(toItem);
   }
   if (opts.league) {
     // the last 14 days; a quiet league (fewer than 8 stories) also gets its older stories, up to 60 days back
@@ -514,13 +532,13 @@ export async function newsFor(opts: { sport?: Sport; limit?: number; league?: st
     const q = db.prepare(`
       SELECT * FROM news_items WHERE sport = ? AND leagues LIKE ? AND COALESCE(published, seen_at) >= ?
       ORDER BY COALESCE(published, seen_at) DESC LIMIT ?`);
-    let rows = q.all(sport, `%,${code},%`, new Date(Date.now() - 14 * 86400000).toISOString(), limit);
-    if (rows.length < Math.min(8, limit)) rows = q.all(sport, `%,${code},%`, new Date(Date.now() - 60 * 86400000).toISOString(), Math.min(limit, 8));
+    let rows = dedupe(q.all(sport, `%,${code},%`, new Date(Date.now() - 14 * 86400000).toISOString(), limit * 2)).slice(0, limit);
+    if (rows.length < Math.min(8, limit)) rows = dedupe(q.all(sport, `%,${code},%`, new Date(Date.now() - 60 * 86400000).toISOString(), Math.min(limit, 8) * 2)).slice(0, Math.min(limit, 8));
     return rows.map(toItem);
   }
   const rows = db.prepare(`SELECT * FROM news_items WHERE sport = ? AND COALESCE(published, seen_at) >= ? ORDER BY COALESCE(published, seen_at) DESC LIMIT 300`)
     .all(sport, new Date(Date.now() - (sport === 'basketball' ? 5 : 3) * 86400000).toISOString());
-  return mix(rows, limit).map(toItem);
+  return mix(dedupe(rows), limit).map(toItem);
 }
 
 /** Football news (home / league page). */

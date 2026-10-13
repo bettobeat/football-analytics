@@ -409,7 +409,7 @@ function League() {
                         )}
                       </span>
                       <span className="min-w-0 flex flex-col gap-1">
-                        <span className="text-[13px] font-bold leading-snug text-ink line-clamp-2">{n.title}</span>
+                        <span className="text-[13px] font-bold leading-snug text-ink break-words">{n.title}</span>
                         <span className="text-[11px] text-faint">{n.source}{n.published ? ` · ${ago(n.published)}` : ''}</span>
                       </span>
                     </a>

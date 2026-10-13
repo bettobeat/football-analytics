@@ -384,7 +384,7 @@ export default function Home() {
     <div className="space-y-10 min-w-0">
       {/* ---------- first visit: what this is and why trust it, in five seconds (signed-out visitors only) ---------- */}
       {access === 'anon' && (
-        <section className="rounded-3xl border border-accent/30 bg-[linear-gradient(135deg,rgb(var(--accent)/0.10),rgb(var(--surface)/0.6)_60%)] p-5 sm:p-7 grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+        <section className="rounded-3xl border border-line/40 bg-[linear-gradient(135deg,rgb(var(--accent)/0.10),rgb(var(--surface)/0.6)_60%)] p-5 sm:p-7 grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
           <div className="min-w-0 space-y-4">
             <div className="space-y-2">
               <h1 className="font-display text-2xl sm:text-4xl font-extrabold tracking-tight text-ink leading-tight">{tt("Sports predictions, tested in public")}</h1>
@@ -513,7 +513,7 @@ export default function Home() {
 
       {/* ---------- proof · draw alerts · strong picks ---------- */}
       <div className="grid gap-5 lg:grid-cols-3">
-        <div className="rounded-3xl p-6 border border-accent/30 bg-[linear-gradient(160deg,rgb(var(--accent)/0.10),rgb(var(--surface)/0.6))] flex flex-col gap-4">
+        <div className="rounded-3xl p-6 border border-line/40 bg-[linear-gradient(160deg,rgb(var(--accent)/0.10),rgb(var(--surface)/0.6))] flex flex-col gap-4">
           <div className="flex items-center justify-between gap-2">
             <h2 className="font-display text-lg font-bold">{tt("Our record")}</h2>
             {summary && <span className="text-xs text-muted">{tt("last {0} days", { 0: summary.days })}</span>}
@@ -589,8 +589,8 @@ export default function Home() {
                       )}
                       <span className="p-5 flex flex-col gap-2 flex-1">
                         {!lead.image && <span className="text-[11px] font-extrabold uppercase tracking-wide text-accent">{lead.source}</span>}
-                        <span className="font-display text-lg sm:text-xl font-bold leading-snug text-ink">{lead.title}</span>
-                        {lead.summary && <span className="text-sm text-muted line-clamp-3">{lead.summary}</span>}
+                        <span className="font-display text-lg sm:text-xl font-bold leading-snug text-ink break-words">{lead.title}</span>
+                        {lead.summary && <span className="text-sm text-muted break-words">{lead.summary}</span>}
                         <span className="mt-auto pt-2 text-[11px] text-faint">{lead.published ? `${ago(lead.published)} · ` : ''}{tt("opens {0}", { 0: lead.source })}</span>
                       </span>
                     </a>
@@ -605,7 +605,7 @@ export default function Home() {
                             )}
                           </span>
                           <span className="min-w-0 flex flex-col gap-1">
-                            <span className="text-sm font-bold leading-snug text-ink line-clamp-2">{n.title}</span>
+                            <span className="text-sm font-bold leading-snug text-ink break-words">{n.title}</span>
                             <span className="text-[11px] text-faint">{srcLine(n)}{n.published ? ` · ${ago(n.published)}` : ''}</span>
                           </span>
                         </a>
@@ -644,12 +644,12 @@ function NewsRail({ news }: { news: News[] }) {
   const rest = lead ? news.filter(n => n !== lead).slice(0, 8) : []
   return (
     <section className="card p-3 max-h-[calc(100vh-6.5rem)] overflow-y-auto flex flex-col gap-2">
-      <h2 className="font-display text-lg font-bold px-2 pt-1">{tt("Around the world")}</h2>
+      <h2 className="shrink-0 font-display text-lg font-bold px-2 pt-1">{tt("Around the world")}</h2>
       {!lead ? (
-        <p className="px-2 pb-2 text-sm text-muted">{tt("Loading the latest football news…")}</p>
+        <p className="shrink-0 px-2 pb-2 text-sm text-muted">{tt("Loading the latest football news…")}</p>
       ) : (
         <>
-          <a href={lead.link} target="_blank" rel="noreferrer" className="rounded-2xl overflow-hidden bg-surface2/40 hover:bg-surface2/70 transition-colors flex flex-col">
+          <a href={lead.link} target="_blank" rel="noreferrer" className="shrink-0 rounded-2xl overflow-hidden bg-surface2/40 hover:bg-surface2/70 transition-colors flex flex-col">
             {lead.image && (
               <span className="relative block aspect-[16/9] bg-surface2 overflow-hidden">
                 <img src={lead.image} alt="" loading="lazy" className="absolute inset-0 w-full h-full object-cover" onError={e => { (e.currentTarget.parentElement as HTMLElement).style.display = 'none' }} />
@@ -657,15 +657,15 @@ function NewsRail({ news }: { news: News[] }) {
                 <span className="absolute left-3 bottom-2 text-[10px] font-extrabold uppercase tracking-wide text-[#C8FF3D]">{lead.source}</span>
               </span>
             )}
-            <span className="p-3 flex flex-col gap-1.5">
+            <span className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
               {!lead.image && <span className="text-[10px] font-extrabold uppercase tracking-wide text-accent">{lead.source}</span>}
-              <span className="font-display font-bold leading-snug text-ink">{lead.title}</span>
-              {lead.summary && <span className="text-xs text-muted line-clamp-2">{lead.summary}</span>}
+              <span className="font-display font-bold leading-snug text-ink break-words">{lead.title}</span>
+              {lead.summary && <span className="text-xs text-muted break-words">{lead.summary}</span>}
               <span className="text-[11px] text-faint">{lead.published ? ago(lead.published) : lead.source}</span>
             </span>
           </a>
           {rest.map(n => (
-            <a key={n.link} href={n.link} target="_blank" rel="noreferrer" className="flex gap-3 p-2 rounded-2xl hover:bg-surface2/60 transition-colors">
+            <a key={n.link} href={n.link} target="_blank" rel="noreferrer" className="shrink-0 flex gap-3 p-2 rounded-2xl hover:bg-surface2/60 transition-colors">
               <span className="w-20 h-14 rounded-xl overflow-hidden bg-surface2 flex-shrink-0 grid place-items-center">
                 {n.image ? (
                   <img src={n.image} alt="" loading="lazy" className="w-full h-full object-cover" onError={e => { e.currentTarget.style.display = 'none' }} />
@@ -674,7 +674,7 @@ function NewsRail({ news }: { news: News[] }) {
                 )}
               </span>
               <span className="min-w-0 flex flex-col gap-1">
-                <span className="text-[13px] font-bold leading-snug text-ink line-clamp-2">{n.title}</span>
+                <span className="text-[13px] font-bold leading-snug text-ink break-words">{n.title}</span>
                 <span className="text-[11px] text-faint">{srcLine(n)}{n.published ? ` · ${ago(n.published)}` : ''}</span>
               </span>
             </a>
