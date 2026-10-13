@@ -137,6 +137,12 @@ export function countryOf(ipIn: string): string | null {
   return null;
 }
 
+/** The country data in use, for the credit on the privacy page and the admin card. */
+export function geoCredit() {
+  return /^iptoasn/.test(savedSource())
+    ? { name: 'ip2country by iptoasn.com', url: 'https://iptoasn.com', licence: 'public domain' }
+    : { name: 'IP Geolocation by DB-IP', url: 'https://db-ip.com', licence: 'CC BY 4.0' };
+}
 export const geoStatus = () => ({
   loaded: !!v4s, loadedAt, status,
   source: /^iptoasn/.test(savedSource()) ? 'ip2country by iptoasn.com (public domain)' : 'IP to Country Lite by DB-IP (db-ip.com), CC BY 4.0'

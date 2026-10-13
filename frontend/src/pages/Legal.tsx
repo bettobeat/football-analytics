@@ -1,10 +1,22 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import axios from 'axios'
+import { API_URL } from '../lib/socket'
 
 const CONTACT = 'contact@sportlikely.com'
-const UPDATED = '10 October 2026'
+const UPDATED = '13 October 2026'
 // Operator details: fill in once the company is registered (legal name, registration number, address)
 const OPERATOR: string | null = null
+
+// the country data actually in use (DB-IP normally; iptoasn.com when the server had to fall back to it)
+const GEO_DEFAULT = { name: 'IP Geolocation by DB-IP', url: 'https://db-ip.com', licence: 'CC BY 4.0' }
+function GeoCredit() {
+  const [g, setG] = useState(GEO_DEFAULT)
+  useEffect(() => {
+    axios.get(`${API_URL}/public/geo-source`).then(r => { const d = r.data?.data; if (d?.name && /^https:\/\//.test(d.url)) setG(d) }).catch(() => undefined)
+  }, [])
+  return <><a href={g.url} target="_blank" rel="noreferrer" className="text-accent hover:underline">{g.name}</a> ({g.licence})</>
+}
 
 function Page({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -144,7 +156,7 @@ export function Privacy() {
           a scrambled version of the IP address (a one-way code with a secret key). It cannot be turned back into the IP address, is not
           linked to your account, and is deleted after 90 days. We also note which country the visit came from, looked up from the IP
           address at the moment of the visit (the address itself is not kept). Country data:{' '}
-          <a href="https://db-ip.com" target="_blank" rel="noreferrer" className="text-accent hover:underline">IP Geolocation by DB-IP</a> (CC BY 4.0).
+          <GeoCredit />.
         </p>
         <p>
           <span className="text-ink font-semibold">Cookies and browser storage:</span> one cookie keeps you signed in (needed for accounts to

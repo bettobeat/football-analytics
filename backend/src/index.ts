@@ -73,7 +73,7 @@ import { highlightsFor, highlightsStatus, lastCandidates } from './services/high
 import { rebuildPlayerQuality, playerQualityTable } from './services/playerQuality';
 import { db } from './db';
 import { trackVisit, visitorStats } from './services/visitors';
-import { startGeo } from './services/geo';
+import { startGeo, geoCredit } from './services/geo';
 import { seoPage, renderIndex, sitemapXml } from './services/seo';
 import { fontRoute, warmFonts } from './services/fonts';
 import { listFavorites, addFavorites, removeFavorite, MAX_FAVORITES } from './services/favorites';
@@ -301,7 +301,7 @@ app.use('/api', rateLimit('api', 600, 60000)); // ~10 a second, far above a pers
 app.use(['/api/team-page', '/api/player-page'], rateLimit('pages', 60, 10 * 60000));
 app.use('/api/unlocks', (req, res, next) => (req.method === 'POST' ? rateLimit('unlock', 30, 60000, r => String(r.user?.id || r.ip))(req, res, next) : next()));
 
-const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|contact$|feedback$|client-error$|picks(\/|$)|testers\/|unsubscribe$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|basketball\/|public\/(summary|results|record)$|unlocks(\/|$)|billing\/)/;
+const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|contact$|feedback$|client-error$|picks(\/|$)|testers\/|unsubscribe$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|basketball\/|public\/(summary|results|record|geo-source)$|unlocks(\/|$)|billing\/)/;
 const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|history\/status|clv|draw-alerts|upset-watch)$/; // past seasons and backtests are admin only (Oct 2026)
 
 app.use('/api', (req, res, next) => {
@@ -1694,6 +1694,9 @@ app.get('/api/public/results', (req, res) => {
 
 // Home page proof block: our record over 30 days (all games) and the strong-pick record (cached 10 min)
 let summaryCache: { at: number; data: any } | null = null;
+// Privacy page: which country data is in use (DB-IP, CC BY 4.0 — or iptoasn.com when that one is loaded)
+app.get('/api/public/geo-source', (_req, res) => res.json({ data: geoCredit() }));
+
 app.get('/api/public/summary', (_req, res) => {
   try {
     if (!summaryCache || Date.now() - summaryCache.at > 10 * 60 * 1000) {
