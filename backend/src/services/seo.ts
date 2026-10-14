@@ -2,6 +2,7 @@ import { db } from '../db';
 import { BB_LEAGUES } from './basketball';
 import { bbPublic } from './bbSite';
 import { FONT_HEAD } from './fonts';
+import { getPreview, firstSentence, metaDescription, matchTitle, previewDates } from './matchPreview';
 
 /**
  * Search engines (Oct 2026). The site is a single-page app, so every address used to send the same empty page with
@@ -64,8 +65,9 @@ function fbTeamName(id: number): string | null {
 const fbList = (lang: Lang, list: FbMatch[]) =>
   list.length ? `<ul>${list.map(m => `<li><a href="${link(lang, `/match/${m.id}`)}">${esc(m.home)} vs ${esc(m.away)}</a> · ${esc(m.comp || '')} · ${short(m.date)}</li>`).join('')}</ul>` : '';
 
-const sportsEvent = (name: string, date: string, home: string, away: string, url: string, comp?: string | null, sport = 'Soccer') => ({
+const sportsEvent = (name: string, date: string, home: string, away: string, url: string, comp?: string | null, sport = 'Soccer', description?: string) => ({
   '@context': 'https://schema.org', '@type': 'SportsEvent', name, startDate: date, sport, url,
+  ...(description ? { description } : {}),
   ...(comp ? { superEvent: { '@type': 'SportsEvent', name: comp } } : {}),
   homeTeam: { '@type': 'SportsTeam', name: home }, awayTeam: { '@type': 'SportsTeam', name: away },
   eventStatus: 'https://schema.org/EventScheduled'
@@ -121,10 +123,12 @@ export function seoPage(rawPath: string): SeoInfo {
       if (x) {
         const name = `${x.home} vs ${x.away}`;
         const when = day(x.date);
-        return page(`${name} prediction · ${x.comp || 'Football'} · ${short(x.date)} | ${BRAND}`,
-          `${name} (${x.comp || 'football'}, ${when}): our win, draw and loss chances, expected goals, form, head-to-head, injuries and line-ups. Saved before kick-off and checked after the game.`,
-          `<h1>${esc(name)} prediction</h1><p>${esc(x.comp || '')} · ${esc(when)}</p><p>Win, draw and loss chances, expected goals, over 2.5 goals and both teams to score, recent form, head-to-head, injuries and line-ups for ${esc(name)}.</p><ul>${x.code ? `<li><a href="${link(lang, `/league/${x.code}`)}">${esc(x.comp || x.code)}</a></li>` : ''}${x.homeId ? `<li><a href="${link(lang, `/team/${x.homeId}`)}">${esc(x.home)}</a></li>` : ''}${x.awayId ? `<li><a href="${link(lang, `/team/${x.awayId}`)}">${esc(x.away)}</a></li>` : ''}</ul>`,
-          { jsonld: [sportsEvent(name, x.date, x.home, x.away, SITE + link(lang, path), x.comp)] });
+        // match preview (fix121): English only for now, the same text the match page shows (never the pick or a %)
+        const pv = lang === 'en' ? getPreview(x.id) : null;
+        return page(matchTitle(x.home, x.away, x.comp, x.date),
+          pv ? metaDescription(pv.text) : `${name} (${x.comp || 'football'}, ${when}): our win, draw and loss chances, expected goals, form, head-to-head, injuries and line-ups. Saved before kick-off and checked after the game.`,
+          `<h1>${esc(name)} prediction</h1><p>${esc(x.comp || '')} · ${esc(when)}</p>${pv ? `<section><h2>Match preview</h2><p>${esc(pv.text)}</p></section>` : ''}<p>Win, draw and loss chances, expected goals, over 2.5 goals and both teams to score, recent form, head-to-head, injuries and line-ups for ${esc(name)}.</p><ul>${x.code ? `<li><a href="${link(lang, `/league/${x.code}`)}">${esc(x.comp || x.code)}</a></li>` : ''}${x.homeId ? `<li><a href="${link(lang, `/team/${x.homeId}`)}">${esc(x.home)}</a></li>` : ''}${x.awayId ? `<li><a href="${link(lang, `/team/${x.awayId}`)}">${esc(x.away)}</a></li>` : ''}</ul>`,
+          { jsonld: [sportsEvent(name, x.date, x.home, x.away, SITE + link(lang, path), x.comp, 'Soccer', pv ? firstSentence(pv.text) : undefined)] });
       }
     }
     if ((m = path.match(/^\/league\/([A-Za-z0-9]+)$/))) {
@@ -217,13 +221,17 @@ export function renderIndex(html: string, s: SeoInfo): string {
 
 /** sitemap.xml: main pages, competitions and the next two weeks of matches (+ the last two weeks: our public record). */
 export function sitemapXml(): string {
-  const urls: { loc: string; freq: string; pri: string }[] = [];
-  const add = (p: string, freq: string, pri: string) => urls.push({ loc: p, freq, pri });
+  const urls: { loc: string; freq: string; pri: string; mod?: string }[] = [];
+  const add = (p: string, freq: string, pri: string, mod?: string) => urls.push({ loc: p, freq, pri, mod });
   add('/', 'hourly', '1.0'); add('/matches', 'hourly', '0.9'); add('/draw-alerts', 'daily', '0.6'); add('/premium', 'monthly', '0.5');
   add('/terms', 'yearly', '0.2'); add('/privacy', 'yearly', '0.2'); add('/accessibility', 'yearly', '0.2'); add('/contact', 'yearly', '0.3');
   for (const c of fbCompetitions()) add(`/league/${c.code}`, 'daily', '0.7');
-  for (const x of fbUpcoming(1500)) add(`/match/${x.id}`, 'hourly', '0.8');
-  for (const x of fbRecent(14, 1500)) add(`/match/${x.id}`, 'weekly', '0.4');
+  // match pages: lastmod = the match preview's last rebuild (fix121); a missing preview is written from our own tables
+  const up = fbUpcoming(1500), rec = fbRecent(14, 1500);
+  const mods = previewDates([...up, ...rec].map(x => x.id));
+  const mod = (id: number) => mods.get(id) || getPreview(id)?.builtAt;
+  for (const x of up) add(`/match/${x.id}`, 'hourly', '0.8', mod(x.id));
+  for (const x of rec) add(`/match/${x.id}`, 'weekly', '0.4', mod(x.id));
   if (bbPublic()) {
     add('/basketball', 'hourly', '0.8');
     for (const l of BB_LEAGUES) add(`/basketball/league/${l.code}`, 'daily', '0.6');
@@ -231,5 +239,5 @@ export function sitemapXml(): string {
   }
   const alt = (p: string) => LANGS.map(l => `<xhtml:link rel="alternate" hreflang="${l}" href="${SITE + link(l, p)}"/>`).join('');
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n${urls
-    .map(u => `  <url><loc>${SITE}${u.loc}</loc>${alt(u.loc)}<changefreq>${u.freq}</changefreq><priority>${u.pri}</priority></url>`).join('\n')}\n</urlset>\n`;
+    .map(u => `  <url><loc>${SITE}${u.loc}</loc>${alt(u.loc)}${u.mod ? `<lastmod>${u.mod}</lastmod>` : ''}<changefreq>${u.freq}</changefreq><priority>${u.pri}</priority></url>`).join('\n')}\n</urlset>\n`;
 }

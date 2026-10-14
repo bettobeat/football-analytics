@@ -75,6 +75,7 @@ import { db } from './db';
 import { trackVisit, visitorStats } from './services/visitors';
 import { startGeo, geoCredit } from './services/geo';
 import { seoPage, renderIndex, sitemapXml } from './services/seo';
+import { refreshFromDetails } from './services/matchPreview';
 import { fontRoute, warmFonts } from './services/fonts';
 import { listFavorites, addFavorites, removeFavorite, MAX_FAVORITES } from './services/favorites';
 import { tuneV3Full, tuneStatus, isTuning } from './services/v3Tuner';
@@ -1339,6 +1340,11 @@ app.get('/api/matches/:id(\\d+)/details', async (req, res) => {
       const lv = withLive({ ...details.match, prediction: details.prediction, predictions: details.predictions });
       details.prediction = lv.prediction;
       details.predictions = lv.predictions;
+    }
+    // SEO match preview (fix121): written from the details we just loaded, cached per match; never the pick or a %
+    if (details?.match) {
+      const pv = refreshFromDetails(details);
+      details.preview = pv ? { text: pv.text, builtAt: pv.builtAt, title: pv.title } : null;
     }
     res.json({ data: details, timestamp: new Date().toISOString() });
   } catch (error: any) {

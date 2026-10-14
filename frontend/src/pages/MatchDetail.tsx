@@ -13,7 +13,7 @@ import CountUp from '../components/CountUp'
 import { RevealCover } from '../components/Reveal'
 import PredictionStory from '../components/PredictionStory'
 import { FavStar, nameKey as favKey } from '../lib/favorites'
-import { t as tt, LOCALE } from '../lib/i18n'
+import { t as tt, LOCALE, lang } from '../lib/i18n'
 import StickyBar from '../components/StickyBar'
 
 /* ---------- types (Football-Data.org v4 shapes, loosely) ---------- */
@@ -108,6 +108,8 @@ interface Details {
   match: Match
   prediction: Prediction | null
   predictions?: Prediction[]
+  /** SEO match preview (fix121): English text from our own data, never the pick or a %; same text crawlers get */
+  preview?: { text: string; builtAt: string; title: string } | null
   head2head: {
     aggregates: {
       numberOfMatches: number
@@ -367,9 +369,12 @@ function MatchDetail() {
 
   // browser tab: "Arsenal vs Chelsea · SportLikely"
   const tabTitle = details ? `${details.match.homeTeam.shortName || details.match.homeTeam.name} vs ${details.match.awayTeam.shortName || details.match.awayTeam.name}` : ''
+  // English pages: the same title search engines get ("Home vs Away prediction & preview · Competition · date | SportLikely")
+  const seoTitle = lang === 'en' ? details?.preview?.title : undefined
   useEffect(() => {
-    if (tabTitle) document.title = tt("{0} · SportLikely", { 0: tabTitle })
-  }, [tabTitle])
+    if (seoTitle) document.title = seoTitle
+    else if (tabTitle) document.title = tt("{0} · SportLikely", { 0: tabTitle })
+  }, [tabTitle, seoTitle])
 
   // Live scores arrive over the socket; full details (events, lineups) are re-fetched on a timer:
   //   live → every 60s · within 2h of kick-off → every 90s (official lineups land ~1h before) · otherwise every 5 min
@@ -683,6 +688,8 @@ function MatchDetail() {
           </div>
         )}
       </div>
+
+      {lang === 'en' && details?.preview?.text && <MatchPreview text={details.preview.text} />}
 
       {/* ---------- Tabs ---------- */}
       <StickyBar className="top-16 sm:top-[72px] -mx-4 sm:mx-0 mt-6 px-4 sm:px-0 py-2">
@@ -1287,6 +1294,23 @@ function Highlights({ matchId }: { matchId: number }) {
         </a>
       </div>
     </Section>
+  )
+}
+
+/**
+ * "Match preview" (fix121): the same English text search engines get (no pick, no %). Open on wider screens,
+ * folded on phones (tap to open). English pages only for now.
+ */
+function MatchPreview({ text }: { text: string }) {
+  const [open, setOpen] = useState(() => typeof window === 'undefined' || window.matchMedia('(min-width: 640px)').matches)
+  return (
+    <details open={open} onToggle={e => setOpen((e.currentTarget as HTMLDetailsElement).open)} className="group mt-4 card px-4 sm:px-5 py-3">
+      <summary className="flex items-center justify-between gap-3 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+        <h2 className="font-display text-base font-bold text-ink">Match preview</h2>
+        <svg viewBox="0 0 24 24" className="w-4 h-4 text-muted transition-transform group-open:rotate-180" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M6 9l6 6 6-6" /></svg>
+      </summary>
+      <p className="mt-2 text-sm text-muted leading-relaxed">{text}</p>
+    </details>
   )
 }
 
