@@ -1,6 +1,6 @@
-# SportLikely — backlog and decisions (updated 13 Oct 2026)
+# SportLikely — backlog and decisions (updated 15 Oct 2026)
 
-Next free fix number: **fix120**.
+Next free fix number: **fix121**.
 
 **Accuracy pages hidden from public on 14 Oct, Yarin's decision, until redesigned** (`/accuracy`, `/basketball/accuracy`: admins only, non-admins go to the sport's home; no nav tabs or record links for visitors; noindex, out of the sitemap; `/api/accuracy*` and `/api/public/record` still work). Keep this file current: when you ship something, move it to "Done" with its fix number.
 
@@ -14,7 +14,11 @@ Next free fix number: **fix120**.
 - AI support chat on the site (reuses `services/assistant.ts`, needs `ANTHROPIC_API_KEY`; estimate cost first).
 - DMARC `p=reject` in early Nov (currently `p=quarantine`; edit the existing `_dmarc` TXT record in Spaceship, never add a second). Then BIMI.
 
+## Decisions
+- **Our recommended pick = double chance** (decision 17 Oct, Yarin): subscribers get the double chance (1X / X2 / 12, the two most likely results, % = their sum) as the recommended pick, football only. The three 1X2 percentages stay as they are. "Strong pick" = double chance 85%+, shown only as a small extra label. A settled pick counts as right when the result is inside the double chance; the 1X2 result is still tracked as "the hard calls" (admin + Accuracy page). Basketball unchanged (no draws). One rule in `backend/src/utils/doubleChance.ts` and `frontend/src/lib/predict.ts` (ties go 1X, X2, 12).
+
 ## Known issues / to check
+- Prediction emails / push notifications don't exist yet: when they are built, use the double-chance pick (`dc` is already in the upset-watch and draw-pick data).
 - Data health: 1 game past kick-off + 4 h not settled (13 Oct). Daily data check 94.6% (target ~97%).
 - "Team page →" link under Man City on the match page opened "We couldn't find this team yet" (13 Oct) — team id / link issue to check.
 - Railway region: requests take ~210 ms; EU West may be faster (back up first).
@@ -24,6 +28,7 @@ Next free fix number: **fix120**.
 - Model ideas: relegated clubs overrated (squad value ranked within the division) → absolute scale; add League Two / SC2 history; goals model from shots/xG; "Best bet" per match.
 
 ## Done (newest first)
+- fix120 (15 Oct): double chance is our recommended pick everywhere on football: "Our pick: X2 · Barça or draw · 82%" badge (`components/DcPick.tsx`, replaces fix118's `DoubleChanceChip`) on the match page, featured carousel, next-games cards, league fixtures, upset watch and draw picks; match rows highlight both cells + an "X2" tag; locked/finished teasers carry `dc` (no %); "Why we think so" leads with "Barça or a draw: 82%"; the match page shows the 1X2 as "Most likely result". Record: `/api/public/summary.v3.hitRate` and `/api/public/results` count a pick as right when the result is inside the double chance (`hardHitRate` = 1X2); latest results show the double chance with ✓/✗; Accuracy page (admin) leads with "Our picks · double chance" + strong 85%+ + fix118 bands, 1X2 kept as "The hard calls" and in the per-competition table. fix119's Home record card kept as it was. Assistant prompt updated. 11 new strings × 6 locales. Checked at 375 / 1440 px against a mock API.
 - fix119 (14 Oct): home "Our record" card shows our best numbers, double chance first: `publicRecord().highlights` (double chance all / ≥85% / ≥90%, result all / ≥60 / ≥70 / ≥80, BTTS and O/U 2.5 at ≥70% confidence; same 30 days and games), passed in `/api/public/summary`; rows high → low, 30+ games each, max 6, top row larger in accent; footnote explains double chance; full-record link admin-only.
 - fix118 (14 Oct): record pages admin-only (`RecordGate`, `RecordLink` in App.tsx / components); double chance leads: `publicRecord().doubleChance.bands` (90%+, 80–90, 70–80) and `/api/public/summary.doubleChance`; Home hero cards "X% right · double chance" and "X% when we're 90%+ sure · double chance" (80%+ when the 90%+ band has < 30 games); "Double chance · 1X · 78%" chip on the match page prediction card and the featured carousel (`DoubleChanceChip`); AccuracySimple shows the safer calls first with the new bands.
 - fix117 (13 Oct): privacy page credits the country data actually in use (`geoCredit()`, public `/api/public/geo-source`): DB-IP (CC BY 4.0) normally, iptoasn.com (public domain) when that one is loaded; DB-IP is the fallback text if the call fails.

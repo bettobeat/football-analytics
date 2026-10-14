@@ -11,6 +11,7 @@
  *   history  – walk-forward backtests, priced at the best early price, with the line movement to close
  */
 import { db } from '../db';
+import { dcPick } from './upsetAlerts';
 import { DIVISION_NAMES } from './pastView';
 import { GROUPS, loadGroupMatches, seasonCodes } from './history';
 
@@ -254,7 +255,7 @@ function likelyDraws(limit = 8) {
   const now = new Date().toISOString();
   const soon = new Date(Date.now() + 7 * 86400000).toISOString();
   const rows = db.prepare(`
-    SELECT match_id, model, competition_name, competition_code, utc_date, home_team, away_team, home_team_id, away_team_id, p_draw, odds_home, odds_draw, odds_away
+    SELECT match_id, model, competition_name, competition_code, utc_date, home_team, away_team, home_team_id, away_team_id, p_home, p_draw, p_away, odds_home, odds_draw, odds_away
     FROM predictions
     WHERE settled = 0 AND locked = 0 AND utc_date > ? AND utc_date < ? AND model IN ('grid-v3', 'elo-intl', 'elo-euro')
   `).all(now, soon) as any[];
@@ -269,7 +270,8 @@ function likelyDraws(limit = 8) {
       return {
         matchId: r.match_id, league: r.competition_name || r.competition_code, date: r.utc_date, home: r.home_team, away: r.away_team,
         homeCrest: crestOf(r.home_team_id), awayCrest: crestOf(r.away_team_id),
-        draw: r1(r.p_draw), marketDraw: f ? r1(f[1] * 100) : null, price: r.odds_draw || null
+        draw: r1(r.p_draw), marketDraw: f ? r1(f[1] * 100) : null, price: r.odds_draw || null,
+        dc: dcPick(r.p_home, r.p_draw, r.p_away)
       };
     });
 }

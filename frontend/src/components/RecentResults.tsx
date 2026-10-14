@@ -4,6 +4,8 @@ import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { t as tt, LOCALE } from '../lib/i18n'
 import RecordLink from './RecordLink'
+import { dcLabel, type DC } from '../lib/predict'
+import { DcTag } from './DcPick'
 
 type Pick = 'H' | 'D' | 'A'
 const PICK_COLOR: Record<Pick, string> = { H: 'text-home', D: 'text-draw', A: 'text-away' }
@@ -20,8 +22,11 @@ interface Settled {
   awayCrest?: string | null
   score: string
   outcome: Pick
+  /** the 1X2 hard call */
   pick: Pick
   hit: boolean
+  /** fix120: our recommended pick, the double chance (p is null for free viewers) */
+  dc?: { pick: DC; p: number | null; hit: boolean | null } | null
   p: Record<Pick, number> | null
 }
 
@@ -43,7 +48,8 @@ export default function RecentResults({ code, limit, days = 14, compact, large, 
     }
   }, [code, limit, days])
 
-  const hits = rows?.filter(r => r.hit).length || 0
+  // a pick is right when the result is inside our double chance (fix120); older payloads fall back to the 1X2 pick
+  const hits = rows?.filter(r => (r.dc ? r.dc.hit : r.hit)).length || 0
   return (
     <div>
       <div className={`flex items-baseline justify-between gap-2 ${large ? 'px-3 pt-3 pb-3' : 'px-1 pb-2'}`}>
@@ -99,10 +105,22 @@ function ResultRow({ r, compact }: { r: Settled; compact?: boolean }) {
       {side(r.home, r.homeCrest, hg, r.outcome === 'H')}
       {side(r.away, r.awayCrest, ag, r.outcome === 'A')}
       <div className="mt-1 flex items-center justify-between gap-2 text-[11px]">
-        <span className="text-faint truncate">
-          {tt("Pick")}{' '}<span className={`font-semibold ${PICK_COLOR[r.pick]}`}>{pickName}</span>
-          {!compact && r.p && <span className="num"> {Math.round(r.p[r.pick])}%</span>}
-        </span>
+        {r.dc ? (
+          <span className="flex items-center gap-1.5 min-w-0 text-faint">
+            <span className="whitespace-nowrap">{tt("Our pick")}</span>
+            <DcTag code={r.dc.pick} />
+            <span className="font-semibold text-ink/85 truncate">{dcLabel(r.dc.pick, r.home, r.away)}</span>
+            {!compact && r.dc.p !== null && <span className="num">{r.dc.p}%</span>}
+          </span>
+        ) : (
+          <span className="text-faint truncate">
+            {tt("Pick")}{' '}<span className={`font-semibold ${PICK_COLOR[r.pick]}`}>{pickName}</span>
+            {!compact && r.p && <span className="num"> {Math.round(r.p[r.pick])}%</span>}
+          </span>
+        )}
+        {r.dc && r.dc.hit !== null && (
+          <span className={`flex-shrink-0 font-extrabold ${r.dc.hit ? 'text-win' : 'text-loss'}`} aria-label={r.dc.hit ? tt("Right") : tt("Wrong")}>{r.dc.hit ? '✓' : '✗'}</span>
+        )}
       </div>
     </Link>
   )

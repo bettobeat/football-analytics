@@ -151,7 +151,8 @@ export default function PredictionStory({ p, home, away, upcoming, friendly }: {
       {/* 1. verdict */}
       <div>
         <div className="text-[11px] font-extrabold uppercase tracking-wide text-accent">{tt("Why we think so")}</div>
-        <p className="mt-1.5 text-lg font-display font-bold text-ink leading-snug">{ex.headline}</p>
+        <p className="mt-1.5 text-lg font-display font-bold text-ink leading-snug">{ex.dcHeadline}</p>
+        <p className="mt-1 text-sm text-muted leading-snug">{ex.headline}</p>
         {(() => {
           const b = safestBet(p, home, away)
           return b ? (

@@ -3,10 +3,10 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
-import { modelInfo, isV3, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, pickOfPrediction, type Prediction } from '../lib/predict'
+import { modelInfo, isV3, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, pickOfPrediction, doubleChance, dcLabel, type DC, type Prediction } from '../lib/predict'
+import OurPick, { DcTag } from '../components/DcPick'
 import { useAuth } from '../lib/auth'
 import WinProbability from '../components/WinProbability'
-import DoubleChanceChip from '../components/DoubleChanceChip'
 import { useReveal, justRevealed, hideMatch, guessFirstOn } from '../lib/reveal'
 import { useUnlocks, unlockMatch, resetDay } from '../lib/unlocks'
 import CountUp from '../components/CountUp'
@@ -574,6 +574,9 @@ function MatchDetail() {
   // a locked upcoming match carries no pick at all
   const pick: 'H' | 'D' | 'A' | null = p && !(p.locked && !p.pick) ? pickOfPrediction(p) : null
   const pickVar = pick === 'H' ? '--home' : pick === 'A' ? '--away' : '--draw'
+  // fix120: our recommended pick is the double chance (two results); the 1X2 pick stays as the "hard call"
+  const dc = pick ? doubleChance(p) : null
+  const inDc = (k: 'H' | 'D' | 'A') => (dc ? dc.sides.includes(k) : pick === k)
 
   const tableTotals = (tables || []).filter(t => t.type === 'TOTAL')
   const tableInvolving = tableTotals.filter(t => t.table.some(r => r.team.id === home.id || r.team.id === away.id))
@@ -710,7 +713,7 @@ function MatchDetail() {
                 note={p ? [modelInfo(p.model).tag, modelInfo(p.model).name.replace(new RegExp(`^${modelInfo(p.model).tag} · `), ''), p.confidence ? CONFIDENCE_LABEL[p.confidence] : null].filter(Boolean).join(' · ') : undefined}
               >
                 {p && p.locked ? (
-                  <LockedPrediction pick={pick} home={home} away={away} matchId={m.id} status={m.status} onUnlocked={() => { setUnlockAnim(true); load(false) }} />
+                  <LockedPrediction pick={pick} dc={dc?.code || null} home={home} away={away} matchId={m.id} status={m.status} onUnlocked={() => { setUnlockAnim(true); load(false) }} />
                 ) : p && pick ? (
                   hidden || unlockAnim ? (
                     <RevealCover
@@ -749,9 +752,9 @@ function MatchDetail() {
                       </div>
                     )}
                     <div className="grid grid-cols-3 gap-3">
-                      <OutcomeTile k="H" label={home.shortName || home.name} v={p.home} active={pick === 'H'} roll={justRevealed(matchId)} delay={0} />
-                      <OutcomeTile k="D" label={tt("Draw")} v={p.draw} active={pick === 'D'} roll={justRevealed(matchId)} delay={120} />
-                      <OutcomeTile k="A" label={away.shortName || away.name} v={p.away} active={pick === 'A'} roll={justRevealed(matchId)} delay={240} />
+                      <OutcomeTile k="H" label={home.shortName || home.name} v={p.home} active={inDc('H')} roll={justRevealed(matchId)} delay={0} />
+                      <OutcomeTile k="D" label={tt("Draw")} v={p.draw} active={inDc('D')} roll={justRevealed(matchId)} delay={120} />
+                      <OutcomeTile k="A" label={away.shortName || away.name} v={p.away} active={inDc('A')} roll={justRevealed(matchId)} delay={240} />
                     </div>
                     {(() => {
                       const opts = [
@@ -760,35 +763,20 @@ function MatchDetail() {
                         { k: 'A' as const, label: away.shortName || away.name, v: p.away }
                       ].sort((x, y) => y.v - x.v)
                       const top = opts[0]
-                      if (top.v >= 50)
-                        return (
-                          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${top.v >= 60 ? 'bg-accent/15 text-accent border-accent/40' : 'bg-surface2 text-ink border-line'}`}>
-                              {top.v >= 70 ? tt("Very strong pick") : top.v >= 60 ? tt("Strong pick") : tt("Pick")}
-                            </span>
-                            <span className="text-muted">
-                              {top.label} <span className="num text-ink font-semibold">{Math.round(top.v)}%</span>
-                            </span>
-                          </div>
-                        )
-                      const pair = opts.slice(0, 2)
+                      // our pick = the double chance (main badge); the single most likely result is shown as the hard call
                       return (
-                        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-                          <span className="px-2.5 py-1 rounded-full text-xs font-bold border bg-surface2 text-ink border-line">{tt("Close game · two options")}</span>
-                          <span className="text-muted">
-                            {pair[0].label} {tt("or")}{' '}{pair[1].label.toLowerCase() === 'draw' ? tt("draw") : pair[1].label}{' '}
-                            <span className="num text-ink font-semibold">{Math.round(pair[0].v + pair[1].v)}%</span>
+                        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+                          <OurPick p={p} home={home.shortName || home.name} away={away.shortName || away.name} />
+                          <span className="text-xs text-muted">
+                            {tt("Most likely result")}: {top.label} <span className="num text-ink font-semibold">{Math.round(top.v)}%</span>
                           </span>
                         </div>
                       )
                     })()}
-                    <div className="mt-2">
-                      <DoubleChanceChip p={p} home={home.shortName || home.name} away={away.shortName || away.name} />
-                    </div>
                     <div className="flex h-2.5 gap-[3px] mt-4">
-                      <div className={`rounded-full bg-home ${pick === 'H' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.home}% - 3px)` }} />
-                      <div className={`rounded-full bg-draw ${pick === 'D' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.draw}% - 3px)` }} />
-                      <div className={`rounded-full bg-away ${pick === 'A' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.away}% - 3px)` }} />
+                      <div className={`rounded-full bg-home ${inDc('H') ? '' : 'opacity-35'}`} style={{ width: `calc(${p.home}% - 3px)` }} />
+                      <div className={`rounded-full bg-draw ${inDc('D') ? '' : 'opacity-35'}`} style={{ width: `calc(${p.draw}% - 3px)` }} />
+                      <div className={`rounded-full bg-away ${inDc('A') ? '' : 'opacity-35'}`} style={{ width: `calc(${p.away}% - 3px)` }} />
                     </div>
 
                     {p.live && LIVE.has(m.status) && <LiveChance p={p} home={home} away={away} paused={m.status === 'PAUSED'} />}
@@ -1302,8 +1290,8 @@ function Highlights({ matchId }: { matchId: number }) {
   )
 }
 
-function LockedPrediction({ pick, home, away, matchId, status, onUnlocked }: {
-  pick: 'H' | 'D' | 'A' | null; home: Team; away: Team; matchId: number; status: string; onUnlocked: () => void
+function LockedPrediction({ pick, dc, home, away, matchId, status, onUnlocked }: {
+  pick: 'H' | 'D' | 'A' | null; dc: DC | null; home: Team; away: Team; matchId: number; status: string; onUnlocked: () => void
 }) {
   const { user, access } = useAuth()
   // signed-in Free (2 picks a week) and $15 Premium (60 a month) unlock match by match
@@ -1337,8 +1325,10 @@ function LockedPrediction({ pick, home, away, matchId, status, onUnlocked }: {
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2 text-sm mb-4">
-        <span className="px-2.5 py-1 rounded-full text-xs font-bold border bg-surface2 text-ink border-line">{tt("Model pick")}</span>
-        {name ? (
+        <span className="px-2.5 py-1 rounded-full text-xs font-bold border bg-surface2 text-ink border-line">{dc ? tt("Our pick") : tt("Model pick")}</span>
+        {dc ? (
+          <span className="inline-flex items-center gap-2 min-w-0"><DcTag code={dc} className="!h-5 !text-[11px] !px-1.5" /><span className="font-display font-bold text-lg text-ink truncate">{dcLabel(dc, home.shortName || home.name, away.shortName || away.name)}</span></span>
+        ) : name ? (
           <span className={`font-display font-bold text-lg ${color}`}>{name}</span>
         ) : (
           <span className="font-display font-bold text-lg text-muted">{tt("Locked")}</span>

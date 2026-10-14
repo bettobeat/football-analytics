@@ -5,6 +5,8 @@ export interface Prediction {
   /** Free / signed-out view: the server sends only { model, locked, pick, confidence } */
   locked?: boolean
   pick?: 'H' | 'D' | 'A'
+  /** locked view: our double-chance pick, without its % (fix120) */
+  dc?: DC
   /** once the confirmed lineups are in (v3): the numbers from before them */
   beforeLineups?: { home: number; draw: number; away: number; over25: number; btts: number }
   home: number // %
@@ -58,6 +60,34 @@ export function pickOfPrediction(p: Prediction): 'H' | 'D' | 'A' {
   if (p.home >= p.draw && p.home >= p.away) return 'H'
   if (p.away >= p.draw) return 'A'
   return 'D'
+}
+
+/**
+ * Double chance (fix120, decided 17 Oct 2026): our recommended football pick = the two most likely results together,
+ * with the sum of their chances. Ties go 1X, X2, 12. Keep in step with backend/src/utils/doubleChance.ts.
+ * The 1X2 percentages stay as they are; the single most likely result is still tracked as the "hard call".
+ */
+export type DC = '1X' | 'X2' | '12'
+export const DC_STRONG = 85
+export const DC_SIDES: Record<DC, ('H' | 'D' | 'A')[]> = { '1X': ['H', 'D'], X2: ['D', 'A'], '12': ['H', 'A'] }
+
+export function dcOf(h: number, d: number, a: number): { code: DC; pct: number } {
+  const x = doubleChanceOf({ home: h, draw: d, away: a })
+  return { code: x.k, pct: x.pct }
+}
+
+/** Our double-chance pick for a prediction: full ones carry the %, locked ones only the code (null when unknown). */
+export function doubleChance(p: Prediction | null | undefined): { code: DC; pct: number | null; sides: ('H' | 'D' | 'A')[]; strong: boolean } | null {
+  if (!p) return null
+  if (p.locked || typeof p.home !== 'number') return p.dc ? { code: p.dc, pct: null, sides: DC_SIDES[p.dc], strong: false } : null
+  const x = dcOf(p.home, p.draw, p.away)
+  const pct = Math.round(x.pct)
+  return { code: x.code, pct, sides: DC_SIDES[x.code], strong: pct >= DC_STRONG }
+}
+
+/** "Barça or draw" / "Real or Barça" */
+export function dcLabel(code: DC, home: string, away: string) {
+  return code === '1X' ? t("{0} or draw", { 0: home }) : code === 'X2' ? t("{0} or draw", { 0: away }) : t("{0} or {1}", { 0: home, 1: away })
 }
 
 /** Fair (no-margin) decimal odds implied by a probability in %. */

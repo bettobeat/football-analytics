@@ -80,6 +80,8 @@ Frontend (`frontend/src`, React + Vite + Tailwind, tokens in `index.css`, colour
 
 ## Model facts you should know (details in docs/notes)
 
+- **Our recommended football pick is the double chance** (fix120): the two most likely results (1X / X2 / 12), % = their
+  sum, right when the result is inside it; "Strong pick" = 85%+. 1X2 stays tracked as "the hard calls". Basketball: winner.
 - Football v3 top leagues: hit rate ≈ bookmakers' favourite (≈50%), log loss within 0.002 of the closing odds; second
   divisions trail the market by 2–6 points (that's the leagues, not a bug). Strong picks (60%+) ≈ 75% right.
 - 15 leagues added 7 Oct 2026 are "in testing" (`TRIAL_COMPETITIONS`), excluded from the public record.

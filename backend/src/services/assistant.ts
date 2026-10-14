@@ -8,6 +8,7 @@
  */
 import logger from '../utils/logger';
 import { db } from '../db';
+import { doubleChance, DC_STRONG } from '../utils/doubleChance';
 import { Access } from './auth';
 import { PLANS, FREE_WEEKLY_UNLOCKS } from './billing';
 
@@ -29,7 +30,7 @@ function siteGuide() {
   const premium = PLANS.find(p => p.id === 'premium'), pro = PLANS.find(p => p.id === 'pro'), proYear = PLANS.find(p => p.id === 'pro-year');
   return `SportLikely is a football prediction site. For every match it gives the chance of a home win, draw and away win, expected goals, over/under 2.5 and both-teams-to-score, with the reasons behind the pick.
 How the model works (v3): each team is scored 1–10 within its league on squad market value (Transfermarkt), overall strength (an Elo rating from every result, bigger wins count more), confirmed line-up vs the usual line-up, missing players, attack and defence against teams of that level, freshness (games in the last 8 days), home/away record and head-to-head (only with 3+ meetings). The difference between the two sides sets the home/away split; the draw chance starts from a goals model. National teams and European cups have their own engines. Weights were fitted on the 2024-25 and 2025-26 seasons and checked on 2026-27.
-Record: every prediction is saved before kick-off and scored after the game; the Accuracy page shows the record and never edits past predictions. "Strong pick" = our favourite at 60% or more. "Double chance" = the pick or a draw.
+Record: every prediction is saved before kick-off and scored after the game; the Accuracy page shows the record and never edits past predictions. "Our pick" (football) = the double chance: the two most likely results together (1X = home or draw, X2 = draw or away, 12 = either team wins) with the sum of their chances; a settled pick is right when the result is one of the two. "Strong pick" = that double chance at 85% or more. The single most likely result (1X2) is also tracked, as "the hard calls". Basketball has no draws: the pick there is the likelier winner.
 Plans: Free accounts get ${FREE_WEEKLY_UNLOCKS} free match unlocks a week (reset Monday). Premium $${premium?.price}/month: ${premium?.unlocks} match unlocks a month. Pro $${pro?.price}/month (or $${proYear?.price}/year): every prediction in full, draw picks, team analysis. Payments on the Premium page.
 Pages: Home, Matches (filter by league, "My favorites"), match page tabs (Prediction, Statistics = averages of the last 10 games, Lineups = confirmed or expected XI from the last 5 games, H2H = last 10 meetings, Standings), Favorites (star leagues, teams, players; synced to the account), Accuracy, Draw picks (Pro), Past seasons, Account.
 The site shows no bookmaker odds and gives no betting advice. Predictions are probabilities, not promises. 18+. If gambling stops being fun, stop and get help (begambleaware.org).`;
@@ -64,10 +65,13 @@ export function matchContext(details: any, full: boolean): string {
   const p = preds.find(x => ['grid-v3', 'elo-intl', 'elo-euro'].includes(x.model)) || preds[0];
   if (p) {
     if (p.locked || !full) {
-      const pick = p.pick === 'H' ? h : p.pick === 'A' ? a : p.pick === 'D' ? 'draw' : null;
+      const dcName = p.dc === '1X' ? `${h} or draw` : p.dc === 'X2' ? `${a} or draw` : p.dc === '12' ? `${h} or ${a}` : null;
+      const pick = dcName ? `${p.dc} (${dcName})` : p.pick === 'H' ? h : p.pick === 'A' ? a : p.pick === 'D' ? 'draw' : null;
       lines.push(`OUR PREDICTION: locked for this user${pick ? ` (our pick: ${pick}${p.confidence ? `, confidence ${p.confidence}` : ''})` : ''}. Percentages are not available to them.`);
     } else {
       lines.push(`OUR PREDICTION: ${h} ${pct(p.home)} · draw ${pct(p.draw)} · ${a} ${pct(p.away)}${p.confidence ? ` · confidence ${p.confidence}` : ''}`);
+      const dc = doubleChance(Number(p.home), Number(p.draw), Number(p.away));
+      if (dc) lines.push(`OUR PICK (double chance): ${dc.k} · ${dc.k === '1X' ? `${h} or draw` : dc.k === 'X2' ? `${a} or draw` : `${h} or ${a}`} · ${pct(dc.p)}${dc.p >= DC_STRONG ? ' · strong pick' : ''}`);
       if (p.expectedGoals) lines.push(`EXPECTED GOALS: ${p.expectedGoals.home} – ${p.expectedGoals.away} · over 2.5: ${pct(p.over25)} · both teams score: ${pct(p.btts)}${p.topScores?.length ? ` · likeliest scores: ${p.topScores.slice(0, 3).map((s: any) => `${s.home}-${s.away} (${pct(s.prob)})`).join(', ')}` : ''}`);
       if (p.grid?.rows?.length) {
         lines.push(`FACTORS (each team scored 1–10, 5.5 = league average; weight; edge in points toward a side):`);

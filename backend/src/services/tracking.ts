@@ -7,6 +7,7 @@ import { TRIAL_COMPETITIONS } from './trial';
 import { db } from '../db';
 import logger from '../utils/logger';
 import { Prediction } from './predictionModel';
+import { doubleChance, dcHit, DC_STRONG, type DC } from '../utils/doubleChance';
 
 const LIVE_OR_DONE = new Set(['IN_PLAY', 'PAUSED', 'FINISHED', 'AWARDED']);
 const SETTLE_AFTER_MS = 105 * 60 * 1000; // kick-off + 105 min before we look for a result
@@ -399,6 +400,14 @@ function pick(r: { p_home: number; p_draw: number; p_away: number }): Outcome {
   return 'D';
 }
 
+function dcOf(r: { p_home: number; p_draw: number; p_away: number; outcome?: string }) {
+  const d = doubleChance(Number(r.p_home), Number(r.p_draw), Number(r.p_away));
+  if (!d) return null;
+  const o = r.outcome;
+  const tot = Number(r.p_home) + Number(r.p_draw) + Number(r.p_away) || 1; // % (fractions on very old rows)
+  return { pick: d.k, p: Math.round((100 * d.p) / tot), hit: o === 'H' || o === 'D' || o === 'A' ? dcHit(d.k, o) : null };
+}
+
 function probOf(r: { p_home: number; p_draw: number; p_away: number }, o: Outcome) {
   return (o === 'H' ? r.p_home : o === 'D' ? r.p_draw : r.p_away) / 100;
 }
@@ -646,6 +655,8 @@ export function recentSettled(days: number = 90, competition?: string, limit: nu
       outcome: r.outcome,
       pick: pick(r),
       hit: pick(r) === r.outcome,
+      // fix120: the recommended pick is the double chance; `pick`/`hit` stay as the 1X2 hard call
+      dc: dcOf(r),
       p: { H: r.p_home, D: r.p_draw, A: r.p_away },
       odds: r.odds_home ? { H: r.odds_home, D: r.odds_draw, A: r.odds_away } : null,
       confidence: r.confidence,
@@ -675,7 +686,7 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
   const res = { n: 0, v3: 0 };
   const btts = { n: 0, hits: 0, yesPicks: 0 };
   const ou = { n: 0, hits: 0, overPicks: 0 };
-  const byComp = new Map<string, { code: string; name: string; n: number; v3: number; bn: number; bh: number; on: number; oh: number }>();
+  const byComp = new Map<string, { code: string; name: string; n: number; v3: number; bn: number; bh: number; on: number; oh: number; dn: number; dh: number }>();
   // calibration (Oct 2026): every outcome of every match (home, draw, away) by the chance we gave it, in 10% steps
   const cal = Array.from({ length: 10 }, (_, i) => ({ lo: i * 10, n: 0, sumP: 0, hits: 0 }));
   const recent: any[] = [];
@@ -693,12 +704,8 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
   // how often we are right at each confidence level (the pick's own %)
   const BANDS = [{ id: '70+', lo: 70, hi: 101, label: '70% or more' }, { id: '60-70', lo: 60, hi: 70, label: '60–70%' }, { id: '50-60', lo: 50, hi: 60, label: '50–60%' }, { id: '<50', lo: 0, hi: 50, label: 'under 50%' }];
   const bands = BANDS.map(b => ({ ...b, n: 0, hits: 0, sumP: 0 }));
-  type DC = '1X' | 'X2' | '12';
-  const dcOf = (h: number, d: number, a: number): { k: DC; p: number } => {
-    const c: { k: DC; p: number }[] = [{ k: '1X', p: h + d }, { k: 'X2', p: d + a }, { k: '12', p: h + a }];
-    return c.sort((x, y) => y.p - x.p)[0];
-  };
-  const dcHit = (k: DC, o: Outcome) => (k === '1X' ? o !== 'A' : k === 'X2' ? o !== 'H' : o !== 'D');
+  // fix120: the double chance is our recommended pick; strong pick = double chance 85%+
+  const dcStrong = { n: 0, v3: 0 };
   for (const r of rows) {
     const hg = Number(r.home_goals), ag = Number(r.away_goals);
     const v3pick = pick(r);
@@ -720,7 +727,7 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
     if (v3hit) res.v3++;
     {
       const key = r.competition_code || r.competition_name || '?';
-      const c = byComp.get(key) || { code: r.competition_code || '', name: r.competition_name || key, n: 0, v3: 0, bn: 0, bh: 0, on: 0, oh: 0 };
+      const c = byComp.get(key) || { code: r.competition_code || '', name: r.competition_name || key, n: 0, v3: 0, bn: 0, bh: 0, on: 0, oh: 0, dn: 0, dh: 0 };
       c.n++;
       if (v3hit) c.v3++;
       if (r.btts !== null && r.btts !== undefined) { c.bn++; if ((Number(r.btts) >= 50) === (hg > 0 && ag > 0)) c.bh++; }
@@ -751,7 +758,7 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
       if (Math.max(Number(r.over25), 100 - Number(r.over25)) >= 70) hlAdd('ou70', ouHit);
     }
     // double chance: the two results we rate highest together
-    const myDc = dcOf(Number(r.p_home), Number(r.p_draw), Number(r.p_away));
+    const myDc: { k: DC; p: number } = doubleChance(Number(r.p_home), Number(r.p_draw), Number(r.p_away)) || { k: '1X', p: 0 };
     const myDcHit = dcHit(myDc.k, r.outcome);
     dc.n++;
     if (myDcHit) dc.v3++;
@@ -763,6 +770,12 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
       hlAdd('dcAll', myDcHit);
       if (dcPct >= 85) hlAdd('dc85', myDcHit);
       if (dcPct >= 90) hlAdd('dc90', myDcHit);
+      // fix120: strong pick = double chance 85%+
+      if (dcPct >= DC_STRONG) { dcStrong.n++; if (myDcHit) dcStrong.v3++; }
+    }
+    {
+      const c = byComp.get(r.competition_code || r.competition_name || '?');
+      if (c) { c.dn++; if (myDcHit) c.dh++; }
     }
     // over/under 1.5 from the expected goals (Poisson): P(2+ goals) = 1 − e^−λ (1 + λ)
     let o15: { pick: boolean; hit: boolean; p: number } | null = null;
@@ -792,7 +805,7 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
 
     if (recent.length < recentLimit)
       recent.push({
-        dc: { pick: myDc.k, hit: myDcHit },
+        dc: { pick: myDc.k, p: Math.round((100 * myDc.p) / (Number(r.p_home) + Number(r.p_draw) + Number(r.p_away) || 1)), hit: myDcHit },
         over15: o15 ? { pick: o15.pick, hit: o15.hit } : null,
         safest: { market: best.market, label: best.label, p: Math.round(best.p), hit: best.hit },
         matchId: r.match_id, date: r.utc_date, competition: r.competition_name, code: r.competition_code,
@@ -811,7 +824,7 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
     btts: { n: btts.n, hitRate: pc(btts.hits, btts.n), hits: btts.hits, yesShare: pc(btts.yesPicks, btts.n) },
     over25: { n: ou.n, hitRate: pc(ou.hits, ou.n), hits: ou.hits, overShare: pc(ou.overPicks, ou.n) },
     highlights: Object.fromEntries(HL.map(k => [k, { n: hl[k].n, hits: hl[k].hits, pct: pc(hl[k].hits, hl[k].n) }])) as Record<typeof HL[number], { n: number; hits: number; pct: number | null }>,
-    doubleChance: { n: dc.n, v3: pc(dc.v3, dc.n), v3Hits: dc.v3, bands: dcBands.map(b => ({ id: b.id, min: b.lo, n: b.n, hits: b.hits, pct: pc(b.hits, b.n) })) },
+    doubleChance: { n: dc.n, v3: pc(dc.v3, dc.n), v3Hits: dc.v3, bands: dcBands.map(b => ({ id: b.id, min: b.lo, n: b.n, hits: b.hits, pct: pc(b.hits, b.n) })), strong: { min: DC_STRONG, n: dcStrong.n, hits: dcStrong.v3, hitRate: pc(dcStrong.v3, dcStrong.n) } },
     over15: { n: ou15.n, hitRate: pc(ou15.hits, ou15.n), hits: ou15.hits, overShare: pc(ou15.overPicks, ou15.n) },
     safest: {
       n: safest.n,
@@ -823,7 +836,7 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
     calibration: cal.filter(b => b.n > 0).map(b => ({ lo: b.lo, hi: b.lo + 10, n: b.n, said: Math.round((b.sumP / b.n) * 10) / 10, happened: pc(b.hits, b.n) })),
     byCompetition: [...byComp.values()]
       .filter(c => c.n >= 5)
-      .map(c => ({ code: c.code, name: c.name, n: c.n, v3: pc(c.v3, c.n), btts: pc(c.bh, c.bn), over25: pc(c.oh, c.on) }))
+      .map(c => ({ code: c.code, name: c.name, n: c.n, v3: pc(c.v3, c.n), dc: pc(c.dh, c.dn), btts: pc(c.bh, c.bn), over25: pc(c.oh, c.on) }))
       .sort((a, b) => b.n - a.n),
     recent
   };

@@ -13,6 +13,7 @@
  * share of alerts where the price then shortened (moved our way) by the close.
  */
 import { db } from '../db';
+import { doubleChance } from '../utils/doubleChance';
 
 export interface UpsetRule { K: number; cut: number; minGap: number; minEdge: number; maxEdge: number }
 export const UPSET_RULE: UpsetRule = { K: 0.75, cut: 0.33, minGap: 0.04, minEdge: 0.03, maxEdge: 0.3 };
@@ -135,6 +136,12 @@ function bestPerMatch(rows: any[]) {
   return [...best.values()];
 }
 
+/** fix120: our recommended pick (double chance) for alerts: { k: '1X' | 'X2' | '12', p } */
+export function dcPick(h: number, d: number, a: number) {
+  const x = doubleChance(Number(h), Number(d), Number(a));
+  return x ? { k: x.k, p: r1(x.p) } : null;
+}
+
 export function upsetWatchReport() {
   const now = new Date().toISOString();
   const soon = new Date(Date.now() + 7 * 86400000).toISOString();
@@ -148,7 +155,8 @@ export function upsetWatchReport() {
     return {
       matchId: r.match_id, league: r.competition_name || r.competition_code, date: r.utc_date,
       home: r.home_team, away: r.away_team, homeCrest: crestOf(r.home_team_id), awayCrest: crestOf(r.away_team_id),
-      home_p: r1(r.p_home), draw_p: r1(r.p_draw), away_p: r1(r.p_away), ...w
+      home_p: r1(r.p_home), draw_p: r1(r.p_draw), away_p: r1(r.p_away), ...w,
+      dc: dcPick(r.p_home, r.p_draw, r.p_away)
     };
   }).filter(Boolean).sort((a: any, b: any) => b.upsetChance - a.upsetChance || a.date.localeCompare(b.date));
 

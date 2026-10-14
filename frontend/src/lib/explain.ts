@@ -1,4 +1,4 @@
-import type { Prediction } from './predict'
+import { dcOf, type Prediction } from './predict'
 import { t } from './i18n'
 
 /**
@@ -6,6 +6,8 @@ import { t } from './i18n'
  * into a few plain sentences. No extra data or API calls: everything comes from the prediction itself.
  */
 export interface Explanation {
+  /** fix120: our pick, the double chance — "Barça or a draw: 82%" */
+  dcHeadline: string
   headline: string
   /** reasons for the pick, strongest first */
   forPick: string[]
@@ -74,6 +76,12 @@ export function explainPrediction(p: Prediction, homeName: string, awayName: str
   ].sort((x, y) => y.v - x.v)
   const top = opts[0], second = opts[1]
 
+  // --- our pick first: the double chance (the two most likely results together)
+  const dc = dcOf(p.home, p.draw, p.away)
+  const dcHeadline = dc.code === '1X' ? t("{0} or a draw: {1}", { 0: homeName, 1: pctR(dc.pct) })
+    : dc.code === 'X2' ? t("{0} or a draw: {1}", { 0: awayName, 1: pctR(dc.pct) })
+    : t("{0} or {1}: {2}", { 0: homeName, 1: awayName, 2: pctR(dc.pct) })
+
   // --- headline
   let headline: string
   if (top.k === 'D') headline = t("We lean to a draw ({0}) — neither side has a clear edge.", { 0: pctR(top.v) })
@@ -117,5 +125,5 @@ export function explainPrediction(p: Prediction, homeName: string, awayName: str
   else if (upcoming && g.rows.some(r => r.id === '#12' && r.note === 'XI not published yet'))
     caution = t('Lineups are not out yet — this can change about an hour before kick-off.')
 
-  return { headline, forPick, against, draw, caution }
+  return { dcHeadline, headline, forPick, against, draw, caution }
 }

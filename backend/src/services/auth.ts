@@ -13,6 +13,7 @@ import type express from 'express';
 import { db } from '../db';
 import logger from '../utils/logger';
 import { roleByKey, ALL_PERMS, type Perm } from './roles';
+import { doubleChance } from '../utils/doubleChance';
 import { emailEnabled, sendVerificationCode, sendResetCode, sendEmailChangeCode, sendEmailChangedNotice } from './email';
 
 /** premium = $15 plan with a monthly allowance of match unlocks; pro = $30 plan, unlimited (see services/billing.ts) */
@@ -589,13 +590,16 @@ export function clearSessionCookie(res: express.Response, secure: boolean) {
 
 // ---------- teaser (what free users receive instead of full predictions) ----------
 
-/** Finished matches: the pick and confidence (the public record). Keeps the shape { model, locked, pick, confidence }. */
+/**
+ * Finished matches: the pick and confidence (the public record). Keeps the shape { model, locked, pick, confidence },
+ * plus dc = our double-chance pick (fix120: the recommended pick), without its percentage.
+ */
 export function teasePrediction(p: any) {
   if (!p || typeof p !== 'object') return p;
-  if (p.locked) return { model: p.model, locked: true, pick: p.pick, confidence: p.confidence };
+  if (p.locked) return { model: p.model, locked: true, pick: p.pick, dc: p.dc, confidence: p.confidence };
   const h = Number(p.home), d = Number(p.draw), a = Number(p.away);
   const pick = h >= d && h >= a ? 'H' : a >= d ? 'A' : 'D';
-  return { model: p.model, locked: true, pick, confidence: p.confidence };
+  return { model: p.model, locked: true, pick, dc: doubleChance(h, d, a)?.k, confidence: p.confidence };
 }
 
 /** Matches not played yet: nothing about the prediction, not even which side or how confident ({ model, locked }). */

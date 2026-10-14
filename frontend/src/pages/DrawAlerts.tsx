@@ -4,6 +4,7 @@ import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { errorText } from '../lib/auth'
 import { t as tt, LOCALE } from '../lib/i18n'
+import { OurPickBadge } from '../components/DcPick'
 
 /*
  * Draw picks (Pro): the 2 games of the coming 7 days where a draw is most likely by our own model, then more
@@ -14,6 +15,8 @@ interface Pick {
   matchId: number; league: string; date: string; home: string; away: string
   homeCrest?: string | null; awayCrest?: string | null
   ourDraw: number
+  /** fix120: our recommended pick (double chance) */
+  dc?: { k: '1X' | 'X2' | '12'; p: number } | null
 }
 interface Likely { matchId: number; league: string; date: string; home: string; away: string; homeCrest?: string | null; awayCrest?: string | null; draw: number }
 interface LeagueDraw { division: string; league: string; now: number | null; n: number; last: number | null }
@@ -69,6 +72,7 @@ function PickCard({ p, n }: { p: Pick; n: number }) {
         </div>
         <p className="text-[11px] text-faint">{tt("A typical game ends level about 1 time in 4. This one is among the most likely draws of the week.")}</p>
       </div>
+      {p.dc && <OurPickBadge code={p.dc.k} pct={p.dc.p} home={p.home} away={p.away} compact className="relative" />}
 
       <span className="relative text-sm font-bold text-accent">{tt("Full match analysis →")}</span>
     </Link>

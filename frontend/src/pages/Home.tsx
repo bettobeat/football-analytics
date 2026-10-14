@@ -3,7 +3,8 @@ import RecentResults from '../components/RecentResults'
 import { Link } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
-import { type Prediction } from '../lib/predict'
+import { type Prediction, doubleChance } from '../lib/predict'
+import OurPick from '../components/DcPick'
 import { useAuth } from '../lib/auth'
 import { isCovered, revealMatch, useRevealState, justRevealed } from '../lib/reveal'
 import { matchFame } from '../lib/fame'
@@ -12,7 +13,6 @@ import { RevealChip } from '../components/Reveal'
 import { useFavorites } from '../lib/favorites'
 import { t as tt, LOCALE } from '../lib/i18n'
 import RecordLink from '../components/RecordLink'
-import DoubleChanceChip from '../components/DoubleChanceChip'
 
 interface Team { id: number; name: string; shortName?: string; tla?: string; crest?: string }
 interface Match {
@@ -29,7 +29,8 @@ interface Match {
 }
 interface Summary {
   days: number
-  v3: { games: number; hitRate: number | null; strong60: { n: number; hitRate: number | null } | null }
+  /** fix120: hitRate = our double-chance pick; hardHitRate = the 1X2 result; strong = double chance 85%+ */
+  v3: { games: number; hitRate: number | null; hardHitRate?: number | null; strong?: { min: number; n: number; hitRate: number | null } | null; strong60: { n: number; hitRate: number | null } | null }
   /** double chance (the model's two most likely results), overall and by how sure the model was of it */
   doubleChance?: { n: number; v3: number | null; bands?: { id: string; min: number; n: number; hits: number; pct: number | null }[] } | null
   /** "Our record" card: hit rates at a few confidence levels (≥), same 30 days and games */
@@ -69,7 +70,7 @@ function dcSure(dc: Summary['doubleChance']): { min: number; pct: number; n: num
 interface News { title: string; link: string; source: string; published: string | null; summary: string; image?: string | null; leagues?: { code: string; name: string }[] }
 /** "BBC Sport · Premier League": the outlet and the first league the story is filed under */
 const srcLine = (n: News) => [n.source, n.leagues?.[0]?.name].filter(Boolean).join(' · ')
-interface Alert { matchId: number; league: string; date: string; home: string; away: string; ourDraw: number }
+interface Alert { matchId: number; league: string; date: string; home: string; away: string; ourDraw: number; dc?: { k: '1X' | 'X2' | '12'; p: number } | null }
 
 const LIVE = new Set(['IN_PLAY', 'PAUSED', 'LIVE'])
 const MAIN = ['v3-mix', 'grid-v3', 'elo-intl', 'elo-euro']
@@ -107,6 +108,9 @@ function FeaturedHero({ m, p, label }: { m: Match | null; p: Prediction | null; 
       </div>
     )
   const k = p ? (p.pick || (hasPct(p) ? (p.home >= p.draw && p.home >= p.away ? 'H' : p.away >= p.draw ? 'A' : 'D') : null)) : null
+  // fix120: our pick is the double chance — both of its results are highlighted
+  const dc = doubleChance(p)
+  const on = (o: 'H' | 'D' | 'A') => (dc ? dc.sides.includes(o) : k === o)
   const side = (t: Team) => (
     <Link to={`/team/${t.id}?c=${m.competition.code}&n=${encodeURIComponent(t.name)}`} className="group flex flex-col items-center gap-3 sm:gap-4 min-w-0">
       <span className="relative grid place-items-center w-24 h-24 sm:w-36 sm:h-36 rounded-full bg-white/[0.06] border border-white/10 backdrop-blur-md shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)] transition-transform group-hover:scale-[1.04]">
@@ -117,9 +121,9 @@ function FeaturedHero({ m, p, label }: { m: Match | null; p: Prediction | null; 
   )
   const roll = justRevealed(m.id)
   const pill = (o: 'H' | 'D' | 'A', label: string, v: number) => (
-    <div className={`glass px-3 py-2.5 sm:px-4 text-center ${k === o ? 'ring-2 ring-[#C8FF3D]/70' : ''} ${roll && k === o ? 'animate-pop' : ''}`}>
+    <div className={`glass px-3 py-2.5 sm:px-4 text-center ${on(o) ? 'ring-2 ring-[#C8FF3D]/70' : ''} ${roll && on(o) ? 'animate-pop' : ''}`}>
       <div className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.08em] text-[#9AA3B2] truncate">{label}</div>
-      <div className={`font-display font-extrabold text-xl sm:text-2xl ${k === o ? 'text-[#C8FF3D]' : 'text-white'}`}>{v < 0.5 ? '<1%' : <CountUp value={v} suffix="%" animate={roll} delay={o === 'H' ? 0 : o === 'D' ? 120 : 240} />}</div>
+      <div className={`font-display font-extrabold text-xl sm:text-2xl ${on(o) ? 'text-[#C8FF3D]' : 'text-white'}`}>{v < 0.5 ? '<1%' : <CountUp value={v} suffix="%" animate={roll} delay={o === 'H' ? 0 : o === 'D' ? 120 : 240} />}</div>
     </div>
   )
   return (
@@ -164,14 +168,14 @@ function FeaturedHero({ m, p, label }: { m: Match | null; p: Prediction | null; 
             {hasPct(p) && isCovered(m.id, m.status, true) ? (
               <RevealChip dark onReveal={() => revealMatch(m.id)} />
             ) : hasPct(p) ? (
-              <>
+              <div className="space-y-2.5">
                 <div className="grid grid-cols-3 gap-2 sm:gap-3">
                   {pill('H', tn(m.homeTeam), p.home)}
                   {pill('D', tt('Draw'), p.draw)}
                   {pill('A', tn(m.awayTeam), p.away)}
                 </div>
-                <div className="flex justify-center sm:justify-start"><DoubleChanceChip dark p={p} home={tn(m.homeTeam)} away={tn(m.awayTeam)} /></div>
-              </>
+                <div className="flex justify-center sm:justify-start"><OurPick p={p} home={tn(m.homeTeam)} away={tn(m.awayTeam)} dark /></div>
+              </div>
             ) : (
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 text-sm">
                 <span className="glass !rounded-full px-4 py-2 font-semibold inline-flex items-center gap-2"><Lock /> {tt("Prediction locked")}</span>
@@ -372,8 +376,10 @@ export default function Home() {
   const nextCard = (m: Match) => {
       const p = mainPred(m)
       const pct = hasPct(p)
-      const strongPick = pct && topPct(p) >= 60
+      // fix120: our pick = the double chance (both results highlighted); "Strong pick" only when it is 85%+ (inside OurPick)
+      const dc = doubleChance(p)
       const k = p ? (p.pick || (pct ? (p.home >= p.draw && p.home >= p.away ? 'H' : p.away >= p.draw ? 'A' : 'D') : null)) : null
+      const on = (o: 'H' | 'D' | 'A') => (dc ? dc.sides.includes(o) : k === o)
       return (
         <Link key={m.id} to={`/match/${m.id}`} className="card card-hover snap-start flex-shrink-0 w-[272px] p-4 flex flex-col gap-4">
           <div className="flex items-center justify-between gap-2">
@@ -395,13 +401,13 @@ export default function Home() {
             <div className="space-y-2">
               <div className="grid grid-cols-3 gap-1.5 text-center">
                 {(['H', 'D', 'A'] as const).map(o => (
-                  <span key={o} className={`rounded-xl py-1.5 text-xs font-bold num ${k === o ? (o === 'H' ? 'bg-home/20 text-home' : o === 'D' ? 'bg-draw/20 text-draw' : 'bg-away/20 text-away') : 'bg-surface2/70 text-muted'}`}>
+                  <span key={o} className={`rounded-xl py-1.5 text-xs font-bold num ${on(o) ? (o === 'H' ? 'bg-home/20 text-home' : o === 'D' ? 'bg-draw/20 text-draw' : 'bg-away/20 text-away') : 'bg-surface2/70 text-muted'}`}>
                     <span className="block text-[10px] font-semibold opacity-80">{o === 'H' ? '1' : o === 'D' ? 'X' : '2'}</span>
                     <CountUp value={o === 'H' ? p.home : o === 'D' ? p.draw : p.away} suffix="%" animate={justRevealed(m.id)} delay={o === 'H' ? 0 : o === 'D' ? 100 : 200} />
                   </span>
                 ))}
               </div>
-              {strongPick ? <span className="inline-block text-[11px] font-extrabold text-bg bg-accent px-2 py-0.5 rounded-full">{tt("Strong pick")}</span> : null}
+              <OurPick p={p} home={tn(m.homeTeam)} away={tn(m.awayTeam)} compact />
             </div>
           ) : p ? (
             <div className="flex items-center justify-between text-xs rounded-xl bg-surface2/70 px-3 py-2">
@@ -599,7 +605,7 @@ export default function Home() {
                 <Link key={a.matchId} to={`/match/${a.matchId}`} className="rounded-2xl p-4 bg-draw/10 border border-draw/25 space-y-2 hover:bg-draw/15 transition-colors">
                   <div className="flex justify-between text-[11px] text-faint"><span>{a.league}</span><span>{when(a.date)}</span></div>
                   <div className="font-extrabold">{a.home} – {a.away}</div>
-                  <div className="text-xs text-muted">{tt("Draw chance")}{' '}<b className="text-draw">{Math.round(a.ourDraw)}%</b></div>
+                  <div className="text-xs text-muted">{tt("Draw chance")}{' '}<b className="text-draw">{Math.round(a.ourDraw)}%</b>{a.dc && <> · {tt("Our pick")}{' '}<b className="text-ink">{a.dc.k} · {Math.round(a.dc.p)}%</b></>}</div>
                 </Link>
               ))
             ) : (

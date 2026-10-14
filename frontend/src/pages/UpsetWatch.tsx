@@ -4,6 +4,7 @@ import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { errorText } from '../lib/auth'
 import { t as tt, LOCALE } from '../lib/i18n'
+import { OurPickBadge } from '../components/DcPick'
 
 /*
  * Upset watch (Pro): games of the coming 7 days where our model gives the underdog 30% or more (and the favourite
@@ -15,6 +16,8 @@ interface Watch {
   homeCrest?: string | null; awayCrest?: string | null
   home_p: number; draw_p: number; away_p: number
   favourite: 'H' | 'A'; underdog: 'H' | 'A'; favChance: number; upsetChance: number; draw: number
+  /** fix120: our recommended pick (double chance) */
+  dc?: { k: '1X' | 'X2' | '12'; p: number } | null
 }
 interface Recent { matchId: number; league: string; date: string; home: string; away: string; score: string; underdog: 'H' | 'A'; upsetChance: number; result: 'upset' | 'draw' | 'favourite' }
 interface Record_ {
@@ -75,6 +78,7 @@ function WatchCard({ w }: { w: Watch }) {
         </div>
       </div>
       <p className="text-[11px] text-faint">{tt("{0} is the favourite, but our model gives {1} about a 1 in {2} chance.", { 0: fav, 1: und, 2: Math.max(2, Math.round(100 / w.upsetChance)) })}</p>
+      {w.dc && <OurPickBadge code={w.dc.k} pct={w.dc.p} home={w.home} away={w.away} compact />}
     </Link>
   )
 }

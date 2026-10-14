@@ -7,6 +7,8 @@ import AccuracyDetailed from './Accuracy'
 import { t, LOCALE } from '../lib/i18n'
 import { Flag } from '../components/LeagueSidebar'
 import { footballCountry, leagueShortName } from '../lib/leagueCountry'
+import { dcLabel } from '../lib/predict'
+import { DcTag } from '../components/DcPick'
 
 /**
  * The public record: three numbers, every game our model predicted before kick-off.
@@ -30,7 +32,7 @@ interface Recent {
   result: { pick: Outcome; hit: boolean }
   btts: { pick: boolean; hit: boolean } | null
   over25: { pick: boolean; hit: boolean } | null
-  dc?: { pick: '1X' | 'X2' | '12'; hit: boolean }
+  dc?: { pick: '1X' | 'X2' | '12'; p?: number; hit: boolean }
   over15?: { pick: boolean; hit: boolean } | null
   safest?: { market: string; label: string; p: number; hit: boolean }
 }
@@ -39,10 +41,11 @@ interface Record_ {
   result: { n: number; v3: number | null; v3Hits: number }
   btts: { n: number; hitRate: number | null; hits: number; yesShare: number | null }
   over25: { n: number; hitRate: number | null; hits: number; overShare: number | null }
-  doubleChance?: { n: number; v3: number | null; v3Hits: number; bands?: { id: string; min: number; n: number; hits: number; pct: number | null }[] }
+  /** fix120: our recommended pick (double chance), strong = 85%+; bands by how sure we were (fix118) */
+  doubleChance?: { n: number; v3: number | null; v3Hits: number; bands?: { id: string; min: number; n: number; hits: number; pct: number | null }[]; strong?: { min: number; n: number; hits: number; hitRate: number | null } }
   over15?: { n: number; hitRate: number | null; hits: number; overShare: number | null }
   safest?: { n: number; hitRate: number | null; hits: number; byMarket: { market: string; n: number; hitRate: number | null }[] }
-  byCompetition: { code: string; name: string; n: number; v3: number | null; btts?: number | null; over25?: number | null }[]
+  byCompetition: { code: string; name: string; n: number; v3: number | null; dc?: number | null; btts?: number | null; over25?: number | null }[]
   calibration?: { lo: number; hi: number; n: number; said: number; happened: number | null }[]
   byConfidence?: { id: string; label: string; n: number; hitRate: number | null; said: number | null }[]
   recent: Recent[]
@@ -132,51 +135,36 @@ export default function AccuracySimple() {
 
       {rec && (
         <>
-          <div>
-            <h2 className="font-display text-xl font-bold text-ink">{t("The safer calls")}</h2>
-            <p className="text-sm text-muted">{t("Calls that come in more often. Each one is counted and shown on its own.")}</p>
-          </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            <Card>
-              <div className="label">{t("Double chance")}</div>
-              <div className="num text-5xl font-extrabold text-ink mt-4">{pct(rec.doubleChance?.v3)}</div>
-              <div className="mt-3"><Bar v={rec.doubleChance?.v3 ?? null} cls="bg-accent" /></div>
-              <p className="text-xs text-muted mt-4">
-                {rec.doubleChance?.n ? t("{0} of {1} right. The two results we rate highest (1X, X2 or 12).", { 0: rec.doubleChance.v3Hits, 1: rec.doubleChance.n }) : t("No finished games yet.")}
-              </p>
-              {rec.doubleChance?.bands && rec.doubleChance.bands.some(x => x.n > 0) && (
-                <ul className="mt-3 space-y-1 text-xs">
-                  {rec.doubleChance.bands.filter(x => x.n > 0).map(x => (
-                    <li key={x.id} className="flex justify-between gap-2">
-                      <span className="text-muted">{t("When we were {0} sure", { 0: x.id === '90+' ? '90%+' : x.id === '80-90' ? '80–90%' : '70–80%' })}</span>
-                      <span className="num font-semibold text-ink">{pct(x.pct)} <span className="text-faint font-normal">({x.n})</span></span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
-            <Card>
-              <div className="label">{t("Over / under 1.5 goals")}</div>
-              <div className="num text-5xl font-extrabold text-ink mt-4">{pct(rec.over15?.hitRate)}</div>
-              <div className="mt-3"><Bar v={rec.over15?.hitRate ?? null} cls="bg-home" /></div>
-              <p className="text-xs text-muted mt-4">
-                {rec.over15?.n ? t("{0} of {1} right. Over when we give it 50%+, else Under.", { 0: rec.over15.hits, 1: rec.over15.n }) : t("No finished games yet.")}
-              </p>
-            </Card>
-            <Card>
-              <div className="label">{t("Our safest pick of each match")}</div>
-              <div className="num text-5xl font-extrabold text-ink mt-4">{pct(rec.safest?.hitRate)}</div>
-              <div className="mt-3"><Bar v={rec.safest?.hitRate ?? null} cls="bg-draw" /></div>
-              <p className="text-xs text-muted mt-4">
-                {rec.safest?.n ? t("{0} of {1} right. For every match, the one bet we were most sure about.", { 0: rec.safest.hits, 1: rec.safest.n }) : t("No finished games yet.")}
-              </p>
-              {rec.safest && rec.safest.byMarket.length > 0 && (
-                <p className="text-[11px] text-faint mt-2">
-                  {rec.safest.byMarket.map(b => `${b.market} ${b.n}× (${pct(b.hitRate)})`).join(' · ')}
+          {/* fix120: our recommended pick is the double chance — right when the result is one of the two */}
+          <Card className="border-accent/40">
+            <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+              <div className="min-w-0">
+                <div className="label text-accent">{t("Our picks · double chance")}</div>
+                <div className="num text-5xl sm:text-6xl font-extrabold text-accent mt-3">{pct(rec.doubleChance?.v3)}</div>
+                <div className="mt-3"><Bar v={rec.doubleChance?.v3 ?? null} cls="bg-accent" /></div>
+                <p className="text-xs text-muted mt-4">
+                  {rec.doubleChance?.n ? t("{0} of {1} right. Our pick is the two results we rate highest (1X, X2 or 12): right when the game ends in one of them.", { 0: rec.doubleChance.v3Hits, 1: rec.doubleChance.n }) : t("No finished games yet.")}
                 </p>
+                {rec.doubleChance?.bands && rec.doubleChance.bands.some(x => x.n > 0) && (
+                  <ul className="mt-3 space-y-1 text-xs max-w-sm">
+                    {rec.doubleChance.bands.filter(x => x.n > 0).map(x => (
+                      <li key={x.id} className="flex justify-between gap-2">
+                        <span className="text-muted">{t("When we were {0} sure", { 0: x.id === '90+' ? '90%+' : x.id === '80-90' ? '80–90%' : '70–80%' })}</span>
+                        <span className="num font-semibold text-ink">{pct(x.pct)} <span className="text-faint font-normal">({x.n})</span></span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              {rec.doubleChance?.strong && rec.doubleChance.strong.n > 0 && (
+                <div className="rounded-2xl bg-surface2/60 px-4 py-3 sm:min-w-[180px]">
+                  <div className="text-[11px] font-bold text-muted">{t("Strong picks (85%+)")}</div>
+                  <div className="num text-3xl font-extrabold text-win mt-1">{pct(rec.doubleChance.strong.hitRate)}</div>
+                  <div className="text-[11px] text-faint num">{t("{0} of {1} right", { 0: rec.doubleChance.strong.hits, 1: rec.doubleChance.strong.n })}</div>
+                </div>
               )}
-            </Card>
-          </div>
+            </div>
+          </Card>
 
           <div className="pt-2">
             <h2 className="font-display text-xl font-bold text-ink">{t("The hard calls")}</h2>
@@ -214,6 +202,34 @@ export default function AccuracySimple() {
             </Card>
           </div>
 
+          <div className="pt-2">
+            <h2 className="font-display text-xl font-bold text-ink">{t("The safer calls")}</h2>
+            <p className="text-sm text-muted">{t("Calls that come in more often. Each one is counted and shown on its own.")}</p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <div className="label">{t("Over / under 1.5 goals")}</div>
+              <div className="num text-5xl font-extrabold text-ink mt-4">{pct(rec.over15?.hitRate)}</div>
+              <div className="mt-3"><Bar v={rec.over15?.hitRate ?? null} cls="bg-home" /></div>
+              <p className="text-xs text-muted mt-4">
+                {rec.over15?.n ? t("{0} of {1} right. Over when we give it 50%+, else Under.", { 0: rec.over15.hits, 1: rec.over15.n }) : t("No finished games yet.")}
+              </p>
+            </Card>
+            <Card>
+              <div className="label">{t("Our safest pick of each match")}</div>
+              <div className="num text-5xl font-extrabold text-ink mt-4">{pct(rec.safest?.hitRate)}</div>
+              <div className="mt-3"><Bar v={rec.safest?.hitRate ?? null} cls="bg-draw" /></div>
+              <p className="text-xs text-muted mt-4">
+                {rec.safest?.n ? t("{0} of {1} right. For every match, the one bet we were most sure about.", { 0: rec.safest.hits, 1: rec.safest.n }) : t("No finished games yet.")}
+              </p>
+              {rec.safest && rec.safest.byMarket.length > 0 && (
+                <p className="text-[11px] text-faint mt-2">
+                  {rec.safest.byMarket.map(b => `${b.market} ${b.n}× (${pct(b.hitRate)})`).join(' · ')}
+                </p>
+              )}
+            </Card>
+          </div>
+
           {((rec.calibration && rec.calibration.some(b => b.n >= 10)) || (rec.byConfidence && rec.byConfidence.some(b => b.n > 0))) && (
             <Card>
               <h2 className="font-display text-xl font-bold text-ink">{t("When we say 70%, does it happen 70% of the time?")}</h2>
@@ -223,7 +239,7 @@ export default function AccuracySimple() {
                 {rec.calibration && <CalibrationChart bins={rec.calibration.filter(b => b.n >= 10)} />}
                 {rec.byConfidence && rec.byConfidence.some(b => b.n > 0) && (
                   <div>
-                    <div className="label pb-2">{t("Our picks, by how sure we were")}</div>
+                    <div className="label pb-2">{t("Hard calls (1X2), by how sure we were")}</div>
                     <div className="space-y-3">
                       {rec.byConfidence.filter(b => b.n > 0).map(b => (
                         <div key={b.id} className="grid grid-cols-[110px_1fr_auto] sm:grid-cols-[140px_1fr_auto] items-center gap-3">
@@ -253,11 +269,12 @@ export default function AccuracySimple() {
               <h2 className="font-display text-xl font-bold text-ink">{t("Our record by competition")} <span className="ml-2 text-[11px] font-semibold uppercase tracking-wide text-faint">admin only</span></h2>
               <p className="text-sm text-muted mt-1 mb-4">{t("How often each call was right, league by league, in the period you picked.")}</p>
               <div className="overflow-x-auto -mx-1">
-                <table className="w-full text-sm min-w-[520px]">
+                <table className="w-full text-sm min-w-[600px]">
                   <thead>
                     <tr className="text-[10px] uppercase tracking-wide text-faint">
                       <th className="text-left font-semibold py-2 px-1">{t("Competition")}</th>
                       <th className="text-right font-semibold py-2 px-1 w-14">{t("Games")}</th>
+                      <th className="text-right font-semibold py-2 px-1 w-20">{t("Our pick")}</th>
                       <th className="text-left font-semibold py-2 px-2 w-44">{t("Match result")}</th>
                       <th className="text-right font-semibold py-2 px-1 w-16">{t("BTTS")}</th>
                       <th className="text-right font-semibold py-2 px-1 w-20">{t("Goals 2.5")}</th>
@@ -276,6 +293,7 @@ export default function AccuracySimple() {
                             </span>
                           </td>
                           <td className="py-2 px-1 text-right num text-muted">{c.n}</td>
+                          <td className="py-2 px-1 text-right num font-bold text-ink">{pct(c.dc)}</td>
                           <td className="py-2 px-2">
                             <span className="flex items-center gap-2">
                               <span className="flex-1 h-2 rounded-full bg-surface2 overflow-hidden"><span className={`block h-full rounded-full ${few ? 'bg-accent/50' : 'bg-accent'}`} style={{ width: `${Math.min(100, c.v3 ?? 0)}%` }} /></span>
@@ -305,10 +323,10 @@ export default function AccuracySimple() {
                     <tr className="text-xs text-faint">
                       <th className="text-left font-medium py-2">{t("Match")}</th>
                       <th className="text-center font-medium py-2">{t("Score")}</th>
-                      <th className="text-left font-medium py-2">{t("Result: our pick")}</th>
+                      <th className="text-left font-medium py-2">{t("Our pick")}</th>
+                      <th className="text-left font-medium py-2">{t("Hard call (1X2)")}</th>
                       <th className="text-left font-medium py-2">{t("BTTS")}</th>
                       <th className="text-left font-medium py-2">{t("Goals 2.5")}</th>
-                      <th className="text-left font-medium py-2">{t("Double chance")}</th>
                       <th className="text-left font-medium py-2">{t("Goals 1.5")}</th>
                     </tr>
                   </thead>
@@ -325,6 +343,9 @@ export default function AccuracySimple() {
                         </td>
                         <td className="py-2 text-center num font-bold text-ink">{x.score}</td>
                         <td className="py-2">
+                          {x.dc ? <span className="inline-flex items-center gap-1.5"><Tick hit={x.dc.hit} /> <DcTag code={x.dc.pick} /> <span className="text-ink truncate">{dcLabel(x.dc.pick, x.home, x.away)}</span></span> : <span className="text-faint">–</span>}
+                        </td>
+                        <td className="py-2">
                           <span className="inline-flex items-center gap-1.5"><Tick hit={x.result.hit} /> <span className="text-muted truncate">{name(x, x.result.pick)}</span></span>
                         </td>
                         <td className="py-2">
@@ -332,9 +353,6 @@ export default function AccuracySimple() {
                         </td>
                         <td className="py-2">
                           {x.over25 ? <span className="inline-flex items-center gap-1.5"><Tick hit={x.over25.hit} /> <span className="text-muted">{x.over25.pick ? t("Over") : t("Under")}</span></span> : <span className="text-faint">–</span>}
-                        </td>
-                        <td className="py-2">
-                          {x.dc ? <span className="inline-flex items-center gap-1.5"><Tick hit={x.dc.hit} /> <span className="text-muted">{x.dc.pick}</span></span> : <span className="text-faint">–</span>}
                         </td>
                         <td className="py-2">
                           {x.over15 ? <span className="inline-flex items-center gap-1.5"><Tick hit={x.over15.hit} /> <span className="text-muted">{x.over15.pick ? t("Over") : t("Under")}</span></span> : <span className="text-faint">–</span>}

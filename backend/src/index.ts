@@ -1681,11 +1681,13 @@ app.get('/api/public/results', (req, res) => {
         return rest;
       });
       const main: any = accuracy(days, competition, 'main');
-      c = { at: Date.now(), data: { rows, record: { days, n: main.settled, hitRate: main.model?.hitRate ?? null } } };
+      // fix120: hitRate = double chance (our recommended pick); hardHitRate = the 1X2 result
+      const dcRec: any = publicRecord(days, competition, 0).doubleChance;
+      c = { at: Date.now(), data: { rows, record: { days, n: dcRec.n || main.settled, hitRate: dcRec.v3 ?? null, hardHitRate: main.model?.hitRate ?? null } } };
       resultsCache.set(ck, c);
       if (resultsCache.size > 500) resultsCache.delete(resultsCache.keys().next().value as string);
     }
-    const data = full ? c.data : { ...c.data, rows: c.data.rows.map((r: any) => ({ ...r, p: null })) };
+    const data = full ? c.data : { ...c.data, rows: c.data.rows.map((r: any) => ({ ...r, p: null, dc: r.dc ? { ...r.dc, p: null } : null })) };
     res.json({ data, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Failed to list results');
@@ -1701,6 +1703,8 @@ app.get('/api/public/summary', (_req, res) => {
   try {
     if (!summaryCache || Date.now() - summaryCache.at > 10 * 60 * 1000) {
       const main: any = accuracy(30, undefined, 'main');
+      // fix120: "picks right" = our double-chance pick; the 1X2 result stays as the hard call
+      const rec: any = publicRecord(30);
       let draws: any = null;
       try {
         const d: any = drawAlertsReport();
@@ -1710,9 +1714,10 @@ app.get('/api/public/summary', (_req, res) => {
         at: Date.now(),
         data: {
           days: 30,
-          v3: { games: main.settled, hitRate: main.model?.hitRate ?? null, strong60: (main.strongPicks || []).find((t: any) => t.min === 60) || null },
-          // double chance leads on the home page (fix118): overall and by how sure we were (90%+, 80–90, 70–80)
-          ...(() => { try { const pr = publicRecord(30); return { doubleChance: pr.doubleChance, highlights: pr.highlights }; } catch { return { doubleChance: null, highlights: null }; } })(),
+          // fix120: hitRate = our double-chance pick (the recommended pick); hardHitRate = the 1X2 result
+          v3: { games: rec.doubleChance.n || main.settled, hitRate: rec.doubleChance.v3 ?? null, hardHitRate: main.model?.hitRate ?? null, strong: rec.doubleChance.strong?.n ? rec.doubleChance.strong : null, strong60: (main.strongPicks || []).find((t: any) => t.min === 60) || null },
+          // double chance leads on the home page (fix118/119): overall, by how sure we were, and our best numbers
+          doubleChance: rec.doubleChance, highlights: rec.highlights,
           drawAlerts: draws
         }
       };

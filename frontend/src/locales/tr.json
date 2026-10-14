@@ -1599,5 +1599,16 @@
  "Both teams score · 70%+ sure": "Karşılıklı gol · %70+ emin",
  "Over/Under 2.5 · 70%+ sure": "2,5 Alt/Üst · %70+ emin",
  "All our picks (result)": "Tüm tahminlerimiz (sonuç)",
- "Double chance = one of the two results we rate highest (1X, X2 or 12).": "Çifte şans = en olası gördüğümüz iki sonuçtan biri (1X, X2 veya 12)."
+ "Double chance = one of the two results we rate highest (1X, X2 or 12).": "Çifte şans = en olası gördüğümüz iki sonuçtan biri (1X, X2 veya 12).",
+ "Our pick: double chance": "Tahminimiz: çifte şans",
+ "{0} or a draw: {1}": "{0} veya beraberlik: {1}",
+ "{0} or {1}: {2}": "{0} veya {1}: {2}",
+ "{0} or {1}": "{0} veya {1}",
+ "Our picks · double chance": "Tahminlerimiz · çifte şans",
+ "{0} of {1} right. Our pick is the two results we rate highest (1X, X2 or 12): right when the game ends in one of them.": "{1} maçta {0} doğru. Tahminimiz en olası gördüğümüz iki sonuçtur (1X, X2 veya 12): maç bunlardan biriyle biterse doğrudur.",
+ "Strong picks (85%+)": "Güçlü tahminler (%85+)",
+ "Hard calls (1X2), by how sure we were": "Zor tahminler (1X2), ne kadar emin olduğumuza göre",
+ "Hard call (1X2)": "Zor tahmin (1X2)",
+ "Our pick: {0} · {1} · {2}%": "Tahminimiz: {0} · {1} · %{2}",
+ "Most likely result": "En olası sonuç"
 }

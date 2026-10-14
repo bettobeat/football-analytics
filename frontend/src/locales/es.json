@@ -1599,5 +1599,16 @@
  "Both teams score · 70%+ sure": "Ambos marcan · 70%+ seguros",
  "Over/Under 2.5 · 70%+ sure": "Más/Menos de 2,5 · 70%+ seguros",
  "All our picks (result)": "Todos nuestros pronósticos (resultado)",
- "Double chance = one of the two results we rate highest (1X, X2 or 12).": "Doble oportunidad = uno de los dos resultados que más valoramos (1X, X2 o 12)."
+ "Double chance = one of the two results we rate highest (1X, X2 or 12).": "Doble oportunidad = uno de los dos resultados que más valoramos (1X, X2 o 12).",
+ "Our pick: double chance": "Nuestro pronóstico: doble oportunidad",
+ "{0} or a draw: {1}": "{0} o empate: {1}",
+ "{0} or {1}: {2}": "{0} o {1}: {2}",
+ "{0} or {1}": "{0} o {1}",
+ "Our picks · double chance": "Nuestros pronósticos · doble oportunidad",
+ "{0} of {1} right. Our pick is the two results we rate highest (1X, X2 or 12): right when the game ends in one of them.": "{0} de {1} acertados. Nuestro pronóstico son los dos resultados que vemos más probables (1X, X2 o 12): acierta si el partido termina en uno de ellos.",
+ "Strong picks (85%+)": "Pronósticos fuertes (85 %+)",
+ "Hard calls (1X2), by how sure we were": "Las difíciles (1X2), según lo seguros que estábamos",
+ "Hard call (1X2)": "La difícil (1X2)",
+ "Our pick: {0} · {1} · {2}%": "Nuestro pronóstico: {0} · {1} · {2} %",
+ "Most likely result": "Resultado más probable"
 }
