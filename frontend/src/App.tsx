@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense, useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react'
-import { BrowserRouter as Router, Routes, Route, Link, NavLink, useLocation } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Link, NavLink, Navigate, useLocation } from 'react-router-dom'
 import Home from './pages/Home'
 import SearchBox from './components/SearchBox'
 import PremiumGate from './components/PremiumGate'
@@ -115,6 +115,13 @@ export function LogoMark({ size = 36 }: { size?: number }) {
 }
 
 /** Pages only the admin sees; everyone else gets "not found". */
+/** Record pages are admin-only for now (fix118, 14 Oct 2026, until redesigned): everyone else goes to the sport's home. */
+function RecordGate({ home, children }: { home: string; children: ReactNode }) {
+  const { access, loading } = useAuth()
+  if (loading) return null
+  return access === 'admin' ? <>{children}</> : <Navigate to={home} replace />
+}
+
 function AdminOnly({ children }: { children: ReactNode }) {
   const { access, loading, user, logout } = useAuth()
   if (loading) return null
@@ -333,7 +340,7 @@ function BbNavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
       <NavLink to="/basketball" end className={cls}>{tt("Home")}</NavLink>
       <NavLink to="/basketball/games" className={cls}>{tt("Games")}</NavLink>
       <NavLink to="/basketball/favorites" className={cls}>{tt("Favorites")}</NavLink>
-      <NavLink to="/basketball/accuracy" className={cls}>{tt("Accuracy")}</NavLink>
+      {access === 'admin' && <NavLink to="/basketball/accuracy" className={cls}>{tt("Accuracy")}</NavLink>}
       {access !== 'pro' && access !== 'admin' && <NavLink to="/premium" className={cls}>{access === 'premium' ? tt("Go Pro") : tt("Premium")}</NavLink>}
     </>
   )
@@ -369,8 +376,10 @@ function NavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
         {tt("Draw picks")}</NavLink>
       <NavLink to="/upset-watch" className={cls}>
         {tt("Upset watch")}</NavLink>
-      <NavLink to="/accuracy" className={cls}>
-        {tt("Accuracy")}</NavLink>
+      {access === 'admin' && (
+        <NavLink to="/accuracy" className={cls}>
+          {tt("Accuracy")}</NavLink>
+      )}
       {access !== 'pro' && access !== 'admin' && (
         <NavLink to="/premium" className={cls}>
           {access === 'premium' ? tt("Go Pro") : tt("Premium")}
@@ -397,6 +406,8 @@ const TAB_ICONS: Record<string, string> = {
 /** Phone: app-style tab bar at the bottom, with a search sheet. */
 function BottomTabs() {
   const bb = useBbOpen()
+  const { access } = useAuth()
+  const admin = access === 'admin' // the Accuracy tab is admin-only for now (fix118)
   const [searching, setSearching] = useState(false)
   const loc = useLocation()
   useEffect(() => setSearching(false), [loc.pathname])
@@ -424,13 +435,13 @@ function BottomTabs() {
           </div>
         </div>
       )}
-      <nav aria-label={tt("Tabs")} className="xl:hidden fixed left-3 right-3 bottom-3 z-40 grid grid-cols-6 gap-1 p-1.5 rounded-3xl bg-surface/85 backdrop-blur-xl border border-line/80 shadow-lift sm:max-w-lg sm:mx-auto">
+      <nav aria-label={tt("Tabs")} className={`xl:hidden fixed left-3 right-3 bottom-3 z-40 grid ${admin ? 'grid-cols-6' : 'grid-cols-5'} gap-1 p-1.5 rounded-3xl bg-surface/85 backdrop-blur-xl border border-line/80 shadow-lift sm:max-w-lg sm:mx-auto`}>
         {bb ? (
           <>
             {tab('/basketball', 'Home', true)}
             {tab('/basketball/games', 'Games')}
             {tab('/basketball/favorites', 'Favorites')}
-            {tab('/basketball/accuracy', 'Accuracy')}
+            {admin && tab('/basketball/accuracy', 'Accuracy')}
             {tab('/', 'Football', true)}
           </>
         ) : (
@@ -439,7 +450,7 @@ function BottomTabs() {
             {tab('/matches', 'Matches')}
             {tab('/favorites', 'Favorites')}
             {tab('/draw-alerts', 'Draws')}
-            {tab('/accuracy', 'Accuracy')}
+            {admin && tab('/accuracy', 'Accuracy')}
           </>
         )}
         <button onClick={() => setSearching(true)} className="h-14 flex flex-col items-center justify-center gap-1 rounded-2xl text-muted" aria-label={tt("Search")}>
@@ -572,7 +583,7 @@ function Shell() {
             <Route path="/match/:id" element={<MatchDetail />} />
             <Route
               path="/accuracy"
-              element={<AccuracySimple />}
+              element={<RecordGate home="/"><AccuracySimple /></RecordGate>}
             />
             <Route
               path="/upset-watch"
@@ -657,7 +668,7 @@ function BbRoutes() {
       <Route path="team/:id" element={<BbTeam />} />
       <Route path="player/:id" element={<BbPlayer />} />
       <Route path="favorites" element={<BbFavorites />} />
-      <Route path="accuracy" element={<BbAccuracy />} />
+      <Route path="accuracy" element={<RecordGate home="/basketball"><BbAccuracy /></RecordGate>} />
       <Route path="past" element={<ModelOnly><BbPast /></ModelOnly>} />
       <Route path="*" element={<NotFound />} />
     </Routes>

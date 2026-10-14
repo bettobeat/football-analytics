@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { t, LOCALE } from '../lib/i18n'
+import RecordLink from './RecordLink'
 
 /*
  * Team analysis on the team page: strengths & weaknesses, how our model rates the team (with a 6-month trend),
@@ -285,7 +286,7 @@ export function TeamRecordCard({ rec, teamName }: { rec: TeamRecord | undefined;
     <section className="card p-5 sm:p-6">
       <div className="flex items-center justify-between gap-3 mb-4">
         <h2 className="font-display text-base sm:text-lg font-bold text-ink">{t("Our record on")}{' '}{teamName}</h2>
-        <Link to="/accuracy" className="text-xs font-bold text-accent">{t("Full record →")}</Link>
+        <RecordLink to="/accuracy" className="text-xs font-bold text-accent">{t("Full record →")}</RecordLink>
       </div>
       {!rec.n ? (
         <p className="text-sm text-faint">{t("No finished games with a saved prediction yet.")}</p>

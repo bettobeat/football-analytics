@@ -6,6 +6,7 @@ import { API_URL, socket } from '../lib/socket'
 import { modelInfo, isV3, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, pickOfPrediction, type Prediction } from '../lib/predict'
 import { useAuth } from '../lib/auth'
 import WinProbability from '../components/WinProbability'
+import DoubleChanceChip from '../components/DoubleChanceChip'
 import { useReveal, justRevealed, hideMatch, guessFirstOn } from '../lib/reveal'
 import { useUnlocks, unlockMatch, resetDay } from '../lib/unlocks'
 import CountUp from '../components/CountUp'
@@ -781,6 +782,9 @@ function MatchDetail() {
                         </div>
                       )
                     })()}
+                    <div className="mt-2">
+                      <DoubleChanceChip p={p} home={home.shortName || home.name} away={away.shortName || away.name} />
+                    </div>
                     <div className="flex h-2.5 gap-[3px] mt-4">
                       <div className={`rounded-full bg-home ${pick === 'H' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.home}% - 3px)` }} />
                       <div className={`rounded-full bg-draw ${pick === 'D' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.draw}% - 3px)` }} />

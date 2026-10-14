@@ -130,3 +130,10 @@ export function drawAlert(p: Prediction, m: Market | null | undefined, competiti
   if (edge < DRAW_ALERT.minEdge || edge > DRAW_ALERT.maxEdge) return null
   return { anchored: Math.round(anchored * 1000) / 10, price, edge: Math.round(edge * 1000) / 10, market: m.probs.draw }
 }
+
+/** Double chance (fix118): the model's two most likely results together, e.g. 1X = home win or draw. */
+export function doubleChanceOf(p: { home: number; draw: number; away: number }): { k: '1X' | 'X2' | '12'; pct: number } {
+  const tot = p.home + p.draw + p.away || 100
+  const c = [{ k: '1X' as const, v: p.home + p.draw }, { k: 'X2' as const, v: p.draw + p.away }, { k: '12' as const, v: p.home + p.away }].sort((a, b) => b.v - a.v)[0]
+  return { k: c.k, pct: Math.round((100 * c.v) / tot) }
+}

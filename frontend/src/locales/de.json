@@ -1588,5 +1588,8 @@
  "Projected": "Prognose",
  "{0} points in total": "{0} Punkte insgesamt",
  "Updated every minute from our prediction at tip-off, the score and the time left.": "Jede Minute aktualisiert – aus unserer Prognose vor dem Spiel, dem Spielstand und der verbleibenden Zeit.",
- "Our second model (team stats, lineups and injuries) gives {0} {1}% instead of {2}%. The numbers above are the average of both.": "Unser zweites Modell (Teamstatistiken, Aufstellungen und Verletzungen) gibt {0} {1}% statt {2}%. Die Zahlen oben sind der Durchschnitt aus beiden."
+ "Our second model (team stats, lineups and injuries) gives {0} {1}% instead of {2}%. The numbers above are the average of both.": "Unser zweites Modell (Teamstatistiken, Aufstellungen und Verletzungen) gibt {0} {1}% statt {2}%. Die Zahlen oben sind der Durchschnitt aus beiden.",
+ "right · double chance": "richtig · Doppelte Chance",
+ "when we're {0}%+ sure · double chance": "wenn wir zu {0}%+ sicher sind · Doppelte Chance",
+ "When we were {0} sure": "Wenn wir zu {0} sicher waren"
 }

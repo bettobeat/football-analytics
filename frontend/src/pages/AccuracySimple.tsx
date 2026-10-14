@@ -39,7 +39,7 @@ interface Record_ {
   result: { n: number; v3: number | null; v3Hits: number }
   btts: { n: number; hitRate: number | null; hits: number; yesShare: number | null }
   over25: { n: number; hitRate: number | null; hits: number; overShare: number | null }
-  doubleChance?: { n: number; v3: number | null; v3Hits: number }
+  doubleChance?: { n: number; v3: number | null; v3Hits: number; bands?: { id: string; min: number; n: number; hits: number; pct: number | null }[] }
   over15?: { n: number; hitRate: number | null; hits: number; overShare: number | null }
   safest?: { n: number; hitRate: number | null; hits: number; byMarket: { market: string; n: number; hitRate: number | null }[] }
   byCompetition: { code: string; name: string; n: number; v3: number | null; btts?: number | null; over25?: number | null }[]
@@ -133,6 +133,52 @@ export default function AccuracySimple() {
       {rec && (
         <>
           <div>
+            <h2 className="font-display text-xl font-bold text-ink">{t("The safer calls")}</h2>
+            <p className="text-sm text-muted">{t("Calls that come in more often. Each one is counted and shown on its own.")}</p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card>
+              <div className="label">{t("Double chance")}</div>
+              <div className="num text-5xl font-extrabold text-ink mt-4">{pct(rec.doubleChance?.v3)}</div>
+              <div className="mt-3"><Bar v={rec.doubleChance?.v3 ?? null} cls="bg-accent" /></div>
+              <p className="text-xs text-muted mt-4">
+                {rec.doubleChance?.n ? t("{0} of {1} right. The two results we rate highest (1X, X2 or 12).", { 0: rec.doubleChance.v3Hits, 1: rec.doubleChance.n }) : t("No finished games yet.")}
+              </p>
+              {rec.doubleChance?.bands && rec.doubleChance.bands.some(x => x.n > 0) && (
+                <ul className="mt-3 space-y-1 text-xs">
+                  {rec.doubleChance.bands.filter(x => x.n > 0).map(x => (
+                    <li key={x.id} className="flex justify-between gap-2">
+                      <span className="text-muted">{t("When we were {0} sure", { 0: x.id === '90+' ? '90%+' : x.id === '80-90' ? '80–90%' : '70–80%' })}</span>
+                      <span className="num font-semibold text-ink">{pct(x.pct)} <span className="text-faint font-normal">({x.n})</span></span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+            <Card>
+              <div className="label">{t("Over / under 1.5 goals")}</div>
+              <div className="num text-5xl font-extrabold text-ink mt-4">{pct(rec.over15?.hitRate)}</div>
+              <div className="mt-3"><Bar v={rec.over15?.hitRate ?? null} cls="bg-home" /></div>
+              <p className="text-xs text-muted mt-4">
+                {rec.over15?.n ? t("{0} of {1} right. Over when we give it 50%+, else Under.", { 0: rec.over15.hits, 1: rec.over15.n }) : t("No finished games yet.")}
+              </p>
+            </Card>
+            <Card>
+              <div className="label">{t("Our safest pick of each match")}</div>
+              <div className="num text-5xl font-extrabold text-ink mt-4">{pct(rec.safest?.hitRate)}</div>
+              <div className="mt-3"><Bar v={rec.safest?.hitRate ?? null} cls="bg-draw" /></div>
+              <p className="text-xs text-muted mt-4">
+                {rec.safest?.n ? t("{0} of {1} right. For every match, the one bet we were most sure about.", { 0: rec.safest.hits, 1: rec.safest.n }) : t("No finished games yet.")}
+              </p>
+              {rec.safest && rec.safest.byMarket.length > 0 && (
+                <p className="text-[11px] text-faint mt-2">
+                  {rec.safest.byMarket.map(b => `${b.market} ${b.n}× (${pct(b.hitRate)})`).join(' · ')}
+                </p>
+              )}
+            </Card>
+          </div>
+
+          <div className="pt-2">
             <h2 className="font-display text-xl font-bold text-ink">{t("The hard calls")}</h2>
             <p className="text-sm text-muted">{t("Close to a coin flip in most games. This is where a model shows what it is worth.")}</p>
           </div>
@@ -165,42 +211,6 @@ export default function AccuracySimple() {
               <p className="text-xs text-muted mt-4">
                 {rec.over25.n ? t("{0} of {1} right. Over when we give it 50%+, else Under.", { 0: rec.over25.hits, 1: rec.over25.n }) : t("No finished games yet.")}
               </p>
-            </Card>
-          </div>
-
-          <div className="pt-2">
-            <h2 className="font-display text-xl font-bold text-ink">{t("The safer calls")}</h2>
-            <p className="text-sm text-muted">{t("Calls that come in more often. Each one is counted and shown on its own.")}</p>
-          </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            <Card>
-              <div className="label">{t("Double chance")}</div>
-              <div className="num text-5xl font-extrabold text-ink mt-4">{pct(rec.doubleChance?.v3)}</div>
-              <div className="mt-3"><Bar v={rec.doubleChance?.v3 ?? null} cls="bg-accent" /></div>
-              <p className="text-xs text-muted mt-4">
-                {rec.doubleChance?.n ? t("{0} of {1} right. The two results we rate highest (1X, X2 or 12).", { 0: rec.doubleChance.v3Hits, 1: rec.doubleChance.n }) : t("No finished games yet.")}
-              </p>
-            </Card>
-            <Card>
-              <div className="label">{t("Over / under 1.5 goals")}</div>
-              <div className="num text-5xl font-extrabold text-ink mt-4">{pct(rec.over15?.hitRate)}</div>
-              <div className="mt-3"><Bar v={rec.over15?.hitRate ?? null} cls="bg-home" /></div>
-              <p className="text-xs text-muted mt-4">
-                {rec.over15?.n ? t("{0} of {1} right. Over when we give it 50%+, else Under.", { 0: rec.over15.hits, 1: rec.over15.n }) : t("No finished games yet.")}
-              </p>
-            </Card>
-            <Card>
-              <div className="label">{t("Our safest pick of each match")}</div>
-              <div className="num text-5xl font-extrabold text-ink mt-4">{pct(rec.safest?.hitRate)}</div>
-              <div className="mt-3"><Bar v={rec.safest?.hitRate ?? null} cls="bg-draw" /></div>
-              <p className="text-xs text-muted mt-4">
-                {rec.safest?.n ? t("{0} of {1} right. For every match, the one bet we were most sure about.", { 0: rec.safest.hits, 1: rec.safest.n }) : t("No finished games yet.")}
-              </p>
-              {rec.safest && rec.safest.byMarket.length > 0 && (
-                <p className="text-[11px] text-faint mt-2">
-                  {rec.safest.byMarket.map(b => `${b.market} ${b.n}× (${pct(b.hitRate)})`).join(' · ')}
-                </p>
-              )}
             </Card>
           </div>
 

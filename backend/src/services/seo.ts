@@ -87,7 +87,7 @@ const bbList = (lang: Lang, list: any[]) =>
 
 /* ---------- pages ---------- */
 
-const NAV = (lang: Lang) => `<nav><a href="${link(lang, '/')}">${BRAND}</a> · <a href="${link(lang, '/matches')}">Football matches</a> · <a href="${link(lang, '/accuracy')}">Our record</a> · <a href="${link(lang, '/premium')}">Premium</a>${bbPublic() ? ` · <a href="${link(lang, '/basketball')}">Basketball</a>` : ''}</nav>`;
+const NAV = (lang: Lang) => `<nav><a href="${link(lang, '/')}">${BRAND}</a> · <a href="${link(lang, '/matches')}">Football matches</a> · <a href="${link(lang, '/premium')}">Premium</a>${bbPublic() ? ` · <a href="${link(lang, '/basketball')}">Basketball</a>` : ''}</nav>`;
 const PRIVATE = /^\/(admin|account|verify|forgot|login|signup|favorites|my-picks|join|crm)(\/|$)|^\/basketball\/(favorites|past)(\/|$)|^\/past(\/|$)/;
 
 export function seoPage(rawPath: string): SeoInfo {
@@ -145,11 +145,8 @@ export function seoPage(rawPath: string): SeoInfo {
           `<h1>${esc(name)}</h1>${fbList(lang, fbUpcoming(10, 'AND (home_team_id = ? OR away_team_id = ?)', id, id))}`);
       }
     }
-    if (path === '/accuracy') {
-      return page(`Our record: every prediction checked against the result | ${BRAND}`,
-        'How often our predictions are right, league by league: every pick is saved before kick-off and scored after the game, in public.',
-        `<h1>Our record</h1><p>Every prediction is saved before kick-off and checked against the result. Recent matches we predicted:</p>${fbList(lang, fbRecent(14, 60))}`);
-    }
+    // record pages are admin-only for now (fix118, 14 Oct 2026): not indexed, not in the sitemap
+    if (path === '/accuracy' || path === '/basketball/accuracy') return page(`Our record | ${BRAND}`, 'SportLikely record page.', '', { noindex: true });
     if (path === '/premium') return page(`Premium and Pro plans | ${BRAND}`, 'Full win, draw and loss percentages, goals markets, team analysis and more predictions with SportLikely Premium and Pro.', '<h1>SportLikely Premium and Pro</h1>');
     if (path === '/draw-alerts') return page(`Draw alerts | ${BRAND}`, 'Matches where our model sees an unusually high chance of a draw.', '<h1>Draw alerts</h1>');
     if (path === '/terms') return page(`Terms of use | ${BRAND}`, 'Terms of use of SportLikely.', '<h1>Terms of use</h1>');
@@ -222,7 +219,7 @@ export function renderIndex(html: string, s: SeoInfo): string {
 export function sitemapXml(): string {
   const urls: { loc: string; freq: string; pri: string }[] = [];
   const add = (p: string, freq: string, pri: string) => urls.push({ loc: p, freq, pri });
-  add('/', 'hourly', '1.0'); add('/matches', 'hourly', '0.9'); add('/accuracy', 'daily', '0.8'); add('/draw-alerts', 'daily', '0.6'); add('/premium', 'monthly', '0.5');
+  add('/', 'hourly', '1.0'); add('/matches', 'hourly', '0.9'); add('/draw-alerts', 'daily', '0.6'); add('/premium', 'monthly', '0.5');
   add('/terms', 'yearly', '0.2'); add('/privacy', 'yearly', '0.2'); add('/accessibility', 'yearly', '0.2'); add('/contact', 'yearly', '0.3');
   for (const c of fbCompetitions()) add(`/league/${c.code}`, 'daily', '0.7');
   for (const x of fbUpcoming(1500)) add(`/match/${x.id}`, 'hourly', '0.8');

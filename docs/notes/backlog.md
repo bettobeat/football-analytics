@@ -1,6 +1,8 @@
 # SportLikely — backlog and decisions (updated 13 Oct 2026)
 
-Next free fix number: **fix118**. Keep this file current: when you ship something, move it to "Done" with its fix number.
+Next free fix number: **fix119**.
+
+**Accuracy pages hidden from public on 14 Oct, Yarin's decision, until redesigned** (`/accuracy`, `/basketball/accuracy`: admins only, non-admins go to the sport's home; no nav tabs or record links for visitors; noindex, out of the sitemap; `/api/accuracy*` and `/api/public/record` still work). Keep this file current: when you ship something, move it to "Done" with its fix number.
 
 ## Now / next
 - **Basketball launch (~18 Oct)**: set `BASKETBALL_PUBLIC=1`, change "basketball coming" wording. Before that, open `/api/bb/live-test?tune=1` (admin) to check the live win chance on all 18 leagues with bb-v3's own predictions (it was fitted on public NBA data; see basketball.md).
@@ -22,6 +24,7 @@ Next free fix number: **fix118**. Keep this file current: when you ship somethin
 - Model ideas: relegated clubs overrated (squad value ranked within the division) → absolute scale; add League Two / SC2 history; goals model from shots/xG; "Best bet" per match.
 
 ## Done (newest first)
+- fix118 (14 Oct): record pages admin-only (`RecordGate`, `RecordLink` in App.tsx / components); double chance leads: `publicRecord().doubleChance.bands` (90%+, 80–90, 70–80) and `/api/public/summary.doubleChance`; Home hero cards "X% right · double chance" and "X% when we're 90%+ sure · double chance" (80%+ when the 90%+ band has < 30 games); "Double chance · 1X · 78%" chip on the match page prediction card and the featured carousel (`DoubleChanceChip`); AccuracySimple shows the safer calls first with the new bands.
 - fix117 (13 Oct): privacy page credits the country data actually in use (`geoCredit()`, public `/api/public/geo-source`): DB-IP (CC BY 4.0) normally, iptoasn.com (public domain) when that one is loaded; DB-IP is the fallback text if the call fails.
 - fix116 (13 Oct): visitor countries — `geo.ts` checks every download (gzip / text / web page → error, broken gzip → error), reads CSV or TSV, sorts ranges; sources in order: DB-IP monthly (this, last month) → DB-IP via jsDelivr (v4 + v6 CSV) → iptoasn.com ip2country (public domain); saved data replaced only after a good read; source in `DATA_DIR/geo/source.txt`; retry hourly while nothing is loaded. After deploy: Railway log "geo: country data from … loaded".
 - fix115 (13 Oct): one live score everywhere (`liveScores.ts`): every Football-Data.org match shows the fresher of API-Football / Football-Data.org (AF when finished or ≤ 2 min old, unless FD says finished and is newer) in the list, the live push and the match page; live loop every 20 s (FD fresh every 3rd tick, AF live=all every tick while games are on). Check during live games: `/api/admin/live-book`.

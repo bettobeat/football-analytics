@@ -1711,6 +1711,8 @@ app.get('/api/public/summary', (_req, res) => {
         data: {
           days: 30,
           v3: { games: main.settled, hitRate: main.model?.hitRate ?? null, strong60: (main.strongPicks || []).find((t: any) => t.min === 60) || null },
+          // double chance leads on the home page (fix118): overall and by how sure we were (90%+, 80–90, 70–80)
+          doubleChance: (() => { try { return publicRecord(30).doubleChance; } catch { return null; } })(),
           drawAlerts: draws
         }
       };

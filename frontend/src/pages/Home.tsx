@@ -11,6 +11,8 @@ import CountUp from '../components/CountUp'
 import { RevealChip } from '../components/Reveal'
 import { useFavorites } from '../lib/favorites'
 import { t as tt, LOCALE } from '../lib/i18n'
+import RecordLink from '../components/RecordLink'
+import DoubleChanceChip from '../components/DoubleChanceChip'
 
 interface Team { id: number; name: string; shortName?: string; tla?: string; crest?: string }
 interface Match {
@@ -28,7 +30,20 @@ interface Match {
 interface Summary {
   days: number
   v3: { games: number; hitRate: number | null; strong60: { n: number; hitRate: number | null } | null }
+  /** double chance (the model's two most likely results), overall and by how sure the model was of it */
+  doubleChance?: { n: number; v3: number | null; bands?: { id: string; min: number; n: number; hits: number; pct: number | null }[] } | null
   drawAlerts: { picks: number } | null
+}
+
+/** The surest double-chance band with enough games (30+): 90%+, else 80%+ (90+ and 80–90 together), else none. */
+function dcSure(dc: Summary['doubleChance']): { min: number; pct: number; n: number } | null {
+  const bands = dc?.bands || []
+  for (const min of [90, 80]) {
+    const sel = bands.filter(b => b.min >= min)
+    const n = sel.reduce((s, b) => s + b.n, 0), hits = sel.reduce((s, b) => s + b.hits, 0)
+    if (n >= 30) return { min, n, pct: Math.round((1000 * hits) / n) / 10 }
+  }
+  return null
 }
 interface News { title: string; link: string; source: string; published: string | null; summary: string; image?: string | null; leagues?: { code: string; name: string }[] }
 /** "BBC Sport · Premier League": the outlet and the first league the story is filed under */
@@ -128,11 +143,14 @@ function FeaturedHero({ m, p, label }: { m: Match | null; p: Prediction | null; 
             {hasPct(p) && isCovered(m.id, m.status, true) ? (
               <RevealChip dark onReveal={() => revealMatch(m.id)} />
             ) : hasPct(p) ? (
-              <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                {pill('H', tn(m.homeTeam), p.home)}
-                {pill('D', tt('Draw'), p.draw)}
-                {pill('A', tn(m.awayTeam), p.away)}
-              </div>
+              <>
+                <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                  {pill('H', tn(m.homeTeam), p.home)}
+                  {pill('D', tt('Draw'), p.draw)}
+                  {pill('A', tn(m.awayTeam), p.away)}
+                </div>
+                <div className="flex justify-center sm:justify-start"><DoubleChanceChip dark p={p} home={tn(m.homeTeam)} away={tn(m.awayTeam)} /></div>
+              </>
             ) : (
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 text-sm">
                 <span className="glass !rounded-full px-4 py-2 font-semibold inline-flex items-center gap-2"><Lock /> {tt("Prediction locked")}</span>
@@ -409,24 +427,29 @@ export default function Home() {
             </ul>
             <div className="flex flex-col sm:flex-row gap-2">
               <Link to="/signup" className="h-11 px-6 rounded-2xl bg-accent text-bg font-extrabold grid place-items-center">{tt("Get 2 free picks a week")}</Link>
-              <Link to="/accuracy" className="h-11 px-5 rounded-2xl border border-line text-ink font-semibold grid place-items-center hover:border-faint">{tt("See our record")}</Link>
+              <RecordLink to="/accuracy" className="h-11 px-5 rounded-2xl border border-line text-ink font-semibold grid place-items-center hover:border-faint">{tt("See our record")}</RecordLink>
             </div>
           </div>
-          {summary?.v3?.hitRate != null && (
-            <div className="grid grid-cols-2 lg:grid-cols-1 gap-3 lg:w-56">
-              <div className="rounded-2xl bg-surface/70 border border-line px-4 py-3">
-                <div className="font-display text-3xl font-extrabold text-accent num leading-none">{summary.v3.hitRate}%</div>
-                <div className="text-xs text-ink font-semibold mt-1.5">{tt("of our picks were right")}</div>
-                <div className="text-[11px] text-faint">{tt("last {0} days", { 0: summary.days })}</div>
-              </div>
-              {summary.v3.strong60?.hitRate != null && (
+          {/* double chance leads (fix118): always labelled as double chance, never passed off as the 1X2 pick */}
+          {summary?.doubleChance?.v3 != null && (() => {
+            const sure = dcSure(summary.doubleChance)
+            return (
+              <div className="grid grid-cols-2 lg:grid-cols-1 gap-3 lg:w-56">
                 <div className="rounded-2xl bg-surface/70 border border-line px-4 py-3">
-                  <div className="font-display text-3xl font-extrabold text-accent num leading-none">{summary.v3.strong60.hitRate}%</div>
-                  <div className="text-xs text-ink font-semibold mt-1.5">{tt("when we were 60%+ sure")}</div>
+                  <div className="font-display text-3xl font-extrabold text-accent num leading-none">{summary.doubleChance!.v3}%</div>
+                  <div className="text-xs text-ink font-semibold mt-1.5">{tt("right · double chance")}</div>
+                  <div className="text-[11px] text-faint">{tt("last {0} days", { 0: summary.days })}</div>
                 </div>
-              )}
-            </div>
-          )}
+                {sure && (
+                  <div className="rounded-2xl bg-surface/70 border border-line px-4 py-3">
+                    <div className="font-display text-3xl font-extrabold text-accent num leading-none">{sure.pct}%</div>
+                    <div className="text-xs text-ink font-semibold mt-1.5">{tt("when we're {0}%+ sure · double chance", { 0: sure.min })}</div>
+                    <div className="text-[11px] text-faint">{tt("{0} games", { 0: sure.n })}</div>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
         </section>
       )}
 
@@ -535,7 +558,7 @@ export default function Home() {
             <div className="text-sm text-muted">{tt("Loading the record…")}</div>
           )}
           <p className="text-sm text-muted leading-relaxed">{tt("Picks right, every game counted. Each prediction is saved before kick-off and never edited.")}</p>
-          <Link to="/accuracy" className="mt-auto text-sm font-bold text-accent">{tt("See the full record →")}</Link>
+          <RecordLink to="/accuracy" className="mt-auto text-sm font-bold text-accent">{tt("See the full record →")}</RecordLink>
         </div>
 
         <div className="card p-6 flex flex-col gap-4">

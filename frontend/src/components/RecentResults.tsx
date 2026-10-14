@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { t as tt, LOCALE } from '../lib/i18n'
+import RecordLink from './RecordLink'
 
 type Pick = 'H' | 'D' | 'A'
 const PICK_COLOR: Record<Pick, string> = { H: 'text-home', D: 'text-draw', A: 'text-away' }
@@ -69,8 +70,8 @@ export default function RecentResults({ code, limit, days = 14, compact, large, 
         ))}
       </ul>
       {rows && rows.length > 0 && (
-        <Link to="/accuracy" className="block px-1 pt-2 text-[11px] font-semibold text-muted hover:text-ink">
-          {tt("How accurate is the model? →")}</Link>
+        <RecordLink to="/accuracy" className="block px-1 pt-2 text-[11px] font-semibold text-muted hover:text-ink">
+          {tt("How accurate is the model? →")}</RecordLink>
       )}
     </div>
   )

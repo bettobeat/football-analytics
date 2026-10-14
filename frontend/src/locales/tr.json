@@ -1588,5 +1588,8 @@
  "Projected": "Tahmin",
  "{0} points in total": "toplam {0} sayı",
  "Updated every minute from our prediction at tip-off, the score and the time left.": "Maç öncesi tahminimiz, skor ve kalan süreye göre her dakika güncellenir.",
- "Our second model (team stats, lineups and injuries) gives {0} {1}% instead of {2}%. The numbers above are the average of both.": "İkinci modelimiz (takım istatistikleri, kadrolar ve sakatlıklar) {0} için %{2} yerine %{1} veriyor. Yukarıdaki rakamlar ikisinin ortalamasıdır."
+ "Our second model (team stats, lineups and injuries) gives {0} {1}% instead of {2}%. The numbers above are the average of both.": "İkinci modelimiz (takım istatistikleri, kadrolar ve sakatlıklar) {0} için %{2} yerine %{1} veriyor. Yukarıdaki rakamlar ikisinin ortalamasıdır.",
+ "right · double chance": "doğru · çifte şans",
+ "when we're {0}%+ sure · double chance": "%{0}+ emin olduğumuzda · çifte şans",
+ "When we were {0} sure": "{0} emin olduğumuzda"
 }

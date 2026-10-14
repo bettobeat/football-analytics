@@ -681,6 +681,9 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
   const recent: any[] = [];
   // "safer" calls: double chance, over/under 1.5, and the most confident pick of each match
   const dc = { n: 0, v3: 0 };
+  // double chance by how sure the model was of it (its two most likely results together)
+  const DC_BANDS = [{ id: '90+', lo: 90, hi: 101 }, { id: '80-90', lo: 80, hi: 90 }, { id: '70-80', lo: 70, hi: 80 }];
+  const dcBands = DC_BANDS.map(b => ({ ...b, n: 0, hits: 0 }));
   const ou15 = { n: 0, hits: 0, overPicks: 0 };
   const safest = { n: 0, hits: 0, byMarket: {} as Record<string, { n: number; hits: number }> };
   // how often we are right at each confidence level (the pick's own %)
@@ -738,6 +741,12 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
     const myDcHit = dcHit(myDc.k, r.outcome);
     dc.n++;
     if (myDcHit) dc.v3++;
+    {
+      const tot = Number(r.p_home) + Number(r.p_draw) + Number(r.p_away) || 1;
+      const dcPct = (100 * myDc.p) / tot; // the stored chances are % (fractions on very old rows)
+      const b = dcBands.find(x => dcPct >= x.lo && dcPct < x.hi);
+      if (b) { b.n++; if (myDcHit) b.hits++; }
+    }
     // over/under 1.5 from the expected goals (Poisson): P(2+ goals) = 1 − e^−λ (1 + λ)
     let o15: { pick: boolean; hit: boolean; p: number } | null = null;
     if (r.xg_home != null && r.xg_away != null) {
@@ -784,7 +793,7 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
     result: { n: res.n, v3: pc(res.v3, res.n), v3Hits: res.v3 },
     btts: { n: btts.n, hitRate: pc(btts.hits, btts.n), hits: btts.hits, yesShare: pc(btts.yesPicks, btts.n) },
     over25: { n: ou.n, hitRate: pc(ou.hits, ou.n), hits: ou.hits, overShare: pc(ou.overPicks, ou.n) },
-    doubleChance: { n: dc.n, v3: pc(dc.v3, dc.n), v3Hits: dc.v3 },
+    doubleChance: { n: dc.n, v3: pc(dc.v3, dc.n), v3Hits: dc.v3, bands: dcBands.map(b => ({ id: b.id, min: b.lo, n: b.n, hits: b.hits, pct: pc(b.hits, b.n) })) },
     over15: { n: ou15.n, hitRate: pc(ou15.hits, ou15.n), hits: ou15.hits, overShare: pc(ou15.overPicks, ou15.n) },
     safest: {
       n: safest.n,

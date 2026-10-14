@@ -10,6 +10,7 @@ import { RevealChip } from '../../components/Reveal'
 import { useBbConfig, useBbFavorites, liveLabel, bbRank, type BbGame } from '../../lib/bb'
 import { TeamLogo, LockIcon, GameRow, useLiveChance, rid, rstatus } from './parts'
 import { useNews, NewsLead } from '../../components/NewsList'
+import RecordLink from '../../components/RecordLink'
 
 interface Rec { n: number; hits: number; hitRate: number | null; strongN: number; strongHits: number; strongHitRate: number | null }
 interface RecordData { since: string | null; total: Rec }
@@ -236,7 +237,7 @@ export default function BbHome() {
             </div>
             <div className="flex flex-col sm:flex-row lg:flex-col gap-2 lg:w-52">
               <Link to="/signup" className="h-11 px-5 rounded-2xl bg-accent text-bg font-extrabold grid place-items-center">{t('Create a free account')}</Link>
-              <Link to="/basketball/accuracy" className="h-11 px-5 rounded-2xl border border-line text-ink font-semibold grid place-items-center hover:border-faint">{t('See our record')}</Link>
+              <RecordLink to="/basketball/accuracy" className="h-11 px-5 rounded-2xl border border-line text-ink font-semibold grid place-items-center hover:border-faint">{t('See our record')}</RecordLink>
             </div>
           </section>
         )}
@@ -352,7 +353,7 @@ export default function BbHome() {
               <div className="text-sm text-muted">{record ? t('The record starts with the first games after launch. Check back after the next game day.') : t('Loading the record…')}</div>
             )}
             <p className="text-sm text-muted leading-relaxed">{t('Picks right, every game counted. Each prediction is saved before tip-off and never edited.')}</p>
-            <Link to="/basketball/accuracy" className="mt-auto text-sm font-bold text-accent">{t('See the full record →')}</Link>
+            <RecordLink to="/basketball/accuracy" className="mt-auto text-sm font-bold text-accent">{t('See the full record →')}</RecordLink>
           </div>
 
           <div className="card p-6 flex flex-col gap-4">
@@ -374,7 +375,7 @@ export default function BbHome() {
           <div className="card p-3 flex flex-col">
             <div className="flex items-center justify-between px-2 pt-2 pb-2">
               <h2 className="font-display text-lg font-bold">{t('Latest results')}</h2>
-              <Link to="/basketball/accuracy" className="text-xs font-bold text-accent">{t('Record →')}</Link>
+              <RecordLink to="/basketball/accuracy" className="text-xs font-bold text-accent">{t('Record →')}</RecordLink>
             </div>
             {!results ? <div className="px-2 text-sm text-muted">{t('Loading…')}</div> : results.length === 0 ? (
               <p className="px-2 pb-2 text-sm text-faint">{t('No results in the last three days.')}</p>
