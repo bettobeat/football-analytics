@@ -1591,5 +1591,13 @@
  "Our second model (team stats, lineups and injuries) gives {0} {1}% instead of {2}%. The numbers above are the average of both.": "O nosso segundo modelo (estatísticas da equipa, escalações e lesões) dá a {0} {1}% em vez de {2}%. Os números acima são a média dos dois.",
  "right · double chance": "de acerto · dupla hipótese",
  "when we're {0}%+ sure · double chance": "quando temos {0}%+ de certeza · dupla hipótese",
- "When we were {0} sure": "Quando tínhamos {0} de certeza"
+ "When we were {0} sure": "Quando tínhamos {0} de certeza",
+ "Double chance · 90%+ sure": "Dupla hipótese · 90%+ de certeza",
+ "Double chance · 85%+ sure": "Dupla hipótese · 85%+ de certeza",
+ "Result · 80%+ sure": "Resultado · 80%+ de certeza",
+ "Double chance · all picks": "Dupla hipótese · todos os palpites",
+ "Both teams score · 70%+ sure": "Ambas marcam · 70%+ de certeza",
+ "Over/Under 2.5 · 70%+ sure": "Mais/Menos de 2,5 · 70%+ de certeza",
+ "All our picks (result)": "Todos os nossos palpites (resultado)",
+ "Double chance = one of the two results we rate highest (1X, X2 or 12).": "Dupla hipótese = um dos dois resultados que consideramos mais prováveis (1X, X2 ou 12)."
 }

@@ -1712,7 +1712,7 @@ app.get('/api/public/summary', (_req, res) => {
           days: 30,
           v3: { games: main.settled, hitRate: main.model?.hitRate ?? null, strong60: (main.strongPicks || []).find((t: any) => t.min === 60) || null },
           // double chance leads on the home page (fix118): overall and by how sure we were (90%+, 80–90, 70–80)
-          doubleChance: (() => { try { return publicRecord(30).doubleChance; } catch { return null; } })(),
+          ...(() => { try { const pr = publicRecord(30); return { doubleChance: pr.doubleChance, highlights: pr.highlights }; } catch { return { doubleChance: null, highlights: null }; } })(),
           drawAlerts: draws
         }
       };

@@ -1591,5 +1591,13 @@
  "Our second model (team stats, lineups and injuries) gives {0} {1}% instead of {2}%. The numbers above are the average of both.": "İkinci modelimiz (takım istatistikleri, kadrolar ve sakatlıklar) {0} için %{2} yerine %{1} veriyor. Yukarıdaki rakamlar ikisinin ortalamasıdır.",
  "right · double chance": "doğru · çifte şans",
  "when we're {0}%+ sure · double chance": "%{0}+ emin olduğumuzda · çifte şans",
- "When we were {0} sure": "{0} emin olduğumuzda"
+ "When we were {0} sure": "{0} emin olduğumuzda",
+ "Double chance · 90%+ sure": "Çifte şans · %90+ emin",
+ "Double chance · 85%+ sure": "Çifte şans · %85+ emin",
+ "Result · 80%+ sure": "Sonuç · %80+ emin",
+ "Double chance · all picks": "Çifte şans · tüm tahminler",
+ "Both teams score · 70%+ sure": "Karşılıklı gol · %70+ emin",
+ "Over/Under 2.5 · 70%+ sure": "2,5 Alt/Üst · %70+ emin",
+ "All our picks (result)": "Tüm tahminlerimiz (sonuç)",
+ "Double chance = one of the two results we rate highest (1X, X2 or 12).": "Çifte şans = en olası gördüğümüz iki sonuçtan biri (1X, X2 veya 12)."
 }

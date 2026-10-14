@@ -32,7 +32,28 @@ interface Summary {
   v3: { games: number; hitRate: number | null; strong60: { n: number; hitRate: number | null } | null }
   /** double chance (the model's two most likely results), overall and by how sure the model was of it */
   doubleChance?: { n: number; v3: number | null; bands?: { id: string; min: number; n: number; hits: number; pct: number | null }[] } | null
+  /** "Our record" card: hit rates at a few confidence levels (≥), same 30 days and games */
+  highlights?: Record<string, { n: number; hits: number; pct: number | null }> | null
   drawAlerts: { picks: number } | null
+}
+
+/** "Our record" rows: double chance first in the list of candidates; shown high → low, 30+ games each, at most 6. */
+const RECORD_ROWS: { key: string; label: string }[] = [
+  { key: 'dc90', label: 'Double chance · 90%+ sure' },
+  { key: 'dc85', label: 'Double chance · 85%+ sure' },
+  { key: 'res80', label: 'Result · 80%+ sure' },
+  { key: 'dcAll', label: 'Double chance · all picks' },
+  { key: 'btts70', label: 'Both teams score · 70%+ sure' },
+  { key: 'res60', label: 'Strong picks (60%+)' },
+  { key: 'ou70', label: 'Over/Under 2.5 · 70%+ sure' },
+  { key: 'resAll', label: 'All our picks (result)' }
+]
+function recordRows(h: Summary['highlights']) {
+  if (!h) return []
+  return RECORD_ROWS.map(r => ({ ...r, ...(h[r.key] || { n: 0, hits: 0, pct: null }) }))
+    .filter(r => r.n >= 30 && r.pct !== null)
+    .sort((a, b) => (b.pct as number) - (a.pct as number))
+    .slice(0, 6)
 }
 
 /** The surest double-chance band with enough games (30+): 90%+, else 80%+ (90+ and 80–90 together), else none. */
@@ -541,23 +562,30 @@ export default function Home() {
             <h2 className="font-display text-lg font-bold">{tt("Our record")}</h2>
             {summary && <span className="text-xs text-muted">{tt("last {0} days", { 0: summary.days })}</span>}
           </div>
-          {summary && summary.v3.hitRate !== null ? (
+          {!summary ? (
+            <div className="text-sm text-muted">{tt("Loading the record…")}</div>
+          ) : recordRows(summary.highlights).length ? (
             <div className="space-y-3">
-              <div className="space-y-1.5">
-                <div className="flex justify-between font-bold"><span>{tt("All our picks")}</span><span className="font-display text-accent">{summary.v3.hitRate}%</span></div>
-                <div className="h-2.5 rounded-full bg-surface2"><div className="h-full rounded-full bg-accent" style={{ width: `${summary.v3.hitRate}%` }} /></div>
-              </div>
-              {summary.v3.strong60?.hitRate != null && (
-                <div className="space-y-1.5">
-                  <div className="flex justify-between font-bold text-muted"><span>{tt("Strong picks (60%+)")}</span><span className="font-display">{summary.v3.strong60.hitRate}%</span></div>
-                  <div className="h-2.5 rounded-full bg-surface2"><div className="h-full rounded-full bg-win" style={{ width: `${summary.v3.strong60.hitRate}%` }} /></div>
+              {recordRows(summary.highlights).map((r, i) => (
+                <div key={r.key} className="space-y-1.5">
+                  <div className="flex justify-between items-start gap-3">
+                    <span className={`font-bold ${i === 0 ? 'text-ink' : 'text-muted text-sm'}`}>{tt(r.label)}</span>
+                    <span className="text-right leading-none flex-shrink-0">
+                      <span className={`block font-display num ${i === 0 ? 'text-2xl text-accent' : 'text-base text-ink'}`}>{r.pct}%</span>
+                      <span className="block text-[10px] text-faint mt-1">{tt("{0} games", { 0: r.n })}</span>
+                    </span>
+                  </div>
+                  <div className={`${i === 0 ? 'h-3' : 'h-2'} rounded-full bg-surface2`}><div className={`h-full rounded-full ${i === 0 ? 'bg-accent' : 'bg-win/80'}`} style={{ width: `${r.pct}%` }} /></div>
                 </div>
-              )}
+              ))}
             </div>
           ) : (
-            <div className="text-sm text-muted">{tt("Loading the record…")}</div>
+            <div className="text-sm text-muted">{tt("No finished games yet.")}</div>
           )}
-          <p className="text-sm text-muted leading-relaxed">{tt("Picks right, every game counted. Each prediction is saved before kick-off and never edited.")}</p>
+          <p className="text-sm text-muted leading-relaxed">
+            {tt("Picks right, every game counted. Each prediction is saved before kick-off and never edited.")}{' '}
+            {tt("Double chance = one of the two results we rate highest (1X, X2 or 12).")}
+          </p>
           <RecordLink to="/accuracy" className="mt-auto text-sm font-bold text-accent">{tt("See the full record →")}</RecordLink>
         </div>
 

@@ -684,6 +684,10 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
   // double chance by how sure the model was of it (its two most likely results together)
   const DC_BANDS = [{ id: '90+', lo: 90, hi: 101 }, { id: '80-90', lo: 80, hi: 90 }, { id: '70-80', lo: 70, hi: 80 }];
   const dcBands = DC_BANDS.map(b => ({ ...b, n: 0, hits: 0 }));
+  // the home page's "Our record" card: our best numbers at a few confidence levels (≥, cumulative), same games
+  const HL = ['dcAll', 'dc85', 'dc90', 'resAll', 'res60', 'res70', 'res80', 'btts70', 'ou70'] as const;
+  const hl = Object.fromEntries(HL.map(k => [k, { n: 0, hits: 0 }])) as Record<typeof HL[number], { n: number; hits: number }>;
+  const hlAdd = (k: typeof HL[number], hit: boolean) => { hl[k].n++; if (hit) hl[k].hits++; };
   const ou15 = { n: 0, hits: 0, overPicks: 0 };
   const safest = { n: 0, hits: 0, byMarket: {} as Record<string, { n: number; hits: number }> };
   // how often we are right at each confidence level (the pick's own %)
@@ -701,6 +705,14 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
     const v3hit = v3pick === r.outcome;
     const topP = Math.max(Number(r.p_home), Number(r.p_draw), Number(r.p_away));
     const band = bands.find(b => topP >= b.lo && topP < b.hi);
+    {
+      const tot = Number(r.p_home) + Number(r.p_draw) + Number(r.p_away) || 1;
+      const top = (100 * topP) / tot; // % (fractions on very old rows)
+      hlAdd('resAll', v3hit);
+      if (top >= 60) hlAdd('res60', v3hit);
+      if (top >= 70) hlAdd('res70', v3hit);
+      if (top >= 80) hlAdd('res80', v3hit);
+    }
     if (band) {
       band.n++; band.sumP += topP; if (v3hit) band.hits++;
     }
@@ -727,6 +739,7 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
       btts.n++;
       if (bttsHit) btts.hits++;
       if (bttsPick) btts.yesPicks++;
+      if (Math.max(Number(r.btts), 100 - Number(r.btts)) >= 70) hlAdd('btts70', bttsHit);
     }
     let ouPick: boolean | null = null, ouHit: boolean | null = null;
     if (r.over25 !== null && r.over25 !== undefined) {
@@ -735,6 +748,7 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
       ou.n++;
       if (ouHit) ou.hits++;
       if (ouPick) ou.overPicks++;
+      if (Math.max(Number(r.over25), 100 - Number(r.over25)) >= 70) hlAdd('ou70', ouHit);
     }
     // double chance: the two results we rate highest together
     const myDc = dcOf(Number(r.p_home), Number(r.p_draw), Number(r.p_away));
@@ -746,6 +760,9 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
       const dcPct = (100 * myDc.p) / tot; // the stored chances are % (fractions on very old rows)
       const b = dcBands.find(x => dcPct >= x.lo && dcPct < x.hi);
       if (b) { b.n++; if (myDcHit) b.hits++; }
+      hlAdd('dcAll', myDcHit);
+      if (dcPct >= 85) hlAdd('dc85', myDcHit);
+      if (dcPct >= 90) hlAdd('dc90', myDcHit);
     }
     // over/under 1.5 from the expected goals (Poisson): P(2+ goals) = 1 − e^−λ (1 + λ)
     let o15: { pick: boolean; hit: boolean; p: number } | null = null;
@@ -793,6 +810,7 @@ export function publicRecord(days = 30, competition?: string, recentLimit = 60) 
     result: { n: res.n, v3: pc(res.v3, res.n), v3Hits: res.v3 },
     btts: { n: btts.n, hitRate: pc(btts.hits, btts.n), hits: btts.hits, yesShare: pc(btts.yesPicks, btts.n) },
     over25: { n: ou.n, hitRate: pc(ou.hits, ou.n), hits: ou.hits, overShare: pc(ou.overPicks, ou.n) },
+    highlights: Object.fromEntries(HL.map(k => [k, { n: hl[k].n, hits: hl[k].hits, pct: pc(hl[k].hits, hl[k].n) }])) as Record<typeof HL[number], { n: number; hits: number; pct: number | null }>,
     doubleChance: { n: dc.n, v3: pc(dc.v3, dc.n), v3Hits: dc.v3, bands: dcBands.map(b => ({ id: b.id, min: b.lo, n: b.n, hits: b.hits, pct: pc(b.hits, b.n) })) },
     over15: { n: ou15.n, hitRate: pc(ou15.hits, ou15.n), hits: ou15.hits, overShare: pc(ou15.overPicks, ou15.n) },
     safest: {
