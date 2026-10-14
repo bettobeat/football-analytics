@@ -578,7 +578,7 @@ export function SectionTitle({
 function LiveRow({ match }: { match: APIMatch }) {
   const ft = match.score?.fullTime
   return (
-    <Link to={`/match/${match.id}`} className="block rounded-xl px-2 py-2 hover:bg-surface2 transition-colors">
+    <Link to={`/match/${match.id}`} state={{ match: match }} className="block rounded-xl px-2 py-2 hover:bg-surface2 transition-colors">
       <div className="flex items-center justify-between text-[10px] text-faint mb-1">
         <span className="truncate">{match.competition.name}</span>
         <span className="font-bold text-live tracking-wider">{match.status === 'PAUSED' ? tt("HT") : tt("LIVE")}</span>
@@ -648,7 +648,7 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
       : null
 
   return (
-    <Link to={`/match/${match.id}`} className={`group relative flex items-center gap-2.5 px-3 sm:px-4 py-1.5 hover:bg-surface2/50 transition-colors ${isLive ? 'bg-live/[0.06]' : ''}`}>
+    <Link to={`/match/${match.id}`} state={{ match: match }} className={`group relative flex items-center gap-2.5 px-3 sm:px-4 py-1.5 hover:bg-surface2/50 transition-colors ${isLive ? 'bg-live/[0.06]' : ''}`}>
       {isLive && <span className="absolute left-0 inset-y-0 w-0.5 bg-live" aria-hidden />}
       {/* time */}
       <div className="relative w-10 flex-shrink-0 text-center leading-tight">

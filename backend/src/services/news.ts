@@ -332,8 +332,10 @@ function buildBbMatcher() {
   const leaguesOf = new Map<string, Set<string>>();
   let rows: any[] = [];
   try {
+    // fix122: the correlated subquery ran MAX(season) once per game row (17 s on the 14 Oct DB copy, blocking the event
+    // loop at every 15-minute news refresh); one grouped MAX per league joined back gives the same 393 rows in 18 ms
     rows = db.prepare(`SELECT DISTINCT g.code, g.home_name AS n FROM bb_games g
-      WHERE g.season = (SELECT MAX(season) FROM bb_games x WHERE x.code = g.code) `).all() as any[];
+      JOIN (SELECT code, MAX(season) AS s FROM bb_games GROUP BY code) m ON m.code = g.code AND g.season = m.s`).all() as any[];
   } catch { /* basketball tables not ready */ }
   for (const r of rows) for (const n of bbTeamNames(r.n, r.code)) {
     const k = norm(n).trim();

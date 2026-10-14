@@ -179,11 +179,11 @@ function FeaturedHero({ m, p, label }: { m: Match | null; p: Prediction | null; 
             ) : (
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 text-sm">
                 <span className="glass !rounded-full px-4 py-2 font-semibold inline-flex items-center gap-2"><Lock /> {tt("Prediction locked")}</span>
-                <Link to={`/match/${m.id}`} className="inline-flex items-center gap-1.5 text-[#C8FF3D] font-semibold">{tt("Unlock it →")}</Link>
+                <Link to={`/match/${m.id}`} state={{ match: m }} className="inline-flex items-center gap-1.5 text-[#C8FF3D] font-semibold">{tt("Unlock it →")}</Link>
               </div>
             )}
           </div>
-          <Link to={`/match/${m.id}`} className="h-12 px-7 inline-flex items-center justify-center rounded-2xl bg-[#C8FF3D] text-[#07090D] font-extrabold shadow-[0_10px_30px_-10px_rgba(200,255,61,0.6)] hover:brightness-105">
+          <Link to={`/match/${m.id}`} state={{ match: m }} className="h-12 px-7 inline-flex items-center justify-center rounded-2xl bg-[#C8FF3D] text-[#07090D] font-extrabold shadow-[0_10px_30px_-10px_rgba(200,255,61,0.6)] hover:brightness-105">
             {tt("Full analysis")}</Link>
         </div>
       </div>
@@ -381,7 +381,7 @@ export default function Home() {
       const k = p ? (p.pick || (pct ? (p.home >= p.draw && p.home >= p.away ? 'H' : p.away >= p.draw ? 'A' : 'D') : null)) : null
       const on = (o: 'H' | 'D' | 'A') => (dc ? dc.sides.includes(o) : k === o)
       return (
-        <Link key={m.id} to={`/match/${m.id}`} className="card card-hover snap-start flex-shrink-0 w-[272px] p-4 flex flex-col gap-4">
+        <Link key={m.id} to={`/match/${m.id}`} state={{ match: m }} className="card card-hover snap-start flex-shrink-0 w-[272px] p-4 flex flex-col gap-4">
           <div className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-1.5 min-w-0 text-[11px] text-faint">
               {m.competition.emblem && <img src={m.competition.emblem} alt="" width={14} height={14} className="w-3.5 h-3.5 object-contain" />}
@@ -494,7 +494,7 @@ export default function Home() {
           </div>
           {liveMain ? (
             <>
-              <Link to={`/match/${liveMain.id}`} className="glass p-4 space-y-3 hover:bg-white/10 transition-colors">
+              <Link to={`/match/${liveMain.id}`} state={{ match: liveMain }} className="glass p-4 space-y-3 hover:bg-white/10 transition-colors">
                 <div className="text-xs text-faint text-center truncate">{liveMain.competition.name}</div>
                 <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
                   <div className="flex flex-col items-center gap-2 min-w-0"><Crest team={liveMain.homeTeam} size={52} /><span className="text-sm font-bold truncate max-w-full">{tn(liveMain.homeTeam)}</span></div>
@@ -508,7 +508,7 @@ export default function Home() {
               </Link>
               <div className="space-y-1">
                 {live.slice(1, 6).map(m => (
-                  <Link key={m.id} to={`/match/${m.id}`} className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-surface2/60 text-sm">
+                  <Link key={m.id} to={`/match/${m.id}`} state={{ match: m }} className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-surface2/60 text-sm">
                     <span className="text-[11px] font-bold text-win w-8">{m.minute ? `${m.minute}'` : tt("Live")}</span>
                     <span className="truncate flex-1">{tn(m.homeTeam)} – {tn(m.awayTeam)}</span>
                     <b className="font-display">{m.score?.fullTime?.home ?? 0}–{m.score?.fullTime?.away ?? 0}</b>
@@ -520,7 +520,7 @@ export default function Home() {
           ) : soonest.length ? (
             <div className="flex flex-col gap-1.5">
               {soonest.map(m => (
-                <Link key={m.id} to={`/match/${m.id}`} className="flex items-center gap-3 p-2.5 rounded-2xl hover:bg-surface2/60 transition-colors">
+                <Link key={m.id} to={`/match/${m.id}`} state={{ match: m }} className="flex items-center gap-3 p-2.5 rounded-2xl hover:bg-surface2/60 transition-colors">
                   <div className="flex -space-x-2 flex-shrink-0">
                     <span className="rounded-full bg-surface2 p-1 ring-2 ring-surface"><Crest team={m.homeTeam} size={24} /></span>
                     <span className="rounded-full bg-surface2 p-1 ring-2 ring-surface"><Crest team={m.awayTeam} size={24} /></span>

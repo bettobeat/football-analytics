@@ -366,7 +366,7 @@ function League() {
               <ul className="space-y-1">
                 {live.map(m => (
                   <li key={m.id}>
-                    <Link to={`/match/${m.id}`} className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-surface2/60 text-sm">
+                    <Link to={`/match/${m.id}`} state={{ match: m }} className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-surface2/60 text-sm">
                       <span className="w-2 h-2 rounded-full bg-live animate-pulseDot" />
                       <span className="truncate flex-1 font-semibold">{tn(m.homeTeam)} – {tn(m.awayTeam)}</span>
                     </Link>
@@ -436,7 +436,7 @@ function League() {
                   const ft = m.score?.fullTime
                   return (
                     <li key={m.id}>
-                      <Link to={`/match/${m.id}`} className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-surface2/60 text-sm">
+                      <Link to={`/match/${m.id}`} state={{ match: m }} className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-surface2/60 text-sm">
                         <span className="w-14 text-[11px] text-faint">{new Date(m.utcDate).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short' })}</span>
                         <span className="flex-1 min-w-0">
                           <span className="block truncate">
@@ -472,7 +472,7 @@ function FixtureRow({ m }: { m: Match }) {
   // fix120: our pick is the double chance
   const dc = doubleChance(p)
   return (
-    <Link to={`/match/${m.id}`} className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-surface2/60 transition-colors">
+    <Link to={`/match/${m.id}`} state={{ match: m }} className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-surface2/60 transition-colors">
       <span className="w-12 flex-shrink-0 text-center">
         <span className="block text-[10px] text-faint">{new Date(m.utcDate).toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric' })}</span>
         <span className="block text-xs font-bold text-ink num">{new Date(m.utcDate).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })}</span>

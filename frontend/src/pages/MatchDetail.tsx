@@ -1,6 +1,6 @@
 import YourPicks from '../components/YourPicks'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useLocation } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
 import { modelInfo, isV3, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, pickOfPrediction, doubleChance, dcLabel, type DC, type Prediction } from '../lib/predict'
@@ -122,6 +122,18 @@ interface Details {
   standings: { home: StandingRow | null; away: StandingRow | null }
   form: { home: Match[]; away: Match[] }
   probableLineups?: { home: Probable | null; away: Probable | null } | null
+  /** opened from a list (fix122): only the list's match + prediction so far, the rest is on its way */
+  partial?: boolean
+}
+
+/** The match a list passed in router state, as a first, partial view of the page (header + prediction). */
+function seedFromList(state: unknown, matchId: number): Details | null {
+  const m: any = (state as any)?.match
+  if (!m || m.id !== matchId || !m.homeTeam || !m.awayTeam || !m.score) return null
+  return {
+    match: m, prediction: m.prediction ?? null, predictions: m.predictions, preview: null, head2head: null,
+    standings: { home: null, away: null }, form: { home: [], away: [] }, probableLineups: null, partial: true
+  }
 }
 
 /** A team's usual XI, built by the backend from its last few matches. */
@@ -337,9 +349,11 @@ function GridBreakdown({ p, home, away }: { p: Prediction; home: Team; away: Tea
 function MatchDetail() {
   const { id } = useParams()
   const matchId = Number(id)
-  const [details, setDetails] = useState<Details | null>(null)
+  const location = useLocation()
+  // opened from a list: show the header and the prediction from the list at once, fill the rest when details arrive
+  const [details, setDetails] = useState<Details | null>(() => seedFromList(location.state, matchId))
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => !seedFromList(location.state, matchId))
   // premium "guess first": the prediction stays covered until the member taps Reveal (upcoming games only)
   const { hidden, reveal } = useReveal(matchId, details?.match.status, true)
   // just unlocked ($15 Premium): play the "v3 is analysing" reveal automatically, then roll the numbers in
@@ -351,7 +365,7 @@ function MatchDetail() {
   const markXiSeen = () => { setXiSeen(true); try { localStorage.setItem(xiKey, '1') } catch { /* private mode */ } }
 
   const load = (initial = false) => {
-    if (initial) setLoading(true)
+    if (initial && !seedFromList(location.state, matchId)) setLoading(true)
     return axios
       .get(`${API_URL}/matches/${matchId}/details`)
       .then(res => {
@@ -364,6 +378,8 @@ function MatchDetail() {
 
   useEffect(() => {
     if (!matchId) return
+    const seed = seedFromList(location.state, matchId)
+    setDetails(cur => (cur && cur.match.id === matchId ? cur : seed))
     load(true)
   }, [matchId])
 
@@ -523,7 +539,7 @@ function MatchDetail() {
   }, [tab, matchId, !!details])
 
   if (loading) return <div className="max-w-5xl mx-auto px-4 py-16 text-center text-muted">{tt("Loading match…")}</div>
-  if (error || !details)
+  if (!details || (error && !details.partial))
     return (
       <div className="max-w-5xl mx-auto px-4 py-10">
         <Link to="/matches" className="text-sm text-muted hover:text-ink">{tt("← Back")}</Link>
@@ -691,6 +707,7 @@ function MatchDetail() {
 
       {lang === 'en' && details?.preview?.text && <MatchPreview text={details.preview.text} />}
 
+      {details.partial && <p className="mt-4 text-xs text-faint animate-pulse">{error ? `${tt("Could not load match:")} ${error}` : tt("Loading match…")}</p>}
       {/* ---------- Tabs ---------- */}
       <StickyBar className="top-16 sm:top-[72px] -mx-4 sm:mx-0 mt-6 px-4 sm:px-0 py-2">
         <nav className="flex gap-1 p-1 rounded-full bg-surface2/60 border border-line/60 overflow-x-auto no-scrollbar" aria-label={tt("Match sections")}>

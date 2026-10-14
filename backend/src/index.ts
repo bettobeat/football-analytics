@@ -1304,48 +1304,74 @@ app.get('/api/highlights/status', (_req, res) => {
   res.json({ data: highlightsStatus(), timestamp: new Date().toISOString() });
 });
 
+/** Everything for the match page (match, events, lineups, stats, h2h, prediction, live chance, preview). */
+async function buildMatchDetails(id: number): Promise<any> {
+  const details: any = isAfMatchId(id) ? await getAfMatchDetails(id) : await footballDataAPI.getMatchDetails(id);
+  // Football-Data.org has no statistics / lineups on our plan: fill them from API-Football (free for everyone)
+  if (!isAfMatchId(id)) {
+    try {
+      const x = await afExtrasForFd(details.match);
+      if (x) {
+        const m = (details.match = { ...details.match, homeTeam: { ...details.match.homeTeam }, awayTeam: { ...details.match.awayTeam } });
+        for (const [side, t] of [['homeTeam', x.home], ['awayTeam', x.away]] as const) {
+          const cur = m[side];
+          const hasStats = cur.statistics && typeof cur.statistics === 'object' && !('msg' in cur.statistics) && Object.keys(cur.statistics).length;
+          if (!hasStats && t.statistics && Object.keys(t.statistics).length) cur.statistics = t.statistics;
+          if (!(cur.lineup?.length) && t.lineup.length) {
+            cur.lineup = t.lineup;
+            cur.bench = t.bench;
+            cur.formation = cur.formation || t.formation;
+            cur.coach = cur.coach?.name ? cur.coach : t.coach;
+          }
+        }
+        if ((m.minute === null || m.minute === undefined) && x.minute !== null) m.minute = x.minute;
+        if (m.homeTeam.lineup?.length) details.probableLineups = null;
+      }
+    } catch (e: any) {
+      logger.warn('Live extras failed', { id, message: e.message });
+    }
+  }
+  // one live score everywhere: the fresher of API-Football / Football-Data.org, as in the list (liveScores.ts)
+  if (!isAfMatchId(id) && details?.match) details.match = withLiveScore(details.match);
+  // live win chance on the match page (uses the red cards and minute filled in above)
+  if (details?.match && details.prediction) {
+    const lv = withLive({ ...details.match, prediction: details.prediction, predictions: details.predictions });
+    details.prediction = lv.prediction;
+    details.predictions = lv.predictions;
+  }
+  // SEO match preview (fix121): written from the details we just loaded, cached per match; never the pick or a %
+  if (details?.match) {
+    const pv = refreshFromDetails(details);
+    details.preview = pv ? { text: pv.text, builtAt: pv.builtAt, title: pv.title } : null;
+  }
+  return details;
+}
+
+// fix122: match details cached per match — 60 s while the game is on, 5 min otherwise. A stale copy is served at once
+// and refreshed in the background (stale-while-revalidate); only the first open of a match waits for the build.
+// The cached object is shared: per-visitor trimming (teaser / no bookmakers) copies it in res.json.
+const detailsCache = new Map<number, { at: number; ttl: number; data: any; refreshing: boolean }>();
+const detailsTtl = (d: any) => (['IN_PLAY', 'PAUSED', 'LIVE'].includes(String(d?.match?.status)) ? 60 * 1000 : 5 * 60 * 1000);
+async function refreshMatchDetails(id: number) {
+  const data = await buildMatchDetails(id);
+  detailsCache.set(id, { at: Date.now(), ttl: detailsTtl(data), data, refreshing: false });
+  if (detailsCache.size > 2000) { const oldest = [...detailsCache.entries()].sort((x, y) => x[1].at - y[1].at)[0]; if (oldest) detailsCache.delete(oldest[0]); }
+  return data;
+}
+
 app.get('/api/matches/:id(\\d+)/details', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isAfMatchId(id) && !isKnownAfFixture(id)) return res.status(404).json({ error: 'Match not found' });
-    const details: any = isAfMatchId(id) ? await getAfMatchDetails(id) : await footballDataAPI.getMatchDetails(id);
-    // Football-Data.org has no statistics / lineups on our plan: fill them from API-Football (free for everyone)
-    if (!isAfMatchId(id)) {
-      try {
-        const x = await afExtrasForFd(details.match);
-        if (x) {
-          const m = (details.match = { ...details.match, homeTeam: { ...details.match.homeTeam }, awayTeam: { ...details.match.awayTeam } });
-          for (const [side, t] of [['homeTeam', x.home], ['awayTeam', x.away]] as const) {
-            const cur = m[side];
-            const hasStats = cur.statistics && typeof cur.statistics === 'object' && !('msg' in cur.statistics) && Object.keys(cur.statistics).length;
-            if (!hasStats && t.statistics && Object.keys(t.statistics).length) cur.statistics = t.statistics;
-            if (!(cur.lineup?.length) && t.lineup.length) {
-              cur.lineup = t.lineup;
-              cur.bench = t.bench;
-              cur.formation = cur.formation || t.formation;
-              cur.coach = cur.coach?.name ? cur.coach : t.coach;
-            }
-          }
-          if ((m.minute === null || m.minute === undefined) && x.minute !== null) m.minute = x.minute;
-          if (m.homeTeam.lineup?.length) details.probableLineups = null;
-        }
-      } catch (e: any) {
-        logger.warn('Live extras failed', { id, message: e.message });
+    const hit = detailsCache.get(id);
+    if (hit) {
+      if (Date.now() - hit.at > hit.ttl && !hit.refreshing) {
+        hit.refreshing = true;
+        refreshMatchDetails(id).catch(e => { hit.refreshing = false; logger.warn('Match details refresh failed', { id, message: e.message }); });
       }
+      return res.json({ data: hit.data, timestamp: new Date(hit.at).toISOString(), cached: true });
     }
-    // one live score everywhere: the fresher of API-Football / Football-Data.org, as in the list (liveScores.ts)
-    if (!isAfMatchId(id) && details?.match) details.match = withLiveScore(details.match);
-    // live win chance on the match page (uses the red cards and minute filled in above)
-    if (details?.match && details.prediction) {
-      const lv = withLive({ ...details.match, prediction: details.prediction, predictions: details.predictions });
-      details.prediction = lv.prediction;
-      details.predictions = lv.predictions;
-    }
-    // SEO match preview (fix121): written from the details we just loaded, cached per match; never the pick or a %
-    if (details?.match) {
-      const pv = refreshFromDetails(details);
-      details.preview = pv ? { text: pv.text, builtAt: pv.builtAt, title: pv.title } : null;
-    }
+    const details = await refreshMatchDetails(id);
     res.json({ data: details, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Failed to fetch match details');

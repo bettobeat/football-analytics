@@ -368,7 +368,8 @@ export function startBasketballScheduler() {
   // NBA injury list every 15 minutes; the coming games' predictions are re-saved with it (until tip-off)
   const injuries = async () => {
     const n = await refreshNbaInjuries();
-    if (n !== null) { try { recordBbPredictions(); } catch (e: any) { logger.warn(`Basketball predictions: ${e.message}`); } }
+    // NBA only: the injury list touches NBA games, re-saving all 18 leagues every 15 min cost ~1.6 s (fix122)
+    if (n !== null) { try { recordBbPredictions(['NBA']); } catch (e: any) { logger.warn(`Basketball predictions: ${e.message}`); } }
   };
   setTimeout(() => void injuries(), 30 * 1000).unref();
   setInterval(() => void injuries(), 15 * 60 * 1000).unref();

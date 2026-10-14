@@ -542,10 +542,12 @@ db.exec(`
 `);
 
 /** Save / refresh predictions for games in the next 7 days. A game's prediction is frozen at tip-off. */
-export function recordBbPredictions() {
+export function recordBbPredictions(codes?: string[]) {
   const now = new Date();
+  // optional league filter (fix122): the 15-minute NBA injury refresh only re-saves NBA games
+  const only = codes && codes.length ? ` AND code IN (${codes.map(() => '?').join(',')})` : '';
   const rows = db.prepare(`SELECT game_id, code, season, kickoff, status, home_id, away_id, hs, as_, stage AS week, home_name, away_name FROM bb_games
-    WHERE kickoff > ? AND kickoff < ? AND (status IS NULL OR status = 'NS')`).all(now.toISOString(), new Date(now.getTime() + 7 * 86400000).toISOString()) as Game[];
+    WHERE kickoff > ? AND kickoff < ? AND (status IS NULL OR status = 'NS')${only}`).all(now.toISOString(), new Date(now.getTime() + 7 * 86400000).toISOString(), ...(codes && codes.length ? codes : [])) as Game[];
   const up = db.prepare(`INSERT OR REPLACE INTO bb_predictions (game_id, code, kickoff, model, p_home, margin, total, home_pts, away_pts, made_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   let n = 0;
   db.exec('BEGIN');
