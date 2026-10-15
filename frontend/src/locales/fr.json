@@ -1610,5 +1610,11 @@
  "Hard calls (1X2), by how sure we were": "Choix difficiles (1X2), selon notre certitude",
  "Hard call (1X2)": "Choix difficile (1X2)",
  "Our pick: {0} · {1} · {2}%": "Notre pronostic : {0} · {1} · {2} %",
- "Most likely result": "Résultat le plus probable"
+ "Most likely result": "Résultat le plus probable",
+ "Football predictions today": "Pronostics foot du jour",
+ "Basketball predictions today": "Pronostics basket du jour",
+ "Recent form and the last meeting for every game today. Open a game for our prediction.": "Forme récente et dernière confrontation pour chaque match du jour. Ouvrez un match pour voir notre pronostic.",
+ "Could not load today's games. Try again in a minute.": "Impossible de charger les matchs du jour. Réessayez dans une minute.",
+ "No games today.": "Aucun match aujourd'hui.",
+ "Today's predictions →": "Pronostics du jour →"
 }

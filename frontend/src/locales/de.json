@@ -1610,5 +1610,11 @@
  "Hard calls (1X2), by how sure we were": "Schwere Tipps (1X2), nach Sicherheit",
  "Hard call (1X2)": "Schwerer Tipp (1X2)",
  "Our pick: {0} · {1} · {2}%": "Unser Tipp: {0} · {1} · {2}%",
- "Most likely result": "Wahrscheinlichstes Ergebnis"
+ "Most likely result": "Wahrscheinlichstes Ergebnis",
+ "Football predictions today": "Fußball-Prognosen für heute",
+ "Basketball predictions today": "Basketball-Prognosen für heute",
+ "Recent form and the last meeting for every game today. Open a game for our prediction.": "Aktuelle Form und letztes Duell für jedes Spiel heute. Öffne ein Spiel für unsere Prognose.",
+ "Could not load today's games. Try again in a minute.": "Die heutigen Spiele konnten nicht geladen werden. Versuche es in einer Minute erneut.",
+ "No games today.": "Heute keine Spiele.",
+ "Today's predictions →": "Prognosen für heute →"
 }

@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../../lib/socket'
-import { t, LOCALE } from '../../lib/i18n'
+import { t, LOCALE, lang } from '../../lib/i18n'
 import { useAuth } from '../../lib/auth'
 import { useReveal, justRevealed, guessFirstOn, hideMatch } from '../../lib/reveal'
 import CountUp from '../../components/CountUp'
@@ -40,6 +40,8 @@ interface Detail {
   markets?: Markets | null
   model?: ModelInfo | null
   players?: { home: GamePlayer[]; away: GamePlayer[] }
+  /** fix124: English text preview (the same text search engines get; no pick, no %) */
+  writeup?: string | null
 }
 export interface H2H { id: number; kickoff: string; home: string; away: string; homeId: number; score: [number, number]; league: string }
 interface Profile { games: number; fgPct: number | null; threePct: number | null; threeAttempts: number | null; ftPct: number | null; rebounds: number | null; assists: number | null; turnovers: number | null; steals: number | null; blocks: number | null }
@@ -179,6 +181,7 @@ export default function BbGame() {
         {tab === 'prediction' && (
           <>
             <PredictionSection d={d} />
+            {lang === 'en' && d.writeup && <GamePreview text={d.writeup} />}
             <YourPicks sport="bb" gameId={g.id} home={g.home.name} away={g.away.name} />
             <MarketsGate d={d} />
             {d.preview && <CompareCard g={g} home={d.preview.home} away={d.preview.away} table={d.standings ? d.standings.groups.flatMap(x => x.rows) : null} form={d.stats.home && d.stats.away ? { home: d.stats.home.form, away: d.stats.away.form } : null} />}
@@ -386,6 +389,23 @@ function PredictionSection({ d }: { d: Detail }) {
         </>
       )}
     </Card>
+  )
+}
+
+/**
+ * "Game preview" (fix124, like the football match preview of fix121): the same English text search engines get (no
+ * pick, no %). Open on wider screens, folded on phones. English pages only for now.
+ */
+function GamePreview({ text }: { text: string }) {
+  const [open, setOpen] = useState(() => typeof window === 'undefined' || window.matchMedia('(min-width: 640px)').matches)
+  return (
+    <details open={open} onToggle={e => setOpen((e.currentTarget as HTMLDetailsElement).open)} className="group card px-4 sm:px-5 py-3">
+      <summary className="flex items-center justify-between gap-3 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+        <h2 className="font-display text-base font-bold text-ink">Game preview</h2>
+        <svg viewBox="0 0 24 24" className="w-4 h-4 text-muted transition-transform group-open:rotate-180" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M6 9l6 6 6-6" /></svg>
+      </summary>
+      <p className="mt-2 text-sm text-muted leading-relaxed">{text}</p>
+    </details>
   )
 }
 

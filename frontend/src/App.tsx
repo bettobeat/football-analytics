@@ -64,6 +64,7 @@ const Contact = page(() => import('./pages/Contact'))
 const Join = page(() => import('./pages/Join'))
 const Crm = page(() => import('./pages/Crm'))
 const SportSoon = page(() => import('./pages/SportSoon'))
+const Today = page(() => import('./pages/Today'))
 const BbHome = page(() => import('./pages/bb/BbHome'))
 const BbGames = page(() => import('./pages/bb/BbGames'))
 const BbGame = page(() => import('./pages/bb/BbGame'))
@@ -339,6 +340,7 @@ function BbNavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
     <>
       <NavLink to="/basketball" end className={cls}>{tt("Home")}</NavLink>
       <NavLink to="/basketball/games" className={cls}>{tt("Games")}</NavLink>
+      <NavLink to="/basketball/predictions/today" className={cls}>{tt("Today")}</NavLink>
       <NavLink to="/basketball/favorites" className={cls}>{tt("Favorites")}</NavLink>
       {access === 'admin' && <NavLink to="/basketball/accuracy" className={cls}>{tt("Accuracy")}</NavLink>}
       {access !== 'pro' && access !== 'admin' && <NavLink to="/premium" className={cls}>{access === 'premium' ? tt("Go Pro") : tt("Premium")}</NavLink>}
@@ -370,6 +372,8 @@ function NavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
         {tt("Home")}</NavLink>
       <NavLink to="/matches" className={cls}>
         {tt("Matches")}</NavLink>
+      <NavLink to="/predictions/today" className={cls}>
+        {tt("Today")}</NavLink>
       <NavLink to="/favorites" className={cls}>
         {tt("Favorites")}</NavLink>
       <NavLink to="/draw-alerts" className={cls}>
@@ -467,6 +471,7 @@ function BottomTabs() {
 const TITLES: [RegExp, string][] = [
   [/^\/$/, tt('Home')],
   [/^\/matches/, tt('Matches')],
+  [/^\/predictions\/today/, tt('Football predictions today')],
   [/^\/favorites/, tt('Favorites')],
   [/^\/team\//, tt('Team')],
   [/^\/league\//, tt('League')],
@@ -575,6 +580,7 @@ function Shell() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/matches" element={<Dashboard />} />
+            <Route path="/predictions/today" element={<Today sport="football" />} />
             <Route path="/favorites" element={<Favorites />} />
             <Route path="/my-picks" element={<MyPicks />} />
             <Route path="/team/:id" element={<Team />} />
@@ -663,6 +669,7 @@ function BbRoutes() {
     <Routes>
       <Route index element={<BbHome />} />
       <Route path="games" element={<BbGames />} />
+      <Route path="predictions/today" element={<Today sport="basketball" />} />
       <Route path="game/:id" element={<BbGame />} />
       <Route path="league/:code" element={<BbLeague />} />
       <Route path="team/:id" element={<BbTeam />} />

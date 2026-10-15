@@ -298,12 +298,20 @@ export default function BbHome() {
                     </span>
                   </Link>
                 ))}
-                <Link to="/basketball/games" className="mt-1 px-2 text-sm font-bold text-accent">{t('All games →')}</Link>
+                <span className="mt-1 px-2 flex flex-wrap gap-x-4 gap-y-1">
+                  <Link to="/basketball/games" className="text-sm font-bold text-accent">{t('All games →')}</Link>
+                  <Link to="/basketball/predictions/today" className="text-sm font-bold text-accent">{t("Today's predictions →")}</Link>
+                </span>
               </div>
             ) : !loaded ? (
               <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-12 rounded-xl bg-surface2/50 animate-pulse" />)}</div>
             ) : (
-              <div className="flex-1 grid place-items-center text-center text-sm text-muted py-6">{t('No games scheduled yet.')}</div>
+              <div className="flex-1 grid place-items-center text-center text-sm text-muted py-6">
+                <span className="space-y-2">
+                  <span className="block">{t('No games scheduled yet.')}</span>
+                  <Link to="/basketball/predictions/today" className="block font-bold text-accent">{t("Today's predictions →")}</Link>
+                </span>
+              </div>
             )}
           </div>
         </div>

@@ -382,3 +382,12 @@ export function previewDates(ids: number[]): Map<number, string> {
   }
   return out;
 }
+
+/** The facts a stored preview was written from (absences, table…), or null. */
+export function previewFacts(matchId: number): PreviewInput | null {
+  try {
+    getPreview(matchId);
+    const row = getStmt.get(matchId) as any;
+    return row ? (JSON.parse(row.input) as PreviewInput) : null;
+  } catch { return null; }
+}

@@ -74,7 +74,7 @@ import { rebuildPlayerQuality, playerQualityTable } from './services/playerQuali
 import { db } from './db';
 import { trackVisit, visitorStats } from './services/visitors';
 import { startGeo, geoCredit } from './services/geo';
-import { seoPage, renderIndex, sitemapXml } from './services/seo';
+import { seoPage, renderIndex, sitemapXml, SITEMAPS, todayGroups } from './services/seo';
 import { refreshFromDetails } from './services/matchPreview';
 import { fontRoute, warmFonts } from './services/fonts';
 import { listFavorites, addFavorites, removeFavorite, MAX_FAVORITES } from './services/favorites';
@@ -189,7 +189,7 @@ if (CANONICAL_HOST) {
 }
 
 // Public files that carry no data (icons, share image, robots, sitemap) stay reachable behind the beta gate
-const PUBLIC_FILES = new Set(['/favicon.svg', '/apple-touch-icon.png', '/og-image.png', '/robots.txt', '/sitemap.xml']);
+const PUBLIC_FILES = new Set(['/favicon.svg', '/apple-touch-icon.png', '/og-image.png', '/robots.txt', '/sitemap.xml', ...Object.keys(SITEMAPS).map(f => `/${f}`)]);
 
 // ---------- Private beta gate ----------
 // Set SITE_USER + SITE_PASSWORD (e.g. on Railway) and the whole site — pages and API — asks for them.
@@ -302,7 +302,7 @@ app.use('/api', rateLimit('api', 600, 60000)); // ~10 a second, far above a pers
 app.use(['/api/team-page', '/api/player-page'], rateLimit('pages', 60, 10 * 60000));
 app.use('/api/unlocks', (req, res, next) => (req.method === 'POST' ? rateLimit('unlock', 30, 60000, r => String(r.user?.id || r.ip))(req, res, next) : next()));
 
-const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|contact$|feedback$|client-error$|picks(\/|$)|testers\/|unsubscribe$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|basketball\/|public\/(summary|results|record|geo-source)$|unlocks(\/|$)|billing\/)/;
+const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|contact$|feedback$|client-error$|picks(\/|$)|testers\/|unsubscribe$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|today$|basketball\/|public\/(summary|results|record|geo-source)$|unlocks(\/|$)|billing\/)/;
 const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|history\/status|clv|draw-alerts|upset-watch)$/; // past seasons and backtests are admin only (Oct 2026)
 
 app.use('/api', (req, res, next) => {
@@ -1651,6 +1651,17 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
+// Today's games grouped by league with a one-line preview each (fix124: /predictions/today pages). Never the pick or a %.
+app.get('/api/today', (req, res) => {
+  try {
+    const sport = req.query.sport === 'basketball' ? 'basketball' : 'football';
+    if (sport === 'basketball' && !(bbPublic() || req.access === 'admin')) return res.status(404).json({ error: 'Not found' });
+    const lang = (['es', 'pt', 'de', 'fr', 'it', 'tr'].includes(String(req.query.lang)) ? String(req.query.lang) : 'en') as any;
+    const dayIso = typeof req.query.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.day) ? req.query.day : undefined;
+    res.set('Cache-Control', 'public, max-age=300').json({ data: todayGroups(sport, lang, dayIso) });
+  } catch (e: any) { sendError(res, e, 'Today failed'); }
+});
+
 app.get('/api/news', async (req, res) => {
   try {
     // ?league=PL → that league's news; no league → every league combined (home page)
@@ -2617,6 +2628,10 @@ if (fs.existsSync(path.join(STATIC_DIR, 'index.html'))) {
   app.get('/sitemap.xml', (_req, res) => {
     try { res.type('application/xml').set('Cache-Control', 'public, max-age=3600').send(sitemapXml()); }
     catch (e: any) { logger.warn(`sitemap: ${e.message}`); res.sendFile(path.join(STATIC_DIR, 'sitemap.xml')); }
+  });
+  for (const [file, build] of Object.entries(SITEMAPS)) app.get(`/${file}`, (_req, res) => {
+    try { res.type('application/xml').set('Cache-Control', 'public, max-age=3600').send(build()); }
+    catch (e: any) { logger.warn(`${file}: ${e.message}`); res.status(503).send('Try again later'); }
   });
   // files under /assets have a content hash in their name (a new version gets a new name): cache them for a year,
   // so returning visitors never download or re-check them. Other files (logo, icons) keep 7 days.

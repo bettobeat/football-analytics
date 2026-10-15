@@ -4,6 +4,7 @@
  * Visible to everyone when BASKETBALL_PUBLIC=1; before that, admins only (everyone else sees the "coming soon" page).
  */
 import { db } from '../db';
+import { bbPreview } from './bbPreview';
 import { BB_LEAGUES, bbGet } from './basketball';
 import { bbExtraFlag } from './bbLeagueConfig';
 import { fillOvertime, openCheck, resultFix } from './bbResults';
@@ -313,6 +314,7 @@ export async function bbGame(id: number, full: boolean) {
     stats: { home: averages(g.home_id, g.kickoff), away: averages(g.away_id, g.kickoff) },
     schedule: { home: schedule(g.home_id, g.kickoff), away: schedule(g.away_id, g.kickoff) },
     preview: preview(g),
+    writeup: bbPreview(id), // fix124: the English text preview (same as crawlers get, no pick, no %)
     injuries: g.code === 'NBA' ? { home: nbaInjuries(g.home_id, g.home_name, g.kickoff), away: nbaInjuries(g.away_id, g.away_name, g.kickoff) } : null,
     h2h: h2h.map(x => ({ id: x.game_id, kickoff: x.kickoff, home: x.home_name, away: x.away_name, homeId: x.home_id, score: [x.hs, x.as_], league: x.code })),
     box,

@@ -1610,5 +1610,11 @@
  "Hard calls (1X2), by how sure we were": "Zor tahminler (1X2), ne kadar emin olduğumuza göre",
  "Hard call (1X2)": "Zor tahmin (1X2)",
  "Our pick: {0} · {1} · {2}%": "Tahminimiz: {0} · {1} · %{2}",
- "Most likely result": "En olası sonuç"
+ "Most likely result": "En olası sonuç",
+ "Football predictions today": "Bugünün futbol tahminleri",
+ "Basketball predictions today": "Bugünün basketbol tahminleri",
+ "Recent form and the last meeting for every game today. Open a game for our prediction.": "Bugünkü her maç için son form ve son karşılaşma. Tahminimiz için bir maçı aç.",
+ "Could not load today's games. Try again in a minute.": "Bugünün maçları yüklenemedi. Bir dakika sonra tekrar dene.",
+ "No games today.": "Bugün maç yok.",
+ "Today's predictions →": "Bugünün tahminleri →"
 }

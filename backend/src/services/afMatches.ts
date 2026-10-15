@@ -515,6 +515,9 @@ export function afCompetitions() {
   }));
 }
 
+/** Last loaded table of an API-Football competition (crawler pages; never a provider call). */
+export const afStandingsCached = (code: string) => standingsByCode.get(code) || null;
+
 export async function getAfStandings(code: string) {
   const id = parseInt(code.replace(/^AF/i, ''), 10);
   return cached(`standings:${id}`, 30 * 60 * 1000, async () => {

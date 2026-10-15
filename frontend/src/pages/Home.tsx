@@ -535,10 +535,18 @@ export default function Home() {
                   </span>
                 </Link>
               ))}
-              <Link to="/matches" className="mt-1 px-2 text-sm font-bold text-accent">{tt("All matches →")}</Link>
+              <span className="mt-1 px-2 flex flex-wrap gap-x-4 gap-y-1">
+                <Link to="/matches" className="text-sm font-bold text-accent">{tt("All matches →")}</Link>
+                <Link to="/predictions/today" className="text-sm font-bold text-accent">{tt("Today's predictions →")}</Link>
+              </span>
             </div>
           ) : (
-            <div className="flex-1 grid place-items-center text-center text-sm text-muted py-6">{tt("No games scheduled yet.")}</div>
+            <div className="flex-1 grid place-items-center text-center text-sm text-muted py-6">
+              <span className="space-y-2">
+                <span className="block">{tt("No games scheduled yet.")}</span>
+                <Link to="/predictions/today" className="block font-bold text-accent">{tt("Today's predictions →")}</Link>
+              </span>
+            </div>
           )}
         </div>
       </div>
