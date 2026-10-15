@@ -17,6 +17,7 @@
  * stored (shadow) but the site keeps showing grid-v3. See modelDaily.ts for the daily champion / challenger job.
  */
 import logger from '../utils/logger';
+import { timed } from './perf';
 import { db } from '../db';
 import { groupForCompetition, fdNameFor } from './history';
 import { playerKey } from './squadValues';
@@ -284,12 +285,39 @@ export function featureState(maxAgeMs = 30 * 60 * 1000): FeatState {
 export const dropFeatureState = () => { STATE = null; };
 /** Request path: never builds (a few seconds of work) — the scheduler keeps the state fresh every 30 minutes. */
 function liveFeatureState(): FeatState | null { return STATE; }
+/**
+ * What the feature state was built from (fix135): finished games (count, last kick-off, goals, xG filled in), all
+ * fixtures (new upcoming ones must be findable) and line-up / injury rows (the XI features). A few COUNT/MAX queries.
+ */
+function stateSignature(): string {
+  const f: any = db.prepare(`SELECT COUNT(*) AS n, MAX(fixture_id) AS maxId,
+      SUM(CASE WHEN status IN ('FT','AET','PEN') AND hg IS NOT NULL THEN 1 ELSE 0 END) AS done,
+      MAX(CASE WHEN status IN ('FT','AET','PEN') AND hg IS NOT NULL THEN kickoff END) AS lastDone,
+      SUM(CASE WHEN status IN ('FT','AET','PEN') THEN COALESCE(hg, 0) + COALESCE(ag, 0) ELSE 0 END) AS goals,
+      SUM(CASE WHEN xg_h IS NOT NULL THEN 1 ELSE 0 END) AS xg FROM af_fixtures`).get();
+  const l: any = db.prepare(`SELECT COUNT(*) AS n FROM af_lineups`).get();
+  const i: any = db.prepare(`SELECT COUNT(*) AS n FROM af_injuries`).get();
+  return [f.n, f.maxId, f.done, f.lastDone, f.goals, f.xg, l.n, i.n].join('|');
+}
+let stateSig = '';
+const STATE_MAX_AGE_MS = 6 * 3600 * 1000; // rebuild at least every 6 h anyway (squad values, player seasons)
+
 export function startFeatureModelScheduler() {
-  const refresh = () => {
-    try { STATE = buildFeatures(); } catch (e: any) { logger.warn(`feature state: ${e.message}`); }
-  };
-  setTimeout(() => { refresh(); ensureFeatureModel().catch(e => logger.warn(`feature model: ${e.message}`)); }, 3 * 60 * 1000);
-  setInterval(refresh, 30 * 60 * 1000);
+  // every 30 min, but only rebuild (3–4 s on the one thread) when the data behind it changed (fix135)
+  const refresh = () => timed('feature state', () => {
+    try {
+      const sig = stateSignature();
+      if (STATE && sig === stateSig && Date.now() - STATE.builtAt < STATE_MAX_AGE_MS) return;
+      STATE = buildFeatures();
+      stateSig = sig;
+    } catch (e: any) { logger.warn(`feature state: ${e.message}`); }
+  });
+  // first run 7 min after boot: never on top of the basketball tick (45 s after boot, then every 30 min)
+  // (the 30-min cycle starts from that first run: 7, 37, 67 min … after boot, the basketball tick runs at 0:45, 30:45 …)
+  setTimeout(() => {
+    void refresh().then(() => ensureFeatureModel().catch(e => logger.warn(`feature model: ${e.message}`)));
+    setInterval(() => void refresh(), 30 * 60 * 1000);
+  }, 7 * 60 * 1000);
 }
 
 /* ------------------------------------------------------------------ */

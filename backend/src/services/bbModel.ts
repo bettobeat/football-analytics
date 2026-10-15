@@ -12,6 +12,7 @@
  */
 import logger from '../utils/logger';
 import { db } from '../db';
+import { yieldLoop } from './perf';
 import { injuryLoss } from './bbInjuries';
 import { onBbExtraLeague, onBbExtraTrial } from './bbLeagueConfig';
 
@@ -349,22 +350,35 @@ for (const k of [0.03, 0.05, 0.07, 0.09, 0.12]) for (const r of [0.5, 0.65, 0.8,
 type LeagueModel = { code: string; params: Params; L: League; L2: LeagueV2 | null; w2: number; tuneSeason: string | null; testSeasons: string[]; test: any; tune: any; compare?: any; builtAt: string; snaps?: Snap[] };
 const models = new Map<string, LeagueModel>();
 
+// fix135: the k / r / b2b grid (60 fits) is re-tuned at most once a day per league; in between the ratings are refit
+// with the saved params. Kept in the database so a deploy doesn't re-tune 18 leagues at once.
+db.exec(`CREATE TABLE IF NOT EXISTS bb_model_params (code TEXT PRIMARY KEY, k REAL NOT NULL, r REAL NOT NULL, b2b REAL NOT NULL, tune_season TEXT, tuned_day TEXT NOT NULL)`);
+const utcDay = () => new Date().toISOString().slice(0, 10);
+
 /** Choose k, r, b2b on the tuning season; test on the seasons after it; keep the final ratings for predictions. */
-export function buildLeague(code: string): LeagueModel | null {
+export function buildLeague(code: string, opts: { retune?: boolean } = {}): LeagueModel | null {
   const games = gamesOf(code);
   const seasons = [...new Set(games.filter(done).map(g => g.season))].sort();
   if (seasons.length < 2) return null;
   // tuning season: the third-last finished season (the first is warm-up); test: every season after it
   const tuneSeason = seasons.length >= 4 ? seasons[seasons.length - 4] : seasons[0];
   const testSeasons = seasons.filter(s => s > tuneSeason);
-  let best: { p: Params; ll: number } | null = null;
-  for (const p of GRID) {
-    const m = emptyM();
-    run(games, p, (g, pr) => { if (g.season === tuneSeason && !isPreseason(g)) addM(m, pr, g); });
-    const ll = m.n ? m.logLoss / m.n : Infinity;
-    if (!best || ll < best.ll) best = { p, ll };
+  const saved = db.prepare(`SELECT k, r, b2b, tune_season, tuned_day FROM bb_model_params WHERE code = ?`).get(code) as any;
+  let params: Params;
+  if (!opts.retune && saved && saved.tuned_day === utcDay() && saved.tune_season === tuneSeason) {
+    params = { k: saved.k, r: saved.r, b2b: saved.b2b };
+  } else {
+    let best: { p: Params; ll: number } | null = null;
+    for (const p of GRID) {
+      const m = emptyM();
+      run(games, p, (g, pr) => { if (g.season === tuneSeason && !isPreseason(g)) addM(m, pr, g); });
+      const ll = m.n ? m.logLoss / m.n : Infinity;
+      if (!best || ll < best.ll) best = { p, ll };
+    }
+    params = best!.p;
+    db.prepare(`INSERT OR REPLACE INTO bb_model_params (code, k, r, b2b, tune_season, tuned_day) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run(code, params.k, params.r, params.b2b, tuneSeason, utcDay());
   }
-  const params = best!.p;
   // v1 and v2 predictions of every finished game, then the blend weight of v2 chosen on the tuning season
   const p1 = new Map<number, Pred>(), p2 = new Map<number, Pred>();
   // fix126: rating snapshots at the start of each of the last 6 months (team page: league rank over time)
@@ -451,16 +465,54 @@ export function bbExportPlayers(code: string) {
   return { code, cols: ['game', 'team', 'player', 'min', 'gs', 'pts', 'fgm', 'fga', 'tpm', 'ftm', 'fta', 'reb', 'ast', 'starter'], rows: rows.map(r => [r.game_id, r.team_id, r.player_id, Math.round(r.minutes * 10) / 10, Math.round(gs(r) * 10) / 10, r.pts, r.fgm, r.fga, r.tpm, r.ftm, r.fta, r.reb, r.ast, r.starter]) };
 }
 
-export function buildAll(codes: string[]) {
-  try { buildTalent(); } catch (e: any) { logger.warn(`bb-v3 talent: ${e.message}`); }
+/**
+ * What a league's model was built from (fix135): finished games (count, last tip-off, score sum: result checks can
+ * correct a score) and box scores in (possessions, player talent). Unchanged → no rebuild.
+ */
+const leagueSig = new Map<string, string>();
+function signature(code: string): string {
+  const r: any = db.prepare(`SELECT COUNT(*) AS n, MAX(kickoff) AS last, SUM(hs + as_) AS pts, SUM(CASE WHEN stats = 1 THEN 1 ELSE 0 END) AS box
+    FROM bb_games WHERE code = ? AND status IN ('FT','AOT') AND hs IS NOT NULL AND as_ IS NOT NULL`).get(code);
+  return [r.n, r.last, r.pts, r.box].join('|');
+}
+const MODEL_MAX_AGE_MS = 24 * 3600 * 1000; // a day old: rebuild anyway (rating snapshots, the daily re-tune)
+
+/**
+ * Build the leagues whose data changed (fix135: async, gives the event loop back between leagues, so visitors never
+ * wait for the whole 18-league fit). force = rebuild every league.
+ */
+let building: Promise<{ built: string[]; skipped: number }> | null = null;
+export function buildAll(codes: string[], force = false): Promise<{ built: string[]; skipped: number }> {
+  // one build at a time (startup, the 30-min tick): a second caller waits for the running one
+  if (!building) building = buildChanged(codes, force).finally(() => { building = null; });
+  return building;
+}
+async function buildChanged(codes: string[], force: boolean): Promise<{ built: string[]; skipped: number }> {
+  const todo: { code: string; sig: string }[] = [];
   for (const c of codes) {
+    const sig = signature(c);
+    const m = models.get(c);
+    // (a league with too little data has no model: rebuilt only when its games change, not on every tick)
+    if (force || leagueSig.get(c) !== sig || (m && Date.now() - Date.parse(m.builtAt) > MODEL_MAX_AGE_MS)) todo.push({ code: c, sig });
+  }
+  if (!todo.length) return { built: [], skipped: codes.length };
+  try { buildTalent(); } catch (e: any) { logger.warn(`bb-v3 talent: ${e.message}`); }
+  await yieldLoop();
+  const built: string[] = [];
+  for (const { code: c, sig } of todo) {
     try {
       const m = buildLeague(c);
-      if (m) logger.info(`${BB_MODEL} ${c}: k=${m.params.k} r=${m.params.r} b2b=${m.params.b2b}, test hit ${(m.test.all as any).hitRate}% over ${(m.test.all as any).games} games`);
+      leagueSig.set(c, sig);
+      if (m) {
+        built.push(c);
+        logger.info(`${BB_MODEL} ${c}: k=${m.params.k} r=${m.params.r} b2b=${m.params.b2b}, test hit ${(m.test.all as any).hitRate}% over ${(m.test.all as any).games} games`);
+      }
     } catch (e: any) {
       logger.warn(`${BB_MODEL} ${c}: ${e.message}`);
     }
+    await yieldLoop();
   }
+  return { built, skipped: codes.length - todo.length };
 }
 
 /** Prediction for an upcoming (or live) game from the latest ratings; rest from the schedule before it. */

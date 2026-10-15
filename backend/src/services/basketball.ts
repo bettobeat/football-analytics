@@ -11,6 +11,7 @@
 import logger from '../utils/logger';
 import { db } from '../db';
 import { buildAll, recordBbPredictions } from './bbModel';
+import { timed } from './perf';
 import { refreshNbaInjuries, nbaInjuryStatus } from './bbInjuries';
 import { applyResultFixes, checkResults } from './bbResults';
 import { onBbExtraLeague } from './bbLeagueConfig';
@@ -335,8 +336,9 @@ async function bbTickInner() {
   }
   try {
     fixFieldGoals();
-    buildAll(BB_LEAGUES.map(l => l.code));
-    recordBbPredictions();
+    // fix135: only leagues with new results are refit, with a pause between leagues; then the predictions are saved
+    await timed('bb model', () => buildAll(BB_LEAGUES.map(l => l.code)));
+    await timed('bb predictions', () => recordBbPredictions());
   } catch (e: any) {
     logger.warn(`Basketball model: ${e.message}`);
   }
@@ -347,7 +349,7 @@ async function bbTickInner() {
     logger.warn(`API-Basketball box scores: ${e.message}`);
   }
   try {
-    const r = await checkResults();
+    const r = await timed('bb result checks', () => checkResults());
     if (r.fixedAuto || r.open) logger.info(`bb result checks: ${r.checked} games, ${r.fixedAuto} corrected, ${r.open} open`);
   } catch (e: any) {
     logger.warn(`bb result checks: ${e.message}`);
@@ -359,9 +361,13 @@ export function startBasketballScheduler() {
   if (started || !KEY()) return;
   started = true;
   // ratings from the stored games right away, so the site has predictions before the first sync finishes
-  setTimeout(() => {
-    try { fixFieldGoals(); buildAll(BB_LEAGUES.map(l => l.code)); recordBbPredictions(); } catch (e: any) { logger.warn(`Basketball model: ${e.message}`); }
-  }, 15 * 1000).unref();
+  setTimeout(() => void (async () => {
+    try {
+      fixFieldGoals();
+      await timed('bb model', () => buildAll(BB_LEAGUES.map(l => l.code)));
+      await timed('bb predictions', () => recordBbPredictions());
+    } catch (e: any) { logger.warn(`Basketball model: ${e.message}`); }
+  })(), 15 * 1000).unref();
   setTimeout(() => void bbTick(), 45 * 1000).unref();
   setInterval(() => void bbTick(), 30 * 60 * 1000).unref();
   setInterval(() => void liveTick(), 60 * 1000).unref();
@@ -369,7 +375,7 @@ export function startBasketballScheduler() {
   const injuries = async () => {
     const n = await refreshNbaInjuries();
     // NBA only: the injury list touches NBA games, re-saving all 18 leagues every 15 min cost ~1.6 s (fix122)
-    if (n !== null) { try { recordBbPredictions(['NBA']); } catch (e: any) { logger.warn(`Basketball predictions: ${e.message}`); } }
+    if (n !== null) { try { await timed('bb predictions', () => recordBbPredictions(['NBA'])); } catch (e: any) { logger.warn(`Basketball predictions: ${e.message}`); } }
   };
   setTimeout(() => void injuries(), 30 * 1000).unref();
   setInterval(() => void injuries(), 15 * 60 * 1000).unref();
