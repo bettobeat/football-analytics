@@ -101,6 +101,7 @@ export default function Admin() {
           <BbResultsCard />
           <LeaguesCard />
           <LeaguesCard sport="basketball" />
+          <NflCard />
           <section className="card p-5 sm:p-6 mb-8">
             <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
               <h2 className="font-display text-lg font-bold text-ink">Accounts</h2>
@@ -483,6 +484,80 @@ function SiteErrorsCard() {
         <button type="button" onClick={() => setShowFixed(v => !v)} className="mt-3 text-xs text-muted hover:text-ink underline">
           {showFixed ? 'Hide fixed' : `Show fixed (${fixed})`}
         </button>
+      )}
+    </section>
+  )
+}
+
+/** NFL data check (fix136): what API-American-Football gives us on our plan. Admin only; nothing public yet. */
+function NflCard() {
+  const [d, setD] = useState<any>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const load = (refresh = false) => {
+    setBusy(true); setErr(null)
+    axios.get(`${API_URL}/admin/nfl-probe`, { params: refresh ? { refresh: 1 } : {} })
+      .then(r => setD(r.data.data)).catch(e => setErr(errorText(e, 'NFL probe failed'))).finally(() => setBusy(false))
+  }
+  useEffect(() => load(), [])
+  const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' }) : '–')
+  const cov = (c: any) => (c ? Object.entries(c).filter(([, v]) => v === true || (v && typeof v === 'object' && Object.values(v as any).some(x => x === true || (x && typeof x === 'object')))).map(([k]) => k).join(', ') || 'none' : '–')
+  return (
+    <section className="card p-5 sm:p-6 mb-8">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+        <h2 className="font-display text-lg font-bold text-ink">NFL data</h2>
+        <span className="flex items-center gap-3 text-xs text-faint">
+          {d && <span>{d.cached ? 'cached · ' : ''}checked {new Date(d.checkedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>}
+          <button type="button" disabled={busy} onClick={() => load(true)} className="font-bold text-accent disabled:opacity-50">{busy ? 'Checking…' : 'Check again (~10 calls)'}</button>
+        </span>
+      </div>
+      {err && <p className="text-sm text-loss">{err}</p>}
+      {!d && !err && <p className="text-sm text-faint">Loading…</p>}
+      {d && (
+        <div className="space-y-3 text-sm">
+          <p className="text-muted">
+            Plan <b className="text-ink">{d.status?.plan ?? '–'}</b>{d.status?.active === false ? ' (inactive)' : ''} · requests today <b className="text-ink num">{d.status?.requestsToday ?? '–'}</b> / <span className="num">{d.status?.limitDay ?? '–'}</span>
+            {' '}· key {d.keyFrom ?? 'missing'} · current season <b className="text-ink">{d.currentSeason ?? '–'}</b>
+            {' '}· stored <b className="text-ink num">{d.stored.games}</b> games, <span className="num">{d.stored.finished}</span> with scores
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs min-w-[560px]">
+              <thead><tr className="text-faint text-left">{['Season', 'Coverage', 'Games', 'Scores', 'Regular', 'Playoffs', 'First', 'Last'].map(h => <th key={h} className="font-semibold py-1 pr-2">{h}</th>)}</tr></thead>
+              <tbody>
+                {d.seasons.map((s: any) => (
+                  <tr key={s.season} className="border-t border-line/50">
+                    <td className="py-1 pr-2 font-semibold text-ink">{s.season}{s.current ? ' ·now' : ''}</td>
+                    <td className="py-1 pr-2 text-muted">{cov(s.coverage)}</td>
+                    <td className="py-1 pr-2 num">{s.stored?.games ?? '–'}</td>
+                    <td className="py-1 pr-2 num">{s.stored?.finished ?? '–'}</td>
+                    <td className="py-1 pr-2 num">{s.stored?.regular ?? '–'}</td>
+                    <td className="py-1 pr-2 num">{s.stored?.playoffs ?? '–'}</td>
+                    <td className="py-1 pr-2">{day(s.stored?.first ?? null)}</td>
+                    <td className="py-1 pr-2">{day(s.stored?.last ?? null)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {d.samples.length > 0 && (
+            <details className="text-xs text-muted">
+              <summary className="cursor-pointer">Sample games: team stats {d.samples[0].teamStats ? `${d.samples[0].teamStats.stats.length} fields` : 'none'}, player groups {d.samples[0].playerStats?.groups?.join(', ') || 'none'}</summary>
+              {d.samples.map((x: any) => (
+                <div key={x.id} className="mt-2">
+                  <div className="font-semibold text-ink">{x.game} · {day(x.date)}</div>
+                  <div>Team stats: {x.teamStats ? x.teamStats.stats.join(', ') || x.teamStats.fields.join(', ') : 'none'}</div>
+                  <div>Player stats: {x.playerStats ? x.playerStats.stats.join(', ') || x.playerStats.fields.join(', ') : 'none'}</div>
+                </div>
+              ))}
+            </details>
+          )}
+          <p className="text-xs text-muted">
+            Injuries: {d.injuries.length ? d.injuries.map((i: any) => `${i.team} ${i.count ?? '–'}`).join(' · ') : '–'}{d.injuries[0]?.fields?.length ? ` (fields: ${d.injuries[0].fields.join(', ')})` : ''}
+            {' '}· Standings {d.standings ? `${d.standings.season}: ${d.standings.rows} rows` : '–'}
+            {d.lastSync ? ` · last sync ${day(d.lastSync.at)}` : ''}
+          </p>
+          {Object.keys(d.errors || {}).length > 0 && <p className="text-xs text-loss">{Object.entries(d.errors).map(([k, v]) => `${k}: ${v}`).join(' · ')}</p>}
+        </div>
       )}
     </section>
   )

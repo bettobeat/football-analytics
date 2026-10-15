@@ -83,6 +83,7 @@ import { listFavorites, addFavorites, removeFavorite, MAX_FAVORITES } from './se
 import { tuneV3Full, tuneStatus, isTuning } from './services/v3Tuner';
 import { hiddenModels, v3MixBacktest, featureModelStatus, setConfig as setModelConfig, setMixLive, startFeatureModelScheduler } from './services/featureModel';
 import { runModelDaily, sendMorningReport, modelDailyLog, buildReport, startModelDailyScheduler, dailyRunning } from './services/modelDaily';
+import { nflProbe, startNflScheduler } from './services/nfl';
 import { askAssistant, assistantConfigured, messagesToday, assistantStats } from './services/assistant';
 import { normalizeName } from './services/history';
 import { markFresh, markFailed } from './services/freshness';
@@ -856,6 +857,13 @@ app.post('/api/admin/extra-leagues/:id(\\d+)/trial', jsonOnly, (req, res) => {
   res.json({ data: setExtraTrial(parseInt(req.params.id, 10), !!req.body?.trial) });
 });
 // The same for basketball (bbLeagueConfig.ts / bbLeagueCoverage.ts): leagues start in testing, sync begins right away
+// NFL data check (fix136, admin only): plan, seasons + coverage, games we hold, sample stats / injuries / standings.
+// About 10 API calls; cached 10 minutes (?refresh=1 runs it again).
+app.get('/api/admin/nfl-probe', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try { res.json({ data: await nflProbe(req.query.refresh === '1') }); }
+  catch (e: any) { res.status(502).json({ error: `NFL probe failed: ${e.message}` }); }
+});
 app.get('/api/admin/bb-league-coverage', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   try { res.json({ data: await bbLeagueCoverage(req.query.refresh === '1') }); }
@@ -2766,6 +2774,8 @@ server.listen(PORT, () => {
   // Feature model + v3-mix (state every 30 min), daily champion / challenger at 04:00 UTC, report at 07:00 Jerusalem
   startFeatureModelScheduler();
   startModelDailyScheduler();
+  // NFL games (fix136, admin data check only): every season once, then the current season every 6 h
+  startNflScheduler();
 });
 
 export { app, io };
