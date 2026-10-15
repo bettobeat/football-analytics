@@ -8,7 +8,7 @@ import { useFavorites } from '../../lib/favorites'
 import { useRevealState } from '../../lib/reveal'
 import { useBbConfig, useBbFavorites, bbLeagueFav, type BbGame } from '../../lib/bb'
 import { FavStar } from '../../lib/favorites'
-import { GamesByDay, Skeleton } from './parts'
+import { GamesByDay, GameRow, SectionTitle, Skeleton } from './parts'
 
 /** Your basketball teams and leagues, and all their games in the next 14 days — like football's Favorites page. */
 export default function BbFavorites() {
@@ -96,7 +96,18 @@ export default function BbFavorites() {
         {!games ? <Skeleton rows={4} h="h-16" /> : favs.all.length === 0 ? (
           <p className="text-sm text-faint">{t('Star a team or a league and its games show up here.')}</p>
         ) : (
-          <GamesByDay games={mine} logos={logos} empty={t('None of your favorites play in this period.')} />
+          <div className="space-y-6">
+            {/* fix133: live games once, in their own section (like football's favourites), never in the day lists */}
+            {mine.some(g => g.state === 'live') && (
+              <section>
+                <SectionTitle label={t('Live now')} />
+                <div className="card overflow-hidden divide-y divide-line/50">
+                  {mine.filter(g => g.state === 'live').map(g => <GameRow key={g.id} g={g} showLeague />)}
+                </div>
+              </section>
+            )}
+            <GamesByDay games={mine.filter(g => g.state !== 'live')} logos={logos} empty={t('None of your favorites play in this period.')} />
+          </div>
         )}
       </section>
     </div>

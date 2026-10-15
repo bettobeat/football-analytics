@@ -129,7 +129,7 @@ export default function BbLeague() {
           )}
           {leaders && leaders.lists.length > 0 && <LeadersCard data={leaders} />}
           <Card title={t('Next games')}>
-            {!next ? <Skeleton rows={5} /> : <div className="max-h-[520px] overflow-y-auto overscroll-contain pr-1"><GameList games={next} empty={t('No games in the next 10 days.')} /></div>}
+            {!next ? <Skeleton rows={5} /> : <div className="max-h-[520px] overflow-y-auto overscroll-contain pr-1"><GameList games={next.filter(g => g.state !== 'live')} empty={t('No games in the next 10 days.')} /></div>}
           </Card>
           <Card title={t('Latest results')}>
             {!results ? <Skeleton rows={5} /> : <div className="max-h-[520px] overflow-y-auto overscroll-contain pr-1"><GameList games={results} empty={t('No results in the last three weeks.')} /></div>}

@@ -59,7 +59,7 @@ export default function BbGames() {
   const favs = useBbFavorites()
   const favMode = league === 'FAV'
   const upcoming = useMemo(
-    () => all.filter(g => (league === 'ALL' || g.league.code === league || (favMode && favs.reasons(g).length > 0)) && g.state !== 'done' && new Date(g.kickoff).getTime() <= horizon),
+    () => all.filter(g => (league === 'ALL' || g.league.code === league || (favMode && favs.reasons(g).length > 0)) && g.state !== 'done' && g.state !== 'live' && new Date(g.kickoff).getTime() <= horizon),
     [all, league, days, favs.all.length]
   )
   // results: finished games of the last N days, newest first

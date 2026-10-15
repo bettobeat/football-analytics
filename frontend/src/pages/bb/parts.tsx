@@ -242,9 +242,9 @@ export function dayTitle(iso: string) {
 }
 
 /** Live game in a sidebar box (football's LiveRow). */
+/** Live strip card (fix133): the same as football's — league, LIVE / quarter + clock, two teams, score; no win %
+ *  (the live win chance stays on the game page). */
 export function LiveRow({ g }: { g: BbGame }) {
-  const live = useLiveChance(g)
-  const lead = live ? (live.pHome >= 50 ? 'H' : 'A') : null
   return (
     <Link to={`/basketball/game/${g.id}`} className="block rounded-xl px-2 py-2 hover:bg-surface2 transition-colors">
       <div className="flex items-center justify-between text-[10px] text-faint mb-1">
@@ -256,10 +256,7 @@ export function LiveRow({ g }: { g: BbGame }) {
         return (
           <div key={s} className="flex items-center justify-between gap-2 py-0.5">
             <span className="flex items-center gap-2 min-w-0"><TeamLogo team={team} size={18} /><span className="text-sm font-medium text-ink truncate">{team.name}</span></span>
-            <span className="flex items-center gap-2">
-              {live && <span className={`num text-[11px] font-semibold ${lead === s ? 'text-live' : 'text-faint'}`}>{Math.round(s === 'H' ? live.pHome : live.pAway)}%</span>}
-              <span className="num text-sm font-bold text-ink w-7 text-right">{g.score ? (s === 'H' ? g.score.home : g.score.away) : 0}</span>
-            </span>
+            <span className="num text-sm font-bold text-ink">{g.score ? (s === 'H' ? g.score.home : g.score.away) : 0}</span>
           </div>
         )
       })}
