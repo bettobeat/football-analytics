@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
-import { doubleChance, shortTeam, type Prediction } from '../lib/predict'
-import { DcBlock, DcLine, SeePrediction } from '../components/DcPick'
+import { doubleChance, dcRowLabel, shortTeam, type Prediction } from '../lib/predict'
+import { DcBlock, DcLine, DcTag } from '../components/DcPick'
 import { isCovered, revealMatch, useRevealState } from '../lib/reveal'
 import RecentResults from '../components/RecentResults'
 import { FavStar } from '../lib/favorites'
@@ -485,8 +485,39 @@ function FixtureRow({ m }: { m: Match }) {
         <span className="flex items-center gap-1.5 text-[13px] sm:text-sm"><Crest team={m.homeTeam} size={16} /><span className="truncate text-ink">{tn(m.homeTeam)}</span></span>
         <span className="flex items-center gap-1.5 text-[13px] sm:text-sm"><Crest team={m.awayTeam} size={16} /><span className="truncate text-ink">{tn(m.awayTeam)}</span></span>
       </span>
-      {/* fix128 phones: one button; the match page shows (and reveals) the prediction */}
-      {p && <span className="sm:hidden flex-shrink-0"><SeePrediction matchId={m.id} match={m} /></span>}
+      {/* fix131 phones: the fix120 / fix126 row (commit 55b9ffb) */}
+      {p && (
+        <span className="sm:hidden flex-shrink-0 text-right w-28">
+          {covered ? (
+            <button
+              onClick={e => {
+                e.preventDefault()
+                revealMatch(m.id)
+              }}
+              className="text-[11px] font-bold text-bg bg-accent px-2.5 py-1 rounded-full"
+            >
+              {tt("Reveal")}</button>
+          ) : dc ? (
+            <>
+              <span className="flex items-center justify-end gap-1 text-[10px] text-faint">{tt("Our pick")} <DcTag code={dc.code} /></span>
+              <span className="block text-xs font-bold truncate text-ink">
+                {dcRowLabel(dc.code, tn(m.homeTeam), tn(m.awayTeam))}
+                {dc.pct !== null && <span className="num"> {dc.pct}%</span>}
+              </span>
+            </>
+          ) : name ? (
+            <>
+              <span className="block text-[10px] text-faint">{tt("Pick")}</span>
+              <span className={`block text-xs font-bold truncate ${color}`}>
+                {name}
+                {val !== null && <span className="num"> {Math.round(val)}%</span>}
+              </span>
+            </>
+          ) : (
+            <span className="text-[11px] text-faint">–</span>
+          )}
+        </span>
+      )}
       <span className={`flex-shrink-0 text-right flex-col items-end ${p ? 'hidden sm:flex' : 'flex'}`}>
         {covered ? (
           <button
