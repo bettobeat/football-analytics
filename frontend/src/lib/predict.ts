@@ -85,9 +85,17 @@ export function doubleChance(p: Prediction | null | undefined): { code: DC; pct:
   return { code: x.code, pct, sides: DC_SIDES[x.code], strong: pct >= DC_STRONG }
 }
 
-/** "Barça or draw" / "Real or Barça" */
+/** Our double chance in words (fix127): "No draw" / "Barça or draw" — never the code alone. Pass short names. */
 export function dcLabel(code: DC, home: string, away: string) {
-  return code === '1X' ? t("{0} or draw", { 0: home }) : code === 'X2' ? t("{0} or draw", { 0: away }) : t("{0} or {1}", { 0: home, 1: away })
+  return code === '1X' ? t("{0} or draw", { 0: home }) : code === 'X2' ? t("{0} or draw", { 0: away }) : t("No draw")
+}
+
+/** A team name short enough for a list row (fix127): the short name, else the 3-letter code, else the first word. */
+export function shortTeam(team: { shortName?: string | null; tla?: string | null; name: string }) {
+  const s = team.shortName || team.name
+  if (s.length <= 10) return s
+  if (team.tla) return team.tla
+  return s.split(/\s+/)[0]
 }
 
 /** Fair (no-margin) decimal odds implied by a probability in %. */

@@ -3,8 +3,8 @@ import RecentResults from '../components/RecentResults'
 import { Link } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
-import { type Prediction, doubleChance } from '../lib/predict'
-import OurPick from '../components/DcPick'
+import { type Prediction, doubleChance, shortTeam } from '../lib/predict'
+import OurPick, { DcLine } from '../components/DcPick'
 import { useAuth } from '../lib/auth'
 import { isCovered, revealMatch, useRevealState, justRevealed } from '../lib/reveal'
 import { matchFame } from '../lib/fame'
@@ -116,7 +116,7 @@ function FeaturedHero({ m, p, label }: { m: Match | null; p: Prediction | null; 
       <span className="relative grid place-items-center w-24 h-24 sm:w-36 sm:h-36 rounded-full bg-white/[0.06] border border-white/10 backdrop-blur-md shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)] transition-transform group-hover:scale-[1.04]">
         <Crest team={t} size={72} />
       </span>
-      <span className="font-display font-extrabold text-lg sm:text-3xl tracking-tight text-center leading-tight max-w-full break-words">{tn(t)}</span>
+      <span className="font-display font-extrabold text-base sm:text-3xl tracking-tight text-center leading-tight max-w-full break-words">{tn(t)}</span>
     </Link>
   )
   const roll = justRevealed(m.id)
@@ -174,7 +174,7 @@ function FeaturedHero({ m, p, label }: { m: Match | null; p: Prediction | null; 
                   {pill('D', tt('Draw'), p.draw)}
                   {pill('A', tn(m.awayTeam), p.away)}
                 </div>
-                <div className="flex justify-center sm:justify-start"><OurPick p={p} home={tn(m.homeTeam)} away={tn(m.awayTeam)} dark /></div>
+                <div className="flex justify-center sm:justify-start"><OurPick p={p} home={shortTeam(m.homeTeam)} away={shortTeam(m.awayTeam)} dark /></div>
               </div>
             ) : (
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 text-sm">
@@ -401,13 +401,14 @@ export default function Home() {
             <div className="space-y-2">
               <div className="grid grid-cols-3 gap-1.5 text-center">
                 {(['H', 'D', 'A'] as const).map(o => (
-                  <span key={o} className={`rounded-xl py-1.5 text-xs font-bold num ${on(o) ? (o === 'H' ? 'bg-home/20 text-home' : o === 'D' ? 'bg-draw/20 text-draw' : 'bg-away/20 text-away') : 'bg-surface2/70 text-muted'}`}>
-                    <span className="block text-[10px] font-semibold opacity-80">{o === 'H' ? '1' : o === 'D' ? 'X' : '2'}</span>
+                  <span key={o} className={`rounded-xl py-1.5 text-xs font-bold num border ${on(o) ? 'border-accent/70 bg-accent/15 text-ink' : 'border-transparent bg-surface2/40 text-faint'}`}>
+                    <span className={`block text-[10px] font-semibold ${on(o) ? 'text-accent' : ''}`}>{o === 'H' ? '1' : o === 'D' ? 'X' : '2'}</span>
                     <CountUp value={o === 'H' ? p.home : o === 'D' ? p.draw : p.away} suffix="%" animate={justRevealed(m.id)} delay={o === 'H' ? 0 : o === 'D' ? 100 : 200} />
                   </span>
                 ))}
               </div>
-              <OurPick p={p} home={tn(m.homeTeam)} away={tn(m.awayTeam)} compact />
+              {/* fix127: our double chance in words under the 1 · X · 2 */}
+              {dc && <span className="flex items-center gap-2"><DcLine code={dc.code} pct={dc.pct} home={shortTeam(m.homeTeam)} away={shortTeam(m.awayTeam)} className="!text-[11px]" />{dc.strong && <span className="rounded-full border border-accent/50 text-accent text-[10px] font-bold px-1.5 py-px">{tt("Strong")}</span>}</span>}
             </div>
           ) : p ? (
             <div className="flex items-center justify-between text-xs rounded-xl bg-surface2/70 px-3 py-2">
@@ -481,7 +482,7 @@ export default function Home() {
       )}
 
       {/* ---------- hero: featured match (team colours from the crests) + live / next kick-offs ---------- */}
-      <div className="grid gap-5 lg:grid-cols-[1.75fr_1fr]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,1.75fr)_minmax(0,1fr)]">
         {featuredList.length > 1 ? <FeaturedCarousel matches={featuredList} /> : <FeaturedHero m={featured} p={fp} />}
 
         <div className="card p-5 sm:p-6 flex flex-col gap-4">

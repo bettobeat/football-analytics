@@ -1649,5 +1649,8 @@
  "(win or loss), saved before tip-off.": "(victoria o derrota), guardado antes del salto inicial.",
  "Compared with the league": "Comparado con la liga",
  "Team analysis →": "Análisis del equipo →",
- "{0} league games last season": "{0} partidos de liga la temporada pasada"
+ "{0} league games last season": "{0} partidos de liga la temporada pasada",
+ "No draw": "Sin empate",
+ "Strong": "Fuerte",
+ "Double chance: two of the three results. Right if either happens.": "Doble oportunidad: dos de los tres resultados. Acierta si se da cualquiera de los dos."
 }

@@ -3,8 +3,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams, useLocation } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
-import { modelInfo, isV3, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, pickOfPrediction, doubleChance, dcLabel, type DC, type Prediction } from '../lib/predict'
-import OurPick, { DcTag } from '../components/DcPick'
+import { modelInfo, isV3, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, pickOfPrediction, doubleChance, dcLabel, shortTeam, type DC, type Prediction } from '../lib/predict'
+import OurPick from '../components/DcPick'
 import { useAuth } from '../lib/auth'
 import WinProbability from '../components/WinProbability'
 import { useReveal, justRevealed, hideMatch, guessFirstOn } from '../lib/reveal'
@@ -793,7 +793,7 @@ function MatchDetail() {
                       // our pick = the double chance (main badge); the single most likely result is shown as the hard call
                       return (
                         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
-                          <OurPick p={p} home={home.shortName || home.name} away={away.shortName || away.name} />
+                          <OurPick p={p} home={shortTeam(home)} away={shortTeam(away)} />
                           <span className="text-xs text-muted">
                             {tt("Most likely result")}: {top.label} <span className="num text-ink font-semibold">{Math.round(top.v)}%</span>
                           </span>
@@ -1371,7 +1371,7 @@ function LockedPrediction({ pick, dc, home, away, matchId, status, onUnlocked }:
       <div className="flex flex-wrap items-center gap-2 text-sm mb-4">
         <span className="px-2.5 py-1 rounded-full text-xs font-bold border bg-surface2 text-ink border-line">{dc ? tt("Our pick") : tt("Model pick")}</span>
         {dc ? (
-          <span className="inline-flex items-center gap-2 min-w-0"><DcTag code={dc} className="!h-5 !text-[11px] !px-1.5" /><span className="font-display font-bold text-lg text-ink truncate">{dcLabel(dc, home.shortName || home.name, away.shortName || away.name)}</span></span>
+          <span className="inline-flex items-center gap-2 min-w-0"><span className="font-display font-bold text-lg text-ink truncate">{dcLabel(dc, shortTeam(home), shortTeam(away))}</span></span>
         ) : name ? (
           <span className={`font-display font-bold text-lg ${color}`}>{name}</span>
         ) : (

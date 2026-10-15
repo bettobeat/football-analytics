@@ -6,8 +6,8 @@ import RecentResults from '../components/RecentResults'
 import { Link, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
-import { pickOfPrediction, doubleChance, dcLabel, type Prediction } from '../lib/predict'
-import { DcTag } from '../components/DcPick'
+import { pickOfPrediction, doubleChance, dcLabel, shortTeam, type Prediction } from '../lib/predict'
+import { DcBlock } from '../components/DcPick'
 import { useFavorites } from '../lib/favorites'
 import LeagueSidebar, { MobileLeagueBar, LeagueBar } from '../components/LeagueSidebar'
 import { footballCountry, leagueShortName } from '../lib/leagueCountry'
@@ -59,7 +59,6 @@ export const LIVE = new Set(['IN_PLAY', 'PAUSED'])
 export const ENDED = new Set(['FINISHED', 'AWARDED', 'CANCELLED'])
 const DAY_OPTIONS = [3, 7, 14, 30]
 const PICK_COLOR: Record<Pick, string> = { H: 'text-home', D: 'text-draw', A: 'text-away' }
-const PICK_BG: Record<Pick, string> = { H: 'bg-home', D: 'bg-draw', A: 'bg-away' }
 
 export function dayKey(iso: string) {
   const d = new Date(iso)
@@ -636,7 +635,7 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
   const pickPct = p && pick && !p.locked ? Math.round(pick === 'H' ? p.home : pick === 'D' ? p.draw : p.away) : null
   // our recommended pick: the double chance (two results) — the 1X2 numbers stay as they are
   const dc = pick ? doubleChance(p) : null
-  const dcName = dc ? dcLabel(dc.code, name(match.homeTeam), name(match.awayTeam)) : null
+  const dcName = dc ? dcLabel(dc.code, shortTeam(match.homeTeam), shortTeam(match.awayTeam)) : null
   const roll = justRevealed(match.id)
   // goals markets next to 1-X-2: over 2.5 goals and both teams to score (yes or no, whichever is likelier)
   const extras =
@@ -709,9 +708,9 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
           )
         })()}
         {extras && (
-          <div className={`lg:hidden flex gap-3 text-[10px] text-muted ${roll ? 'pop-in' : ''}`} style={roll ? { animationDelay: '420ms' } : undefined}>
+          <div className={`lg:hidden flex flex-wrap gap-x-3 text-[10px] text-muted ${roll ? 'pop-in' : ''}`} style={roll ? { animationDelay: '420ms' } : undefined}>
             {extras.map(x => (
-              <span key={x.k}>
+              <span key={x.k} className="whitespace-nowrap">
                 {x.top} <CountUp value={x.v} suffix="%" animate={roll} delay={420} className={`num font-semibold ${x.v >= 60 ? 'text-accent' : 'text-ink'}`} />
               </span>
             ))}
@@ -734,39 +733,20 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
             {tt("Reveal")}</button>
         ) : p && p.locked && !pickPct ? (
           <span className="inline-flex items-center gap-1.5 text-xs text-faint">
-            <LockIcon /> {dc ? <span className="inline-flex items-center gap-1 min-w-0"><DcTag code={dc.code} /><span className="font-semibold text-ink/85 truncate max-w-[110px] sm:max-w-[160px]">{dcName}</span></span> : pickName ? <span className={`font-semibold ${PICK_COLOR[pick!]}`}>{pickName}</span> : tt("Locked")}
+            <LockIcon /> {dc ? <span className="font-semibold text-ink/85 whitespace-nowrap">{dcName}</span> : pickName ? <span className={`font-semibold ${PICK_COLOR[pick!]}`}>{pickName}</span> : tt("Locked")}
           </span>
         ) : p && pick && pickPct !== null ? (
           <>
-            {/* phones: our double-chance pick and its % */}
-            {dc && dc.pct !== null ? (
-              <span className={`sm:hidden text-right leading-tight ${roll ? 'pop-in' : ''}`} title={tt("Our pick: {0} · {1} · {2}%", { 0: dc.code, 1: dcName, 2: dc.pct })}>
-                <span className="flex items-center justify-end gap-1"><DcTag code={dc.code} /><CountUp value={dc.pct} suffix="%" animate={roll} className="num text-[12px] font-extrabold text-ink" /></span>
-                <span className="block text-[10px] font-semibold text-muted truncate max-w-[96px]">{dcName}</span>
-              </span>
-            ) : (
-              <span className={`sm:hidden text-right leading-tight ${roll ? 'pop-in' : ''}`}>
-                <span className={`block text-[11px] font-bold truncate max-w-[84px] ${PICK_COLOR[pick]}`}>{pickName}</span>
-                <CountUp value={pickPct} suffix="%" animate={roll} className="block num text-[11px] font-semibold text-ink/80" />
-              </span>
-            )}
-            {/* wider screens: 1 · X · 2 with the two results of our double chance highlighted, then its tag */}
-            <span className="hidden sm:flex items-center gap-1" title={dc && dc.pct !== null ? tt("Our pick: {0} · {1} · {2}%", { 0: dc.code, 1: dcName, 2: dc.pct }) : undefined}>
-              {(['H', 'D', 'A'] as Pick[]).map((k, i) => {
-                const v = Math.round(k === 'H' ? p.home : k === 'D' ? p.draw : p.away)
-                const on = dc ? dc.sides.includes(k) : k === pick
-                return (
-                  <span
-                    key={k}
-                    className={`w-11 h-7 rounded-md grid place-items-center leading-none transition-colors duration-500 ${on ? `${PICK_BG[k]} text-bg` : 'bg-surface2/70 text-muted'} ${roll ? 'pop-in' : ''}`}
-                    style={roll ? { animationDelay: `${i * 90}ms` } : undefined}
-                  >
-                    <span className="text-[8px] font-bold opacity-75">{k === 'H' ? '1' : k === 'D' ? 'X' : '2'}</span>
-                    <CountUp value={v} suffix="%" animate={roll} delay={i * 90} className="num text-[11px] font-bold" />
-                  </span>
-                )
-              })}
-              {dc && <DcTag code={dc.code} className="ml-0.5" />}
+            {/* fix127: 1 · X · 2 with the two results of our double chance highlighted, then "Our pick: … · %" in words */}
+            <span className="flex items-center gap-1">
+              {dc && dc.pct !== null ? (
+                <DcBlock p={p} home={shortTeam(match.homeTeam)} away={shortTeam(match.awayTeam)} roll={roll} />
+              ) : (
+                <span className={`text-right leading-tight ${roll ? 'pop-in' : ''}`}>
+                  <span className={`block text-[11px] font-bold truncate max-w-[84px] ${PICK_COLOR[pick]}`}>{pickName}</span>
+                  <CountUp value={pickPct} suffix="%" animate={roll} className="block num text-[11px] font-semibold text-ink/80" />
+                </span>
+              )}
               {extras && (
                 <>
                   <span className="hidden lg:block w-px h-5 bg-line mx-1" aria-hidden />

@@ -1649,5 +1649,8 @@
  "(win or loss), saved before tip-off.": "(galibiyet ya da mağlubiyet), maç öncesi kaydedilir.",
  "Compared with the league": "Ligle karşılaştırma",
  "Team analysis →": "Takım analizi →",
- "{0} league games last season": "geçen sezon {0} lig maçı"
+ "{0} league games last season": "geçen sezon {0} lig maçı",
+ "No draw": "Beraberlik yok",
+ "Strong": "Güçlü",
+ "Double chance: two of the three results. Right if either happens.": "Çifte şans: üç sonuçtan ikisi. Herhangi biri olursa doğru."
 }

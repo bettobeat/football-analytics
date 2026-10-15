@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
-import { doubleChance, dcLabel, type Prediction } from '../lib/predict'
-import { DcTag } from '../components/DcPick'
+import { doubleChance, shortTeam, type Prediction } from '../lib/predict'
+import { DcBlock, DcLine } from '../components/DcPick'
 import { isCovered, revealMatch, useRevealState } from '../lib/reveal'
 import RecentResults from '../components/RecentResults'
 import { FavStar } from '../lib/favorites'
@@ -476,16 +476,16 @@ function FixtureRow({ m }: { m: Match }) {
   // fix120: our pick is the double chance
   const dc = doubleChance(p)
   return (
-    <Link to={`/match/${m.id}`} state={{ match: m }} className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-surface2/60 transition-colors">
-      <span className="w-12 flex-shrink-0 text-center">
+    <Link to={`/match/${m.id}`} state={{ match: m }} className="flex items-center gap-2 sm:gap-3 px-1 sm:px-2 py-2 rounded-xl hover:bg-surface2/60 transition-colors">
+      <span className="w-10 sm:w-12 flex-shrink-0 text-center">
         <span className="block text-[10px] text-faint">{new Date(m.utcDate).toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric' })}</span>
         <span className="block text-xs font-bold text-ink num">{new Date(m.utcDate).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })}</span>
       </span>
       <span className="min-w-0 flex-1 space-y-1">
-        <span className="flex items-center gap-2 text-sm"><Crest team={m.homeTeam} size={16} /><span className="truncate text-ink">{tn(m.homeTeam)}</span></span>
-        <span className="flex items-center gap-2 text-sm"><Crest team={m.awayTeam} size={16} /><span className="truncate text-ink">{tn(m.awayTeam)}</span></span>
+        <span className="flex items-center gap-1.5 text-[13px] sm:text-sm"><Crest team={m.homeTeam} size={16} /><span className="truncate text-ink">{tn(m.homeTeam)}</span></span>
+        <span className="flex items-center gap-1.5 text-[13px] sm:text-sm"><Crest team={m.awayTeam} size={16} /><span className="truncate text-ink">{tn(m.awayTeam)}</span></span>
       </span>
-      <span className="flex-shrink-0 text-right w-28 sm:w-36">
+      <span className="flex-shrink-0 text-right flex flex-col items-end">
         {covered ? (
           <button
             onClick={e => {
@@ -497,11 +497,8 @@ function FixtureRow({ m }: { m: Match }) {
             {tt("Reveal")}</button>
         ) : dc ? (
           <>
-            <span className="flex items-center justify-end gap-1 text-[10px] text-faint">{tt("Our pick")} <DcTag code={dc.code} /></span>
-            <span className="block text-xs font-bold truncate text-ink">
-              {dcLabel(dc.code, tn(m.homeTeam), tn(m.awayTeam))}
-              {dc.pct !== null && <span className="num"> {dc.pct}%</span>}
-            </span>
+            {/* fix127: 1 · X · 2 + our double chance in words; locked: the words only */}
+            {pct && dc.pct !== null ? <DcBlock p={p} home={shortTeam(m.homeTeam)} away={shortTeam(m.awayTeam)} /> : <DcLine code={dc.code} pct={null} home={shortTeam(m.homeTeam)} away={shortTeam(m.awayTeam)} />}
           </>
         ) : name ? (
           <>
