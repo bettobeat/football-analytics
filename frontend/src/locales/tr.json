@@ -1616,5 +1616,20 @@
  "Recent form and the last meeting for every game today. Open a game for our prediction.": "Bugünkü her maç için son form ve son karşılaşma. Tahminimiz için bir maçı aç.",
  "Could not load today's games. Try again in a minute.": "Bugünün maçları yüklenemedi. Bir dakika sonra tekrar dene.",
  "No games today.": "Bugün maç yok.",
- "Today's predictions →": "Bugünün tahminleri →"
+ "Today's predictions →": "Bugünün tahminleri →",
+ "How it works": "Nasıl çalışır",
+ "What is double chance?": "Çifte şans nedir?",
+ "New here? How to read our numbers": "Yeni misin? Rakamlarımızı nasıl okursun",
+ "Guides": "Rehberler",
+ "Related guides": "İlgili rehberler",
+ "Guide not found.": "Rehber bulunamadı.",
+ "All guides →": "Tüm rehberler →",
+ "How our predictions work, in plain English.": "Tahminlerimiz nasıl çalışır, sade İngilizceyle.",
+ "Predictions this week:": "Bu haftanın tahminleri:",
+ "This week's predictions →": "Bu haftanın tahminleri →",
+ "No matches this week.": "Bu hafta maç yok.",
+ "Next match: {0}": "Sonraki maç: {0}",
+ "See the match →": "Maça git →",
+ "See the game →": "Maça git →",
+ "Page not found.": "Sayfa bulunamadı."
 }

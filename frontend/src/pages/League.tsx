@@ -8,6 +8,7 @@ import { isCovered, revealMatch, useRevealState } from '../lib/reveal'
 import RecentResults from '../components/RecentResults'
 import { FavStar } from '../lib/favorites'
 import { t as tt, LOCALE } from '../lib/i18n'
+import { hubFor } from '../lib/hubs'
 
 /**
  * League page: /league/<code> (football-data codes like PL, API-Football codes like AF140).
@@ -230,6 +231,9 @@ function League() {
               <span>{comp?.area?.name || tt("League")}</span>
             </div>
             <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink truncate">{comp?.name || code}</h1>
+            {code && hubFor('football', code) && (
+              <Link to={`/predictions/${hubFor('football', code)!.slug}`} className="mt-1 inline-block text-sm font-bold text-accent">{tt("This week's predictions →")}</Link>
+            )}
             {comp?.name && code && (
               <FavStar label className="mt-2" fav={{ kind: 'league', ref: code, code, name: comp.name, img: comp.emblem || null }} />
             )}

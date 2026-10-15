@@ -75,6 +75,8 @@ import { db } from './db';
 import { trackVisit, visitorStats } from './services/visitors';
 import { startGeo, geoCredit } from './services/geo';
 import { seoPage, renderIndex, sitemapXml, SITEMAPS, todayGroups } from './services/seo';
+import { listGuides, getGuide } from './services/guides';
+import { hubBySlug, buildHub, HUBS } from './services/hubs';
 import { refreshFromDetails } from './services/matchPreview';
 import { fontRoute, warmFonts } from './services/fonts';
 import { listFavorites, addFavorites, removeFavorite, MAX_FAVORITES } from './services/favorites';
@@ -302,7 +304,7 @@ app.use('/api', rateLimit('api', 600, 60000)); // ~10 a second, far above a pers
 app.use(['/api/team-page', '/api/player-page'], rateLimit('pages', 60, 10 * 60000));
 app.use('/api/unlocks', (req, res, next) => (req.method === 'POST' ? rateLimit('unlock', 30, 60000, r => String(r.user?.id || r.ip))(req, res, next) : next()));
 
-const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|contact$|feedback$|client-error$|picks(\/|$)|testers\/|unsubscribe$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|today$|basketball\/|public\/(summary|results|record|geo-source)$|unlocks(\/|$)|billing\/)/;
+const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|contact$|feedback$|client-error$|picks(\/|$)|testers\/|unsubscribe$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|today$|guides(\/|$)|hub(\/|$)|basketball\/|public\/(summary|results|record|geo-source)$|unlocks(\/|$)|billing\/)/;
 const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|history\/status|clv|draw-alerts|upset-watch)$/; // past seasons and backtests are admin only (Oct 2026)
 
 app.use('/api', (req, res, next) => {
@@ -1649,6 +1651,31 @@ app.get('/api/search', async (req, res) => {
   } catch (error: any) {
     sendError(res, error, 'Search failed');
   }
+});
+
+// Weekly league hubs (fix125): this week's games of a big league with their preview texts (never the pick or a %)
+app.get('/api/hub/:slug', (req, res) => {
+  try {
+    const def = hubBySlug(String(req.params.slug));
+    if (!def || (def.sport === 'basketball' && !(bbPublic() || req.access === 'admin'))) return res.status(404).json({ error: 'Not found' });
+    res.set('Cache-Control', 'public, max-age=300').json({ data: buildHub(def) });
+  } catch (e: any) { sendError(res, e, 'Hub failed'); }
+});
+app.get('/api/hub', (req, res) => {
+  res.json({ data: HUBS.filter(h => h.sport === 'football' || bbPublic() || req.access === 'admin').map(h => ({ slug: h.slug, sport: h.sport, name: h.name })) });
+});
+
+// Guides (fix125): plain-English explainers, rendered on the server (same text as the crawler HTML)
+app.get('/api/guides', (_req, res) => {
+  try { res.set('Cache-Control', 'public, max-age=600').json({ data: listGuides().map(({ slug, title, description }) => ({ slug, title, description })) }); }
+  catch (e: any) { sendError(res, e, 'Guides failed'); }
+});
+app.get('/api/guides/:slug', (req, res) => {
+  try {
+    const g = getGuide(String(req.params.slug));
+    if (!g) return res.status(404).json({ error: 'Guide not found' });
+    res.set('Cache-Control', 'public, max-age=600').json({ data: { slug: g.slug, title: g.title, description: g.description, h1: g.h1, html: g.html, related: g.relatedGuides, updated: g.updated } });
+  } catch (e: any) { sendError(res, e, 'Guide failed'); }
 });
 
 // Today's games grouped by league with a one-line preview each (fix124: /predictions/today pages). Never the pick or a %.

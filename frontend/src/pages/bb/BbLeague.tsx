@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../../lib/socket'
 import { t } from '../../lib/i18n'
+import { hubFor } from '../../lib/hubs'
 import { useBbConfig, bbLeagueFav, type BbGame } from '../../lib/bb'
 import { FavStar } from '../../lib/favorites'
 import { Card, GameList, Skeleton, TeamLogo, LiveRow } from './parts'
@@ -113,6 +114,7 @@ export default function BbLeague() {
             {league && <FavStar label fav={bbLeagueFav(league)} />}
           </div>
           {league && <p className="text-sm text-muted">{t(league.country)}{table?.season ? ` · ${table.season}` : ''}</p>}
+          {hubFor('basketball', code) && <Link to={`/predictions/${hubFor('basketball', code)!.slug}`} className="text-sm font-bold text-accent">{t("This week's predictions →")}</Link>}
         </div>
       </div>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] items-start">

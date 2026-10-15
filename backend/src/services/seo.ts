@@ -4,6 +4,8 @@ import { bbPublic } from './bbSite';
 import { FONT_HEAD } from './fonts';
 import { getPreview, firstSentence, matchTitle, previewDates, previewFacts } from './matchPreview';
 import { bbPreview } from './bbPreview';
+import { listGuides, getGuide } from './guides';
+import { HUBS, hubBySlug, hubForCode, buildHub, hubDescription, hubRange } from './hubs';
 import { fitDescription, pack, shortDate, titleDate, formLetters, STATIC, Lang, ui, longDate } from './seoText';
 import { fbLast, fbNext, fbH2h, fbWdl, fbTable, fbPosition, fbWeek, fbDay, FbGame, TableRow, bbGameById, bbLast, bbNext, bbH2h, bbWl, bbRecord, bbTable, bbWeek, bbDay, bbTeamName, BbGameRow } from './seoFacts';
 
@@ -27,6 +29,8 @@ export interface SeoInfo {
   body: string; // HTML for crawlers (replaced by the app)
   jsonld?: any[];
   noindex?: boolean;
+  /** English-only page (guides): canonical points at the English URL from every language version */
+  canonicalEn?: boolean;
 }
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
@@ -231,7 +235,7 @@ export function seoPage(rawPath: string): SeoInfo {
         const desc = fitDescription([`${comp.name} ${pk.predictions}`],
           [...(table[0] ? [`${pk.leader} ${table[0].team}`] : []), ...(week.length ? [`${week.length} ${pk.thisWeek}`] : [])], pk.leagueFill, pk.leagueTails);
         return page(`${comp.name} ${pk.predictions}, ${pk.tableStats} | ${BRAND}`, desc,
-          `<h1>${esc(comp.name)} ${esc(pk.predictions)}</h1>${table.length ? `<h2>${ui(lang, 'table')}</h2>${tableHtml(lang, table.slice(0, 10))}` : ''}`
+          `<h1>${esc(comp.name)} ${esc(pk.predictions)}</h1>${hubForCode('football', code) ? `<p><a href="/predictions/${hubForCode('football', code)!.slug}">This week's predictions</a></p>` : ''}${table.length ? `<h2>${ui(lang, 'table')}</h2>${tableHtml(lang, table.slice(0, 10))}` : ''}`
           + (week.length ? `<h2>${ui(lang, 'thisWeek')}</h2><ul>${week.map(g => g.hg != null ? fbScoreLine(lang, g) : `<li><a href="${link(lang, `/match/${g.id}`)}">${esc(g.home)} vs ${esc(g.away)}</a> · ${short(g.date, lang)}</li>`).join('')}</ul>` : '')
           + `<h2>Next matches</h2>${fbList(lang, fbUpcoming(60, 'AND competition_code = ?', code))}`);
       }
@@ -253,6 +257,40 @@ export function seoPage(rawPath: string): SeoInfo {
           `<h1>${esc(name)}</h1>${pos && compName ? `<p>${esc(compName)}: #${pos.pos} ${esc(pk.table)}</p>` : ''}<h2>${ui(lang, 'nextGames')}</h2>${fbList(lang, next.map(g => ({ id: g.id, date: g.date, code: g.code, comp: g.comp, homeId: g.homeId, home: g.home, awayId: g.awayId, away: g.away })))}`
           + (last.length ? `<h2>${ui(lang, 'lastResults')}</h2><p>${formLetters(last.map(g => fbWdl(g, id)), lang)}</p><ul>${last.map(g => fbScoreLine(lang, g)).join('')}</ul>` : ''));
       }
+    }
+    // weekly league hubs (fix125): English text on every language version, canonical to the English URL
+    if ((m = path.match(/^\/predictions\/([A-Za-z0-9]+)$/)) && m[1] !== 'today') {
+      const def = hubBySlug(m[1]);
+      if (!def || (def.sport === 'basketball' && !bbPublic())) return page(`Not found | ${BRAND}`, 'This page does not exist.', '', { noindex: true });
+      const h = buildHub(def);
+      const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) + ' UTC';
+      const games = h.games.length
+        ? h.games.map(g => `<section><h2><a href="${g.url}">${esc(g.home)} vs ${esc(g.away)}</a></h2><p>${g.score ? `Final score ${g.score[0]}–${g.score[1]} · ` : ''}${esc(when(g.kickoff))}</p>${g.preview ? `<p>${esc(g.preview)}</p>` : ''}</section>`).join('')
+        : `<p>No matches this week.${h.next ? ` Next match: ${esc(new Date(h.next).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }))}.` : ''}</p>`;
+      const leagueUrl = def.sport === 'football' ? `/league/${def.code}` : `/basketball/league/${def.code}`;
+      return page(`${def.name} predictions this week · ${hubRange(h.from, h.to)} | ${BRAND}`, hubDescription(def),
+        `<h1>${esc(def.name)} predictions this week</h1><p>${esc(def.intro)}</p>${games}<p><a href="${leagueUrl}">${esc(def.name)} table and fixtures</a></p>`,
+        { canonicalEn: true, jsonld: h.games.slice(0, 20).map(g => sportsEvent(`${g.home} vs ${g.away}`, g.kickoff, g.home, g.away, SITE + g.url, def.name, def.sport === 'football' ? 'Soccer' : 'Basketball')) });
+    }
+    // guides (fix125): English text on every language version, canonical to the English URL
+    if (path === '/guides') {
+      const gs = listGuides();
+      return page(`Guides: how to read sports predictions | ${BRAND}`,
+        'Plain-English guides to our football predictions: what double chance means, how to read win percentages and how we test every pick in public.',
+        `<h1>Guides</h1><ul>${gs.map(g => `<li><a href="/guides/${g.slug}">${esc(g.title.replace(/\s*\|\s*SportLikely\s*$/, ''))}</a>: ${esc(g.description)}</li>`).join('')}</ul>`,
+        { canonicalEn: true });
+    }
+    if ((m = path.match(/^\/guides\/([a-z0-9-]+)$/))) {
+      const g = getGuide(m[1]);
+      if (!g) return page(`Guide not found | ${BRAND}`, 'This guide does not exist.', '', { noindex: true });
+      return page(g.title, g.description,
+        `<article><h1>${esc(g.h1)}</h1>${g.html}</article>${g.relatedGuides.length ? `<h2>Related guides</h2><ul>${g.relatedGuides.map(r => `<li><a href="/guides/${r.slug}">${esc(r.title)}</a></li>`).join('')}</ul>` : ''}<p><a href="/guides">All guides</a></p>`,
+        { canonicalEn: true, jsonld: [{
+          '@context': 'https://schema.org', '@type': 'Article', headline: g.h1, description: g.description, inLanguage: 'en',
+          url: `${SITE}/guides/${g.slug}`, mainEntityOfPage: `${SITE}/guides/${g.slug}`, dateModified: g.updated,
+          author: { '@type': 'Organization', name: BRAND, url: SITE },
+          publisher: { '@type': 'Organization', name: BRAND, url: SITE, logo: { '@type': 'ImageObject', url: `${SITE}/icon-512.png` } }
+        }] });
     }
     // record pages are admin-only for now (fix118, 14 Oct 2026): not indexed, not in the sitemap
     if (path === '/accuracy' || path === '/basketball/accuracy') return page(`Our record | ${BRAND}`, 'SportLikely record page.', '', { noindex: true });
@@ -322,7 +360,7 @@ export function seoPage(rawPath: string): SeoInfo {
           const desc = fitDescription([`${lg} ${pk.predictions}`],
             [...(table[0] ? [`${pk.leader} ${table[0].team} (${table[0].w}-${table[0].l})`] : []), ...(week.length ? [`${week.length} ${pk.thisWeek}`] : [])], pk.leagueFill, pk.leagueTails);
           return page(`${lg} ${pk.predictions}, ${pk.tableStats} | ${BRAND}`, desc,
-            `<h1>${esc(lg)} ${esc(pk.predictions)}</h1>${table.length ? `<h2>${ui(lang, 'standings')}</h2><table><thead><tr><th>#</th><th>${ui(lang, 'team')}</th><th>W</th><th>L</th></tr></thead><tbody>${table.slice(0, 10).map((r, i) => `<tr><td>${i + 1}</td><td><a href="${link(lang, `/basketball/team/${r.teamId}`)}">${esc(r.team)}</a></td><td>${r.w}</td><td>${r.l}</td></tr>`).join('')}</tbody></table>` : ''}`
+            `<h1>${esc(lg)} ${esc(pk.predictions)}</h1>${hubForCode('basketball', code) ? `<p><a href="/predictions/${hubForCode('basketball', code)!.slug}">This week's predictions</a></p>` : ''}${table.length ? `<h2>${ui(lang, 'standings')}</h2><table><thead><tr><th>#</th><th>${ui(lang, 'team')}</th><th>W</th><th>L</th></tr></thead><tbody>${table.slice(0, 10).map((r, i) => `<tr><td>${i + 1}</td><td><a href="${link(lang, `/basketball/team/${r.teamId}`)}">${esc(r.team)}</a></td><td>${r.w}</td><td>${r.l}</td></tr>`).join('')}</tbody></table>` : ''}`
             + (week.length ? `<h2>${ui(lang, 'thisWeek')}</h2><ul>${week.map(g => g.status === 'FT' || g.status === 'AOT' ? bbScoreLine(lang, g) : `<li><a href="${link(lang, `/basketball/game/${g.id}`)}">${esc(g.home)} vs ${esc(g.away)}</a> · ${short(g.date, lang)}</li>`).join('')}</ul>` : '')
             + `<h2>${ui(lang, 'nextGames')}</h2>${bbList(lang, bbUpcoming(40, code))}`);
         }
@@ -335,7 +373,7 @@ export function seoPage(rawPath: string): SeoInfo {
 
 /** index.html with this page's head tags and crawler HTML. */
 export function renderIndex(html: string, s: SeoInfo): string {
-  const url = SITE + link(s.lang, s.path);
+  const url = SITE + (s.canonicalEn ? s.path : link(s.lang, s.path));
   const title = esc(s.title), desc = esc(s.description);
   let out = html
     .replace(/<html lang="[^"]*"/, `<html lang="${s.lang}"`)
@@ -353,7 +391,8 @@ export function renderIndex(html: string, s: SeoInfo): string {
   const head: string[] = [FONT_HEAD];
   if (s.noindex) head.push('<meta name="robots" content="noindex, nofollow" />');
   else {
-    for (const l of LANGS) head.push(`<link rel="alternate" hreflang="${l}" href="${SITE + link(l, s.path)}" />`);
+    if (!s.canonicalEn) for (const l of LANGS) head.push(`<link rel="alternate" hreflang="${l}" href="${SITE + link(l, s.path)}" />`);
+    else head.push(`<link rel="alternate" hreflang="en" href="${SITE + s.path}" />`);
     head.push(`<link rel="alternate" hreflang="x-default" href="${SITE + s.path}" />`);
   }
   for (const j of s.jsonld || []) head.push(`<script type="application/ld+json">${JSON.stringify(j).replace(/</g, '\\u003c')}</script>`);
@@ -366,13 +405,13 @@ export function renderIndex(html: string, s: SeoInfo): string {
 
 /* ---------- sitemaps (fix124): an index + one file per kind; lastmod on every entry; no past seasons, no record pages ---------- */
 
-type SmUrl = { loc: string; freq: string; pri: string; mod: string };
+type SmUrl = { loc: string; freq: string; pri: string; mod: string; enOnly?: boolean };
 const isoDay = (x?: string | null) => (x ? new Date(x).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
 const SEASON_DAYS = 300; // teams / leagues with a game in the last ~10 months (this season), never older
 function urlset(urls: SmUrl[]) {
   const alt = (p: string) => LANGS.map(l => `<xhtml:link rel="alternate" hreflang="${l}" href="${SITE + link(l, p)}"/>`).join('');
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n${urls
-    .map(u => `  <url><loc>${SITE}${u.loc}</loc>${alt(u.loc)}<lastmod>${u.mod}</lastmod><changefreq>${u.freq}</changefreq><priority>${u.pri}</priority></url>`).join('\n')}\n</urlset>\n`;
+    .map(u => `  <url><loc>${SITE}${u.loc}</loc>${u.enOnly ? '' : alt(u.loc)}<lastmod>${u.mod}</lastmod><changefreq>${u.freq}</changefreq><priority>${u.pri}</priority></url>`).join('\n')}\n</urlset>\n`;
 }
 /** Last game date (played or kicking off by now) — the lastmod of a league or team page. */
 const lastGameFb = (where: string, ...args: any[]) =>
@@ -385,6 +424,12 @@ function sitemapFootball(): string {
   add('/', 'hourly', '1.0'); add('/matches', 'hourly', '0.9'); add('/predictions/today', 'daily', '0.9');
   add('/draw-alerts', 'daily', '0.6'); add('/premium', 'monthly', '0.5', '2026-10-01');
   for (const p of ['/terms', '/privacy', '/accessibility', '/contact']) add(p, 'yearly', '0.2', '2026-10-01');
+  // guides (fix125): English only, so no language alternates
+  const gs = listGuides();
+  if (gs.length) {
+    urls.push({ loc: '/guides', freq: 'weekly', pri: '0.6', mod: isoDay(gs.map(g => g.updated).sort().pop()), enOnly: true });
+    for (const g of gs) urls.push({ loc: `/guides/${g.slug}`, freq: 'weekly', pri: '0.7', mod: isoDay(g.updated), enOnly: true });
+  }
   // match pages: lastmod = the match preview's last rebuild (fix121); a missing preview is written from our own tables
   const up = fbUpcoming(1500), rec = fbRecent(14, 1500);
   const mods = previewDates([...up, ...rec].map(x => x.id));
@@ -408,6 +453,8 @@ function sitemapBasketball(): string {
 
 function sitemapLeagues(): string {
   const urls: SmUrl[] = [];
+  // weekly hubs (fix125): change every day; English only
+  for (const h of HUBS) if (h.sport === 'football' || bbPublic()) urls.push({ loc: `/predictions/${h.slug}`, freq: 'daily', pri: '0.8', mod: isoDay(), enOnly: true });
   for (const c of fbCompetitions()) urls.push({ loc: `/league/${c.code}`, freq: 'daily', pri: '0.7', mod: isoDay(lastGameFb('competition_code = ?', c.code)) });
   if (bbPublic()) {
     const since = new Date(Date.now() - SEASON_DAYS * 86400000).toISOString(), now = new Date().toISOString();

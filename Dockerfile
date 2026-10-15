@@ -32,6 +32,8 @@ COPY --from=api /api/node_modules ./node_modules
 COPY --from=api /api/dist ./dist
 COPY --from=api /api/package.json ./package.json
 COPY --from=web /web/dist /app/frontend/dist
+# guides (markdown) are rendered by the API and the crawler HTML (services/guides.ts)
+COPY frontend/src/content/guides /app/frontend/src/content/guides
 RUN mkdir -p /data
 EXPOSE 3001
 CMD ["node", "dist/index.js"]

@@ -16,6 +16,7 @@ import { socket } from './lib/socket'
 import { useTheme } from './lib/theme'
 import { useUnlocks, resetDay } from './lib/unlocks'
 import { reportError } from './lib/report'
+import { HUBS } from './lib/hubs'
 import { t as tt, basename, applyHeadLang, LANGS, lang, setLang, type Lang } from './lib/i18n'
 
 /**
@@ -65,6 +66,9 @@ const Join = page(() => import('./pages/Join'))
 const Crm = page(() => import('./pages/Crm'))
 const SportSoon = page(() => import('./pages/SportSoon'))
 const Today = page(() => import('./pages/Today'))
+const Guide = page(() => import('./pages/Guide'))
+const LeagueHub = page(() => import('./pages/LeagueHub'))
+const GuideIndex = page(() => import('./pages/Guide').then(m => ({ default: m.GuideIndex })))
 const BbHome = page(() => import('./pages/bb/BbHome'))
 const BbGames = page(() => import('./pages/bb/BbGames'))
 const BbGame = page(() => import('./pages/bb/BbGame'))
@@ -356,6 +360,19 @@ function useBbOpen() {
   return sportOfPath(loc.pathname).id === 'basketball' && (cfg === null ? true : !!cfg.open)
 }
 
+/** Footer (fix125): this week's predictions for the big leagues (basketball ones once basketball is open). */
+function FooterHubs() {
+  const cfg = useBbConfig()
+  return (
+    <div className="flex flex-wrap gap-x-3 gap-y-1">
+      <span>{tt("Predictions this week:")}</span>
+      {HUBS.filter(h => h.sport === 'football' || !!cfg?.open).map(h => (
+        <Link key={h.slug} to={`/predictions/${h.slug}`} className="hover:text-ink">{h.name}</Link>
+      ))}
+    </div>
+  )
+}
+
 /** Footer data line for the sport on screen. */
 function DataLine() {
   const bb = sportOfPath(useLocation().pathname).id === 'basketball'
@@ -581,6 +598,9 @@ function Shell() {
             <Route path="/" element={<Home />} />
             <Route path="/matches" element={<Dashboard />} />
             <Route path="/predictions/today" element={<Today sport="football" />} />
+            <Route path="/predictions/:league" element={<LeagueHub />} />
+            <Route path="/guides" element={<GuideIndex />} />
+            <Route path="/guides/:slug" element={<Guide />} />
             <Route path="/favorites" element={<Favorites />} />
             <Route path="/my-picks" element={<MyPicks />} />
             <Route path="/team/:id" element={<Team />} />
@@ -635,6 +655,8 @@ function Shell() {
 
         <footer className="max-w-7xl mx-auto px-4 sm:px-6 pt-10 pb-28 xl:pb-10 text-xs text-faint space-y-2">
           <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <Link to="/guides/how-it-works" className="hover:text-ink">{tt("How it works")}</Link>
+            <Link to="/guides/double-chance" className="hover:text-ink">{tt("What is double chance?")}</Link>
             <Link to="/terms" className="hover:text-ink">{tt("Terms")}</Link>
             <Link to="/privacy" className="hover:text-ink">{tt("Privacy")}</Link>
             <Link to="/accessibility" className="hover:text-ink">{tt("Accessibility")}</Link>
@@ -642,6 +664,7 @@ function Shell() {
             <Link to="/contact" className="hover:text-ink">{tt("Contact us")}</Link>
             <span className="ml-auto"><LangSwitch compact /></span>
           </div>
+          <FooterHubs />
           <p>
             {tt("SportLikely · predictions are probabilities, not promises. Information only, not betting advice. 18+. If gambling stops being fun, stop and")}{' '}
             <a href="https://www.begambleaware.org" target="_blank" rel="noreferrer" className="underline hover:text-ink">{tt("get help")}</a>.

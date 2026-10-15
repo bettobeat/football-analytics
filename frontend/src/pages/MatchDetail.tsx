@@ -706,6 +706,9 @@ function MatchDetail() {
       </div>
 
       {lang === 'en' && details?.preview?.text && <MatchPreview text={details.preview.text} />}
+      <p className="mt-3 text-xs text-muted">
+        <Link to="/guides/win-percentages" className="hover:text-ink">{tt("New here? How to read our numbers")} <span aria-hidden className="text-accent">→</span></Link>
+      </p>
 
       {details.partial && <p className="mt-4 text-xs text-faint animate-pulse">{error ? `${tt("Could not load match:")} ${error}` : tt("Loading match…")}</p>}
       {/* ---------- Tabs ---------- */}

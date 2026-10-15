@@ -1616,5 +1616,20 @@
  "Recent form and the last meeting for every game today. Open a game for our prediction.": "Forma reciente y último enfrentamiento de cada partido de hoy. Abre un partido para ver nuestro pronóstico.",
  "Could not load today's games. Try again in a minute.": "No se pudieron cargar los partidos de hoy. Inténtalo de nuevo en un minuto.",
  "No games today.": "Hoy no hay partidos.",
- "Today's predictions →": "Pronósticos de hoy →"
+ "Today's predictions →": "Pronósticos de hoy →",
+ "How it works": "Cómo funciona",
+ "What is double chance?": "¿Qué es la doble oportunidad?",
+ "New here? How to read our numbers": "¿Eres nuevo? Cómo leer nuestros números",
+ "Guides": "Guías",
+ "Related guides": "Guías relacionadas",
+ "Guide not found.": "Guía no encontrada.",
+ "All guides →": "Todas las guías →",
+ "How our predictions work, in plain English.": "Cómo funcionan nuestros pronósticos, explicado en inglés sencillo.",
+ "Predictions this week:": "Pronósticos de esta semana:",
+ "This week's predictions →": "Pronósticos de esta semana →",
+ "No matches this week.": "No hay partidos esta semana.",
+ "Next match: {0}": "Próximo partido: {0}",
+ "See the match →": "Ver el partido →",
+ "See the game →": "Ver el partido →",
+ "Page not found.": "Página no encontrada."
 }
