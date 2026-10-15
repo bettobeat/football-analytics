@@ -29,7 +29,7 @@ is model work, the matching note, in the same commit.
   it improves log loss / Brier on games it never saw (walk-forward or later seasons), never on the fitting data.
 - **`BILLING_TEST_MODE`** must be removed before real payments go live. Don't wire real payment webhooks without Yarin.
 - **Team analysis for every sport:** Every sport has team analysis on the team page (strengths & weaknesses by fixed rules, model rating tiles, 1–10 league scores, rank over time, our record on the team) — build it with the sport, not later.
-- **Phone list rows:** Phone list rows in every sport: lime chip (football 12/1X/X2, two-way sports 1/2) + % on line 1, the pick in words on line 2 — the football row of fix120/fix126 (commit 55b9ffb) is the reference.
+- **List rows:** List rows in every sport use the fix127 block (commit 9b3f610): result cells with % (our pick highlighted) + 'Our pick · {words} · %' underneath. Phones too.
 
 ## How to work here
 

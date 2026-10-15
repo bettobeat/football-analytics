@@ -15,7 +15,6 @@ export const rid = (g: { id: number }) => -g.id
 export const rstatus = (g: BbGame) => (g.state === 'done' ? 'FT' : g.status)
 
 const PICK_COLOR = { H: 'text-home', A: 'text-away' } as const
-const PICK_BG = { H: 'bg-home', A: 'bg-away' } as const
 
 export function Card({ title, action, children, className = '' }: { title?: string; action?: ReactNode; children: ReactNode; className?: string }) {
   return (
@@ -87,7 +86,7 @@ export function GameRow({ g, showLeague = false, showDay = false, compact = fals
   const favWhy = useBbFavorites().reasons(g)
 
   return (
-    <Link to={`/basketball/game/${g.id}`} className={`group relative flex items-center gap-2.5 px-3 sm:px-4 py-1.5 hover:bg-surface2/50 transition-colors ${isLive ? 'bg-live/[0.06]' : ''}`}>
+    <Link to={`/basketball/game/${g.id}#prediction`} className={`group relative flex items-center gap-2.5 px-3 sm:px-4 py-1.5 hover:bg-surface2/50 transition-colors ${isLive ? 'bg-live/[0.06]' : ''}`}>
       {isLive && <span className="absolute left-0 inset-y-0 w-0.5 bg-live" aria-hidden />}
       {/* time / status */}
       <div className="relative w-10 flex-shrink-0 text-center leading-tight">
@@ -153,35 +152,16 @@ export function GameRow({ g, showLeague = false, showDay = false, compact = fals
           </button>
         ) : p && p.locked ? (
           <span className="inline-flex items-center gap-1.5 text-xs text-faint">
-            <LockIcon /> {pickName ? (
-              <>
-                {/* phones (fix131): chip + name, like football's locked row */}
-                <span className="sm:hidden inline-flex items-center gap-1 min-w-0"><SideChip side={pick!} /><span className="font-semibold text-ink/85 truncate max-w-[110px]">{pickName}</span></span>
-                <span className={`hidden sm:inline font-semibold truncate max-w-[110px] ${PICK_COLOR[pick!]}`}>{pickName}</span>
-              </>
-            ) : t('Locked')}
+            <LockIcon /> {pickName ? <span className={`font-semibold truncate max-w-[110px] ${PICK_COLOR[pick!]}`}>{pickName}</span> : t('Locked')}
           </span>
         ) : isLive && p?.live ? (
           <LiveRowPct g={g} />
         ) : p && pick && pct !== null ? (
           <>
-            {/* phones (fix131): like football's fix120 row — lime chip (1 home / 2 away) + the % on line 1, the team on line 2 */}
-            <span className={`sm:hidden text-right leading-tight ${roll ? 'pop-in' : ''}`}>
-              <span className="flex items-center justify-end gap-1"><SideChip side={pick} /><CountUp value={pct} suffix="%" animate={roll} className="num text-[12px] font-extrabold text-ink" /></span>
-              <span className="block text-[10px] font-semibold text-muted truncate max-w-[96px]">{pickName}</span>
-            </span>
-            {/* wider screens: 1 · 2 with the pick highlighted, then spread and total */}
-            <span className="hidden sm:flex items-center gap-1">
-              {(['H', 'A'] as const).map((k, i) => {
-                const v = Math.round(k === 'H' ? p.pHome! : p.pAway!)
-                const on = k === pick
-                return (
-                  <span key={k} className={`w-11 h-7 rounded-md grid place-items-center leading-none transition-colors duration-500 ${on ? `${PICK_BG[k]} text-bg` : 'bg-surface2/70 text-muted'} ${roll ? 'pop-in' : ''}`} style={roll ? { animationDelay: `${i * 90}ms` } : undefined}>
-                    <span className="text-[8px] font-bold opacity-75">{k === 'H' ? '1' : '2'}</span>
-                    <CountUp value={v} suffix="%" animate={roll} delay={i * 90} className="num text-[11px] font-bold" />
-                  </span>
-                )
-              })}
+            {/* fix132 (all screen sizes): the fix127 block — 1 · 2 cells (our pick lime, the other dimmed) and
+                "Our pick · team · %" under them; spread and total next to it on wide screens */}
+            <span className="flex items-center gap-1">
+              <BbPickBlock p={p} pick={pick} home={bbShort(g.home.name, g.league.code)} away={bbShort(g.away.name, g.league.code)} roll={roll} />
               {typeof p.spread === 'number' && typeof p.total === 'number' && (
                 <>
                   <span className="hidden lg:block w-px h-5 bg-line mx-1" aria-hidden />
@@ -408,11 +388,42 @@ export function GameList({ games, showLeague = false, empty }: { games: BbGame[]
   )
 }
 
-/** fix131: the lime side chip of phone rows ("1" home / "2" away), same look as football's double-chance chip. */
-function SideChip({ side }: { side: 'H' | 'A' }) {
+/** A team name that fits a list row (fix132): the full name up to 14 characters, else the nickname (NBA: last word) or
+ *  the first word — never cut with "…". */
+export function bbShort(name: string, code: string) {
+  if (name.length <= 14) return name
+  const w = name.split(/\s+/)
+  return code === 'NBA' ? w[w.length - 1] : w[0]
+}
+
+/**
+ * fix132 — basketball's version of football's fix127 row block (components/DcPick.tsx DcBlock): two 36 px cells
+ * "1 · 2" with each team's win %, our pick outlined lime and the other dimmed, then "Our pick · Fenerbahce · 80%".
+ */
+function BbPickBlock({ p, pick, home, away, roll }: { p: NonNullable<BbGame['prediction']>; pick: 'H' | 'A'; home: string; away: string; roll: boolean }) {
+  const pct = Math.round(pick === 'H' ? p.pHome! : p.pAway!)
   return (
-    <span className="inline-grid place-items-center h-4 px-1 rounded text-[9px] font-extrabold leading-none tracking-wide bg-accent text-bg num" title={t('Our pick')}>
-      {side === 'H' ? '1' : '2'}
+    <span className="inline-flex flex-col items-end gap-1">
+      <span className="flex items-center gap-1">
+        {(['H', 'A'] as const).map((k, i) => {
+          const on = k === pick
+          return (
+            <span key={k} className={`w-9 h-7 rounded-md grid place-items-center leading-none border transition-colors ${on ? 'border-accent/70 bg-accent/15 text-ink' : 'border-transparent bg-surface2/40 text-faint'} ${roll ? 'pop-in' : ''}`}
+              style={roll ? { animationDelay: `${i * 90}ms` } : undefined}>
+              <span className={`text-[8px] font-bold ${on ? 'text-accent' : ''}`}>{k === 'H' ? '1' : '2'}</span>
+              <CountUp value={Math.round(k === 'H' ? p.pHome! : p.pAway!)} animate={roll} delay={i * 90} className="num text-[11px] font-bold" />
+            </span>
+          )
+        })}
+      </span>
+      <span className="flex items-center gap-1 text-[10px] leading-none whitespace-nowrap">
+        <span className="text-faint">{t('Our pick')}</span>
+        <span aria-hidden className="text-faint">·</span>
+        <span className="font-bold text-ink">{pick === 'H' ? home : away}</span>
+        <span aria-hidden className="text-faint">·</span>
+        <span className="num font-extrabold text-accent">{pct}%</span>
+      </span>
+      {pct >= 70 && <span className="rounded-full border border-accent/50 text-accent text-[9px] font-bold px-1.5 py-px leading-none whitespace-nowrap">{t('Strong')}</span>}
     </span>
   )
 }

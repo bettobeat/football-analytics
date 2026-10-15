@@ -90,11 +90,6 @@ export function dcLabel(code: DC, home: string, away: string) {
   return code === '1X' ? t("{0} or draw", { 0: home }) : code === 'X2' ? t("{0} or draw", { 0: away }) : t("No draw")
 }
 
-/** fix131: the fix120 / fix126 row wording ("Gent or draw", "Hajduk Split or Ajax") — phone list rows only. */
-export function dcRowLabel(code: DC, home: string, away: string) {
-  return code === '1X' ? t("{0} or draw", { 0: home }) : code === 'X2' ? t("{0} or draw", { 0: away }) : t("{0} or {1}", { 0: home, 1: away })
-}
-
 /** A team name short enough for a list row (fix127): the short name, else the 3-letter code, else the first word. */
 export function shortTeam(team: { shortName?: string | null; tla?: string | null; name: string }) {
   const s = team.shortName || team.name

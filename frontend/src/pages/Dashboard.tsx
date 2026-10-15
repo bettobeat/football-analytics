@@ -6,8 +6,8 @@ import RecentResults from '../components/RecentResults'
 import { Link, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
-import { pickOfPrediction, doubleChance, dcLabel, dcRowLabel, shortTeam, type Prediction } from '../lib/predict'
-import { DcBlock, DcTag } from '../components/DcPick'
+import { pickOfPrediction, doubleChance, dcLabel, shortTeam, type Prediction } from '../lib/predict'
+import { DcBlock } from '../components/DcPick'
 import { useFavorites } from '../lib/favorites'
 import LeagueSidebar, { MobileLeagueBar, LeagueBar } from '../components/LeagueSidebar'
 import { footballCountry, leagueShortName } from '../lib/leagueCountry'
@@ -636,7 +636,6 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
   // our recommended pick: the double chance (two results) — the 1X2 numbers stay as they are
   const dc = pick ? doubleChance(p) : null
   const dcName = dc ? dcLabel(dc.code, shortTeam(match.homeTeam), shortTeam(match.awayTeam)) : null
-  const dcRowName = dc ? dcRowLabel(dc.code, name(match.homeTeam), name(match.awayTeam)) : null
   const roll = justRevealed(match.id)
   // goals markets next to 1-X-2: over 2.5 goals and both teams to score (yes or no, whichever is likelier)
   const extras =
@@ -648,7 +647,7 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
       : null
 
   return (
-    <Link to={`/match/${match.id}`} state={{ match: match }} className={`group relative flex items-center gap-2.5 px-3 sm:px-4 py-1.5 hover:bg-surface2/50 transition-colors ${isLive ? 'bg-live/[0.06]' : ''}`}>
+    <Link to={`/match/${match.id}#prediction`} state={{ match: match }} className={`group relative flex items-center gap-2.5 px-3 sm:px-4 py-1.5 hover:bg-surface2/50 transition-colors ${isLive ? 'bg-live/[0.06]' : ''}`}>
       {isLive && <span className="absolute left-0 inset-y-0 w-0.5 bg-live" aria-hidden />}
       {/* time */}
       <div className="relative w-10 flex-shrink-0 text-center leading-tight">
@@ -719,42 +718,8 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
         )}
       </div>
 
-      {/* fix131 phones: the fix120 / fix126 row (commit 55b9ffb) — lime code chip + % on line 1, the pick in words on line 2 */}
-      <div className="sm:hidden flex-shrink-0 flex items-center justify-end min-w-[84px]">
-        {covered ? (
-          <button
-            type="button"
-            onClick={e => { e.preventDefault(); e.stopPropagation(); reveal() }}
-            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[11px] font-bold bg-accent/10 text-accent border border-accent/30 hover:bg-accent/15"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
-            {tt("Reveal")}</button>
-        ) : p && p.locked && !pickPct ? (
-          <span className="inline-flex items-center gap-1.5 text-xs text-faint">
-            <LockIcon /> {dc ? <span className="inline-flex items-center gap-1 min-w-0"><DcTag code={dc.code} /><span className="font-semibold text-ink/85 truncate max-w-[110px]">{dcRowName}</span></span> : pickName ? <span className={`font-semibold ${PICK_COLOR[pick!]}`}>{pickName}</span> : tt("Locked")}
-          </span>
-        ) : p && pick && pickPct !== null ? (
-          dc && dc.pct !== null ? (
-            <span className={`text-right leading-tight ${roll ? 'pop-in' : ''}`} title={tt("Our pick: {0} · {1} · {2}%", { 0: dc.code, 1: dcRowName, 2: dc.pct })}>
-              <span className="flex items-center justify-end gap-1"><DcTag code={dc.code} /><CountUp value={dc.pct} suffix="%" animate={roll} className="num text-[12px] font-extrabold text-ink" /></span>
-              <span className="block text-[10px] font-semibold text-muted truncate max-w-[96px]">{dcRowName}</span>
-            </span>
-          ) : (
-            <span className={`text-right leading-tight ${roll ? 'pop-in' : ''}`}>
-              <span className={`block text-[11px] font-bold truncate max-w-[84px] ${PICK_COLOR[pick]}`}>{pickName}</span>
-              <CountUp value={pickPct} suffix="%" animate={roll} className="block num text-[11px] font-semibold text-ink/80" />
-            </span>
-          )
-        ) : (
-          <span className="text-xs text-faint">–</span>
-        )}
-      </div>
-
-      {/* prediction (640 px and up) */}
-      <div className="hidden sm:flex flex-shrink-0 items-center justify-end min-w-[150px]">
+      {/* prediction */}
+      <div className="flex-shrink-0 flex items-center justify-end min-w-[84px] sm:min-w-[150px]">
         {covered ? (
           <button
             type="button"
