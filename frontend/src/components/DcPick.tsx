@@ -16,14 +16,14 @@ export function DcTag({ code, className = '' }: { code: DC; className?: string }
  * The main pick badge, football only: "Our pick: Barça or draw · 82%" (fix127: words, not the code), plus a small "Strong pick" label when the
  * double chance is 85%+. Locked predictions show the code and names without the %.
  */
-export default function OurPick({ p, home, away, dark = false, compact = false, className = '' }: { p: Prediction | null | undefined; home: string; away: string; dark?: boolean; compact?: boolean; className?: string }) {
+export default function OurPick({ p, home, away, dark = false, compact = false, showCode = false, className = '' }: { p: Prediction | null | undefined; home: string; away: string; dark?: boolean; compact?: boolean; showCode?: boolean; className?: string }) {
   const dc = doubleChance(p)
   if (!dc) return null
-  return <OurPickBadge code={dc.code} pct={dc.pct} home={home} away={away} dark={dark} compact={compact} className={className} />
+  return <OurPickBadge code={dc.code} pct={dc.pct} home={home} away={away} dark={dark} compact={compact} showCode={showCode} className={className} />
 }
 
 /** Same badge from the code and % alone (alerts and other server lists that send { k, p }). */
-export function OurPickBadge({ code, pct, home, away, dark = false, compact = false, className = '' }: { code: DC; pct: number | null; home: string; away: string; dark?: boolean; compact?: boolean; className?: string }) {
+export function OurPickBadge({ code, pct, home, away, dark = false, compact = false, showCode = false, className = '' }: { code: DC; pct: number | null; home: string; away: string; dark?: boolean; compact?: boolean; showCode?: boolean; className?: string }) {
   const dc = { code, pct: pct === null ? null : Math.round(pct), strong: pct !== null && Math.round(pct) >= DC_STRONG }
   return (
     <span className={`inline-flex flex-wrap items-center gap-1.5 min-w-0 ${className}`}>
@@ -38,6 +38,7 @@ export function OurPickBadge({ code, pct, home, away, dark = false, compact = fa
           </>
         )}
       </span>
+      {showCode && <span className="text-[10px] font-bold text-faint num" title={t("Double chance: two of the three results. Right if either happens.")}>{dc.code}</span>}
       {dc.strong && (
         <span className={`inline-block rounded-full border font-bold whitespace-nowrap ${compact ? 'text-[10px] px-1.5 py-px' : 'text-[11px] px-2 py-0.5'} ${dark ? 'border-[#C8FF3D]/60 text-[#C8FF3D]' : 'border-accent/50 text-accent'}`}>
           {t("Strong pick")}
@@ -96,6 +97,30 @@ export function DcLine({ code, pct, home, away, className = '' }: { code: DC; pc
       <DcHelp />
       <span className="font-bold text-ink">{dcLabel(code, home, away)}</span>
       {pct !== null && <><span aria-hidden className="text-faint">·</span><span className="num font-extrabold text-accent">{pct}%</span></>}
+    </span>
+  )
+}
+
+/**
+ * fix128 — phones (under 640 px): list rows show this one button instead of the pick. It opens the match page at the
+ * Prediction card; the reveal (free reveals, "guess first" covers) happens there.
+ */
+export function SeePrediction({ matchId, match, dark = false, className = '' }: { matchId: number; match?: unknown; dark?: boolean; className?: string }) {
+  const navigate = useNavigate()
+  const go = (e: { preventDefault: () => void; stopPropagation: () => void }) => {
+    e.preventDefault(); e.stopPropagation()
+    navigate(`/match/${matchId}#prediction`, { state: { match, reveal: true } })
+  }
+  return (
+    <span
+      role="link" tabIndex={0} onClick={go} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') go(e) }}
+      className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[11px] font-bold whitespace-nowrap cursor-pointer border ${dark ? 'bg-[#C8FF3D]/15 text-[#C8FF3D] border-[#C8FF3D]/40' : 'bg-accent/10 text-accent border-accent/30 hover:bg-accent/15'} ${className}`}
+    >
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+        <circle cx="12" cy="12" r="3" />
+      </svg>
+      {t("See prediction")}
     </span>
   )
 }

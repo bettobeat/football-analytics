@@ -3,7 +3,7 @@ import { Link, Navigate, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { doubleChance, shortTeam, type Prediction } from '../lib/predict'
-import { DcBlock, DcLine } from '../components/DcPick'
+import { DcBlock, DcLine, SeePrediction } from '../components/DcPick'
 import { isCovered, revealMatch, useRevealState } from '../lib/reveal'
 import RecentResults from '../components/RecentResults'
 import { FavStar } from '../lib/favorites'
@@ -485,7 +485,9 @@ function FixtureRow({ m }: { m: Match }) {
         <span className="flex items-center gap-1.5 text-[13px] sm:text-sm"><Crest team={m.homeTeam} size={16} /><span className="truncate text-ink">{tn(m.homeTeam)}</span></span>
         <span className="flex items-center gap-1.5 text-[13px] sm:text-sm"><Crest team={m.awayTeam} size={16} /><span className="truncate text-ink">{tn(m.awayTeam)}</span></span>
       </span>
-      <span className="flex-shrink-0 text-right flex flex-col items-end">
+      {/* fix128 phones: one button; the match page shows (and reveals) the prediction */}
+      {p && <span className="sm:hidden flex-shrink-0"><SeePrediction matchId={m.id} match={m} /></span>}
+      <span className={`flex-shrink-0 text-right flex-col items-end ${p ? 'hidden sm:flex' : 'flex'}`}>
         {covered ? (
           <button
             onClick={e => {

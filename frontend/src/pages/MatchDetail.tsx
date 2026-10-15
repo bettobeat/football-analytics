@@ -363,6 +363,18 @@ function MatchDetail() {
   const [xiSeen, setXiSeen] = useState(() => { try { return localStorage.getItem(xiKey) === '1' } catch { return false } })
   const [xiAnim, setXiAnim] = useState(false)
   const markXiSeen = () => { setXiSeen(true); try { localStorage.setItem(xiKey, '1') } catch { /* private mode */ } }
+  // fix128: opened from a list's "See prediction" (phones): scroll to the card and reveal it there
+  const wantReveal = !!(location.state as any)?.reveal
+  const autoRevealed = useRef(false)
+  useEffect(() => {
+    if (wantReveal && hidden && !autoRevealed.current) { autoRevealed.current = true; setUnlockAnim(true) }
+  }, [wantReveal, hidden])
+  const scrolled = useRef(false)
+  useEffect(() => {
+    if (scrolled.current || !details || window.location.hash !== '#prediction') return
+    scrolled.current = true
+    requestAnimationFrame(() => document.getElementById('prediction-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }, [details])
 
   const load = (initial = false) => {
     if (initial && !seedFromList(location.state, matchId)) setLoading(true)
@@ -736,11 +748,12 @@ function MatchDetail() {
           <>
               {/* Prediction */}
               <Section
+                id="prediction-card"
                 title={tt("Prediction")}
                 note={p ? [modelInfo(p.model).tag, modelInfo(p.model).name.replace(new RegExp(`^${modelInfo(p.model).tag} · `), ''), p.confidence ? CONFIDENCE_LABEL[p.confidence] : null].filter(Boolean).join(' · ') : undefined}
               >
                 {p && p.locked ? (
-                  <LockedPrediction pick={pick} dc={dc?.code || null} home={home} away={away} matchId={m.id} status={m.status} onUnlocked={() => { setUnlockAnim(true); load(false) }} />
+                  <LockedPrediction pick={pick} dc={dc?.code || null} home={home} away={away} matchId={m.id} status={m.status} autoUnlock={wantReveal} onUnlocked={() => { setUnlockAnim(true); load(false) }} />
                 ) : p && pick ? (
                   hidden || unlockAnim ? (
                     <RevealCover
@@ -778,26 +791,22 @@ function MatchDetail() {
                         <span className="text-[11px] text-faint">{modelInfo(p.model).desc}</span>
                       </div>
                     )}
-                    <div className="grid grid-cols-3 gap-3">
-                      <OutcomeTile k="H" label={home.shortName || home.name} v={p.home} active={inDc('H')} roll={justRevealed(matchId)} delay={0} />
-                      <OutcomeTile k="D" label={tt("Draw")} v={p.draw} active={inDc('D')} roll={justRevealed(matchId)} delay={120} />
-                      <OutcomeTile k="A" label={away.shortName || away.name} v={p.away} active={inDc('A')} roll={justRevealed(matchId)} delay={240} />
-                    </div>
+                    {/* fix128: "Most likely result" (the highest of 1 · X · 2 highlighted), then our double chance in words;
+                        the two results inside it get a lime outline on the cards, the third is dimmed */}
                     {(() => {
-                      const opts = [
-                        { k: 'H' as const, label: home.shortName || home.name, v: p.home },
-                        { k: 'D' as const, label: tt('Draw'), v: p.draw },
-                        { k: 'A' as const, label: away.shortName || away.name, v: p.away }
-                      ].sort((x, y) => y.v - x.v)
-                      const top = opts[0]
-                      // our pick = the double chance (main badge); the single most likely result is shown as the hard call
+                      const top = p.home >= p.draw && p.home >= p.away ? 'H' : p.away >= p.draw ? 'A' : 'D'
                       return (
-                        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
-                          <OurPick p={p} home={shortTeam(home)} away={shortTeam(away)} />
-                          <span className="text-xs text-muted">
-                            {tt("Most likely result")}: {top.label} <span className="num text-ink font-semibold">{Math.round(top.v)}%</span>
-                          </span>
-                        </div>
+                        <>
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-faint mb-2">{tt("Most likely result")}</div>
+                          <div className="grid grid-cols-3 gap-3">
+                            <OutcomeTile k="H" label={home.shortName || home.name} v={p.home} top={top === 'H'} inPick={inDc('H')} roll={justRevealed(matchId)} delay={0} />
+                            <OutcomeTile k="D" label={tt("Draw")} v={p.draw} top={top === 'D'} inPick={inDc('D')} roll={justRevealed(matchId)} delay={120} />
+                            <OutcomeTile k="A" label={away.shortName || away.name} v={p.away} top={top === 'A'} inPick={inDc('A')} roll={justRevealed(matchId)} delay={240} />
+                          </div>
+                          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+                            <OurPick p={p} home={shortTeam(home)} away={shortTeam(away)} showCode />
+                          </div>
+                        </>
                       )
                     })()}
                     <div className="flex h-2.5 gap-[3px] mt-4">
@@ -1224,9 +1233,9 @@ function LineupTip({ kickoff, lineupsOut, usesLineups }: { kickoff: number; line
   )
 }
 
-function Section({ title, note, children }: { title: string; note?: string; children: ReactNode }) {
+function Section({ title, note, id, children }: { title: string; note?: string; id?: string; children: ReactNode }) {
   return (
-    <section className="card p-5 sm:p-6">
+    <section id={id} className="card p-5 sm:p-6 scroll-mt-32">
       <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
         <h2 className="font-display text-base font-bold text-ink">{title}</h2>
         {note && <span className="text-xs text-faint">{note}</span>}
@@ -1334,8 +1343,8 @@ function MatchPreview({ text }: { text: string }) {
   )
 }
 
-function LockedPrediction({ pick, dc, home, away, matchId, status, onUnlocked }: {
-  pick: 'H' | 'D' | 'A' | null; dc: DC | null; home: Team; away: Team; matchId: number; status: string; onUnlocked: () => void
+function LockedPrediction({ pick, dc, home, away, matchId, status, autoUnlock = false, onUnlocked }: {
+  pick: 'H' | 'D' | 'A' | null; dc: DC | null; home: Team; away: Team; matchId: number; status: string; autoUnlock?: boolean; onUnlocked: () => void
 }) {
   const { user, access } = useAuth()
   // signed-in Free (2 picks a week) and $15 Premium (60 a month) unlock match by match
@@ -1359,6 +1368,14 @@ function LockedPrediction({ pick, dc, home, away, matchId, status, onUnlocked }:
     }
   }
   const out = canUnlock && (needPro || (u && u.left === 0))
+  // fix128: "See prediction" from a list = the member asked to open it: use one reveal here (same animation after)
+  const tried = useRef(false)
+  useEffect(() => {
+    if (!autoUnlock || tried.current || !canUnlock || !u || busy || needPro) return
+    if (u.left !== null && u.left <= 0) return
+    tried.current = true
+    void doUnlock()
+  }, [autoUnlock, canUnlock, u, busy, needPro])
   const name = pick === 'H' ? home.shortName || home.name : pick === 'A' ? away.shortName || away.name : pick === 'D' ? 'Draw' : null
   const color = pick === 'H' ? 'text-home' : pick === 'D' ? 'text-draw' : 'text-away'
   const tiles: { k: 'H' | 'D' | 'A'; label: string }[] = [
@@ -1381,7 +1398,7 @@ function LockedPrediction({ pick, dc, home, away, matchId, status, onUnlocked }:
       <div className="relative min-h-[190px]">
         <div className="grid grid-cols-3 gap-3 pt-6 select-none blur-[5px] opacity-60" aria-hidden>
           {tiles.map(t => (
-            <OutcomeTile key={t.k} k={t.k} label={t.label} v={33.3} active={false} />
+            <OutcomeTile key={t.k} k={t.k} label={t.label} v={33.3} dimOut={false} />
           ))}
         </div>
         <div className="absolute inset-0 grid place-items-center">
@@ -1442,16 +1459,18 @@ function LockedPrediction({ pick, dc, home, away, matchId, status, onUnlocked }:
   )
 }
 
-function OutcomeTile({ k, label, v, active, roll = false, delay = 0 }: { k: 'H' | 'D' | 'A'; label: string; v: number; active: boolean; roll?: boolean; delay?: number }) {
+/** One of the 1 · X · 2 cards: `top` = the most likely result (filled), `inPick` = inside our double chance (lime
+ *  outline); a result outside our pick is dimmed (fix128). */
+function OutcomeTile({ k, label, v, top = false, inPick = false, dimOut = true, roll = false, delay = 0 }: { k: 'H' | 'D' | 'A'; label: string; v: number; top?: boolean; inPick?: boolean; dimOut?: boolean; roll?: boolean; delay?: number }) {
   const color = k === 'H' ? 'text-home' : k === 'D' ? 'text-draw' : 'text-away'
-  const border = k === 'H' ? 'border-home/50 bg-home/10' : k === 'D' ? 'border-draw/50 bg-draw/10' : 'border-away/50 bg-away/10'
+  const fill = k === 'H' ? 'bg-home/15' : k === 'D' ? 'bg-draw/15' : 'bg-away/15'
   return (
-    <div className={`rounded-xl border p-3 sm:p-4 text-center ${active ? border : 'border-line/70 bg-surface2/40'} ${roll && active ? 'animate-pop' : ''}`}>
+    <div className={`rounded-xl p-3 sm:p-4 text-center transition-opacity ${inPick ? 'border-2 border-accent/80' : 'border border-line/70'} ${top ? fill : 'bg-surface2/40'} ${!inPick && dimOut ? 'opacity-50' : ''} ${roll && inPick ? 'animate-pop' : ''}`}>
       <div className="text-[11px] text-faint mb-1 truncate">
-        <span className={`font-bold mr-1 ${active ? color : ''}`}>{k === 'H' ? '1' : k === 'D' ? 'X' : '2'}</span>
+        <span className={`font-bold mr-1 ${inPick ? 'text-accent' : ''}`}>{k === 'H' ? '1' : k === 'D' ? 'X' : '2'}</span>
         {label}
       </div>
-      <div className={`num text-2xl sm:text-3xl font-extrabold ${active ? color : 'text-ink/70'}`}><CountUp value={v} decimals={1} suffix="%" animate={roll} delay={delay} /></div>
+      <div className={`num text-2xl sm:text-3xl font-extrabold ${top ? color : 'text-ink/80'}`}><CountUp value={v} decimals={1} suffix="%" animate={roll} delay={delay} /></div>
     </div>
   )
 }

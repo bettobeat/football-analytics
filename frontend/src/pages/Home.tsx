@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
 import { type Prediction, doubleChance, shortTeam } from '../lib/predict'
-import OurPick, { DcLine } from '../components/DcPick'
+import OurPick, { DcLine, SeePrediction } from '../components/DcPick'
 import { useAuth } from '../lib/auth'
 import { isCovered, revealMatch, useRevealState, justRevealed } from '../lib/reveal'
 import { matchFame } from '../lib/fame'
@@ -165,10 +165,11 @@ function FeaturedHero({ m, p, label }: { m: Match | null; p: Prediction | null; 
         <div className="flex flex-col sm:flex-row sm:items-end gap-4 sm:gap-6">
           <div className="flex-1 space-y-2">
             <div className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#9AA3B2] text-center sm:text-left">{tt("v3 prediction")}</div>
+            {p && <div className="sm:hidden flex justify-center"><SeePrediction matchId={m.id} match={m} dark className="!h-10 !px-4 !text-sm !rounded-xl" /></div>}
             {hasPct(p) && isCovered(m.id, m.status, true) ? (
-              <RevealChip dark onReveal={() => revealMatch(m.id)} />
+              <div className="hidden sm:block"><RevealChip dark onReveal={() => revealMatch(m.id)} /></div>
             ) : hasPct(p) ? (
-              <div className="space-y-2.5">
+              <div className="hidden sm:block space-y-2.5">
                 <div className="grid grid-cols-3 gap-2 sm:gap-3">
                   {pill('H', tn(m.homeTeam), p.home)}
                   {pill('D', tt('Draw'), p.draw)}
@@ -177,7 +178,7 @@ function FeaturedHero({ m, p, label }: { m: Match | null; p: Prediction | null; 
                 <div className="flex justify-center sm:justify-start"><OurPick p={p} home={shortTeam(m.homeTeam)} away={shortTeam(m.awayTeam)} dark /></div>
               </div>
             ) : (
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 text-sm">
+              <div className={`${p ? 'hidden sm:flex' : 'flex'} flex-wrap items-center justify-center sm:justify-start gap-3 text-sm`}>
                 <span className="glass !rounded-full px-4 py-2 font-semibold inline-flex items-center gap-2"><Lock /> {tt("Prediction locked")}</span>
                 <Link to={`/match/${m.id}`} state={{ match: m }} className="inline-flex items-center gap-1.5 text-[#C8FF3D] font-semibold">{tt("Unlock it →")}</Link>
               </div>
@@ -395,10 +396,11 @@ export default function Home() {
             <div className="flex items-center gap-3"><Crest team={m.homeTeam} size={32} /><span className="font-bold truncate">{tn(m.homeTeam)}</span></div>
             <div className="flex items-center gap-3"><Crest team={m.awayTeam} size={32} /><span className="font-bold truncate">{tn(m.awayTeam)}</span></div>
           </div>
+          {p && <SeePrediction matchId={m.id} match={m} className="sm:hidden self-start" />}
           {pct && isCovered(m.id, m.status, true) ? (
-            <RevealChip onReveal={() => revealMatch(m.id)} />
+            <div className="hidden sm:block"><RevealChip onReveal={() => revealMatch(m.id)} /></div>
           ) : pct ? (
-            <div className="space-y-2">
+            <div className="hidden sm:block space-y-2">
               <div className="grid grid-cols-3 gap-1.5 text-center">
                 {(['H', 'D', 'A'] as const).map(o => (
                   <span key={o} className={`rounded-xl py-1.5 text-xs font-bold num border ${on(o) ? 'border-accent/70 bg-accent/15 text-ink' : 'border-transparent bg-surface2/40 text-faint'}`}>
@@ -411,7 +413,7 @@ export default function Home() {
               {dc && <span className="flex items-center gap-2"><DcLine code={dc.code} pct={dc.pct} home={shortTeam(m.homeTeam)} away={shortTeam(m.awayTeam)} className="!text-[11px]" />{dc.strong && <span className="rounded-full border border-accent/50 text-accent text-[10px] font-bold px-1.5 py-px">{tt("Strong")}</span>}</span>}
             </div>
           ) : p ? (
-            <div className="flex items-center justify-between text-xs rounded-xl bg-surface2/70 px-3 py-2">
+            <div className="hidden sm:flex items-center justify-between text-xs rounded-xl bg-surface2/70 px-3 py-2">
               <span className="text-muted inline-flex items-center gap-1.5"><Lock /> {tt("Prediction locked")}</span>
               <span className="text-accent font-semibold">{tt("Unlock")}</span>
             </div>

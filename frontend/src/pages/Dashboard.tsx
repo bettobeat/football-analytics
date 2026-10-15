@@ -7,7 +7,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
 import { pickOfPrediction, doubleChance, dcLabel, shortTeam, type Prediction } from '../lib/predict'
-import { DcBlock } from '../components/DcPick'
+import { DcBlock, SeePrediction } from '../components/DcPick'
 import { useFavorites } from '../lib/favorites'
 import LeagueSidebar, { MobileLeagueBar, LeagueBar } from '../components/LeagueSidebar'
 import { footballCountry, leagueShortName } from '../lib/leagueCountry'
@@ -718,8 +718,24 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
         )}
       </div>
 
-      {/* prediction */}
-      <div className="flex-shrink-0 flex items-center justify-end min-w-[84px] sm:min-w-[150px]">
+      {/* fix128 phones: one "See prediction" button for upcoming games (the match page shows and reveals it);
+          live / finished: the score stays in the row, plus Hit / Miss once it is over */}
+      {p && ['SCHEDULED', 'TIMED'].includes(match.status) ? (
+        <div className="sm:hidden flex-shrink-0"><SeePrediction matchId={match.id} match={match} /></div>
+      ) : p && ENDED.has(match.status) && typeof p.home === 'number' && !p.locked && ft && ft.home !== null && ft.home !== undefined && ft.away !== null && ft.away !== undefined ? (() => {
+        const dcF = doubleChance(p)
+        const res = ft.home! > ft.away! ? 'H' : ft.home! < ft.away! ? 'A' : 'D'
+        const hit = !!dcF && dcF.sides.includes(res)
+        return (
+          <div className="sm:hidden flex-shrink-0 flex items-center gap-2">
+            <span className="num text-[13px] font-extrabold text-ink">{ft.home}–{ft.away}</span>
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold ${hit ? 'bg-win/20 text-win' : 'bg-loss/20 text-loss'}`}>{hit ? tt("Hit") : tt("Miss")}</span>
+          </div>
+        )
+      })() : null}
+
+      {/* prediction (640 px and up) */}
+      <div className="hidden sm:flex flex-shrink-0 items-center justify-end min-w-[150px]">
         {covered ? (
           <button
             type="button"
