@@ -30,7 +30,7 @@ const leagueName = (code: string) => BB_LEAGUES.find(l => l.code === code)?.name
 
 type Row = any;
 
-/** One game in list / page shape. `full` = percentages and numbers; otherwise only the pick. */
+/** One game in list / page shape. `full` = percentages and numbers; otherwise nothing about the prediction (fix123). */
 function shape(g: Row, full: boolean) {
   const status = g.status || 'NS';
   const state = DONE.includes(status) ? 'done' : LIVE.includes(status) ? 'live' : OFF.includes(status) ? 'off' : 'upcoming';
@@ -70,7 +70,8 @@ function shape(g: Row, full: boolean) {
       : null,
     prediction: pred ? {
       model: BB_MODEL,
-      pick,
+      // locked (free / signed-out, game not finished): no hint of the prediction at all, like football's hidePrediction
+      pick: showAll ? pick : null,
       locked: !showAll,
       ...(showAll ? {
         pHome: Math.round(pred.pHome * 1000) / 10, pAway: Math.round((1 - pred.pHome) * 1000) / 10,
