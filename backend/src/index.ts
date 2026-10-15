@@ -60,7 +60,7 @@ import { playerPage, findPlayer } from './services/playerPage';
 import { unlockStatus, unlockMatch, unlockedIds, isFinished, testCheckout, PLANS, billingTestMode, unlockStats, REFUND_DAYS, FREE_WEEKLY_UNLOCKS } from './services/billing';
 import { goalsCalibration } from './services/goalsCalibration';
 import { runDataAudit, lastDataAudit, startDataAuditScheduler } from './services/dataAudit';
-import { newsFor, newsStatus, startNewsScheduler, bbTeamNames, footballTeamNames } from './services/news';
+import { newsFor, newsStatus, startNewsScheduler, bbTeamNames, footballTeamNames, nflTeamNamesById } from './services/news';
 import { bbGet, bbStatus, bbSyncNow, startBasketballScheduler } from './services/basketball';
 import { adminResult, resultChecksList, checkResults, openCheck, resultFix, ResultError } from './services/bbResults';
 import { bdlGet, refreshNbaInjuries, nbaInjuryStatus } from './services/bbInjuries';
@@ -84,7 +84,7 @@ import { tuneV3Full, tuneStatus, isTuning } from './services/v3Tuner';
 import { hiddenModels, v3MixBacktest, featureModelStatus, setConfig as setModelConfig, setMixLive, startFeatureModelScheduler } from './services/featureModel';
 import { runModelDaily, sendMorningReport, modelDailyLog, buildReport, startModelDailyScheduler, dailyRunning } from './services/modelDaily';
 import { nflProbe, startNflScheduler, nflCurrentSeason } from './services/nfl';
-import { nflPublic, nflWeeks, nflWeekGames, nflGamesBetween, nflLiveGames, nflGame, nflStandings, nflTeam, nflPlayer, nflLeaders, nflSeasonsHeld, allowedSeason } from './services/nflSite';
+import { nflPublic, nflWeeks, nflWeekGames, nflGamesBetween, nflLiveGames, nflRecentResults, nflGame, nflStandings, nflTeam, nflPlayer, nflLeaders, nflSeasonsHeld, allowedSeason } from './services/nflSite';
 import { askAssistant, assistantConfigured, messagesToday, assistantStats } from './services/assistant';
 import { normalizeName } from './services/history';
 import { markFresh, markFailed } from './services/freshness';
@@ -1702,11 +1702,15 @@ app.get('/api/news', async (req, res) => {
   try {
     // ?league=PL → that league's news; no league → every league combined (home page)
     // ?sport=basketball → basketball news; ?team=<name>&short=<short name> (football) or ?teamId=<id> (basketball) → one team's news
-    const sport = req.query.sport === 'basketball' ? 'basketball' : 'football';
+    const sport = req.query.sport === 'basketball' ? 'basketball' : req.query.sport === 'american-football' ? 'american-football' : 'football';
+    // NFL news (fix138) only once the NFL site is open for this visitor
+    if (sport === 'american-football' && !(nflPublic() || req.access === 'admin')) return res.json({ data: [], timestamp: new Date().toISOString() });
     const league = typeof req.query.league === 'string' && /^[A-Z0-9]{2,8}$/i.test(req.query.league) ? req.query.league : undefined;
     const limit = Math.min(30, parseInt(String(req.query.limit || '12'), 10) || 12);
     let team: string[] | undefined;
-    if (sport === 'basketball' && /^\d+$/.test(String(req.query.teamId || ''))) {
+    if (sport === 'american-football' && /^\d+$/.test(String(req.query.teamId || ''))) {
+      team = nflTeamNamesById(parseInt(String(req.query.teamId), 10));
+    } else if (sport === 'basketball' && /^\d+$/.test(String(req.query.teamId || ''))) {
       const id = parseInt(String(req.query.teamId), 10);
       const r: any = db.prepare(`SELECT code, CASE WHEN home_id = ? THEN home_name ELSE away_name END AS name FROM bb_games WHERE home_id = ? OR away_id = ? ORDER BY kickoff DESC LIMIT 1`).get(id, id, id);
       team = r ? bbTeamNames(r.name, r.code) : [];
@@ -2047,9 +2051,15 @@ app.get('/api/nfl/config', (req, res) => {
 app.get('/api/nfl/home', (_req, res) => {
   try {
     const season = nflCurrentSeason();
-    if (!season) return res.json({ data: { season: null, live: [], week: null, games: [], standings: null, leaders: [] } });
+    if (!season) return res.json({ data: { season: null, live: [], week: null, games: [], upcoming: [], results: [], standings: null, leaders: [] } });
     const { weeks, current } = nflWeeks(season);
-    res.json({ data: { season, live: nflLiveGames(), week: weeks.find(w => w.key === current) || null, games: current ? nflWeekGames(season, current) : [], standings: nflStandings(season), leaders: nflLeaders(season, 3) } });
+    // fix138: the next two weeks too (favorites rail), and the last 8 finals (Latest results)
+    const now = Date.now();
+    res.json({ data: {
+      season, live: nflLiveGames(), week: weeks.find(w => w.key === current) || null, games: current ? nflWeekGames(season, current) : [],
+      upcoming: nflGamesBetween(new Date(now - 6 * 3600 * 1000).toISOString(), new Date(now + 14 * 86400000).toISOString()).filter(g => g.state === 'upcoming'),
+      results: nflRecentResults(8), standings: nflStandings(season), leaders: nflLeaders(season, 3)
+    } });
   } catch (e) { sendError(res, e, 'Failed to load the NFL home'); }
 });
 app.get('/api/nfl/games', (req, res) => {

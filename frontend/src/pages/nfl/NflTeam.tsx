@@ -7,6 +7,7 @@ import { FavStar } from '../../lib/favorites'
 import { record, nflTeamFav, type NflGame, type StandRow } from '../../lib/nfl'
 import { Card, Skeleton, TeamLogo } from '../bb/parts'
 import { NflGameRow } from './parts'
+import { useNews, NewsRows } from '../../components/NewsList'
 
 interface Measure { id: string; label: string; better: 'high' | 'low'; value: number | null; text: string | null; rank: number | null; of: number | null; score: number | null }
 interface Analysis { season: number; measures: Measure[]; strengths: Measure[]; weaknesses: Measure[]; rankByWeek: { week: number; rank: number; of: number }[] }
@@ -33,6 +34,7 @@ export default function NflTeam() {
   const { id } = useParams()
   const [d, setD] = useState<Data | null>(null)
   const [missing, setMissing] = useState(false)
+  const news = useNews({ sport: 'american-football', teamId: id, limit: 8 })
   useEffect(() => {
     setD(null); setMissing(false)
     axios.get(`${API_URL}/nfl/team/${id}`).then(r => { setD(r.data.data); document.title = `${r.data.data.team.name} · NFL | SportLikely` }).catch(() => setMissing(true))
@@ -65,6 +67,10 @@ export default function NflTeam() {
         {d.results.length === 0 ? <p className="text-sm text-faint">{t('No games played yet this season.')}</p> : (
           <div className="-mx-5 sm:-mx-6 divide-y divide-line/50">{d.results.map(g => <NflGameRow key={g.id} g={g} showDay />)}</div>
         )}
+      </Card>
+
+      <Card title={t('News')}>
+        {news === null ? <Skeleton rows={3} h="h-14" /> : news.length ? <div className="-mx-2"><NewsRows items={news} /></div> : <p className="text-sm text-faint">{t('No news about this team in the last month.')}</p>}
       </Card>
 
       {d.injuries.length > 0 && (

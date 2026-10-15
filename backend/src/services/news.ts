@@ -13,7 +13,7 @@
 import logger from '../utils/logger';
 import { db } from '../db';
 
-type Sport = 'football' | 'basketball';
+type Sport = 'football' | 'basketball' | 'american-football';
 type Feed = { source: string; url: string; league?: string; sport?: Sport };
 
 const UA = { 'User-Agent': 'SportLikely/1.0 (+https://sportlikely.com)' };
@@ -56,7 +56,14 @@ const FEEDS: Feed[] = [
   { source: 'BBC Sport', url: 'https://feeds.bbci.co.uk/sport/basketball/rss.xml', sport: 'basketball' },
   { source: 'The Guardian', url: 'https://www.theguardian.com/sport/basketball/rss', sport: 'basketball' },
   { source: 'Eurohoops', url: 'https://www.eurohoops.net/en/feed/', sport: 'basketball' },
-  { source: 'Sportando', url: 'https://sportando.basketball/en/feed/', sport: 'basketball' }
+  { source: 'Sportando', url: 'https://sportando.basketball/en/feed/', sport: 'basketball' },
+  // NFL (fix138; each feed checked on 16 Oct 2026)
+  { source: 'ESPN', url: 'https://www.espn.com/espn/rss/nfl/news', league: 'NFL', sport: 'american-football' },
+  { source: 'The Guardian', url: 'https://www.theguardian.com/sport/nfl/rss', league: 'NFL', sport: 'american-football' },
+  { source: 'CBS Sports', url: 'https://www.cbssports.com/rss/headlines/nfl/', league: 'NFL', sport: 'american-football' },
+  { source: 'Yahoo Sports', url: 'https://sports.yahoo.com/nfl/rss.xml', league: 'NFL', sport: 'american-football' },
+  { source: 'BBC Sport', url: 'https://feeds.bbci.co.uk/sport/american-football/rss.xml', league: 'NFL', sport: 'american-football' },
+  { source: 'ProFootballTalk', url: 'https://profootballtalk.nbcsports.com/feed/', league: 'NFL', sport: 'american-football' }
 ];
 
 /** Basketball leagues for filing stories (team names come from bb_games). */
@@ -206,6 +213,15 @@ const tag = (block: string, name: string) => {
 
 type Raw = Omit<NewsItem, 'leagues'> & { feedLeague?: string; sport: Sport };
 
+/**
+ * Betting stories (fix138): odds, betting previews, parlays, sportsbooks and bookmaker brands never reach the site
+ * (hard rule: no odds or bookmakers in public). Checked when a feed is read and again when news is served.
+ */
+const BETTING = /\b(odds|betting|bets?|bettors?|parlays?|sportsbooks?|bookmakers?|wagers?|against the spread|point spreads?|moneyline|prop bets?|player props|fanduel|draftkings|betmgm|caesars sportsbook|bet365|fanatics sportsbook)\b/i;
+const BETTING_LINK = /\/(betting|odds|gambling|sportsbook|picks-and-odds)(\/|-|$)/i;
+export const isBettingStory = (x: { title: string; summary?: string | null; link: string }) => BETTING.test(x.title) || BETTING.test(x.summary || '') || BETTING_LINK.test(x.link);
+
+
 async function fetchFeed(f: Feed): Promise<Raw[]> {
   const res = await fetch(f.url, { signal: AbortSignal.timeout(8000), headers: UA });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -216,8 +232,9 @@ async function fetchFeed(f: Feed): Promise<Raw[]> {
     const title = tag(b, 'title');
     const link = tag(b, 'link') || (b.match(/<guid[^>]*>(https?:[^<]+)<\/guid>/i)?.[1] ?? '');
     if (!title || !/^https:\/\//.test(link)) continue;
+    if (isBettingStory({ title, summary: tag(b, 'description'), link })) continue;
     // football feeds: football only (some feeds mix in other sports: tennis, F1, cricket…)
-    if (f.sport !== 'basketball' && /\/(tennis|f1|formula-1|cricket|golf|boxing|rugby-union|rugby-league|nfl|nba|darts|racing|cycling|snooker|netball|athletics)\//i.test(link)) continue;
+    if ((!f.sport || f.sport === 'football') && /\/(tennis|f1|formula-1|cricket|golf|boxing|rugby-union|rugby-league|nfl|nba|darts|racing|cycling|snooker|netball|athletics)\//i.test(link)) continue;
     const pub = tag(b, 'pubDate') || tag(b, 'dc:date');
     const d = pub ? new Date(pub) : null;
     // picture the feed ships with the story (media:content / media:thumbnail / enclosure) — the largest one
@@ -357,8 +374,32 @@ const phraseRes = NEWS_LEAGUES.map(l => ({
   not: (l.not || []).map(n => norm(n))
 }));
 
+/**
+ * Names an NFL team goes by in headlines (fix138): the full name, the nickname ("Chiefs", "49ers") and the city /
+ * region when only one team has it ("Kansas City"; not "New York" or "Los Angeles"). `cities` = every team's city.
+ */
+export function nflTeamNames(full: string, cities: string[] = []): string[] {
+  const w = full.split(/\s+/);
+  const out = new Set<string>([full]);
+  if (w.length > 1) {
+    out.add(w[w.length - 1]);
+    const city = w.slice(0, -1).join(' ');
+    if (cities.filter(c => c === city).length <= 1) out.add(city);
+  }
+  return [...out].filter(n => n.length >= 3);
+}
+export function nflTeamNamesById(id: number): string[] {
+  try {
+    const all = (db.prepare(`SELECT team_id, name FROM nfl_teams`).all() as any[]);
+    const me = all.find(r => r.team_id === id);
+    return me ? nflTeamNames(me.name, all.map(r => String(r.name).split(/\s+/).slice(0, -1).join(' '))) : [];
+  } catch { return []; }
+}
+
 /** League codes a story belongs to. */
 export function leaguesFor(title: string, summary: string, feedLeague?: string, sport: Sport = 'football'): string[] {
+  // NFL feeds are NFL-only; the team pages find their stories by team name (newsFor team)
+  if (sport === 'american-football') return ['NFL'];
   if (!matcher || Date.now() - matcherAt > 6 * 3600 * 1000) buildMatcher();
   if (sport === 'basketball' && !bbMatcher) buildBbMatcher();
   const M = sport === 'basketball' ? bbMatcher! : matcher!;
@@ -483,6 +524,7 @@ const when = (r: any) => r.published || r.seen_at;
  */
 const titleKey = (t: string) => String(t || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
 function dedupe(rows: any[]): any[] {
+  rows = rows.filter(r => !isBettingStory(r));
   const out: any[] = [];
   const at = new Map<string, number>();
   for (const r of rows) {
@@ -539,7 +581,7 @@ export async function newsFor(opts: { sport?: Sport; limit?: number; league?: st
     return rows.map(toItem);
   }
   const rows = db.prepare(`SELECT * FROM news_items WHERE sport = ? AND COALESCE(published, seen_at) >= ? ORDER BY COALESCE(published, seen_at) DESC LIMIT 300`)
-    .all(sport, new Date(Date.now() - (sport === 'basketball' ? 5 : 3) * 86400000).toISOString());
+    .all(sport, new Date(Date.now() - (sport === 'football' ? 3 : 5) * 86400000).toISOString());
   return mix(dedupe(rows), limit).map(toItem);
 }
 

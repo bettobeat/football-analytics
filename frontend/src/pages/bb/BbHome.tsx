@@ -11,6 +11,7 @@ import { useBbConfig, useBbFavorites, liveLabel, bbRank, type BbGame } from '../
 import { TeamLogo, LockIcon, GameRow, useLiveChance, rid, rstatus } from './parts'
 import { useNews, NewsLead } from '../../components/NewsList'
 import RecordLink from '../../components/RecordLink'
+import { HomeSection as Section, FirstVisit, HeroFrame, HeroEmpty, HeroLoading, SideHeader, NextList, SideLoading, RecordCard } from '../../components/SportHome'
 
 interface Rec { n: number; hits: number; hitRate: number | null; strongN: number; strongHits: number; strongHitRate: number | null }
 interface RecordData { since: string | null; total: Rec }
@@ -21,40 +22,14 @@ const top = (g: BbGame) => Math.max(g.prediction!.pHome!, g.prediction!.pAway!)
 const EL_BIG = [/real madrid/i, /barcelona/i, /olympiacos|olympiakos/i, /panathinaikos/i, /fenerbah/i, /efes/i, /zalgiris/i, /monaco/i, /partizan/i, /zvezda|red star/i, /olimpia milano|^milano|ea7/i, /virtus|bologna/i, /bayern/i, /baskonia/i]
 const NBA_FAME = [/lakers/i, /warriors/i, /celtics/i, /knicks/i, /bucks/i, /nuggets/i, /thunder/i, /76ers|sixers/i, /mavericks/i, /suns/i, /heat/i, /cavaliers/i, /spurs/i, /timberwolves/i, /bulls/i]
 
-function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
-  return (
-    <section className="space-y-3.5">
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="font-display text-lg sm:text-xl font-bold text-ink">{title}</h2>
-        {action}
-      </div>
-      {children}
-    </section>
-  )
-}
-
-/** Big featured game: the two logos, blown up and blurred, paint the background in the teams' colours; a court below. */
+/** Big featured game (shared frame, components/SportHome.tsx) with basketball's prediction: 1 · total · 2. */
 function FeaturedHero({ g, loading = false }: { g: BbGame | null; loading?: boolean }) {
   useRevealState()
-  if (!g && loading) return <div className="rounded-[32px] border border-white/10 min-h-[360px] sm:min-h-[460px] bg-surface2/40 animate-pulse" />
-  if (!g)
-    return (
-      <div className="relative overflow-hidden rounded-[32px] border border-white/10 min-h-[360px] sm:min-h-[460px] bg-[linear-gradient(160deg,#0F1A2B_0%,#0A0F17_60%,#07090D_100%)] p-10 flex flex-col justify-center gap-3 text-[#EEF1F6]">
-        <div className="font-display text-3xl sm:text-5xl font-extrabold tracking-tight leading-[1.05]">{t('Basketball predictions,')}<br />{t('tested in public.')}</div>
-        <p className="text-[#C9D0DB] max-w-lg">{t('The next games appear here as soon as they are scheduled.')}</p>
-      </div>
-    )
+  if (!g && loading) return <HeroLoading />
+  if (!g) return <HeroEmpty line1={t('Basketball predictions,')} line2={t('tested in public.')} text={t('The next games appear here as soon as they are scheduled.')} />
   const p = g.prediction
   const k = p?.pick || null
   const roll = justRevealed(rid(g))
-  const side = (team: BbGame['home']) => (
-    <Link to={`/basketball/team/${team.id}`} className="group flex flex-col items-center gap-3 sm:gap-4 min-w-0">
-      <span className="relative grid place-items-center w-24 h-24 sm:w-36 sm:h-36 rounded-full bg-white/[0.06] border border-white/10 backdrop-blur-md shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)] transition-transform group-hover:scale-[1.04]">
-        <TeamLogo team={team} size={72} />
-      </span>
-      <span className="font-display font-extrabold text-lg sm:text-3xl tracking-tight text-center leading-tight max-w-full break-words">{team.name}</span>
-    </Link>
-  )
   const pill = (o: 'H' | 'T' | 'A', label: string, v: ReactNode) => (
     <div className={`glass px-3 py-2.5 sm:px-4 text-center ${k === o ? 'ring-2 ring-[#C8FF3D]/70' : ''} ${roll && k === o ? 'animate-pop' : ''}`}>
       <div className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.08em] text-[#9AA3B2] truncate">{label}</div>
@@ -62,65 +37,23 @@ function FeaturedHero({ g, loading = false }: { g: BbGame | null; loading?: bool
     </div>
   )
   return (
-    <div className="relative overflow-hidden rounded-[32px] border border-white/10 min-h-[420px] sm:min-h-[480px] bg-[#0A0E15] text-[#EEF1F6] isolate">
-      {g.home.logo && <img src={g.home.logo} alt="" aria-hidden className="absolute -z-10 -left-24 top-1/2 -translate-y-1/2 w-[560px] h-[560px] object-contain blur-[80px] opacity-50 saturate-150" />}
-      {g.away.logo && <img src={g.away.logo} alt="" aria-hidden className="absolute -z-10 -right-24 top-1/2 -translate-y-1/2 w-[560px] h-[560px] object-contain blur-[80px] opacity-50 saturate-150" />}
-      <div aria-hidden className="absolute inset-0 -z-10 bg-[radial-gradient(600px_260px_at_50%_-60px,rgba(255,255,255,0.16),transparent_70%),linear-gradient(to_bottom,rgba(7,9,13,0.1),rgba(7,9,13,0.75))]" />
-      {/* basketball court in perspective */}
-      <svg aria-hidden viewBox="0 0 1000 400" preserveAspectRatio="none" className="absolute -z-10 left-[-10%] w-[120%] bottom-0 h-[55%] opacity-30" style={{ transform: 'perspective(600px) rotateX(55deg)', transformOrigin: 'bottom' }}>
-        <g fill="none" stroke="#C8FF3D" strokeWidth="2">
-          <rect x="20" y="10" width="960" height="380" />
-          <line x1="500" y1="10" x2="500" y2="390" />
-          <circle cx="500" cy="200" r="60" />
-          <rect x="20" y="140" width="190" height="120" />
-          <rect x="790" y="140" width="190" height="120" />
-          <circle cx="210" cy="200" r="60" />
-          <circle cx="790" cy="200" r="60" />
-          <path d="M20 40 H90 A220 220 0 0 1 90 360 H20" />
-          <path d="M980 40 H910 A220 220 0 0 0 910 360 H980" />
-        </g>
-      </svg>
-
-      <div className="relative h-full p-5 sm:p-9 flex flex-col gap-6 sm:gap-8">
-        <div className="flex flex-wrap items-center justify-center sm:justify-between gap-2">
-          <span className="text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#07090D] bg-[#C8FF3D] px-3 py-1.5 rounded-full">{t('Featured game')}</span>
-          <span className="glass !rounded-full inline-flex items-center gap-2 px-3 py-1.5 text-xs sm:text-sm text-[#C9D0DB]">{g.league.name}</span>
+    <HeroFrame home={g.home} away={g.away} kickoff={g.kickoff} competition={g.league.name} field="court"
+      teamHref={tm => `/basketball/team/${tm.id}`} gameHref={`/basketball/game/${g.id}`}>
+      {hasPct(g) && isCovered(rid(g), rstatus(g), true) ? (
+        <RevealChip dark onReveal={() => revealMatch(rid(g))} />
+      ) : hasPct(g) ? (
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          {pill('H', g.home.name, <CountUp value={p!.pHome!} suffix="%" animate={roll} />)}
+          {pill('T', t('Total points'), <span className="num">{p!.total!.toFixed(1)}</span>)}
+          {pill('A', g.away.name, <CountUp value={p!.pAway!} suffix="%" animate={roll} delay={240} />)}
         </div>
-
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-6 flex-1">
-          {side(g.home)}
-          <div className="flex flex-col items-center gap-2">
-            <span className="font-display font-extrabold text-3xl sm:text-6xl text-white/90 tracking-tight">{t('VS')}</span>
-            <span className="text-xs sm:text-sm font-bold text-white">{new Date(g.kickoff).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })}</span>
-            <span className="text-[11px] sm:text-xs text-[#9AA3B2]">{new Date(g.kickoff).toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
-          </div>
-          {side(g.away)}
+      ) : (
+        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 text-sm">
+          <span className="glass !rounded-full px-4 py-2 font-semibold inline-flex items-center gap-2"><LockIcon /> {t('Prediction locked')}</span>
+          <Link to="/premium" className="inline-flex items-center gap-1.5 text-[#C8FF3D] font-semibold">{t('Unlock it →')}</Link>
         </div>
-
-        <div className="flex flex-col sm:flex-row sm:items-end gap-4 sm:gap-6">
-          <div className="flex-1 space-y-2">
-            <div className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#9AA3B2] text-center sm:text-left">{t('Our prediction')}</div>
-            {hasPct(g) && isCovered(rid(g), rstatus(g), true) ? (
-              <RevealChip dark onReveal={() => revealMatch(rid(g))} />
-            ) : hasPct(g) ? (
-              <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                {pill('H', g.home.name, <CountUp value={p!.pHome!} suffix="%" animate={roll} />)}
-                {pill('T', t('Total points'), <span className="num">{p!.total!.toFixed(1)}</span>)}
-                {pill('A', g.away.name, <CountUp value={p!.pAway!} suffix="%" animate={roll} delay={240} />)}
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 text-sm">
-                <span className="glass !rounded-full px-4 py-2 font-semibold inline-flex items-center gap-2"><LockIcon /> {t('Prediction locked')}</span>
-                <Link to="/premium" className="inline-flex items-center gap-1.5 text-[#C8FF3D] font-semibold">{t('Unlock it →')}</Link>
-              </div>
-            )}
-          </div>
-          <Link to={`/basketball/game/${g.id}`} className="h-12 px-7 inline-flex items-center justify-center rounded-2xl bg-[#C8FF3D] text-[#07090D] font-extrabold shadow-[0_10px_30px_-10px_rgba(200,255,61,0.6)] hover:brightness-105">
-            {t('Full analysis')}
-          </Link>
-        </div>
-      </div>
-    </div>
+      )}
+    </HeroFrame>
   )
 }
 
@@ -230,16 +163,10 @@ export default function BbHome() {
 
         {/* first visit (signed-out visitors only) */}
         {access === 'anon' && (
-          <section className="rounded-3xl border border-accent/30 bg-[linear-gradient(135deg,rgb(var(--accent)/0.10),rgb(var(--surface)/0.6)_60%)] p-5 sm:p-7 flex flex-col lg:flex-row lg:items-center gap-5">
-            <div className="flex-1 min-w-0 space-y-2">
-              <h1 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-ink">{t('Basketball predictions')}</h1>
-              <p className="text-sm sm:text-base text-muted max-w-2xl">{t('Who wins, the point spread, total points and the predicted score for every game of the NBA, the EuroLeague and {0} more leagues in Europe, Asia and the Americas. Every prediction is saved before tip-off and checked in public.', { 0: Math.max(0, (cfg?.leagues.length || 18) - 2) })}</p>
-            </div>
-            <div className="flex flex-col sm:flex-row lg:flex-col gap-2 lg:w-52">
-              <Link to="/signup" className="h-11 px-5 rounded-2xl bg-accent text-bg font-extrabold grid place-items-center">{t('Create a free account')}</Link>
-              <RecordLink to="/basketball/accuracy" className="h-11 px-5 rounded-2xl border border-line text-ink font-semibold grid place-items-center hover:border-faint">{t('See our record')}</RecordLink>
-            </div>
-          </section>
+          <FirstVisit title={t('Basketball predictions')} text={t('Who wins, the point spread, total points and the predicted score for every game of the NBA, the EuroLeague and {0} more leagues in Europe, Asia and the Americas. Every prediction is saved before tip-off and checked in public.', { 0: Math.max(0, (cfg?.leagues.length || 18) - 2) })}>
+            <Link to="/signup" className="h-11 px-5 rounded-2xl bg-accent text-bg font-extrabold grid place-items-center">{t('Create a free account')}</Link>
+            <RecordLink to="/basketball/accuracy" className="h-11 px-5 rounded-2xl border border-line text-ink font-semibold grid place-items-center hover:border-faint">{t('See our record')}</RecordLink>
+          </FirstVisit>
         )}
 
         {/* hero: featured game + live / next tip-offs */}
@@ -247,13 +174,7 @@ export default function BbHome() {
           <FeaturedHero g={featured} loading={!loaded} />
 
           <div className="card p-5 sm:p-6 flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-display text-lg font-bold">{live.length ? t('Live now') : t('Next tip-offs')}</h2>
-              <span className={`inline-flex items-center gap-2 text-xs font-bold px-3 py-1 rounded-full ${live.length ? 'text-live bg-live/10' : 'text-faint bg-surface2/70'}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${live.length ? 'bg-live animate-pulseDot' : 'bg-faint'}`} />
-                {live.length ? t('{0} live', { 0: live.length }) : t('No live games')}
-              </span>
-            </div>
+            <SideHeader title={live.length ? t('Live now') : t('Next tip-offs')} live={live.length} />
             {liveMain ? (
               <>
                 <Link to={`/basketball/game/${liveMain.id}`} className="glass p-4 space-y-3 hover:bg-white/10 transition-colors">
@@ -281,30 +202,15 @@ export default function BbHome() {
                 </div>
               </>
             ) : soonest.length ? (
-              <div className="flex flex-col gap-1.5">
-                {soonest.map(g => (
-                  <Link key={g.id} to={`/basketball/game/${g.id}`} className="flex items-center gap-3 p-2.5 rounded-2xl hover:bg-surface2/60 transition-colors">
-                    <div className="flex -space-x-2 flex-shrink-0">
-                      <span className="rounded-full bg-surface2 p-1 ring-2 ring-surface"><TeamLogo team={g.home} size={24} /></span>
-                      <span className="rounded-full bg-surface2 p-1 ring-2 ring-surface"><TeamLogo team={g.away} size={24} /></span>
-                    </div>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-bold truncate">{g.home.name} – {g.away.name}</span>
-                      <span className="block text-[11px] text-faint truncate">{g.league.name}</span>
-                    </span>
-                    <span className="text-right flex-shrink-0">
-                      <span className="block text-xs font-bold text-ink">{new Date(g.kickoff).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })}</span>
-                      <span className="block text-[11px] text-faint">{new Date(g.kickoff).toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
-                    </span>
-                  </Link>
-                ))}
-                <span className="mt-1 px-2 flex flex-wrap gap-x-4 gap-y-1">
+              <NextList
+                items={soonest.map(g => ({ id: g.id, href: `/basketball/game/${g.id}`, home: g.home, away: g.away, sub: g.league.name, kickoff: g.kickoff }))}
+                footer={<>
                   <Link to="/basketball/games" className="text-sm font-bold text-accent">{t('All games →')}</Link>
                   <Link to="/basketball/predictions/today" className="text-sm font-bold text-accent">{t("Today's predictions →")}</Link>
-                </span>
-              </div>
+                </>}
+              />
             ) : !loaded ? (
-              <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-12 rounded-xl bg-surface2/50 animate-pulse" />)}</div>
+              <SideLoading />
             ) : (
               <div className="flex-1 grid place-items-center text-center text-sm text-muted py-6">
                 <span className="space-y-2">
@@ -339,11 +245,7 @@ export default function BbHome() {
 
         {/* record · leagues · latest results */}
         <div className="grid gap-5 lg:grid-cols-3">
-          <div className="rounded-3xl p-6 border border-accent/30 bg-[linear-gradient(160deg,rgb(var(--accent)/0.10),rgb(var(--surface)/0.6))] flex flex-col gap-4">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="font-display text-lg font-bold">{t('Our record')}</h2>
-              {record && record.total.n > 0 && <span className="text-xs text-muted">{t('{0} games', { 0: record.total.n })}</span>}
-            </div>
+          <RecordCard aside={record && record.total.n > 0 ? <span className="text-xs text-muted">{t('{0} games', { 0: record.total.n })}</span> : undefined}>
             {record && record.total.hitRate !== null ? (
               <div className="space-y-3">
                 <div className="space-y-1.5">
@@ -362,7 +264,7 @@ export default function BbHome() {
             )}
             <p className="text-sm text-muted leading-relaxed">{t('Picks right, every game counted. Each prediction is saved before tip-off and never edited.')}</p>
             <RecordLink to="/basketball/accuracy" className="mt-auto text-sm font-bold text-accent">{t('See the full record →')}</RecordLink>
-          </div>
+          </RecordCard>
 
           <div className="card p-6 flex flex-col gap-4">
             <h2 className="font-display text-lg font-bold">{t('Leagues')}</h2>

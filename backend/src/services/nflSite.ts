@@ -94,6 +94,11 @@ export function nflWeekGames(season: number, key: string): NflGame[] {
 export function nflGamesBetween(from: string, to: string): NflGame[] {
   return (db.prepare(`SELECT ${GAME_COLS} FROM nfl_games WHERE kickoff >= ? AND kickoff < ? AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff, game_id`).all(from, to) as any[]).map(shapeGame);
 }
+/** The last finished games (home page "Latest results"). */
+export function nflRecentResults(n = 8): NflGame[] {
+  const season = nflCurrentSeason();
+  return (db.prepare(`SELECT ${GAME_COLS} FROM nfl_games WHERE season = ? AND status IN ('FT','AOT') AND home_pts IS NOT NULL AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff DESC LIMIT ?`).all(season, n) as any[]).map(shapeGame);
+}
 export function nflLiveGames(): NflGame[] {
   return (db.prepare(`SELECT ${GAME_COLS} FROM nfl_games WHERE status IN ('Q1','Q2','Q3','Q4','OT','HT') ORDER BY kickoff`).all() as any[]).map(shapeGame);
 }

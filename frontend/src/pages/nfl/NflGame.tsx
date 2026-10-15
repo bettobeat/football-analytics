@@ -8,6 +8,7 @@ import { NFL_STATUS, weekLabel, timeOf, nick, nflTeamFav, type NflGame as Game, 
 import StickyBar from '../../components/StickyBar'
 import { Card, Skeleton, TeamLogo } from '../bb/parts'
 import { StatBars } from './parts'
+import { useNews, NewsRows, type NewsItem } from '../../components/NewsList'
 
 type Box = {
   firstDowns: number | null; plays: number | null; yards: number | null; yardsPerPlay: number | null; passYards: number | null; rushYards: number | null; rushAttempts: number | null
@@ -108,6 +109,10 @@ export default function NflGame() {
 
 function Overview({ d }: { d: Data }) {
   const g = d.game
+  // fix138: stories about either team, newest first
+  const hn = useNews({ sport: 'american-football', teamId: g.home.id, limit: 6 })
+  const an = useNews({ sport: 'american-football', teamId: g.away.id, limit: 6 })
+  const news: NewsItem[] | null = hn && an ? [...new Map([...hn, ...an].map(n => [n.link, n])).values()].sort((a, b) => (b.published || '').localeCompare(a.published || '')).slice(0, 8) : null
   const q = g.quarters
   const ot = q && (q.home[4] != null || q.away[4] != null)
   return (
@@ -151,6 +156,11 @@ function Overview({ d }: { d: Data }) {
           </Card>
         ))}
       </div>
+      {news && news.length > 0 && (
+        <Card title={t('News about both teams')}>
+          <div className="-mx-2"><NewsRows items={news} /></div>
+        </Card>
+      )}
       <Card title={t('Head-to-head: last 10 meetings')}>
         {d.h2h.length === 0 ? <p className="text-sm text-faint">{t('No meetings in our records.')}</p> : (
           <ul className="divide-y divide-line/50">
