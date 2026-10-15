@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../../lib/socket'
 import { t, LOCALE, lang } from '../../lib/i18n'
@@ -180,7 +180,7 @@ export default function BbGame() {
       <div className="mt-4 space-y-6 min-w-0">
         {tab === 'prediction' && (
           <>
-            <PredictionSection d={d} />
+            <div id="prediction" className="scroll-mt-32"><PredictionSection d={d} /></div>
             {lang === 'en' && d.writeup && <GamePreview text={d.writeup} />}
             <YourPicks sport="bb" gameId={g.id} home={g.home.name} away={g.away.name} />
             <MarketsGate d={d} />
@@ -259,6 +259,15 @@ function PredictionSection({ d }: { d: Detail }) {
   const { hidden, reveal } = useReveal(rid(g), rstatus(g), !!p && !p.locked)
   const [anim, setAnim] = useState(false)
   const roll = justRevealed(rid(g))
+  // fix130: opened from a phone list's "See prediction": scroll here and play the reveal of a "guess first" cover
+  const location = useLocation()
+  const done = useRef(false)
+  useEffect(() => {
+    if (done.current) return
+    done.current = true
+    if (window.location.hash === '#prediction') requestAnimationFrame(() => document.getElementById('prediction')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+    if ((location.state as any)?.reveal && hidden) setAnim(true)
+  }, [])
   const note = p ? [p.model || 'bb-v1', g.state === 'upcoming' ? t('Updated until tip-off') : t('Saved before tip-off')].join(' · ') : undefined
   return (
     <Card title={t('Prediction')} action={note ? <span className="text-xs text-faint">{note}</span> : undefined}>

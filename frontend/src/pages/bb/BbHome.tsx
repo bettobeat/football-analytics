@@ -10,6 +10,7 @@ import { RevealChip } from '../../components/Reveal'
 import { useBbConfig, useBbFavorites, liveLabel, bbRank, type BbGame } from '../../lib/bb'
 import { TeamLogo, LockIcon, GameRow, useLiveChance, rid, rstatus } from './parts'
 import { useNews, NewsLead } from '../../components/NewsList'
+import { SeePrediction } from '../../components/DcPick'
 import RecordLink from '../../components/RecordLink'
 
 interface Rec { n: number; hits: number; hitRate: number | null; strongN: number; strongHits: number; strongHitRate: number | null }
@@ -46,6 +47,7 @@ function FeaturedHero({ g, loading = false }: { g: BbGame | null; loading?: bool
     )
   const p = g.prediction
   const k = p?.pick || null
+  const btn = !!p && g.state === 'upcoming'
   const roll = justRevealed(rid(g))
   const side = (team: BbGame['home']) => (
     <Link to={`/basketball/team/${team.id}`} className="group flex flex-col items-center gap-3 sm:gap-4 min-w-0">
@@ -100,16 +102,18 @@ function FeaturedHero({ g, loading = false }: { g: BbGame | null; loading?: bool
         <div className="flex flex-col sm:flex-row sm:items-end gap-4 sm:gap-6">
           <div className="flex-1 space-y-2">
             <div className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#9AA3B2] text-center sm:text-left">{t('Our prediction')}</div>
+            {/* fix130 phones: one "See prediction" button (like football); the game page shows / reveals it */}
+            {btn && <div className="sm:hidden flex justify-center"><SeePrediction matchId={g.id} to={`/basketball/game/${g.id}#prediction`} dark className="!h-10 !px-4 !text-sm !rounded-xl" /></div>}
             {hasPct(g) && isCovered(rid(g), rstatus(g), true) ? (
-              <RevealChip dark onReveal={() => revealMatch(rid(g))} />
+              <div className={btn ? 'hidden sm:block' : ''}><RevealChip dark onReveal={() => revealMatch(rid(g))} /></div>
             ) : hasPct(g) ? (
-              <div className="grid grid-cols-3 gap-2 sm:gap-3">
+              <div className={`grid grid-cols-3 gap-2 sm:gap-3 ${btn ? 'max-sm:hidden' : ''}`}>
                 {pill('H', g.home.name, <CountUp value={p!.pHome!} suffix="%" animate={roll} />)}
                 {pill('T', t('Total points'), <span className="num">{p!.total!.toFixed(1)}</span>)}
                 {pill('A', g.away.name, <CountUp value={p!.pAway!} suffix="%" animate={roll} delay={240} />)}
               </div>
             ) : (
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 text-sm">
+              <div className={`${btn ? 'hidden sm:flex' : 'flex'} flex-wrap items-center justify-center sm:justify-start gap-3 text-sm`}>
                 <span className="glass !rounded-full px-4 py-2 font-semibold inline-flex items-center gap-2"><LockIcon /> {t('Prediction locked')}</span>
                 <Link to="/premium" className="inline-flex items-center gap-1.5 text-[#C8FF3D] font-semibold">{t('Unlock it →')}</Link>
               </div>
@@ -193,10 +197,12 @@ export default function BbHome() {
           <div className="flex items-center gap-3"><TeamLogo team={g.home} size={32} /><span className="font-bold truncate">{g.home.name}</span></div>
           <div className="flex items-center gap-3"><TeamLogo team={g.away} size={32} /><span className="font-bold truncate">{g.away.name}</span></div>
         </div>
+        {/* fix130 phones: one "See prediction" button (like football) */}
+        {p && <SeePrediction matchId={g.id} to={`/basketball/game/${g.id}#prediction`} className="sm:hidden self-start" />}
         {pct && isCovered(rid(g), rstatus(g), true) ? (
-          <RevealChip onReveal={() => revealMatch(rid(g))} />
+          <div className="hidden sm:block"><RevealChip onReveal={() => revealMatch(rid(g))} /></div>
         ) : pct ? (
-          <div className="space-y-2">
+          <div className="hidden sm:block space-y-2">
             <div className="grid grid-cols-3 gap-1.5 text-center">
               {(['H', 'T', 'A'] as const).map(o => (
                 <span key={o} className={`rounded-xl py-1.5 text-xs font-bold num ${p!.pick === o ? (o === 'H' ? 'bg-home/20 text-home' : 'bg-away/20 text-away') : 'bg-surface2/70 text-muted'}`}>
@@ -208,7 +214,7 @@ export default function BbHome() {
             {strong ? <span className="inline-block text-[11px] font-extrabold text-bg bg-accent px-2 py-0.5 rounded-full">{t('Strong pick')}</span> : null}
           </div>
         ) : p ? (
-          <div className="flex items-center justify-between text-xs rounded-xl bg-surface2/70 px-3 py-2">
+          <div className="hidden sm:flex items-center justify-between text-xs rounded-xl bg-surface2/70 px-3 py-2">
             <span className="text-muted inline-flex items-center gap-1.5"><LockIcon /> {t('Prediction locked')}</span>
             <span className="text-accent font-semibold">{t('Unlock')}</span>
           </div>

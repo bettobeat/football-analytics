@@ -3,7 +3,7 @@ import { Link, Navigate, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { doubleChance, shortTeam, type Prediction } from '../lib/predict'
-import { DcBlock, DcLine, PickWords } from '../components/DcPick'
+import { DcBlock, DcLine, SeePrediction } from '../components/DcPick'
 import { isCovered, revealMatch, useRevealState } from '../lib/reveal'
 import RecentResults from '../components/RecentResults'
 import { FavStar } from '../lib/favorites'
@@ -476,7 +476,7 @@ function FixtureRow({ m }: { m: Match }) {
   // fix120: our pick is the double chance
   const dc = doubleChance(p)
   return (
-    <Link to={`/match/${m.id}#prediction`} state={{ match: m }} className="flex items-center gap-2 sm:gap-3 px-1 sm:px-2 py-2 rounded-xl hover:bg-surface2/60 transition-colors">
+    <Link to={`/match/${m.id}`} state={{ match: m }} className="flex items-center gap-2 sm:gap-3 px-1 sm:px-2 py-2 rounded-xl hover:bg-surface2/60 transition-colors">
       <span className="w-10 sm:w-12 flex-shrink-0 text-center">
         <span className="block text-[10px] text-faint">{new Date(m.utcDate).toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric' })}</span>
         <span className="block text-xs font-bold text-ink num">{new Date(m.utcDate).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })}</span>
@@ -485,18 +485,8 @@ function FixtureRow({ m }: { m: Match }) {
         <span className="flex items-center gap-1.5 text-[13px] sm:text-sm"><Crest team={m.homeTeam} size={16} /><span className="truncate text-ink">{tn(m.homeTeam)}</span></span>
         <span className="flex items-center gap-1.5 text-[13px] sm:text-sm"><Crest team={m.awayTeam} size={16} /><span className="truncate text-ink">{tn(m.awayTeam)}</span></span>
       </span>
-      {/* fix129 phones: like basketball — our pick in words + % (Reveal / lock as on wider screens) */}
-      {p && (
-        <span className="sm:hidden flex-shrink-0 flex justify-end min-w-[84px]">
-          {covered ? (
-            <button onClick={e => { e.preventDefault(); revealMatch(m.id) }} className="text-[11px] font-bold text-bg bg-accent px-2.5 py-1 rounded-full">{tt("Reveal")}</button>
-          ) : pct ? (
-            <PickWords p={p} home={shortTeam(m.homeTeam)} away={shortTeam(m.awayTeam)} />
-          ) : (
-            <span className="text-xs text-faint">{tt("Locked")}</span>
-          )}
-        </span>
-      )}
+      {/* fix128 phones: one button; the match page shows (and reveals) the prediction */}
+      {p && <span className="sm:hidden flex-shrink-0"><SeePrediction matchId={m.id} match={m} /></span>}
       <span className={`flex-shrink-0 text-right flex-col items-end ${p ? 'hidden sm:flex' : 'flex'}`}>
         {covered ? (
           <button

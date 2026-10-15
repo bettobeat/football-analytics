@@ -102,17 +102,25 @@ export function DcLine({ code, pct, home, away, className = '' }: { code: DC; pc
 }
 
 /**
- * fix129 — phone list rows (every sport looks like basketball's GameRow): our pick in words on one line, coloured
- * (1X = home colour, X2 = away colour, 12 = "No draw" in ink), and its % underneath. Pass short team names.
+ * fix128 — phones (under 640 px): list rows show this one button instead of the pick. It opens the match page at the
+ * Prediction card; the reveal (free reveals, "guess first" covers) happens there.
  */
-export function PickWords({ p, home, away, roll = false, hero = false, dark = false, className = '' }: { p: Prediction; home: string; away: string; roll?: boolean; hero?: boolean; dark?: boolean; className?: string }) {
-  const dc = doubleChance(p)
-  if (!dc || dc.pct === null) return null
-  const color = dc.code === '1X' ? 'text-home' : dc.code === 'X2' ? 'text-away' : dark ? 'text-white' : 'text-ink'
+export function SeePrediction({ matchId, match, to, dark = false, className = '' }: { matchId: number; match?: unknown; to?: string; dark?: boolean; className?: string }) {
+  const navigate = useNavigate()
+  const go = (e: { preventDefault: () => void; stopPropagation: () => void }) => {
+    e.preventDefault(); e.stopPropagation()
+    navigate(to || `/match/${matchId}#prediction`, { state: { match, reveal: true } })
+  }
   return (
-    <span className={`leading-tight ${hero ? 'text-center' : 'text-right'} ${roll ? 'pop-in' : ''} ${className}`}>
-      <span className={`block font-bold truncate ${hero ? 'text-lg' : 'text-[11px] max-w-[120px]'} ${color}`}>{dcLabel(dc.code, home, away)}</span>
-      <CountUp value={dc.pct} suffix="%" animate={roll} className={`block num font-semibold ${dark ? 'text-white/80' : 'text-ink/80'} ${hero ? 'text-sm' : 'text-[11px]'}`} />
+    <span
+      role="link" tabIndex={0} onClick={go} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') go(e) }}
+      className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[11px] font-bold whitespace-nowrap cursor-pointer border ${dark ? 'bg-[#C8FF3D]/15 text-[#C8FF3D] border-[#C8FF3D]/40' : 'bg-accent/10 text-accent border-accent/30 hover:bg-accent/15'} ${className}`}
+    >
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+        <circle cx="12" cy="12" r="3" />
+      </svg>
+      {t("See prediction")}
     </span>
   )
 }

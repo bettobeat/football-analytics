@@ -5,6 +5,7 @@ import { useReveal, justRevealed } from '../../lib/reveal'
 import CountUp from '../../components/CountUp'
 import { LeagueBar } from '../../components/LeagueSidebar'
 import { BB_STATUS, BB_COUNTRY, liveLabel, bbRank, timeOf, useBbFavorites, type BbGame, type BbSide } from '../../lib/bb'
+import { SeePrediction } from '../../components/DcPick'
 import { useStuck, stuckBg } from '../../lib/useStuck'
 
 /** Shared pieces of the basketball pages — the same look as the football pages. */
@@ -132,13 +133,23 @@ export function GameRow({ g, showLeague = false, showDay = false, compact = fals
       {/* prediction */}
       {compact ? (
         <div className="flex-shrink-0 flex flex-col items-end gap-0.5 max-w-[96px]">
-          {pickName && <span className={`text-[11px] font-semibold truncate max-w-full ${PICK_COLOR[pick!]}`}>{pickName}</span>}
+          {pickName && <span className={`hidden sm:block text-[11px] font-semibold truncate max-w-full ${PICK_COLOR[pick!]}`}>{pickName}</span>}
           {done && p?.hit !== null && p?.hit !== undefined && (
             <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${p.hit ? 'bg-win/15 text-win' : 'bg-loss/15 text-loss'}`}>{p.hit ? t('Hit') : t('Miss')}</span>
           )}
         </div>
       ) : (
-      <div className="flex-shrink-0 flex items-center justify-end min-w-[84px] sm:min-w-[150px] gap-1.5">
+      <>
+      {/* fix130 phones: like football (fix128) — one "See prediction" button that opens the game page at the
+          prediction card; live: the score stays in the row; finished: score + Hit / Miss */}
+      <div className="sm:hidden flex-shrink-0 flex items-center justify-end">
+        {g.state === 'upcoming' && p ? (
+          <SeePrediction matchId={g.id} to={`/basketball/game/${g.id}#prediction`} />
+        ) : done && p?.hit !== null && p?.hit !== undefined ? (
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${p.hit ? 'bg-win/15 text-win' : 'bg-loss/15 text-loss'}`}>{p.hit ? t('Hit') : t('Miss')}</span>
+        ) : null}
+      </div>
+      <div className="hidden sm:flex flex-shrink-0 items-center justify-end min-w-[150px] gap-1.5">
         {covered ? (
           <button
             type="button"
@@ -198,6 +209,7 @@ export function GameRow({ g, showLeague = false, showDay = false, compact = fals
           <span className={`w-5 h-5 rounded grid place-items-center text-[10px] font-extrabold ${p.hit ? 'bg-win/15 text-win' : 'bg-loss/15 text-loss'}`} title={p.hit ? t('Hit') : t('Miss')}>{p.hit ? '✓' : '✗'}</span>
         )}
       </div>
+      </>
       )}
     </Link>
   )

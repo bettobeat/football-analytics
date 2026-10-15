@@ -7,7 +7,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
 import { pickOfPrediction, doubleChance, dcLabel, shortTeam, type Prediction } from '../lib/predict'
-import { DcBlock, PickWords } from '../components/DcPick'
+import { DcBlock, SeePrediction } from '../components/DcPick'
 import { useFavorites } from '../lib/favorites'
 import LeagueSidebar, { MobileLeagueBar, LeagueBar } from '../components/LeagueSidebar'
 import { footballCountry, leagueShortName } from '../lib/leagueCountry'
@@ -647,7 +647,7 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
       : null
 
   return (
-    <Link to={`/match/${match.id}#prediction`} state={{ match: match }} className={`group relative flex items-center gap-2.5 px-3 sm:px-4 py-1.5 hover:bg-surface2/50 transition-colors ${isLive ? 'bg-live/[0.06]' : ''}`}>
+    <Link to={`/match/${match.id}`} state={{ match: match }} className={`group relative flex items-center gap-2.5 px-3 sm:px-4 py-1.5 hover:bg-surface2/50 transition-colors ${isLive ? 'bg-live/[0.06]' : ''}`}>
       {isLive && <span className="absolute left-0 inset-y-0 w-0.5 bg-live" aria-hidden />}
       {/* time */}
       <div className="relative w-10 flex-shrink-0 text-center leading-tight">
@@ -697,7 +697,7 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
             </span>
           )
         })()}
-        {isLive && p?.live && !covered && (<div className="hidden sm:block">{(() => {
+        {isLive && p?.live && !covered && (() => {
           const l = p.live
           const k: Pick = l.home >= l.draw && l.home >= l.away ? 'H' : l.away >= l.draw ? 'A' : 'D'
           const v = Math.min(99, Math.round(k === 'H' ? l.home : k === 'D' ? l.draw : l.away))
@@ -706,7 +706,7 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
               {tt("Now")}: {k === 'D' ? tt("Draw") : name(k === 'H' ? match.homeTeam : match.awayTeam)} <span className="num">{v}%</span>
             </div>
           )
-        })()}</div>)}
+        })()}
         {extras && (
           <div className={`lg:hidden flex flex-wrap gap-x-3 text-[10px] text-muted ${roll ? 'pop-in' : ''}`} style={roll ? { animationDelay: '420ms' } : undefined}>
             {extras.map(x => (
@@ -718,46 +718,21 @@ export function MatchRow({ match, showComp = false, showDay = false }: { match: 
         )}
       </div>
 
-      {/* fix129 phones: like basketball's rows — our pick in words + its % (Reveal / lock / live % / score + Hit-Miss) */}
-      <div className="sm:hidden flex-shrink-0 flex items-center justify-end min-w-[84px]">
-        {covered ? (
-          <button
-            type="button"
-            onClick={e => { e.preventDefault(); e.stopPropagation(); reveal() }}
-            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[11px] font-bold bg-accent/10 text-accent border border-accent/30 hover:bg-accent/15"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
-            {tt("Reveal")}</button>
-        ) : p && p.locked ? (
-          <span className="inline-flex items-center gap-1.5 text-xs text-faint"><LockIcon /> {tt("Locked")}</span>
-        ) : isLive && p?.live ? (() => {
-          const l = p.live
-          const k: Pick = l.home >= l.draw && l.home >= l.away ? 'H' : l.away >= l.draw ? 'A' : 'D'
-          return (
-            <span className="text-right leading-tight" title={tt("Live win chance")}>
-              <span className="block text-[11px] font-bold truncate max-w-[84px] text-live">{k === 'D' ? tt("Draw") : name(k === 'H' ? match.homeTeam : match.awayTeam)}</span>
-              <span className="block num text-[11px] font-semibold text-ink/80">{Math.min(99, Math.round(k === 'H' ? l.home : k === 'D' ? l.draw : l.away))}%</span>
-            </span>
-          )
-        })() : p && ENDED.has(match.status) && typeof p.home === 'number' && ft && ft.home !== null && ft.home !== undefined && ft.away !== null && ft.away !== undefined ? (() => {
-          const dcF = doubleChance(p)
-          const res = ft.home! > ft.away! ? 'H' : ft.home! < ft.away! ? 'A' : 'D'
-          const hit = !!dcF && dcF.sides.includes(res)
-          return (
-            <span className="flex items-center gap-2">
-              <span className="num text-[13px] font-extrabold text-ink">{ft.home}–{ft.away}</span>
-              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${hit ? 'bg-win/15 text-win' : 'bg-loss/15 text-loss'}`}>{hit ? tt("Hit") : tt("Miss")}</span>
-            </span>
-          )
-        })() : p && typeof p.home === 'number' ? (
-          <PickWords p={p} home={shortTeam(match.homeTeam)} away={shortTeam(match.awayTeam)} roll={roll} />
-        ) : (
-          <span className="text-xs text-faint">–</span>
-        )}
-      </div>
+      {/* fix128 phones: one "See prediction" button for upcoming games (the match page shows and reveals it);
+          live / finished: the score stays in the row, plus Hit / Miss once it is over */}
+      {p && ['SCHEDULED', 'TIMED'].includes(match.status) ? (
+        <div className="sm:hidden flex-shrink-0"><SeePrediction matchId={match.id} match={match} /></div>
+      ) : p && ENDED.has(match.status) && typeof p.home === 'number' && !p.locked && ft && ft.home !== null && ft.home !== undefined && ft.away !== null && ft.away !== undefined ? (() => {
+        const dcF = doubleChance(p)
+        const res = ft.home! > ft.away! ? 'H' : ft.home! < ft.away! ? 'A' : 'D'
+        const hit = !!dcF && dcF.sides.includes(res)
+        return (
+          <div className="sm:hidden flex-shrink-0 flex items-center gap-2">
+            <span className="num text-[13px] font-extrabold text-ink">{ft.home}–{ft.away}</span>
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold ${hit ? 'bg-win/20 text-win' : 'bg-loss/20 text-loss'}`}>{hit ? tt("Hit") : tt("Miss")}</span>
+          </div>
+        )
+      })() : null}
 
       {/* prediction (640 px and up) */}
       <div className="hidden sm:flex flex-shrink-0 items-center justify-end min-w-[150px]">
