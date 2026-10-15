@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, Navigate, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { t as tt, LOCALE } from '../lib/i18n'
+import { hubByOld } from '../lib/hubs'
 
 /*
  * Weekly league hub (fix125): /predictions/<league> — intro, then this week's games with their preview text and a
@@ -10,7 +11,7 @@ import { t as tt, LOCALE } from '../lib/i18n'
  */
 
 interface HubGame { id: number; kickoff: string; home: string; away: string; score: [number, number] | null; preview: string | null; url: string }
-interface Hub { slug: string; sport: 'football' | 'basketball'; name: string; intro: string; from: string; to: string; games: HubGame[]; next: string | null }
+interface Hub { slug: string; code: string; sport: 'football' | 'basketball'; name: string; intro: string; from: string; to: string; games: HubGame[]; next: string | null }
 
 const range = (from: string, to: string) => {
   const f = (iso: string) => new Date(iso).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short', timeZone: 'UTC' })
@@ -21,8 +22,12 @@ export default function LeagueHub() {
   const { league = '' } = useParams()
   const [hub, setHub] = useState<Hub | null>(null)
   const [missing, setMissing] = useState(false)
+  // old address (fix134): /predictions/PL → /predictions/premier-league (the server answers it with a 301 too)
+  const old = hubByOld(league)
+  const moved = old && league !== old.slug ? old.slug : null
 
   useEffect(() => {
+    if (moved) return
     setHub(null); setMissing(false)
     axios.get(`${API_URL}/hub/${encodeURIComponent(league)}`)
       .then(r => {
@@ -31,12 +36,14 @@ export default function LeagueHub() {
         document.title = `${h.name} predictions this week · ${range(h.from, h.to)} | SportLikely`
       })
       .catch(() => setMissing(true))
-  }, [league])
+  }, [league, moved])
+
+  if (moved) return <Navigate to={`/predictions/${moved}`} replace />
 
   if (missing) return <div className="max-w-2xl mx-auto px-4 py-16 text-center text-muted">{tt("Page not found.")}</div>
   if (!hub) return <div className="min-h-[50vh] grid place-items-center"><span className="w-8 h-8 rounded-full border-2 border-line border-t-accent animate-spin" aria-label={tt('Loading…')} /></div>
   const bb = hub.sport === 'basketball'
-  const leagueUrl = bb ? `/basketball/league/${hub.slug === 'EUROLEAGUE' ? 'EL' : hub.slug}` : `/league/${hub.slug}`
+  const leagueUrl = bb ? `/basketball/league/${hub.code}` : `/league/${hub.code}`
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 sm:py-10 space-y-5">
       <header className="space-y-2">

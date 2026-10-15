@@ -17,6 +17,7 @@ import { useTheme } from './lib/theme'
 import { useUnlocks, resetDay } from './lib/unlocks'
 import { reportError } from './lib/report'
 import { HUBS } from './lib/hubs'
+import { SOCIAL, type SocialId } from './lib/social'
 import { t as tt, basename, applyHeadLang, LANGS, lang, setLang, type Lang } from './lib/i18n'
 
 /**
@@ -373,6 +374,25 @@ function FooterHubs() {
   )
 }
 
+/** Footer (fix134): small icons to our social accounts (lib/social.ts); accounts without a URL yet are hidden. */
+const SOCIAL_ICON: Record<SocialId, string> = {
+  instagram: 'M12 2.2c3.2 0 3.6 0 4.8.1 1.2.1 1.8.2 2.2.4.6.2 1 .5 1.4.9.4.4.7.8.9 1.4.2.4.4 1 .4 2.2.1 1.3.1 1.6.1 4.8s0 3.6-.1 4.8c-.1 1.2-.2 1.8-.4 2.2-.2.6-.5 1-.9 1.4-.4.4-.8.7-1.4.9-.4.2-1 .4-2.2.4-1.3.1-1.6.1-4.8.1s-3.6 0-4.8-.1c-1.2-.1-1.8-.2-2.2-.4-.6-.2-1-.5-1.4-.9-.4-.4-.7-.8-.9-1.4-.2-.4-.4-1-.4-2.2C2.2 15.6 2.2 15.2 2.2 12s0-3.6.1-4.8c.1-1.2.2-1.8.4-2.2.2-.6.5-1 .9-1.4.4-.4.8-.7 1.4-.9.4-.2 1-.4 2.2-.4C8.4 2.2 8.8 2.2 12 2.2zm0 3.1a6.7 6.7 0 1 0 0 13.4 6.7 6.7 0 0 0 0-13.4zm0 2.2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zm6.9-2.4a1.6 1.6 0 1 0 0 3.1 1.6 1.6 0 0 0 0-3.1z',
+  x: 'M17.8 3h3.1l-6.8 7.8L22 21h-6.2l-4.9-6.4L5.3 21H2.2l7.3-8.3L2 3h6.3l4.4 5.9L17.8 3zm-1.1 16.2h1.7L7.4 4.7H5.6l11.1 14.5z',
+  tiktok: 'M16.6 2c.3 2.4 1.7 4 4.1 4.2v3.1c-1.5.1-2.8-.4-4.1-1.2v5.9c0 7.4-8.1 9.7-11.3 4.4-2.1-3.4-.8-9.3 6-9.5v3.3c-.5.1-1.1.2-1.6.4-1.5.5-2.4 1.5-2.1 3.2.5 3.2 6.4 4.1 5.9-2.1V2h3.1z'
+}
+function FooterSocial() {
+  return (
+    <div className="flex items-center gap-1">
+      {SOCIAL.filter(s => s.url).map(s => (
+        <a key={s.id} href={s.url!} target="_blank" rel="me noopener" aria-label={tt("SportLikely on {0}", { 0: s.name })} title={tt("SportLikely on {0}", { 0: s.name })}
+          className="grid place-items-center w-8 h-8 rounded-full text-muted hover:text-ink hover:bg-surface2/70 transition-colors">
+          <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor" aria-hidden><path d={SOCIAL_ICON[s.id]} /></svg>
+        </a>
+      ))}
+    </div>
+  )
+}
+
 /** Footer data line for the sport on screen. */
 function DataLine() {
   const bb = sportOfPath(useLocation().pathname).id === 'basketball'
@@ -662,7 +682,7 @@ function Shell() {
             <Link to="/accessibility" className="hover:text-ink">{tt("Accessibility")}</Link>
             <Link to="/premium" className="hover:text-ink">{tt("Premium")}</Link>
             <Link to="/contact" className="hover:text-ink">{tt("Contact us")}</Link>
-            <span className="ml-auto"><LangSwitch compact /></span>
+            <span className="ml-auto flex items-center gap-3"><FooterSocial /><LangSwitch compact /></span>
           </div>
           <FooterHubs />
           <p>

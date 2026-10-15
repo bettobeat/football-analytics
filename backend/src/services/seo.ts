@@ -5,7 +5,7 @@ import { FONT_HEAD } from './fonts';
 import { getPreview, firstSentence, matchTitle, previewDates, previewFacts } from './matchPreview';
 import { bbPreview } from './bbPreview';
 import { listGuides, getGuide } from './guides';
-import { HUBS, hubBySlug, hubForCode, buildHub, hubDescription, hubRange } from './hubs';
+import { HUBS, hubBySlug, hubByOld, hubForCode, buildHub, hubDescription, hubRange } from './hubs';
 import { fitDescription, pack, shortDate, titleDate, formLetters, STATIC, Lang, ui, longDate } from './seoText';
 import { fbLast, fbNext, fbH2h, fbWdl, fbTable, fbPosition, fbWeek, fbDay, FbGame, TableRow, bbGameById, bbLast, bbNext, bbH2h, bbWl, bbRecord, bbTable, bbWeek, bbDay, bbTeamName, BbGameRow } from './seoFacts';
 
@@ -18,6 +18,17 @@ import { fbLast, fbNext, fbH2h, fbWdl, fbTable, fbPosition, fbWeek, fbDay, FbGam
  */
 
 const SITE = 'https://sportlikely.com';
+/** Our social accounts (fix134), same as frontend/src/lib/social.ts: Organization sameAs. TikTok: add once Yarin sends the @handle. */
+export const SOCIAL_URLS = ['https://instagram.com/sportlikely', 'https://x.com/sportlikely'];
+
+/** fix134: old hub URLs (/predictions/PL, /es/predictions/PL …) → the new slug, for a 301. null = not an old hub URL. */
+export function hubRedirect(rawPath: string): string | null {
+  const m = rawPath.match(/^(\/(?:es|pt|de|fr|it|tr))?\/predictions\/([A-Za-z0-9-]+)\/?$/);
+  if (!m) return null;
+  const h = hubByOld(m[2]);
+  // exact case: 'nba' / 'euroleague' are the new slugs of the old 'NBA' / 'EUROLEAGUE' (no loop)
+  return h && m[2] !== h.slug ? `${m[1] || ''}/predictions/${h.slug}` : null;
+}
 const LANGS: readonly Lang[] = ['en', 'es', 'pt', 'de', 'fr', 'it', 'tr'];
 const BRAND = 'SportLikely';
 
@@ -176,9 +187,9 @@ export function seoPage(rawPath: string): SeoInfo {
   try {
     if (path === '/') {
       return page(`${BRAND} · Sports predictions, tested in public`, S('home'),
-        `<h1>Sports predictions, tested in public</h1><p>Football predictions for the top leagues, cups and national teams, with basketball and more sports coming: form, head-to-head, goals and the reasons behind every pick. Every prediction is saved before kick-off and scored after the game.</p><p><a href="${link(lang, '/predictions/today')}">Football predictions today</a></p><h2>Next football matches</h2>${fbList(lang, fbUpcoming(30))}`,
+        `<h1>Sports predictions, tested in public</h1><p>Football predictions for the top leagues, cups and national teams, and basketball (NBA, EuroLeague and more): form, head-to-head, goals and the reasons behind every pick. Every prediction is saved before kick-off and scored after the game.</p><p><a href="${link(lang, '/predictions/today')}">Football predictions today</a>${bbPublic() ? ` · <a href="${link(lang, '/basketball/predictions/today')}">Basketball predictions today</a>` : ''}</p><h2>Next football matches</h2>${fbList(lang, fbUpcoming(30))}`,
         { jsonld: [
-          { '@context': 'https://schema.org', '@type': 'Organization', name: BRAND, url: SITE, logo: `${SITE}/icon-512.png`, description: 'Sports predictions tested in public.' },
+          { '@context': 'https://schema.org', '@type': 'Organization', name: BRAND, url: SITE, logo: `${SITE}/icon-512.png`, description: 'Sports predictions tested in public.', sameAs: SOCIAL_URLS },
           { '@context': 'https://schema.org', '@type': 'WebSite', name: BRAND, url: SITE }
         ] });
     }
@@ -259,7 +270,7 @@ export function seoPage(rawPath: string): SeoInfo {
       }
     }
     // weekly league hubs (fix125): English text on every language version, canonical to the English URL
-    if ((m = path.match(/^\/predictions\/([A-Za-z0-9]+)$/)) && m[1] !== 'today') {
+    if ((m = path.match(/^\/predictions\/([A-Za-z0-9-]+)$/)) && m[1] !== 'today') {
       const def = hubBySlug(m[1]);
       if (!def || (def.sport === 'basketball' && !bbPublic())) return page(`Not found | ${BRAND}`, 'This page does not exist.', '', { noindex: true });
       const h = buildHub(def);

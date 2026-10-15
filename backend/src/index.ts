@@ -74,9 +74,9 @@ import { rebuildPlayerQuality, playerQualityTable } from './services/playerQuali
 import { db } from './db';
 import { trackVisit, visitorStats } from './services/visitors';
 import { startGeo, geoCredit } from './services/geo';
-import { seoPage, renderIndex, sitemapXml, SITEMAPS, todayGroups } from './services/seo';
+import { seoPage, renderIndex, sitemapXml, SITEMAPS, todayGroups, hubRedirect } from './services/seo';
 import { listGuides, getGuide } from './services/guides';
-import { hubBySlug, buildHub, HUBS } from './services/hubs';
+import { hubBySlug, hubByOld, buildHub, HUBS } from './services/hubs';
 import { refreshFromDetails } from './services/matchPreview';
 import { fontRoute, warmFonts } from './services/fonts';
 import { listFavorites, addFavorites, removeFavorite, MAX_FAVORITES } from './services/favorites';
@@ -1656,7 +1656,7 @@ app.get('/api/search', async (req, res) => {
 // Weekly league hubs (fix125): this week's games of a big league with their preview texts (never the pick or a %)
 app.get('/api/hub/:slug', (req, res) => {
   try {
-    const def = hubBySlug(String(req.params.slug));
+    const def = hubBySlug(String(req.params.slug)) || hubByOld(String(req.params.slug));
     if (!def || (def.sport === 'basketball' && !(bbPublic() || req.access === 'admin'))) return res.status(404).json({ error: 'Not found' });
     res.set('Cache-Control', 'public, max-age=300').json({ data: buildHub(def) });
   } catch (e: any) { sendError(res, e, 'Hub failed'); }
@@ -2666,6 +2666,9 @@ if (fs.existsSync(path.join(STATIC_DIR, 'index.html'))) {
   app.use(express.static(STATIC_DIR, { index: false, maxAge: '7d' }));
   const indexHtml = fs.readFileSync(path.join(STATIC_DIR, 'index.html'), 'utf8');
   app.get(/^(?!\/api\/|\/socket\.io\/).*/, (req, res) => {
+    // old hub URLs (fix134): /predictions/PL → /predictions/premier-league, permanently
+    const moved = hubRedirect(req.path);
+    if (moved) return res.redirect(301, moved + (req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''));
     res.set('Cache-Control', 'no-cache');
     try {
       res.type('html').send(renderIndex(indexHtml, seoPage(req.path)));
