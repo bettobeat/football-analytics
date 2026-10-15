@@ -9,13 +9,15 @@ export interface Sport {
   icon: string
   path: string // where the sport's section starts
   live: boolean
+  /** shorter label for the phone header (fix137: "American football" is too wide at 375 px) */
+  short?: string
 }
 
 export const SPORTS: Sport[] = [
   { id: 'football', name: t('Football'), icon: '⚽', path: '/', live: true },
   { id: 'basketball', name: t('Basketball'), icon: '🏀', path: '/basketball', live: false },
   { id: 'tennis', name: t('Tennis'), icon: '🎾', path: '/tennis', live: false },
-  { id: 'american-football', name: t('American football'), icon: '🏈', path: '/american-football', live: false }
+  { id: 'american-football', name: t('American football'), short: 'NFL', icon: '🏈', path: '/american-football', live: false }
 ]
 
 /** The sport a page belongs to (everything outside another sport's section is football). */

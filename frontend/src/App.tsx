@@ -11,6 +11,7 @@ import FeedbackButton from './components/FeedbackButton'
 import ConsoleGate from './components/ConsoleGate'
 import SportSwitch from './components/SportSwitch'
 import { useBbConfig } from './lib/bb'
+import { useNflConfig } from './lib/nfl'
 import { sportOfPath } from './lib/sports'
 import { socket } from './lib/socket'
 import { useTheme } from './lib/theme'
@@ -79,6 +80,13 @@ const BbPlayer = page(() => import('./pages/bb/BbPlayer'))
 const BbAccuracy = page(() => import('./pages/bb/BbAccuracy'))
 const BbPast = page(() => import('./pages/bb/BbPast'))
 const BbFavorites = page(() => import('./pages/bb/BbFavorites'))
+const NflHome = page(() => import('./pages/nfl/NflHome'))
+const NflGames = page(() => import('./pages/nfl/NflGames'))
+const NflGame = page(() => import('./pages/nfl/NflGame'))
+const NflLeague = page(() => import('./pages/nfl/NflLeague'))
+const NflTeam = page(() => import('./pages/nfl/NflTeam'))
+const NflPlayer = page(() => import('./pages/nfl/NflPlayer'))
+const NflFavorites = page(() => import('./pages/nfl/NflFavorites'))
 const Terms = page(() => import('./pages/Legal').then(m => ({ default: m.Terms })))
 const Privacy = page(() => import('./pages/Legal').then(m => ({ default: m.Privacy })))
 const NotFound = page(() => import('./pages/Legal').then(m => ({ default: m.NotFound })))
@@ -364,10 +372,11 @@ function useBbOpen() {
 /** Footer (fix125): this week's predictions for the big leagues (basketball ones once basketball is open). */
 function FooterHubs() {
   const cfg = useBbConfig()
+  const nfl = useNflConfig()
   return (
     <div className="flex flex-wrap gap-x-3 gap-y-1">
       <span>{tt("Predictions this week:")}</span>
-      {HUBS.filter(h => h.sport === 'football' || !!cfg?.open).map(h => (
+      {HUBS.filter(h => h.sport === 'football' || (h.sport === 'basketball' ? !!cfg?.open : !!nfl?.open)).map(h => (
         <Link key={h.slug} to={`/predictions/${h.slug}`} className="hover:text-ink">{h.name}</Link>
       ))}
     </div>
@@ -393,15 +402,46 @@ function FooterSocial() {
   )
 }
 
+/** NFL menu (fix137): Home · Games · Today · Favorites (no predictions yet, so no Premium link here). */
+function NflNavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
+  return (
+    <>
+      <NavLink to="/american-football" end className={cls}>{tt("Home")}</NavLink>
+      <NavLink to="/american-football/games" className={cls}>{tt("Games")}</NavLink>
+      <NavLink to="/american-football/today" className={cls}>{tt("Today")}</NavLink>
+      <NavLink to="/american-football/league" className={cls}>{tt("Standings")}</NavLink>
+      <NavLink to="/american-football/favorites" className={cls}>{tt("Favorites")}</NavLink>
+    </>
+  )
+}
+
+/** The NFL section is live for this visitor (admins before launch, everyone once NFL_PUBLIC=1). */
+function useNflOpen() {
+  const loc = useLocation()
+  const cfg = useNflConfig()
+  return sportOfPath(loc.pathname).id === 'american-football' && (cfg === null ? true : !!cfg.open)
+}
+
+/** Footer (fix137): American football link once the NFL site is open for this visitor. */
+function FooterNfl() {
+  const cfg = useNflConfig()
+  if (!cfg?.open) return null
+  return <Link to="/american-football" className="hover:text-ink">{tt("American football")}</Link>
+}
+
 /** Footer data line for the sport on screen. */
 function DataLine() {
-  const bb = sportOfPath(useLocation().pathname).id === 'basketball'
+  const sport = sportOfPath(useLocation().pathname).id
+  if (sport === 'american-football') return <p>{tt("Data: API-American-Football.")}</p>
+  const bb = sport === 'basketball'
   return <p>{bb ? tt("Data: API-Basketball, balldontlie (NBA players and injuries).") : tt("Data: Football-Data.org, API-Football, football-data.co.uk, Transfermarkt (squad values).")}</p>
 }
 
 function NavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
   const { access } = useAuth()
   const bb = useBbOpen()
+  const nfl = useNflOpen()
+  if (nfl) return <NflNavLinks cls={cls} />
   if (bb) return <BbNavLinks cls={cls} />
   return (
     <>
@@ -440,6 +480,7 @@ const TAB_ICONS: Record<string, string> = {
   Favorites: 'M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5z',
   Search: 'M11 18a7 7 0 1 0 0-14a7 7 0 0 0 0 14M20 20l-3.5-3.5',
   Games: 'M4 5h16v14H4zM4 10h16M9 5v14',
+  Today: 'M7 3v3M17 3v3M4 8h16M5 5h14v15H5zM9 13h2v2H9z',
   Football: 'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18M12 7l3.5 2.5-1.3 4h-4.4l-1.3-4z',
   Premium: 'M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z'
 }
@@ -447,6 +488,7 @@ const TAB_ICONS: Record<string, string> = {
 /** Phone: app-style tab bar at the bottom, with a search sheet. */
 function BottomTabs() {
   const bb = useBbOpen()
+  const nfl = useNflOpen()
   const { access } = useAuth()
   const admin = access === 'admin' // the Accuracy tab is admin-only for now (fix118)
   const [searching, setSearching] = useState(false)
@@ -477,7 +519,15 @@ function BottomTabs() {
         </div>
       )}
       <nav aria-label={tt("Tabs")} className={`xl:hidden fixed left-3 right-3 bottom-3 z-40 grid ${admin ? 'grid-cols-6' : 'grid-cols-5'} gap-1 p-1.5 rounded-3xl bg-surface/85 backdrop-blur-xl border border-line/80 shadow-lift sm:max-w-lg sm:mx-auto`}>
-        {bb ? (
+        {nfl ? (
+          <>
+            {tab('/american-football', 'Home', true)}
+            {tab('/american-football/games', 'Games')}
+            {tab('/american-football/today', 'Today')}
+            {tab('/american-football/favorites', 'Favorites')}
+            {admin && tab('/', 'Football', true)}
+          </>
+        ) : bb ? (
           <>
             {tab('/basketball', 'Home', true)}
             {tab('/basketball/games', 'Games')}
@@ -666,7 +716,7 @@ function Shell() {
             <Route path="/crm" element={<ConsoleGate><Crm /></ConsoleGate>} />
             <Route path="/basketball/*" element={<BbRoutes />} />
             <Route path="/tennis/*" element={<SportSoon sport="tennis" />} />
-            <Route path="/american-football/*" element={<SportSoon sport="american-football" />} />
+            <Route path="/american-football/*" element={<NflRoutes />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           </Suspense>
@@ -682,6 +732,7 @@ function Shell() {
             <Link to="/accessibility" className="hover:text-ink">{tt("Accessibility")}</Link>
             <Link to="/premium" className="hover:text-ink">{tt("Premium")}</Link>
             <Link to="/contact" className="hover:text-ink">{tt("Contact us")}</Link>
+            <FooterNfl />
             <span className="ml-auto flex items-center gap-3"><FooterSocial /><LangSwitch compact /></span>
           </div>
           <FooterHubs />
@@ -701,6 +752,26 @@ function Shell() {
 }
 
 export default App
+
+/** NFL section (fix137): the full site for admins before launch, everyone once NFL_PUBLIC=1; else "coming soon". */
+function NflRoutes() {
+  const cfg = useNflConfig()
+  if (!cfg) return <div className="min-h-[80vh] grid place-items-center"><span className="w-8 h-8 rounded-full border-2 border-line border-t-accent animate-spin" aria-label={tt('Loading…')} /></div>
+  if (!cfg.open) return <SportSoon sport="american-football" />
+  return (
+    <Routes>
+      <Route index element={<NflHome />} />
+      <Route path="games" element={<NflGames />} />
+      <Route path="today" element={<NflGames today />} />
+      <Route path="game/:id" element={<NflGame />} />
+      <Route path="league" element={<NflLeague />} />
+      <Route path="team/:id" element={<NflTeam />} />
+      <Route path="player/:id" element={<NflPlayer />} />
+      <Route path="favorites" element={<NflFavorites />} />
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  )
+}
 
 /** Basketball section: the full site for admins (before launch) and everyone once BASKETBALL_PUBLIC is on. */
 function BbRoutes() {

@@ -3,14 +3,16 @@ import { Link, useLocation } from 'react-router-dom'
 import { SPORTS, sportOfPath } from '../lib/sports'
 import { t } from '../lib/i18n'
 import { useBbConfig } from '../lib/bb'
+import { useNflConfig } from '../lib/nfl'
 
 /** Sport picker next to the logo: Football now, the other sports as "soon". */
 export default function SportSwitch() {
   const loc = useLocation()
   const current = sportOfPath(loc.pathname)
   const bb = useBbConfig()
-  // basketball is open for admins before launch, for everyone after
-  const isLive = (id: string, live: boolean) => live || (id === 'basketball' && !!bb?.open)
+  const nfl = useNflConfig()
+  // basketball / American football are open for admins before launch, for everyone after
+  const isLive = (id: string, live: boolean) => live || (id === 'basketball' && !!bb?.open) || (id === 'american-football' && !!nfl?.open)
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement | null>(null)
 
@@ -35,7 +37,7 @@ export default function SportSwitch() {
         title={current.name}
         className="h-9 pl-2 pr-1.5 inline-flex items-center gap-1.5 rounded-xl border border-line/80 bg-surface hover:border-faint text-ink"
       >
-        <span className="text-sm font-bold leading-none">{current.name}</span>
+        <span className="text-sm font-bold leading-none">{current.short ? <><span className="sm:hidden">{current.short}</span><span className="hidden sm:inline">{current.name}</span></> : current.name}</span>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-muted">
           <path d="m6 9 6 6 6-6" />
         </svg>

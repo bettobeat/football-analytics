@@ -76,14 +76,15 @@ import { trackVisit, visitorStats } from './services/visitors';
 import { startGeo, geoCredit } from './services/geo';
 import { seoPage, renderIndex, sitemapXml, SITEMAPS, todayGroups, hubRedirect } from './services/seo';
 import { listGuides, getGuide } from './services/guides';
-import { hubBySlug, hubByOld, buildHub, HUBS } from './services/hubs';
+import { hubBySlug, hubByOld, hubOpen, buildHub, HUBS } from './services/hubs';
 import { refreshFromDetails } from './services/matchPreview';
 import { fontRoute, warmFonts } from './services/fonts';
 import { listFavorites, addFavorites, removeFavorite, MAX_FAVORITES } from './services/favorites';
 import { tuneV3Full, tuneStatus, isTuning } from './services/v3Tuner';
 import { hiddenModels, v3MixBacktest, featureModelStatus, setConfig as setModelConfig, setMixLive, startFeatureModelScheduler } from './services/featureModel';
 import { runModelDaily, sendMorningReport, modelDailyLog, buildReport, startModelDailyScheduler, dailyRunning } from './services/modelDaily';
-import { nflProbe, startNflScheduler } from './services/nfl';
+import { nflProbe, startNflScheduler, nflCurrentSeason } from './services/nfl';
+import { nflPublic, nflWeeks, nflWeekGames, nflGamesBetween, nflLiveGames, nflGame, nflStandings, nflTeam, nflPlayer, nflLeaders, nflSeasonsHeld, allowedSeason } from './services/nflSite';
 import { askAssistant, assistantConfigured, messagesToday, assistantStats } from './services/assistant';
 import { normalizeName } from './services/history';
 import { markFresh, markFailed } from './services/freshness';
@@ -305,7 +306,7 @@ app.use('/api', rateLimit('api', 600, 60000)); // ~10 a second, far above a pers
 app.use(['/api/team-page', '/api/player-page'], rateLimit('pages', 60, 10 * 60000));
 app.use('/api/unlocks', (req, res, next) => (req.method === 'POST' ? rateLimit('unlock', 30, 60000, r => String(r.user?.id || r.ip))(req, res, next) : next()));
 
-const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|contact$|feedback$|client-error$|picks(\/|$)|testers\/|unsubscribe$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|today$|guides(\/|$)|hub(\/|$)|basketball\/|public\/(summary|results|record|geo-source)$|unlocks(\/|$)|billing\/)/;
+const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|contact$|feedback$|client-error$|picks(\/|$)|testers\/|unsubscribe$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|today$|guides(\/|$)|hub(\/|$)|basketball\/|nfl\/|public\/(summary|results|record|geo-source)$|unlocks(\/|$)|billing\/)/;
 const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|history\/status|clv|draw-alerts|upset-watch)$/; // past seasons and backtests are admin only (Oct 2026)
 
 app.use('/api', (req, res, next) => {
@@ -1665,12 +1666,12 @@ app.get('/api/search', async (req, res) => {
 app.get('/api/hub/:slug', (req, res) => {
   try {
     const def = hubBySlug(String(req.params.slug)) || hubByOld(String(req.params.slug));
-    if (!def || (def.sport === 'basketball' && !(bbPublic() || req.access === 'admin'))) return res.status(404).json({ error: 'Not found' });
+    if (!def || !hubOpen(def, req.access === 'admin')) return res.status(404).json({ error: 'Not found' });
     res.set('Cache-Control', 'public, max-age=300').json({ data: buildHub(def) });
   } catch (e: any) { sendError(res, e, 'Hub failed'); }
 });
 app.get('/api/hub', (req, res) => {
-  res.json({ data: HUBS.filter(h => h.sport === 'football' || bbPublic() || req.access === 'admin').map(h => ({ slug: h.slug, sport: h.sport, name: h.name })) });
+  res.json({ data: HUBS.filter(h => hubOpen(h, req.access === 'admin')).map(h => ({ slug: h.slug, sport: h.sport, name: h.name })) });
 });
 
 // Guides (fix125): plain-English explainers, rendered on the server (same text as the crawler HTML)
@@ -2030,6 +2031,77 @@ app.get('/api/af/raw', async (req, res) => {
   } catch (e: any) {
     res.status(502).json({ error: e.message });
   }
+});
+
+// ---------- NFL site (fix137) ----------
+// Open API, but until NFL_PUBLIC=1 only admins get data (everyone else sees the "coming soon" page).
+// No predictions yet, no odds. Past seasons: admins only (allowedSeason).
+app.use('/api/nfl', (req, res, next) => {
+  if (req.path === '/config' || nflPublic() || req.access === 'admin') return next();
+  res.status(404).json({ error: 'Not found' });
+});
+const nflAdmin = (req: express.Request) => req.access === 'admin';
+app.get('/api/nfl/config', (req, res) => {
+  res.json({ data: { public: nflPublic(), open: nflPublic() || nflAdmin(req), season: nflCurrentSeason(), seasons: nflSeasonsHeld(nflAdmin(req)) } });
+});
+app.get('/api/nfl/home', (_req, res) => {
+  try {
+    const season = nflCurrentSeason();
+    if (!season) return res.json({ data: { season: null, live: [], week: null, games: [], standings: null, leaders: [] } });
+    const { weeks, current } = nflWeeks(season);
+    res.json({ data: { season, live: nflLiveGames(), week: weeks.find(w => w.key === current) || null, games: current ? nflWeekGames(season, current) : [], standings: nflStandings(season), leaders: nflLeaders(season, 3) } });
+  } catch (e) { sendError(res, e, 'Failed to load the NFL home'); }
+});
+app.get('/api/nfl/games', (req, res) => {
+  try {
+    // a day on the visitor's clock (Today page)
+    if (typeof req.query.from === 'string' && typeof req.query.to === 'string') {
+      const f = new Date(req.query.from), t = new Date(req.query.to);
+      if (isNaN(f.getTime()) || isNaN(t.getTime()) || t <= f || t.getTime() - f.getTime() > 8 * 86400000) return res.status(400).json({ error: 'Bad range' });
+      return res.json({ data: { games: nflGamesBetween(f.toISOString(), t.toISOString()) } });
+    }
+    const season = allowedSeason(req.query.season, nflAdmin(req));
+    if (!season) return res.json({ data: { season: null, weeks: [], week: null, games: [] } });
+    const { weeks, current } = nflWeeks(season);
+    const asked = typeof req.query.week === 'string' && /^(\d{1,2}|post)$/.test(req.query.week) ? req.query.week : null;
+    const week = asked && weeks.some(w => w.key === asked) ? asked : current;
+    res.json({ data: { season, weeks, week, games: week ? nflWeekGames(season, week) : [] } });
+  } catch (e) { sendError(res, e, 'Failed to load games'); }
+});
+app.get('/api/nfl/game/:id(\\d+)', (req, res) => {
+  try {
+    const d = nflGame(parseInt(req.params.id, 10), nflAdmin(req));
+    if (!d) return res.status(404).json({ error: 'Game not found' });
+    res.json({ data: d });
+  } catch (e) { sendError(res, e, 'Failed to load game'); }
+});
+app.get('/api/nfl/standings', (req, res) => {
+  try {
+    const season = allowedSeason(req.query.season, nflAdmin(req));
+    res.json({ data: season ? { ...nflStandings(season), leaders: nflLeaders(season, 5) } : null });
+  } catch (e) { sendError(res, e, 'Failed to load standings'); }
+});
+app.get('/api/nfl/team/:id(\\d+)', (req, res) => {
+  try {
+    const season = allowedSeason(req.query.season, nflAdmin(req));
+    const d = season ? nflTeam(parseInt(req.params.id, 10), season) : null;
+    if (!d) return res.status(404).json({ error: 'Team not found' });
+    res.json({ data: d });
+  } catch (e) { sendError(res, e, 'Failed to load team'); }
+});
+app.get('/api/nfl/player/:id(\\d+)', (req, res) => {
+  try {
+    const season = allowedSeason(req.query.season, nflAdmin(req));
+    const d = season ? nflPlayer(parseInt(req.params.id, 10), season) : null;
+    if (!d) return res.status(404).json({ error: 'Player not found' });
+    res.json({ data: d });
+  } catch (e) { sendError(res, e, 'Failed to load player'); }
+});
+app.get('/api/nfl/leaders', (req, res) => {
+  try {
+    const season = allowedSeason(req.query.season, nflAdmin(req));
+    res.json({ data: season ? nflLeaders(season, 10) : [] });
+  } catch (e) { sendError(res, e, 'Failed to load leaders'); }
 });
 
 // ---------- Basketball site (Oct 2026) ----------

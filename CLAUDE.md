@@ -68,6 +68,12 @@ Backend (`backend/src`, Express + TypeScript, `index.ts` holds every route):
   (balldontlie: NBA injuries/players), `bbInjuries.ts`, `bbResults.ts` (result checks), `bbLive.ts` (live win chance + projected score), `bbLeagueConfig.ts` /
   `bbLeagueCoverage.ts` (leagues added from Admin → Basketball leagues, code `BB<id>`). `BASKETBALL_PUBLIC=1` opens
   the basketball site to everyone (admins see it before).
+- NFL (fix136–137, no predictions yet): `nfl.ts` (API-American-Football client, key `API_NFL_KEY` or `API_FOOTBALL_KEY`;
+  tables nfl_games / nfl_teams / nfl_team_stats / nfl_player_stats / nfl_players / nfl_injuries / nfl_standings; games every
+  30 min, live every 30 s during games, box scores after full time, standings 6 h, injuries 2 h, rosters daily; every job
+  checks the day's quota), `nflSite.ts` (pages: weeks, game, standings, team + rule-based team analysis, player, leaders),
+  `/api/nfl/*`, `/api/admin/nfl-probe`. **`NFL_PUBLIC=1`** opens /american-football to everyone (admins see it before);
+  past seasons stay admin-only. Frontend `pages/nfl/*`, `lib/nfl.ts`.
 - Accounts & admin: `auth.ts`, `twoFactor.ts`, `roles.ts`, `staffConsole.ts`, `securityLog.ts`, `crm.ts`, `billing.ts`
   (plans: Premium $15, Pro $30, Pro 6 months $144, Pro yearly $249; 3-day trial decided, not built), `userPicks.ts`
   (users' own picks + personal record), `favorites.ts`, `testers.ts`, `backup.ts`, `clientErrors.ts`, `dataHealth.ts`,

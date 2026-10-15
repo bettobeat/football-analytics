@@ -7,9 +7,12 @@
 import { db } from '../db';
 import { getPreview } from './matchPreview';
 import { bbPreview } from './bbPreview';
+import { bbPublic } from './bbSite';
+import { nflPublic } from './nflSite';
 
 /** slug = the URL (/predictions/<slug>); old = the fix125 URL, answered with a 301 to the slug (fix134) */
-export interface HubDef { slug: string; old: string; sport: 'football' | 'basketball'; code: string; name: string; intro: string }
+export type HubSport = 'football' | 'basketball' | 'american-football';
+export interface HubDef { slug: string; old: string; sport: HubSport; code: string; name: string; intro: string }
 
 export const HUBS: HubDef[] = [
   { slug: 'premier-league', old: 'PL', sport: 'football', code: 'PL', name: 'Premier League', intro: 'Premier League predictions for every match this week: win, draw and loss chances for all 20 clubs, our double-chance pick, over 2.5 goals and both teams to score, with a short preview of form, absences and head-to-head. Updated when the line-ups are announced, about an hour before kick-off. Every prediction is saved before kick-off and checked after the final whistle.' },
@@ -19,15 +22,19 @@ export const HUBS: HubDef[] = [
   { slug: 'ligue-1', old: 'FL1', sport: 'football', code: 'FL1', name: 'Ligue 1', intro: 'Ligue 1 predictions for every match this week: home win, draw and away win chances, double chance, over 2.5 goals and both teams to score, and a short preview of each game. Final numbers when the line-ups are announced.' },
   { slug: 'champions-league', old: 'CL', sport: 'football', code: 'CL', name: 'Champions League', intro: 'Champions League predictions for this round: win, draw and loss chances for every match, our double-chance pick and goals numbers, with a preview of form and absences. Clubs from different leagues are compared on one scale, and every prediction is saved before kick-off.' },
   { slug: 'nba', old: 'NBA', sport: 'basketball', code: 'NBA', name: 'NBA', intro: 'NBA predictions for the coming games: each team\'s chance to win, the expected margin and total points, with rest, back-to-backs and the latest injury report taken into account. Saved before tip-off and checked after the final buzzer.' },
+  // fix137: NFL week hub (no predictions yet), listed once NFL_PUBLIC=1
+  { slug: 'nfl', old: 'NFL', sport: 'american-football', code: 'NFL', name: 'NFL', intro: "NFL games this week: kick-off times, scores, form, head-to-head and injuries for every game, with the standings by conference and division and each team's strengths and weaknesses. Our NFL predictions are coming soon." },
   { slug: 'euroleague', old: 'EUROLEAGUE', sport: 'basketball', code: 'EL', name: 'EuroLeague', intro: 'EuroLeague predictions for this round: win chances, expected margin and total points for every game, based on each team\'s attack, defence, pace and the players they actually use. Saved before tip-off and checked after every game.' }
 ];
 export const hubBySlug = (slug: string) => HUBS.find(h => h.slug === slug.toLowerCase()) || null;
 /** an old /predictions/PL-style slug (fix125) → its hub, for the 301 */
 export const hubByOld = (slug: string) => HUBS.find(h => h.old === slug.toUpperCase()) || null;
-export const hubForCode = (sport: 'football' | 'basketball', code: string) => HUBS.find(h => h.sport === sport && h.code === code) || null;
+/** Is this hub shown? Football always; basketball / NFL once public (admins see them before). */
+export const hubOpen = (h: HubDef, admin = false) => h.sport === 'football' || admin || (h.sport === 'basketball' ? bbPublic() : nflPublic());
+export const hubForCode = (sport: HubSport, code: string) => HUBS.find(h => h.sport === sport && h.code === code) || null;
 
 export interface HubGame { id: number; kickoff: string; home: string; away: string; score: [number, number] | null; preview: string | null; url: string }
-export interface Hub { slug: string; code: string; sport: 'football' | 'basketball'; name: string; intro: string; from: string; to: string; games: HubGame[]; next: string | null }
+export interface Hub { slug: string; code: string; sport: HubSport; name: string; intro: string; from: string; to: string; games: HubGame[]; next: string | null }
 
 const dayStart = () => { const d = new Date(); d.setUTCHours(0, 0, 0, 0); return d; };
 const firstSentence = (s: string) => s.match(/^.*?[.!?](?=\s|$)/)?.[0] || s;
@@ -55,6 +62,11 @@ export function buildHub(h: HubDef): Hub {
       preview: getPreview(r.id)?.text || null, url: `/match/${r.id}`
     }));
     if (!games.length) next = (db.prepare(`SELECT MIN(utc_date) AS d FROM predictions WHERE competition_code = ? AND utc_date > ?`).get(h.code, to) as any)?.d || null;
+  } else if (h.sport === 'american-football') {
+    const rows = db.prepare(`SELECT game_id AS id, kickoff, home_name AS home, away_name AS away, home_pts AS hs, away_pts AS as_, status FROM nfl_games
+      WHERE kickoff >= ? AND kickoff <= ? AND (stage IS NULL OR stage NOT LIKE 'Pre%') AND (status IS NULL OR status NOT IN ('CANC','PST')) ORDER BY kickoff`).all(from, to) as any[];
+    games = rows.map(r => ({ id: r.id, kickoff: r.kickoff, home: r.home, away: r.away, score: (r.status === 'FT' || r.status === 'AOT') && r.hs != null ? [r.hs, r.as_] : null, preview: null, url: `/american-football/game/${r.id}` }));
+    if (!games.length) next = (db.prepare(`SELECT MIN(kickoff) AS d FROM nfl_games WHERE kickoff > ? AND (stage IS NULL OR stage NOT LIKE 'Pre%')`).get(to) as any)?.d || null;
   } else {
     const rows = db.prepare(`SELECT game_id AS id, kickoff, home_name AS home, away_name AS away, hs, as_, status FROM bb_games
       WHERE code = ? AND kickoff >= ? AND kickoff <= ? AND (status IS NULL OR status NOT IN ('CANC','POST')) ORDER BY kickoff`).all(h.code, from, to) as any[];

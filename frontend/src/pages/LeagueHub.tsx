@@ -11,7 +11,7 @@ import { hubByOld } from '../lib/hubs'
  */
 
 interface HubGame { id: number; kickoff: string; home: string; away: string; score: [number, number] | null; preview: string | null; url: string }
-interface Hub { slug: string; code: string; sport: 'football' | 'basketball'; name: string; intro: string; from: string; to: string; games: HubGame[]; next: string | null }
+interface Hub { slug: string; code: string; sport: 'football' | 'basketball' | 'american-football'; name: string; intro: string; from: string; to: string; games: HubGame[]; next: string | null }
 
 const range = (from: string, to: string) => {
   const f = (iso: string) => new Date(iso).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short', timeZone: 'UTC' })
@@ -33,7 +33,7 @@ export default function LeagueHub() {
       .then(r => {
         const h: Hub = r.data.data
         setHub(h)
-        document.title = `${h.name} predictions this week · ${range(h.from, h.to)} | SportLikely`
+        document.title = `${h.name} ${h.sport === 'american-football' ? 'games' : 'predictions'} this week · ${range(h.from, h.to)} | SportLikely`
       })
       .catch(() => setMissing(true))
   }, [league, moved])
@@ -42,13 +42,13 @@ export default function LeagueHub() {
 
   if (missing) return <div className="max-w-2xl mx-auto px-4 py-16 text-center text-muted">{tt("Page not found.")}</div>
   if (!hub) return <div className="min-h-[50vh] grid place-items-center"><span className="w-8 h-8 rounded-full border-2 border-line border-t-accent animate-spin" aria-label={tt('Loading…')} /></div>
-  const bb = hub.sport === 'basketball'
-  const leagueUrl = bb ? `/basketball/league/${hub.code}` : `/league/${hub.code}`
+  const bb = hub.sport !== 'football' // basketball and NFL say "game"
+  const leagueUrl = hub.sport === 'basketball' ? `/basketball/league/${hub.code}` : hub.sport === 'american-football' ? '/american-football/league' : `/league/${hub.code}`
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 sm:py-10 space-y-5">
       <header className="space-y-2">
         <Link to={leagueUrl} className="text-sm text-muted hover:text-ink">← {hub.name}</Link>
-        <h1 className="font-display text-2xl sm:text-4xl font-extrabold tracking-tight text-ink">{hub.name} predictions this week</h1>
+        <h1 className="font-display text-2xl sm:text-4xl font-extrabold tracking-tight text-ink">{hub.name} {hub.sport === 'american-football' ? 'games' : 'predictions'} this week</h1>
         <p className="text-sm font-semibold text-faint">{range(hub.from, hub.to)}</p>
         <p className="text-[15px] text-muted leading-relaxed">{hub.intro}</p>
       </header>
