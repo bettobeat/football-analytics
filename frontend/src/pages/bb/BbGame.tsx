@@ -223,12 +223,12 @@ function LeagueStar({ code, name }: { code: string; name: string }) {
 
 function TeamHero({ team, align, league }: { team: Game['home']; align: 'left' | 'right'; league: string }) {
   return (
-    <Link to={`/basketball/team/${team.id}`} className={`flex flex-col items-center text-center gap-2 sm:gap-4 min-w-0 hover:opacity-90 ${align === 'right' ? 'sm:flex-row-reverse sm:text-right' : 'sm:flex-row sm:text-left'}`}>
+    <Link to={`/basketball/team/${team.id}#analysis`} className={`flex flex-col items-center text-center gap-2 sm:gap-4 min-w-0 hover:opacity-90 ${align === 'right' ? 'sm:flex-row-reverse sm:text-right' : 'sm:flex-row sm:text-left'}`}>
       <TeamLogo team={team} size={72} />
       <div className="min-w-0 w-full sm:w-auto">
         <div className="font-sans font-extrabold text-[15px] sm:font-display sm:text-2xl text-ink leading-tight break-words sm:truncate">{team.name}</div>
         <div className={`flex items-center justify-center gap-1 mt-1 sm:mt-0.5 ${align === 'right' ? 'sm:justify-end' : 'sm:justify-start'}`}>
-          <span className="text-[11px] text-accent font-semibold whitespace-nowrap">{t('Team page →')}</span>
+          <span className="text-[11px] text-accent font-semibold whitespace-nowrap">{t('Team analysis →')}</span>
           <FavStar size="sm" fav={bbTeamFav(team, league)} />
         </div>
       </div>

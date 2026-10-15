@@ -7,6 +7,7 @@ import { useBbConfig, bbTeamFav, type BbGame } from '../../lib/bb'
 import { FavStar } from '../../lib/favorites'
 import { useNews, NewsRows } from '../../components/NewsList'
 import { Card, GameList, Skeleton, TeamLogo } from './parts'
+import { BbTeamAnalysisCard, TeamRecordCard, type BbAnalysis } from '../../components/TeamAnalysis'
 
 interface Profile { games: number; fgPct: number | null; threePct: number | null; threeAttempts: number | null; ftPct: number | null; rebounds: number | null; assists: number | null; turnovers: number | null; steals: number | null; blocks: number | null }
 interface Analysis {
@@ -22,6 +23,8 @@ interface TeamData {
   rating: { attack: number; defence: number; net: number; games: number } | null
   averages: { games: number; won: number; lost: number; pointsFor: number; pointsAgainst: number; form: ('W' | 'L')[] } | null
   analysis: Analysis | null
+  /** fix126: the Team analysis card (full for paid plans; record + locked preview otherwise) */
+  teamAnalysis?: BbAnalysis | null
   squad?: SquadPlayer[]
   recent: BbGame[]
   next: BbGame[]
@@ -40,6 +43,10 @@ export default function BbTeam() {
     axios.get(`${API_URL}/basketball/team/${id}`).then(r => setD(r.data.data)).catch(() => setD(null))
   }, [id])
   useEffect(() => { if (d) document.title = t('{0} · SportLikely', { 0: d.team.name }) }, [d?.team.id])
+  // "Team analysis →" links from game pages open at the card
+  useEffect(() => {
+    if (d && window.location.hash === '#analysis') requestAnimationFrame(() => document.getElementById('analysis')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }, [d?.team.id])
 
   if (d === undefined) return <div className="max-w-6xl mx-auto px-4 py-10"><Skeleton rows={6} /></div>
   if (!d) return <div className="max-w-6xl mx-auto px-4 py-10 text-muted">{t('Team not found')}</div>
@@ -71,18 +78,14 @@ export default function BbTeam() {
         </div>
       </div>
 
+      {/* fix126: Team analysis, like football (strengths & weaknesses, model rating, 1–10 scores, rank over time) */}
+      <BbTeamAnalysisCard a={d.teamAnalysis} full={!!d.teamAnalysis && !d.teamAnalysis.locked} />
+
       {an && (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] items-start">
           <div className="space-y-6 min-w-0">
-            {/* strengths and weaknesses */}
-            <Card title={t('Strengths and weaknesses')} action={an.ranks ? <span className="text-xs text-faint">{t('rank out of {0} teams', { 0: an.ranks.of })}</span> : undefined}>
-              {an.ranks && (
-                <div className="grid grid-cols-3 gap-2 mb-5">
-                  <RankTile label={t('Overall')} rank={an.ranks.overall} of={an.ranks.of} />
-                  <RankTile label={t('Attack')} rank={an.ranks.attack} of={an.ranks.of} />
-                  <RankTile label={t('Defence')} rank={an.ranks.defence} of={an.ranks.of} />
-                </div>
-              )}
+            {/* box-score profile against the league (ranks and notes are in the Team analysis card above) */}
+            <Card title={t('Compared with the league')}>
               {an.profile.team && an.profile.league ? (
                 <ul className="space-y-3">
                   {PROFILE_ROWS.map(r => {
@@ -145,9 +148,11 @@ export default function BbTeam() {
 
       {d.squad && d.squad.length > 0 && <SquadCard players={d.squad} />}
 
+      {d.teamAnalysis && <TeamRecordCard rec={d.teamAnalysis.record} teamName={d.team.name} sport="basketball" />}
+
       <div className="grid gap-6 lg:grid-cols-2 items-start">
-        <Card title={t('Next games')}><GameList games={d.next} empty={t('No games scheduled.')} /></Card>
-        <Card title={t('Latest results')}><GameList games={d.recent.filter(g => g.state === 'done')} empty={t('No results yet.')} /></Card>
+        <Card title={t('Next games')} className="min-w-0"><GameList games={d.next} empty={t('No games scheduled.')} /></Card>
+        <Card title={t('Latest results')} className="min-w-0"><GameList games={d.recent.filter(g => g.state === 'done')} empty={t('No results yet.')} /></Card>
       </div>
     </div>
   )
@@ -170,16 +175,6 @@ function Big({ label, value }: { label: string; value: string }) {
     <div className="rounded-xl bg-surface2/60 border border-line/50 p-2.5 text-center">
       <div className="num text-lg font-extrabold text-ink">{value}</div>
       <div className="text-[10px] text-faint">{label}</div>
-    </div>
-  )
-}
-
-function RankTile({ label, rank, of }: { label: string; rank: number; of: number }) {
-  const top = rank <= Math.ceil(of / 3), bottom = rank > of - Math.ceil(of / 3)
-  return (
-    <div className={`rounded-xl border p-3 text-center ${top ? 'border-win/40 bg-win/10' : bottom ? 'border-loss/40 bg-loss/10' : 'border-line/60 bg-surface2/40'}`}>
-      <div className={`num text-2xl font-extrabold ${top ? 'text-win' : bottom ? 'text-loss' : 'text-ink'}`}>#{rank}</div>
-      <div className="text-[11px] text-faint">{label}</div>
     </div>
   )
 }

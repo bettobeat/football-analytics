@@ -24,6 +24,7 @@ interface Model {
 interface RecordGame { matchId: number; date: string; comp: string | null; home: boolean; opp: string; score: string; pick: string; hit: boolean }
 interface TeamRecord {
   n: number; hits?: number; hitRate?: number | null
+  strong?: { n: number; hitRate: number | null } | null
   btts?: { n: number; hitRate: number | null } | null
   over25?: { n: number; hitRate: number | null } | null
   games?: RecordGame[]
@@ -280,27 +281,29 @@ export function TeamAnalysisCard({ a, full }: { a: Analysis | null | undefined; 
 }
 
 /** Our record on this team's games: public for everyone. */
-export function TeamRecordCard({ rec, teamName }: { rec: TeamRecord | undefined; teamName: string }) {
+export function TeamRecordCard({ rec, teamName, sport = 'football' }: { rec: TeamRecord | undefined; teamName: string; sport?: 'football' | 'basketball' }) {
   if (!rec) return null
+  const bb = sport === 'basketball'
   return (
     <section className="card p-5 sm:p-6">
       <div className="flex items-center justify-between gap-3 mb-4">
         <h2 className="font-display text-base sm:text-lg font-bold text-ink">{t("Our record on")}{' '}{teamName}</h2>
-        <RecordLink to="/accuracy" className="text-xs font-bold text-accent">{t("Full record →")}</RecordLink>
+        <RecordLink to={bb ? '/basketball/accuracy' : '/accuracy'} className="text-xs font-bold text-accent">{t("Full record →")}</RecordLink>
       </div>
       {!rec.n ? (
         <p className="text-sm text-faint">{t("No finished games with a saved prediction yet.")}</p>
       ) : (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-2.5">
-            <Tile k={`Result, ${rec.n} games`} v={`${rec.hitRate}%`} sub={t("{0} right", { 0: rec.hits })} />
+            <Tile k={bb ? t("Winner, {0} games", { 0: rec.n }) : `Result, ${rec.n} games`} v={`${rec.hitRate}%`} sub={t("{0} right", { 0: rec.hits })} />
+            {bb && rec.strong && <Tile k={t("Strong picks (70%+)")} v={`${rec.strong.hitRate}%`} sub={t("{0} games", { 0: rec.strong.n })} />}
             {rec.btts && <Tile k="Both teams score" v={`${rec.btts.hitRate}%`} sub={t("{0} games", { 0: rec.btts.n })} />}
             {rec.over25 && <Tile k="Over / under 2.5" v={`${rec.over25.hitRate}%`} sub={t("{0} games", { 0: rec.over25.n })} />}
           </div>
           {rec.games && rec.games.length > 0 && (
             <div>
               {rec.games.map(g => (
-                <Link key={g.matchId} to={`/match/${g.matchId}`} className="flex items-center gap-3 py-2 border-b border-line/50 last:border-0 hover:bg-surface2/40 rounded-lg">
+                <Link key={g.matchId} to={bb ? `/basketball/game/${g.matchId}` : `/match/${g.matchId}`} className="flex items-center gap-3 py-2 border-b border-line/50 last:border-0 hover:bg-surface2/40 rounded-lg">
                   <span className="w-12 text-[11px] text-faint">{shortDate(g.date)}</span>
                   <span className="flex-1 min-w-0 truncate text-sm text-muted">{g.home ? 'vs' : 'at'} <span className="text-ink font-semibold">{g.opp}</span></span>
                   <span className="text-sm num font-bold text-ink">{g.score}</span>
@@ -310,11 +313,108 @@ export function TeamRecordCard({ rec, teamName }: { rec: TeamRecord | undefined;
                   </span>
                 </Link>
               ))}
-              <p className="text-[11px] text-faint mt-2">{t("Our pick for")}{' '}{teamName} {t("(win, draw or loss), saved before kick-off.")}</p>
+              <p className="text-[11px] text-faint mt-2">{t("Our pick for")}{' '}{teamName} {bb ? t("(win or loss), saved before tip-off.") : t("(win, draw or loss), saved before kick-off.")}</p>
             </div>
           )}
         </div>
       )}
+    </section>
+  )
+}
+
+/* ---------- basketball (fix126): same card, basketball numbers ---------- */
+
+interface BbHomeAway { homeWinPct: number | null; awayWinPct: number | null; homeGames: number; awayGames: number; homeMargin: number | null; awayMargin: number | null; efg?: number; season: string; previousSeason: boolean }
+interface BbModel {
+  teams: number; season: string | null; perPossession: boolean; rank: number; rating: number
+  attack: number; defence: number; leagueAttack: number; pace: number | null; leaguePace: number | null; talent: number | null
+  scores: Record<string, number | undefined>; trend: TrendPoint[]
+}
+export interface BbAnalysis {
+  locked?: boolean
+  notesCount?: number
+  model?: BbModel | null
+  homeAway?: BbHomeAway | null
+  record: TeamRecord
+  notes?: { kind: 'plus' | 'minus' | 'note'; text: string }[]
+}
+const signed = (x: number, d = 1) => `${x > 0 ? '+' : x < 0 ? '−' : ''}${Math.abs(x).toFixed(d)}`
+
+export function BbTeamAnalysisCard({ a, full }: { a: BbAnalysis | null | undefined; full: boolean }) {
+  if (!a) return null
+  if (!full || a.locked) {
+    return (
+      <section id="analysis" className="scroll-mt-24 rounded-3xl p-6 border border-accent/30 bg-[linear-gradient(160deg,rgb(var(--accent)/0.09),rgb(var(--surface)/0.6))] space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="font-display text-lg font-bold">{t("Team analysis")}</h2>
+          <span className="text-[11px] font-extrabold text-bg bg-accent px-2.5 py-1 rounded-full">{t("Premium")}</span>
+        </div>
+        <p className="text-sm text-muted leading-relaxed">
+          {t("How our model rates this team and how that changed this season: strength, attack and defence per 100 possessions, pace, home and away, roster talent and shooting")}{a.notesCount ? t(", and {0} strengths and weaknesses we found in the numbers", { 0: a.notesCount }) : ''}.
+        </p>
+        <Link to="/premium" className="inline-block text-sm font-bold text-accent">{t("See Premium →")}</Link>
+      </section>
+    )
+  }
+  const m = a.model
+  const ha = a.homeAway
+  const per = m?.perPossession
+  return (
+    <section id="analysis" className="scroll-mt-24 rounded-3xl p-5 sm:p-6 border border-accent/30 bg-[linear-gradient(160deg,rgb(var(--accent)/0.07),rgb(var(--surface)/0.6))] space-y-6">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-display text-lg font-bold">{t("Team analysis")}</h2>
+        <span className="text-[11px] text-faint">{t("From our model and the latest results")}</span>
+      </div>
+
+      {a.notes && a.notes.length > 0 && (
+        <Block title={t("Strengths and weaknesses")}>
+          <ul className="space-y-2">
+            {a.notes.map((n, i) => (
+              <li key={i} className="flex gap-2.5 text-sm text-ink/90 leading-snug">
+                <NoteIcon kind={n.kind} />
+                <span>{n.text}</span>
+              </li>
+            ))}
+          </ul>
+        </Block>
+      )}
+
+      {m && (
+        <Block title={t("How our model rates them")} sub={ha ? (ha.previousSeason ? t("{0} league games last season", { 0: ha.homeGames + ha.awayGames }) : t("{0} league games this season", { 0: ha.homeGames + ha.awayGames })) : undefined}>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+            <Tile k={t("Strength")} v={`${ord(m.rank)} of ${m.teams}`} sub={t("Rating {0}", { 0: signed(m.rating) })} />
+            <Tile k={t("Attack")} v={m.attack.toFixed(1)} sub={per ? t("per 100 possessions · avg {0}", { 0: m.leagueAttack.toFixed(1) }) : t("points a game · avg {0}", { 0: m.leagueAttack.toFixed(1) })} />
+            <Tile k={t("Defence")} v={m.defence.toFixed(1)} sub={per ? t("allowed per 100 possessions · avg {0}", { 0: m.leagueAttack.toFixed(1) }) : t("allowed a game · avg {0}", { 0: m.leagueAttack.toFixed(1) })} />
+            {ha && ha.homeWinPct !== null && ha.awayWinPct !== null && (
+              <Tile k={t("Home · away")} v={`${ha.homeWinPct}% · ${ha.awayWinPct}%`}
+                sub={ha.homeMargin !== null && ha.awayMargin !== null ? t("wins · margin {0} · {1}", { 0: signed(ha.homeMargin), 1: signed(ha.awayMargin) }) : t("wins")} />
+            )}
+            {m.pace !== null && <Tile k={t("Pace")} v={Math.round(m.pace)} sub={t("possessions a game · avg {0}", { 0: Math.round(m.leaguePace || 0) })} />}
+          </div>
+          <p className="text-[11px] text-faint">{t("Attack and defence are adjusted for the strength of the opponents faced. Rating: points better or worse than an average team, on a neutral court.")}</p>
+          <div className="grid gap-5 sm:grid-cols-2 items-start">
+            <div className="space-y-2">
+              <div className="text-[11px] text-faint">{t("Score in the league, 1–10")}</div>
+              <ScoreBar label={t("Strength")} v={m.scores.strength} />
+              <ScoreBar label={t("Attack")} v={m.scores.attack} />
+              <ScoreBar label={t("Defence")} v={m.scores.defence} />
+              <ScoreBar label={t("Pace")} v={m.scores.pace} />
+              <ScoreBar label={t("Home")} v={m.scores.home} />
+              <ScoreBar label={t("Away")} v={m.scores.away} />
+              <ScoreBar label={t("Roster talent")} v={m.scores.talent} />
+              <ScoreBar label={t("Shooting")} v={m.scores.shooting} />
+              {ha?.efg !== undefined && <p className="text-[11px] text-faint">{t("Shooting: effective field goal % ({0}%).", { 0: ha.efg })}</p>}
+            </div>
+            {m.trend.length >= 2 && (
+              <div className="space-y-1">
+                <div className="text-[11px] text-faint">{t("League rank by our rating, last 6 months")}</div>
+                <RankTrend points={m.trend} teams={m.teams} />
+              </div>
+            )}
+          </div>
+        </Block>
+      )}
+      {!m && <p className="text-sm text-faint">{t("Our model has not rated this team yet.")}</p>}
     </section>
   )
 }

@@ -28,6 +28,7 @@ is model work, the matching note, in the same commit.
   with clearly worse form / table / head-to-head must not be made the favourite. Every model change is accepted only if
   it improves log loss / Brier on games it never saw (walk-forward or later seasons), never on the fitting data.
 - **`BILLING_TEST_MODE`** must be removed before real payments go live. Don't wire real payment webhooks without Yarin.
+- **Team analysis for every sport:** Every sport has team analysis on the team page (strengths & weaknesses by fixed rules, model rating tiles, 1–10 league scores, rank over time, our record on the team) — build it with the sport, not later.
 
 ## How to work here
 

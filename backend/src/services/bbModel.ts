@@ -242,7 +242,7 @@ function possessionsOf(code: string): Map<number, number> {
   return out;
 }
 
-function runV2(games: Game[], p: P2, poss: Map<number, number>, onPred?: (g: Game, pr: ReturnType<LeagueV2['predict']>) => void) {
+function runV2(games: Game[], p: P2, poss: Map<number, number>, onPred?: (g: Game, pr: ReturnType<LeagueV2['predict']>, L: LeagueV2) => void) {
   const L = new LeagueV2(p);
   const last = new Map<number, number>();
   for (const g of games) {
@@ -251,7 +251,7 @@ function runV2(games: Game[], p: P2, poss: Map<number, number>, onPred?: (g: Gam
     const rh = last.has(g.home_id) ? (t - last.get(g.home_id)!) / 86400000 : null;
     const ra = last.has(g.away_id) ? (t - last.get(g.away_id)!) / 86400000 : null;
     const pr = L.predict(g, rh, ra);
-    onPred?.(g, pr);
+    onPred?.(g, pr, L);
     L.update(g, pr, poss.get(g.game_id) ?? null);
     last.set(g.home_id, t); last.set(g.away_id, t);
   }
@@ -283,12 +283,12 @@ const fin = (m: Metrics) => m.n ? {
 } : { games: 0 };
 
 /** Run the model through a league's games in order. `onPred` sees every finished game's pre-game prediction. */
-function run(games: Game[], p: Params, onPred?: (g: Game, pr: Pred) => void) {
+function run(games: Game[], p: Params, onPred?: (g: Game, pr: Pred, L: League) => void) {
   const L = new League(p);
   for (const g of games) {
     if (!done(g)) continue;
     const pr = L.predict(g);
-    onPred?.(g, pr);
+    onPred?.(g, pr, L);
     L.update(g, pr);
     L.played(g);
   }
@@ -346,7 +346,7 @@ const finalP = (p: number, shift: number) => Math.min(0.995, Math.max(0.005, nor
 const GRID: Params[] = [];
 for (const k of [0.03, 0.05, 0.07, 0.09, 0.12]) for (const r of [0.5, 0.65, 0.8, 0.9]) for (const b2b of [0, 1.5, 3]) GRID.push({ k, r, b2b });
 
-type LeagueModel = { code: string; params: Params; L: League; L2: LeagueV2 | null; w2: number; tuneSeason: string | null; testSeasons: string[]; test: any; tune: any; compare?: any; builtAt: string };
+type LeagueModel = { code: string; params: Params; L: League; L2: LeagueV2 | null; w2: number; tuneSeason: string | null; testSeasons: string[]; test: any; tune: any; compare?: any; builtAt: string; snaps?: Snap[] };
 const models = new Map<string, LeagueModel>();
 
 /** Choose k, r, b2b on the tuning season; test on the seasons after it; keep the final ratings for predictions. */
@@ -367,10 +367,27 @@ export function buildLeague(code: string): LeagueModel | null {
   const params = best!.p;
   // v1 and v2 predictions of every finished game, then the blend weight of v2 chosen on the tuning season
   const p1 = new Map<number, Pred>(), p2 = new Map<number, Pred>();
-  const L = run(games, params, (g, pr) => { p1.set(g.game_id, pr); });
+  // fix126: rating snapshots at the start of each of the last 6 months (team page: league rank over time)
+  const cut = [6, 5, 4, 3, 2, 1].map(b => new Date(Date.now() - b * 30 * 86400000).toISOString());
+  const snaps: Snap[] = cut.map(date => ({ date: date.slice(0, 10), v1: null, v2: null, pace: 0, ppp: 0 }));
+  let c1 = 0, c2 = 0;
+  const L = run(games, params, (g, pr, Lx) => {
+    p1.set(g.game_id, pr);
+    while (c1 < cut.length && g.kickoff >= cut[c1]) {
+      snaps[c1].v1 = new Map([...Lx.teams.entries()].filter(([id]) => (Lx.lastPlayed.get(id) || 0) > Date.parse(cut[c1]) - 400 * 86400000).map(([id, t]) => [id, { o: t.o, d: t.d }]));
+      c1++;
+    }
+  });
   const poss = possessionsOf(code);
   const P2v: P2 = { ...P2_DEFAULT, ...(P2_LEAGUE[code] || {}) };
-  const L2 = poss.size >= 200 ? runV2(games, P2v, poss, (g, pr) => { p2.set(g.game_id, pr); }) : null;
+  const L2 = poss.size >= 200 ? runV2(games, P2v, poss, (g, pr, Lx) => {
+    p2.set(g.game_id, pr);
+    while (c2 < cut.length && g.kickoff >= cut[c2]) {
+      snaps[c2].v2 = new Map([...Lx.teams.entries()].map(([id, t]) => [id, { o: t.o, d: t.d, p: t.p }]));
+      snaps[c2].pace = Lx.pace; snaps[c2].ppp = Lx.ppp;
+      c2++;
+    }
+  }) : null;
   const blend = (a: Pred, b: Pred | undefined, w: number): Pred => !b || !w ? a : {
     ...b, pHome: w * b.pHome + (1 - w) * a.pHome, margin: w * b.margin + (1 - w) * a.margin, total: w * b.total + (1 - w) * a.total,
     home: w * b.home + (1 - w) * a.home, away: w * b.away + (1 - w) * a.away
@@ -399,7 +416,7 @@ export function buildLeague(code: string): LeagueModel | null {
     }
   }
   const model: LeagueModel = {
-    code, params, L, L2, w2, tuneSeason, testSeasons,
+    code, params, L, L2, w2, tuneSeason, testSeasons, snaps: snaps.filter(x => x.v1),
     tune: fin(tune), test: { all: fin(test), bySeason: Object.fromEntries([...bySeason.entries()].map(([s, m]) => [s, fin(m)])) },
     compare: { v1: fin(t1), v2: fin(t2), v2Weight: w2 },
     builtAt: new Date().toISOString()
@@ -512,6 +529,75 @@ export function leagueRatings(code: string) {
   const rank = (key: 'attack' | 'defence' | 'net') => new Map([...list].sort((a, b) => b[key] - a[key]).map((x, i) => [x.id, i + 1]));
   const ra = rank('attack'), rd = rank('defence'), rn = rank('net');
   return list.map(x => ({ ...x, attackRank: ra.get(x.id)!, defenceRank: rd.get(x.id)!, netRank: rn.get(x.id)!, of: list.length }));
+}
+
+type Snap = { date: string; v1: Map<number, { o: number; d: number }> | null; v2: Map<number, { o: number; d: number; p: number }> | null; pace: number; ppp: number };
+
+/**
+ * fix126 — how bb-v3 rates a team (team page "Team analysis"): strength = the v1 and v2 net ratings blended like the
+ * predictions (points better than an average team per game, neutral court), attack / defence per 100 possessions
+ * (opponent-adjusted, v2; v1 points a game when a league has no box scores), pace, roster talent; ranks among the
+ * teams of the current season and the rank at the start of each of the last 6 months.
+ */
+export function bbTeamModel(code: string, teamId: number) {
+  const m = models.get(code);
+  if (!m) return null;
+  const season = (db.prepare(`SELECT MAX(season) AS s FROM bb_games WHERE code = ? AND kickoff <= ?`).get(code, new Date().toISOString()) as any)?.s;
+  const inSeason = new Set((season ? db.prepare(`SELECT home_id AS id FROM bb_games WHERE code = ? AND season = ? UNION SELECT away_id FROM bb_games WHERE code = ? AND season = ?`).all(code, season, code, season) as any[] : []).map(r => r.id as number));
+  const since = Date.now() - 400 * 86400000;
+  const ids = [...m.L.teams.keys()].filter(id => (inSeason.size >= 4 ? inSeason.has(id) : (m.L.lastPlayed.get(id) || 0) > since));
+  if (!ids.includes(teamId)) return null;
+  const L2 = m.L2, w2 = L2 ? m.w2 : 0;
+  const net = (v1: { o: number; d: number } | undefined, v2: { o: number; d: number } | undefined, pace: number) =>
+    (1 - (v2 ? w2 : 0)) * (v1 ? v1.o - v1.d : 0) + (v2 ? w2 * ((v2.o - v2.d) * pace) / 100 : 0);
+  const rows = ids.map(id => {
+    const t1 = m.L.teams.get(id)!, t2 = L2?.teams.get(id);
+    return {
+      id,
+      strength: net(t1, t2, L2?.pace || 100),
+      attack: L2 && t2 ? L2.ppp + t2.o : m.L.mu + t1.o,
+      defence: L2 && t2 ? L2.ppp + t2.d : m.L.mu + t1.d,
+      pace: L2 && t2 ? L2.pace + t2.p : null,
+      talent: teamTalent(id, code === 'NBA' ? 5 : 1)
+    };
+  });
+  const n = rows.length;
+  const rankBy = (key: 'strength' | 'attack' | 'defence' | 'pace' | 'talent', lowerBetter = false) => {
+    const have = rows.filter(r => r[key] !== null && r[key] !== undefined);
+    const sorted = [...have].sort((a, b) => (lowerBetter ? (a[key] as number) - (b[key] as number) : (b[key] as number) - (a[key] as number)));
+    const i = sorted.findIndex(r => r.id === teamId);
+    return i < 0 ? null : { rank: i + 1, of: sorted.length };
+  };
+  const score = (r: { rank: number; of: number } | null) => (r && r.of > 1 ? Math.round((1 + (9 * (r.of - r.rank)) / (r.of - 1)) * 10) / 10 : undefined);
+  const me = rows.find(r => r.id === teamId)!;
+  const avg = (k: 'attack' | 'pace') => { const v = rows.map(r => r[k]).filter((x): x is number => x !== null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  const r1 = (x: number | null) => (x === null ? null : Math.round(x * 10) / 10);
+  const strength = rankBy('strength');
+  // rank over time: same blend on the stored snapshots (teams active then)
+  const trend = (m.snaps || []).map(sn => {
+    if (!sn.v1 || !sn.v1.has(teamId)) return null;
+    const list = [...sn.v1.entries()].map(([id, v]) => ({ id, s: net(v, sn.v2?.get(id), sn.pace || 100), v2: sn.v2?.get(id) }));
+    const mine = list.find(x => x.id === teamId)!;
+    return {
+      date: sn.date, rank: list.filter(x => x.s > mine.s).length + 1, teams: list.length, elo: Math.round(mine.s * 10) / 10,
+      attack: mine.v2 ? Math.round((sn.ppp + mine.v2.o) * 10) / 10 : Math.round(sn.v1.get(teamId)!.o * 10) / 10,
+      defence: mine.v2 ? Math.round((sn.ppp + mine.v2.d) * 10) / 10 : Math.round(sn.v1.get(teamId)!.d * 10) / 10
+    };
+  }).filter(Boolean) as { date: string; rank: number; teams: number; elo: number; attack: number; defence: number }[];
+  trend.push({ date: new Date().toISOString().slice(0, 10), rank: strength!.rank, teams: n, elo: r1(me.strength)!, attack: r1(me.attack)!, defence: r1(me.defence)! });
+  return {
+    teams: n, season: season || null, perPossession: !!L2,
+    rank: strength!.rank, rating: r1(me.strength)!,
+    attack: r1(me.attack)!, defence: r1(me.defence)!, leagueAttack: r1(avg('attack'))!,
+    pace: r1(me.pace), leaguePace: r1(avg('pace')),
+    talent: me.talent === null ? null : r1(me.talent),
+    ranks: { strength, attack: rankBy('attack'), defence: rankBy('defence', true), pace: rankBy('pace'), talent: rankBy('talent') },
+    scores: {
+      strength: score(strength), attack: score(rankBy('attack')), defence: score(rankBy('defence', true)),
+      pace: score(rankBy('pace')), talent: score(rankBy('talent'))
+    },
+    trend
+  };
 }
 
 export function teamRating(code: string, teamId: number) {

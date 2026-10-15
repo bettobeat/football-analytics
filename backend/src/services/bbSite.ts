@@ -5,6 +5,7 @@
  */
 import { db } from '../db';
 import { bbPreview } from './bbPreview';
+import { bbTeamAnalysis, bbTeamAnalysisTeaser } from './bbTeamAnalysis';
 import { BB_LEAGUES, bbGet } from './basketball';
 import { bbExtraFlag } from './bbLeagueConfig';
 import { fillOvertime, openCheck, resultFix } from './bbResults';
@@ -448,5 +449,8 @@ export async function bbTeam(teamId: number, full: boolean) {
   const any = recent[0] || next[0];
   if (!any) return null;
   const name = any.home_id === teamId ? any.home_name : any.away_name, logo = any.home_id === teamId ? any.home_logo : any.away_logo;
-  return { team: { id: teamId, name, logo, league: any.code }, rating: full ? teamRating(any.code, teamId) : null, averages: averages(teamId, now), analysis: teamAnalysis(teamId, any.code), squad: await bbSquad(teamId, name, any.code, (next[0] || recent[0]).season), recent: recent.map(r => shape(r, full)), next: next.map(r => shape(r, full)) };
+  // fix126: "Team analysis" card like football's (paid plans; our record on the team is public)
+  let ta: any = null;
+  try { const x = bbTeamAnalysis(teamId, any.code, name); ta = full ? x : bbTeamAnalysisTeaser(x); } catch (e: any) { ta = null; }
+  return { team: { id: teamId, name, logo, league: any.code }, rating: full ? teamRating(any.code, teamId) : null, averages: averages(teamId, now), analysis: teamAnalysis(teamId, any.code), teamAnalysis: ta, squad: await bbSquad(teamId, name, any.code, (next[0] || recent[0]).season), recent: recent.map(r => shape(r, full)), next: next.map(r => shape(r, full)) };
 }
