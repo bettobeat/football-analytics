@@ -23,7 +23,7 @@ import { yieldLoop } from './perf';
 import { teamBox } from './nflSite';
 import { modelInternals as M, type NflG as G, type NflPre as Pre, type NflCtx as Ctx, type NflRow as Row, type Params } from './nflModel';
 
-export const EXP_VERSION = 'fix148-1'; // a new version runs the experiments again on the next tick after deploy
+export const EXP_VERSION = 'fix149-1'; // a new version runs the experiments again on the next tick after deploy
 export const NFL_V2 = 'nfl-v2';
 const DAY = 86400000, WEEK = 7 * DAY;
 const bucketOf = (t: number) => Math.floor((t - 5 * DAY) / WEEK); // Tuesday to Monday
@@ -31,6 +31,9 @@ const weekNo = (g: G) => { if (!/reg/i.test(g.stage || '')) return null; const m
 const yOf = (g: G) => (g.hs! > g.as! ? 1 : g.hs! < g.as! ? 0 : 0.5);
 const sig = (x: number) => 1 / (1 + Math.exp(-x));
 const logit = (p: number) => Math.log(M.clip(p) / (1 - M.clip(p)));
+/** fix149: every feature finite (else 0 = the average / no information). */
+const fin = (v: number) => (Number.isFinite(v) ? v : 0);
+const VALID_HIT = 55;
 
 /* ---------- small linear algebra ---------- */
 
@@ -64,8 +67,11 @@ class LS {
 /* ---------- logistic regression (IRLS, ridge) and small boosted trees ---------- */
 
 interface Logit { w: number[]; b: number; mu: number[]; sd: number[] }
-function fitLogit(X: number[][], y: number[], l2 = 1): Logit {
-  const k = X[0]?.length || 0, n = X.length;
+function fitLogit(X0: number[][], y0: number[], l2 = 1): Logit {
+  // fix149: only finite rows; non-finite weights fall back to the base rate (logged as a bad fit by the caller's LL)
+  const keep = X0.map((x, i) => x.every(Number.isFinite) && Number.isFinite(y0[i]));
+  const X = X0.filter((_, i) => keep[i]), y = y0.filter((_, i) => keep[i]);
+  const k = X0[0]?.length || 0, n = X.length;
   const mu = Array.from({ length: k }, (_, j) => X.reduce((s, r) => s + r[j], 0) / Math.max(1, n));
   const sd = Array.from({ length: k }, (_, j) => Math.sqrt(X.reduce((s, r) => s + (r[j] - mu[j]) ** 2, 0) / Math.max(1, n)) || 1);
   const Z = X.map(r => [1, ...r.map((v, j) => (v - mu[j]) / sd[j])]);
@@ -81,6 +87,7 @@ function fitLogit(X: number[][], y: number[], l2 = 1): Logit {
     w = w.map((v, j) => v + step[j]);
     if (step.reduce((s, v) => s + Math.abs(v), 0) < 1e-6) break;
   }
+  if (!w.every(Number.isFinite)) { const yb = y.reduce((s, v) => s + v, 0) / Math.max(1, n); return { b: logit(yb || 0.5), w: new Array(k).fill(0), mu, sd }; }
   return { b: w[0], w: w.slice(1), mu, sd };
 }
 const predLogit = (m: Logit, x: number[]) => sig(m.b + x.reduce((s, v, j) => s + ((v - m.mu[j]) / m.sd[j]) * m.w[j], 0));
@@ -314,6 +321,9 @@ interface Feats { m2: Map<number, number>[]; m6: Map<number, number>[]; eff: Map
 
 /** The design rows of each variant for one game (E1 numbers from the season's nfl-v1 settings). */
 function xOf(v: string, g: G, e1: E1Row, F: Feats, c2: number, c6: number): number[] {
+  return xRaw(v, g, e1, F, c2, c6).map(fin);
+}
+function xRaw(v: string, g: G, e1: E1Row, F: Feats, c2: number, c6: number): number[] {
   const eff = F.eff.get(g.id) || [0, 0, 0, 0, 0, 0, 1], q = F.qb.get(g.id) || 0, c = F.ctx.get(g.id) || [0, 0, 0, 0, 0, 0];
   const gap = e1.gap / 100;
   const ctxRow = [gap, e1.home, c[0], c[1], c[2], c[3], c[3] * gap, c[4], c[5] * gap];
@@ -381,12 +391,29 @@ function e1Rows(games: G[], ctx: Ctx, p: Params, blend: boolean, inTrain: (g: G)
   return out;
 }
 
+/** fix149: the first game (in time order) with a non-finite input, logged once per run. */
+let nanLogged = false;
+function firstNaN(games: G[], e1: Map<number, E1Row>, F: Feats) {
+  if (nanLogged) return;
+  for (const g of games) {
+    const r = e1.get(g.id);
+    const checks: [string, number | undefined][] = [['nfl-v1 p', r?.p], ['Elo gap', r?.gap], ['total', r?.total], ['QB v2', F.qb.get(g.id)]];
+    F.m2.forEach((m, i) => checks.push([`margin rating ${i}`, m.get(g.id)]));
+    F.m6.forEach((m, i) => checks.push([`early rating ${i}`, m.get(g.id)]));
+    (F.eff.get(g.id) || []).forEach((v, i) => checks.push([`efficiency ${i}`, v]));
+    (F.ctx.get(g.id) || []).forEach((v, i) => checks.push([`context ${i}`, v]));
+    const bad = checks.find(([, v]) => v !== undefined && !Number.isFinite(v));
+    if (bad) { nanLogged = true; logger.warn(`nfl-exp: first NaN at game ${g.id} season ${g.season} field ${bad[0]}`); return; }
+  }
+}
+
 const VARIANTS = ['E1', 'E2', 'E3', 'E4', 'E5', 'E6', 'E7', 'E7b'];
 let running = false;
 
 export async function runNflExperiments(): Promise<any> {
   if (running) return null;
   running = true;
+  nanLogged = false;
   const t0 = Date.now();
   try {
     const games = M.loadGames(1), ctx = M.loadCtx(1);
@@ -403,8 +430,10 @@ export async function runNflExperiments(): Promise<any> {
     for (const S of tests) {
       const start = Math.min(...done.filter(g => g.season === S).map(g => g.t));
       const stored = v1Report?.seasons?.find((x: any) => x.season === S)?.params as Params | undefined;
-      const p: Params = stored || await M.tune(games, ctx, start, false, 1);
+      // fix149: settings stored by older versions miss reg / fcs / movCap → completed from the defaults (NaN before)
+      const p: Params = M.fullParams(stored || await M.tune(games, ctx, start, false, 1), 1);
       const e1 = e1Rows(games, ctx, p, !!v1Report?.blend?.used, g => g.t < start && g.season > seasons[0]);
+      firstNaN(done, e1, F);
       const train = done.filter(g => g.t < start && g.season > seasons[0] && e1.has(g.id));
       const test = done.filter(g => g.season === S && e1.has(g.id));
       for (const v of VARIANTS) {
@@ -421,14 +450,19 @@ export async function runNflExperiments(): Promise<any> {
     }
     const table = VARIANTS.map(v => {
       const tot: any = M.metrics(rows[v]);
+      // fix149: NaN / Infinity log loss or under 55% right = invalid, never chosen
+      const valid = Number.isFinite(tot.logLoss) && tot.hit !== null && tot.hit >= VALID_HIT;
       logger.info(`nfl-exp ${v} total: hit ${tot.hit}% LL ${tot.logLoss} n=${tot.games}`);
-      return { id: v, name: NAMES[v], total: tot, perSeason: per[v], weeks1to4: M.metrics(rows[v].filter(r => r.wk !== null && r.wk <= 4)), rest: M.metrics(rows[v].filter(r => r.wk === null || r.wk > 4)) };
+      if (!valid) logger.warn(`nfl-exp ${v} invalid (LL ${tot.logLoss}, hit ${tot.hit}%)`);
+      return { id: v, name: NAMES[v], valid, total: tot, perSeason: per[v], weeks1to4: M.metrics(rows[v].filter(r => r.wk !== null && r.wk <= 4)), rest: M.metrics(rows[v].filter(r => r.wk === null || r.wk > 4)) };
     });
     const base = table[0].total as any;
-    const best = [...table].sort((a, b) => (a.total as any).logLoss - (b.total as any).logLoss)[0];
+    const validRows = table.filter(x => x.valid);
+    const best = [...(validRows.length ? validRows : table)].sort((a, b) => (a.total as any).logLoss - (b.total as any).logLoss)[0];
     const bt = best.total as any;
-    const adopt = best.id !== 'E1' && bt.logLoss < base.logLoss && bt.hit >= base.hit;
-    const reason = best.id === 'E1' ? 'nfl-v1 has the best log loss' : adopt ? `${best.id} LL ${bt.logLoss} < ${base.logLoss}, hit ${bt.hit}% ≥ ${base.hit}%` : `${best.id} LL ${bt.logLoss} but hit ${bt.hit}% < nfl-v1 ${base.hit}%`;
+    // nfl-v1 itself invalid: nothing can be compared with it, so nothing is adopted
+    const adopt = table[0].valid && best.valid && best.id !== 'E1' && bt.logLoss < base.logLoss && bt.hit >= base.hit;
+    const reason = !table[0].valid ? 'nfl-v1 (E1) invalid in this run: nothing adopted' : !best.valid ? 'no valid variant' : best.id === 'E1' ? 'nfl-v1 has the best log loss' : adopt ? `${best.id} LL ${bt.logLoss} < ${base.logLoss}, hit ${bt.hit}% ≥ ${base.hit}%` : `${best.id} LL ${bt.logLoss} but hit ${bt.hit}% < nfl-v1 ${base.hit}%`;
     logger.info(`nfl-exp: best ${best.id} (${NAMES[best.id]}) → ${adopt ? 'adopted as nfl-v2' : 'nfl-v1 kept'}: ${reason}`);
     // the live nfl-v2: settings and weights fitted on every finished game (the first season = warm-up)
     let live: any = null;

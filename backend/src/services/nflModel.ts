@@ -79,7 +79,7 @@ function loadGames(league: LeagueId = 1): G[] {
       WHERE league = ? ${HIDE_OTHER} AND kickoff IS NOT NULL AND home_id IS NOT NULL AND away_id IS NOT NULL AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff, game_id`).all(league) as any[])
     .map(r => ({
       id: r.game_id, season: r.season, kickoff: r.kickoff, t: Date.parse(r.kickoff), stage: r.stage, week: r.week, h: r.home_id, a: r.away_id, hn: r.home_name, an: r.away_name,
-      hs: r.home_pts, as: r.away_pts, done: ['FT', 'AOT'].includes(r.status) && r.home_pts != null && r.away_pts != null,
+      hs: r.home_pts, as: r.away_pts, done: ['FT', 'AOT'].includes(r.status) && Number.isFinite(r.home_pts) && Number.isFinite(r.away_pts), // fix149: both scores
       neutral: stadium ? collegeNeutral(r.stage, r.venue, stadium.get(r.home_id) ?? null) : isNeutral(r.stage, r.week, r.venue)
     }));
 }
@@ -109,7 +109,11 @@ export function passersOf(json: string | null): Passer[] {
     const sk = st[key(/^sacks?$/) || ''];
     const sp = pairOf(sk);
     const sacks = sp ? sp[0] : numOf(sk) ?? 0, sackYds = sp ? sp[1] : 0;
-    out.push({ id, name: p?.player?.name || String(id), att, anya: (yds + 20 * td - 45 * int - sackYds) / Math.max(1, att + sacks) });
+    // fix149: ANY/A only with attempts + sacks > 0 and a finite result (a bad line would poison the QB ratings)
+    if (!(att + sacks > 0)) continue;
+    const anya = (yds + 20 * td - 45 * int - sackYds) / (att + sacks);
+    if (!Number.isFinite(anya) || !Number.isFinite(att)) continue;
+    out.push({ id, name: p?.player?.name || String(id), att, anya });
   }
   return out.sort((a, b) => b.att - a.att);
 }
@@ -154,6 +158,22 @@ const DEFAULT: Params = { k: 20, hfaPre: 55, hfaPost: 30, bye: 15, short: 10, qb
 const NCAA_DEFAULT: Params = { k: 25, hfaPre: 70, hfaPost: 60, bye: 10, short: 10, qbW: 30, alpha: 0.08, reg: 0.4, fcs: 250, movCap: 2.5 };
 const DEFAULTS: Record<LeagueId, Params> = { 1: DEFAULT, 2: NCAA_DEFAULT };
 const ELO_ONLY = (p: Params): Params => ({ ...p, bye: 0, short: 0, qbW: 0 });
+/**
+ * fix149: every setting present and finite. Settings stored before fix142 have no reg / fcs / movCap: undefined made the
+ * season regression NaN and poisoned every rating after it (nfl-exp "LL NaN" from 2022 on).
+ */
+export function fullParams(p: Partial<Params> | null | undefined, league: LeagueId = 1): Params {
+  const d = DEFAULTS[league], out = { ...d };
+  for (const k of Object.keys(d) as (keyof Params)[]) { const v = (p as any)?.[k]; if (typeof v === 'number' && Number.isFinite(v)) out[k] = v; }
+  return out;
+}
+const nanSeen = new Set<string>();
+/** Log the first non-finite value of a kind once per process: "<who>: first NaN at game X season Y field Z". */
+export function noteNaN(who: string, g: { id: number; season: number }, field: string) {
+  if (nanSeen.has(who)) return;
+  nanSeen.add(who);
+  logger.warn(`${who}: first NaN at game ${g.id} season ${g.season} field ${field}`);
+}
 const QB_PRIOR = 200, QB_DECAY = 0.985, EFF_A = 0.15;
 /** Passers with few attempts are shrunk toward a replacement level below the league mean (most of them are backups). */
 const QB_REPLACEMENT = 0.7;
@@ -176,7 +196,8 @@ class Engine {
   teams = new Map<number, TeamState>();
   qbr = new Map<number, { s: number; w: number; name: string }>();
   qbMean = 6.0; avg = 22;
-  constructor(public p: Params, public ctx: Ctx, public league: LeagueId = 1) {}
+  p: Params;
+  constructor(p: Params, public ctx: Ctx, public league: LeagueId = 1) { this.p = fullParams(p, league); }
 
   /** College: the mean Elo of a conference's teams (the regression target between seasons). */
   confMean(conf: string | null): number {
@@ -197,6 +218,7 @@ class Engine {
       // NFL: 1/3 back to 1500; college: a tuned share back to the conference mean (fix142)
       const target = this.league === 2 ? this.confMean(this.ctx.teams.get(id)?.conf ?? null) : 1500;
       t.elo = target + (t.elo - target) * (1 - this.p.reg);
+      if (!Number.isFinite(t.elo)) { noteNaN(`${this.league === 2 ? 'ncaa' : 'nfl'}-v1`, { id, season }, 'elo (season regression)'); t.elo = 1500; }
       t.o *= 2 / 3; t.d *= 2 / 3;
       const e = t.eff;
       t.eff = { ypp: (e.ypp + 5.3) / 2, dypp: (e.dypp + 5.3) / 2, give: (e.give + 1.3) / 2, take: (e.take + 1.3) / 2, third: (e.third + 0.39) / 2, rz: (e.rz + 0.55) / 2, sacks: (e.sacks + 2.4) / 2, n: Math.min(e.n, 4) };
@@ -259,16 +281,21 @@ class Engine {
     const winnerDiff = m > 0 ? pr.diff : m < 0 ? -pr.diff : 0;
     const mult = Math.min(this.p.movCap, Math.log(Math.abs(m) + 1) * (2.2 / (winnerDiff * 0.001 + 2.2))); // college: capped (blowouts)
     const delta = this.p.k * mult * (res - pr.p);
-    H.elo += delta; A.elo -= delta;
+    // fix149: a non-finite step never reaches the ratings (logged once with the game)
+    const who = this.league === 2 ? 'ncaa-v1' : 'nfl-v1';
+    if (Number.isFinite(delta)) { H.elo += delta; A.elo -= delta; } else noteNaN(who, g, `elo update (p ${pr.p}, mult ${mult})`);
     // points for / against ratings
     const eH = g.hs! - (this.avg + H.o + A.d), eA = g.as! - (this.avg + A.o + H.d);
-    H.o += this.p.alpha * eH; A.d += this.p.alpha * eH; A.o += this.p.alpha * eA; H.d += this.p.alpha * eA;
-    this.avg += 0.004 * ((g.hs! + g.as!) / 2 - this.avg);
+    if (Number.isFinite(eH) && Number.isFinite(eA)) {
+      H.o += this.p.alpha * eH; A.d += this.p.alpha * eH; A.o += this.p.alpha * eA; H.d += this.p.alpha * eA;
+      this.avg += 0.004 * ((g.hs! + g.as!) / 2 - this.avg);
+    } else noteNaN(who, g, 'points ratings');
     // QB ratings
     for (const [teamId, t] of [[g.h, H], [g.a, A]] as [number, TeamState][]) {
       const list = this.ctx.qb.get(`${g.id}|${teamId}`);
       if (!list || !list.length) continue;
       for (const q of list) {
+        if (!Number.isFinite(q.anya) || !(q.att > 0)) { noteNaN(this.league === 2 ? 'ncaa-v1' : 'nfl-v1', g, `QB ANY/A of ${q.id}`); continue; }
         const r = this.qbr.get(q.id) || { s: 0, w: 0, name: q.name };
         r.s = r.s * QB_DECAY + q.anya * q.att; r.w = r.w * QB_DECAY + q.att; r.name = q.name;
         this.qbr.set(q.id, r);
@@ -485,7 +512,7 @@ export async function buildReport(league: LeagueId = 1): Promise<Report> {
     await yieldLoop();
   }
   const llAB = all.ab.length ? logLossOf(all.ab) : null, llD = all.d.length ? logLossOf(all.d) : null;
-  const useD = llAB !== null && llD !== null && llD < llAB - 0.0005;
+  const useD = llAB !== null && llD !== null && Number.isFinite(llD) && Number.isFinite(llAB) && llD < llAB - 0.0005;
   logger.info(`${MODEL} total: A+B LL ${llAB === null ? '–' : llAB.toFixed(4)}, with efficiency ${llD === null ? '–' : llD.toFixed(4)} → ${useD ? 'efficiency blend (D) kept' : 'A+B kept'}`);
   const r1 = (x: number) => Math.round(x * 10) / 10;
   const report: Report = {
@@ -526,6 +553,13 @@ export async function retrain(league: LeagueId = 1): Promise<Report> {
   }
   const trained = [...new Set(finished.map(g => g.season))].sort((a, b) => a - b);
   report.live = { params, blend: !!blend, seasonsTrained: trained };
+  // fix149: a walk-forward test with a NaN / Infinity log loss or under 55% right is invalid: the old settings stay
+  const tot: any = report.blend.used ? report.total.blend : report.total.ab;
+  if (tot?.games && (!Number.isFinite(tot.logLoss) || tot.hit === null || tot.hit < 55)) {
+    logger.warn(`${MODEL_OF[league]} invalid (LL ${tot.logLoss}, hit ${tot.hit}%): settings not stored, the previous ones stay`);
+    sync(`${KEY_OF[league]}|report`, { ...report, invalid: true });
+    return report;
+  }
   sync(`${KEY_OF[league]}|params`, { params, blend, trained, at: new Date().toISOString() });
   sync(`${KEY_OF[league]}|report`, report);
   lives.delete(league); // replayed on next use
@@ -760,4 +794,4 @@ export async function nflModelTick(): Promise<void> {
 
 /* ---------- fix146: internals the nfl-v2 experiments reuse (services/nflExperiments.ts) ---------- */
 export type { G as NflG, Pre as NflPre, Ctx as NflCtx, Row as NflRow, Box as NflBox, Passer as NflPasser };
-export const modelInternals = { loadGames, loadCtx, run, tune, metrics, marginFromP, readSync, sync, logLossOf, clip, DEFAULTS, featOf, fitBlend, blendP };
+export const modelInternals = { loadGames, loadCtx, run, tune, metrics, marginFromP, readSync, sync, logLossOf, clip, DEFAULTS, featOf, fitBlend, blendP, fullParams, noteNaN };
