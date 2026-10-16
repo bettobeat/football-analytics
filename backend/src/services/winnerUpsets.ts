@@ -40,7 +40,7 @@ function nflRows(upcoming: boolean): Row[] {
         WHERE g.status IN ('FT','AOT') AND g.home_pts IS NOT NULL AND g.home_pts != g.away_pts AND p.made_at <= p.kickoff`).all()) as any[];
   return rows.map(r => ({
     id: r.game_id, league: `${r.league === 2 ? 'College football' : 'NFL'}${r.week ? ` · ${/post/i.test(r.stage || '') ? (r.league === 2 ? 'Bowls' : 'Playoffs') : String(r.week).replace(/^(\d+)$/, 'Week $1')}` : ''}`,
-    date: r.kickoff, home: r.home_name, away: r.away_name, homeLogo: r.home_logo || null, awayLogo: r.away_logo || null,
+    date: r.kickoff, home: r.home_name || 'TBD', away: r.away_name || 'TBD', homeLogo: r.home_logo || null, awayLogo: r.away_logo || null,
     pHome: r.p_home, hs: r.home_pts, as_: r.away_pts, done: r.status === 'FT' || r.status === 'AOT'
   }));
 }

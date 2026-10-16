@@ -66,7 +66,7 @@ function bbGame(id: number): GameInfo | null {
 function nflGame(id: number): GameInfo | null {
   const g = db.prepare(`SELECT kickoff, status, home_name, away_name, league, week FROM nfl_games WHERE game_id = ?`).get(id) as any;
   if (!g) return null;
-  return { kickoff: g.kickoff, home: g.home_name, away: g.away_name, league: g.league === 2 ? 'College football' : 'NFL', finished: BB_DONE.includes(g.status) };
+  return { kickoff: g.kickoff, home: g.home_name || 'TBD', away: g.away_name || 'TBD', league: g.league === 2 ? 'College football' : 'NFL', finished: BB_DONE.includes(g.status) };
 }
 
 const gameInfo = (sport: Sport, id: number) => (sport === 'fb' ? fbGame(id) : sport === 'nfl' ? nflGame(id) : bbGame(id));

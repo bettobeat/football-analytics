@@ -302,6 +302,24 @@ function storeGames(list: any[], season?: number, league: LeagueId = 1) {
     }
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
+  if (list.some(g => !g?.teams?.home?.name || !g?.teams?.away?.name)) fillMissingNames(false);
+}
+
+/**
+ * fix151: games stored without a team name (the provider sends null for some college games) take the name from
+ * nfl_teams by team id. Logs "college: n games had no team name, m filled" (at boot always, otherwise when it changed).
+ */
+export function fillMissingNames(always = true): { missing: number; filled: number } {
+  const count = () => (db.prepare(`SELECT COUNT(*) AS n FROM nfl_games WHERE league = 2 AND (home_name IS NULL OR home_name = '' OR away_name IS NULL OR away_name = '')`).get() as any)?.n || 0;
+  const before = count();
+  if (!before && !always) return { missing: 0, filled: 0 };
+  for (const side of ['home', 'away']) {
+    db.prepare(`UPDATE nfl_games SET ${side}_name = (SELECT name FROM nfl_teams t WHERE t.team_id = nfl_games.${side}_id AND t.name IS NOT NULL AND t.name != '')
+      WHERE (${side}_name IS NULL OR ${side}_name = '') AND ${side}_id IS NOT NULL AND EXISTS (SELECT 1 FROM nfl_teams t WHERE t.team_id = nfl_games.${side}_id AND t.name IS NOT NULL AND t.name != '')`).run();
+  }
+  const after = count();
+  if (before || always) logger.info(`college: ${before} games had no team name, ${before - after} filled${after ? ` (${after} still shown as "TBD")` : ''}`);
+  return { missing: before, filled: before - after };
 }
 
 /** Store one season's games (scores only: no odds). Returns how many games came back. */
@@ -462,7 +480,7 @@ async function teamsAndStandings(league: LeagueId): Promise<number> {
     }
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
-  if (league === 2) classifyCollegeTeams(); // fix143: FBS / FCS / other for every college team
+  if (league === 2) { classifyCollegeTeams(); fillMissingNames(false); } // fix143: levels; fix151: names from the team list
   return rows.length;
 }
 
@@ -536,7 +554,7 @@ export function startNflScheduler() {
   if (started || !KEY()) return;
   started = true;
   // fix143 / fix146: levels for every college team; with none yet, sync teams + standings now and retrain ncaa-v1
-  setTimeout(() => { collegeLevelsOnBoot().catch(e => logger.warn(`College levels: ${e.message}`)); }, 20 * 1000);
+  setTimeout(() => { try { fillMissingNames(true); } catch (e: any) { logger.warn(`college names: ${e.message}`); } collegeLevelsOnBoot().catch(e => logger.warn(`College levels: ${e.message}`)); }, 20 * 1000);
   // every 30 min: games of the current season (+ backfill), box scores, then whatever is due (each job keeps its own clock)
   const tick = async () => {
     if (tickBusy) return;

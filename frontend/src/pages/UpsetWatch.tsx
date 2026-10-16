@@ -39,7 +39,7 @@ function Crest({ src, name, size = 'w-10 h-10' }: { src?: string | null; name: s
   return src ? (
     <img src={src} alt="" className={`${size} object-contain`} />
   ) : (
-    <span className={`${size} rounded-full bg-surface2 grid place-items-center text-xs font-bold text-muted`}>{name.slice(0, 2).toUpperCase()}</span>
+    <span className={`${size} rounded-full bg-surface2 grid place-items-center text-xs font-bold text-muted`}>{String(name || "?").slice(0, 2).toUpperCase()}</span>
   )
 }
 

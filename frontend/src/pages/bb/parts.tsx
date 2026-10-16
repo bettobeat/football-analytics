@@ -54,7 +54,8 @@ export function TeamLogo({ team, size = 22 }: { team: BbSide | { name: string; l
 }
 
 /** "Tokyo Sunrockers" → "TS", "Bayern" → "BAY". */
-export const initials = (name: string) => {
+export const initials = (raw: string | null | undefined) => {
+  const name = typeof raw === 'string' && raw.trim() ? raw : '?' // fix151: no name → "?"
   const w = name.replace(/[^\p{L}\p{N} ]/gu, ' ').split(/\s+/).filter(x => x.length > 1 || /\d/.test(x))
   return (w.length >= 2 ? w.slice(0, 2).map(x => x[0]).join('') : (w[0] || name).slice(0, 3)).toUpperCase()
 }
@@ -387,7 +388,8 @@ export function GameList({ games, showLeague = false, empty }: { games: BbGame[]
 
 /** A team name that fits a list row (fix132): the full name up to 14 characters, else the nickname (NBA: last word) or
  *  the first word — never cut with "…". */
-export function bbShort(name: string, code: string) {
+export function bbShort(raw: string | null | undefined, code: string) {
+  const name = raw || 'TBD'
   if (name.length <= 14) return name
   const w = name.split(/\s+/)
   return code === 'NBA' ? w[w.length - 1] : w[0]

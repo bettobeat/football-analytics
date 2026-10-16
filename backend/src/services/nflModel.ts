@@ -710,7 +710,7 @@ export function nflAccuracy(days = 3650) {
     FROM nfl_predictions p JOIN nfl_games g ON g.game_id = p.game_id
     WHERE (g.status IS NULL OR g.status NOT IN ('FT','AOT','CANC','PST')) AND p.kickoff BETWEEN ? AND ? ORDER BY p.kickoff LIMIT 60`)
     .all(new Date(Date.now() - 5 * 3600000).toISOString(), new Date(Date.now() + 36 * 3600000).toISOString()) as any[]).map(r => ({
-      gameId: r.game_id, code: code(r.league), kickoff: r.kickoff, home: r.home_name, away: r.away_name, homeLogo: r.home_logo, awayLogo: r.away_logo,
+      gameId: r.game_id, code: code(r.league), kickoff: r.kickoff, home: r.home_name || 'TBD', away: r.away_name || 'TBD', homeLogo: r.home_logo, awayLogo: r.away_logo,
       status: r.status, live: !!r.status && r.status !== 'NS' && Date.parse(r.kickoff) <= Date.now(), score: r.hs != null ? [r.hs, r.as_] : null,
       pick: r.p_home >= 0.5 ? 'H' : 'A', preseason: false
     }));
@@ -721,7 +721,7 @@ export function nflAccuracy(days = 3650) {
     bands: winnerBands(rows.map(r => ({ p: Math.max(r.p_home, 1 - r.p_home), hit: hit(r) }))),
     leagues: [...by.entries()].map(([c, b]) => ({ code: c, ...b, hitRate: pct(b.hits, b.n), strongHitRate: pct(b.strongHits, b.strongN) })),
     recent: rows.slice(0, 50).map(r => ({
-      gameId: r.game_id, code: code(r.league), kickoff: r.kickoff, home: r.home_name, away: r.away_name, homeLogo: r.home_logo, awayLogo: r.away_logo,
+      gameId: r.game_id, code: code(r.league), kickoff: r.kickoff, home: r.home_name || 'TBD', away: r.away_name || 'TBD', homeLogo: r.home_logo, awayLogo: r.away_logo,
       score: [r.hs, r.as_], pick: r.p_home >= 0.5 ? 'H' : 'A', pHome: r.p_home, hit: hit(r)
     }))
   };

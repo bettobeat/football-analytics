@@ -86,13 +86,15 @@ export const dayOf = (iso: string) => new Date(iso).toLocaleDateString(LOCALE, {
 /** College nicknames of two words ("Crimson Tide"): dropped whole to leave the school name. */
 const TWO_WORD = /\s(crimson tide|nittany lions|fighting irish|yellow jackets|golden gophers|blue devils|tar heels|red raiders|horned frogs|sun devils|golden bears|demon deacons|scarlet knights|mean green|golden hurricane|golden eagles|green wave|red wolves|black knights|thundering herd|golden flashes|blue raiders|fighting illini|rainbow warriors|wolf pack|golden panthers|black bears|blue hens|golden lions|fighting hawks|big green|big red|purple eagles|mountain hawks|delta devils|golden rams|red flash|red foxes|blue hose|golden griffins|fighting camels|river hawks)$/i
 /** "Ohio State Buckeyes" → "Ohio State", "Alabama Crimson Tide" → "Alabama" (fix142: college rows use the school). */
-export const schoolName = (name: string) => { const m = name.match(TWO_WORD); if (m) return name.slice(0, m.index); const w = name.split(/\s+/); return w.length > 1 ? w.slice(0, -1).join(' ') : name }
+/** fix151: a game may come without a team name (null): shown as "TBD", never a crash. */
+export const teamName = (name: string | null | undefined) => (typeof name === 'string' && name.trim() ? name : 'TBD')
+export const schoolName = (raw: string | null | undefined) => { const name = teamName(raw); const m = name.match(TWO_WORD); if (m) return name.slice(0, m.index); const w = name.split(/\s+/); return w.length > 1 ? w.slice(0, -1).join(' ') : name }
 /** "Kansas City Chiefs" → "Chiefs" for tight rows (the nickname is what people say); college: the school name. */
-export const nick = (name: string, league: NflLeague = 1) => { if (league === 2) return schoolName(name); const w = name.split(/\s+/); return w.length > 1 ? w[w.length - 1] : name }
+export const nick = (raw: string | null | undefined, league: NflLeague = 1) => { if (league === 2) return schoolName(raw); const name = teamName(raw); const w = name.split(/\s+/); return w.length > 1 ? w[w.length - 1] : name }
 /** Reveal ids for NFL games (own negative range: never clashes with football ids or basketball's -id). */
 export const nflRid = (g: { id: number }) => -(2e9 + g.id)
 export const nflRstatus = (g: NflGame) => (g.state === 'done' ? 'FT' : g.status)
-export const record = (r: { w: number; l: number; t: number }) => `${r.w}-${r.l}${r.t ? `-${r.t}` : ''}`
+export const record = (r: { w: number; l: number; t: number } | null | undefined) => (r ? `${r.w ?? 0}-${r.l ?? 0}${r.t ? `-${r.t}` : ''}` : '–')
 
 /* ---------- favorites (NFL teams, in the same account list as football's) ---------- */
 

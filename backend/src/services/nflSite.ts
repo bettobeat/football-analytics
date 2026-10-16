@@ -40,6 +40,8 @@ export function weekKey(stage: string | null, week: string | null): string {
   return m ? String(Number(m[1])) : 'post';
 }
 
+/** fix151: a team's name for a game row: the stored one, else the team list's, else "TBD" (never null). */
+export const nameOf = (id: number | null, given: string | null) => (given && String(given).trim()) || (id ? ((db.prepare(`SELECT name FROM nfl_teams WHERE team_id = ?`).get(id) as any)?.name || null) : null) || 'TBD';
 const logoOf = (id: number | null, given: string | null) => given || (id ? ((db.prepare(`SELECT logo FROM nfl_teams WHERE team_id = ?`).get(id) as any)?.logo ?? null) : null);
 
 export function shapeGame(r: any): NflGame {
@@ -48,8 +50,8 @@ export function shapeGame(r: any): NflGame {
   const q = parseJson(r.quarters);
   return {
     id: r.game_id, season: r.season, week: r.week, weekKey: weekKey(r.stage, r.week), stage: r.stage, kickoff: r.kickoff, status, state,
-    home: { id: r.home_id, name: r.home_name, logo: logoOf(r.home_id, r.home_logo) },
-    away: { id: r.away_id, name: r.away_name, logo: logoOf(r.away_id, r.away_logo) },
+    home: { id: r.home_id, name: nameOf(r.home_id, r.home_name), logo: logoOf(r.home_id, r.home_logo) },
+    away: { id: r.away_id, name: nameOf(r.away_id, r.away_name), logo: logoOf(r.away_id, r.away_logo) },
     score: r.home_pts != null && r.away_pts != null && state !== 'upcoming' ? { home: r.home_pts, away: r.away_pts } : null,
     quarters: Array.isArray(q) && q.length === 2 ? { home: q[0], away: q[1] } : null,
     venue: r.venue || null, league: r.league === 2 ? 2 : 1
@@ -531,6 +533,6 @@ export function nflSearch(q: string) {
   const games = (db.prepare(`SELECT game_id AS id, kickoff, status, league, home_name AS home, away_name AS away FROM nfl_games
     WHERE (home_name LIKE ? OR away_name LIKE ?) ${HIDE_OTHER} AND kickoff >= ? AND kickoff < ? AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff LIMIT 6`)
     .all(like, like, new Date(Date.now() - 5 * 3600000).toISOString(), new Date(Date.now() + 14 * 86400000).toISOString()) as any[])
-    .map(g => ({ id: g.id, kickoff: g.kickoff, status: g.status, league: lname(g.league), home: g.home, away: g.away }));
+    .map(g => ({ id: g.id, kickoff: g.kickoff, status: g.status, league: lname(g.league), home: g.home || 'TBD', away: g.away || 'TBD' }));
   return { teams, players, leagues: [], games };
 }

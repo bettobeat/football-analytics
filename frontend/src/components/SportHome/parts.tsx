@@ -18,7 +18,8 @@ export const ago = (iso: string | null) => {
 const when = (iso: string) => new Date(iso).toLocaleString(LOCALE, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 /** "BBC Sport · Premier League": the outlet and the first league the story is filed under */
 const srcLine = (n: HNews) => [n.source, n.leagues?.[0]?.name].filter(Boolean).join(' · ')
-const initials = (s: string) => {
+const initials = (raw: string | null | undefined) => {
+  const s = typeof raw === 'string' && raw.trim() ? raw : '?' // fix151: no name → "?"
   const w = s.replace(/[^\p{L}\p{N} ]/gu, ' ').split(/\s+/).filter(x => x.length > 1 || /\d/.test(x))
   return (w.length >= 2 ? w.slice(0, 2).map(x => x[0]).join('') : (w[0] || s).slice(0, 3)).toUpperCase()
 }
@@ -173,7 +174,7 @@ export function FeaturedHero({ g, a, label }: { g: HGame | null; a: SportAdapter
       </div>
     )
   const roll = rolling(g)
-  const longestWord = (s: string) => Math.max(0, ...s.split(/\s+/).map(w => w.length))
+  const longestWord = (s: string | null | undefined) => Math.max(0, ...String(s || '').split(/\s+/).map(w => w.length))
   const side = (t: HTeam) => (
     <Link to={t.href} className="group flex flex-col items-center gap-3 sm:gap-4 min-w-0">
       <span className="relative grid place-items-center w-24 h-24 sm:w-36 sm:h-36 rounded-full bg-white/[0.06] border border-white/10 backdrop-blur-md shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)] transition-transform group-hover:scale-[1.04]">
