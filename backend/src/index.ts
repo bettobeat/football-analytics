@@ -893,6 +893,11 @@ app.get('/api/admin/af-usage', (_req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({ data: { quota: afQuota(), ...afUsageToday() } });
 });
+// fix150: what the college lists see (season, weeks, default week, counts with / without the 'other' filter, raw values)
+app.get('/api/admin/nfl-college-debug', (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try { res.json({ data: require('./services/nflSite').collegeListsDebug() }); } catch (e) { sendError(res, e, 'College debug failed'); }
+});
 app.get('/api/admin/nfl-probe', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   try { res.json({ data: await nflProbe(req.query.refresh === '1') }); }

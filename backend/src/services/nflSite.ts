@@ -28,12 +28,16 @@ export interface NflGame {
   quarters: { home: (number | null)[]; away: (number | null)[] } | null; venue: string | null; league: LeagueId
 }
 
-/** "1".."18" for the regular season, "post" for the playoffs, "pre" for pre-season. */
+/**
+ * "1".."18" for the regular season, "post" for the playoffs / bowls, "pre" for pre-season. fix150: college formats too —
+ * "Week 8", "8", "Regular Season - 8", the number in the stage when the week has none, bowls / playoffs / championship.
+ */
 export function weekKey(stage: string | null, week: string | null): string {
-  if (/post/i.test(stage || '')) return 'post';
-  if (/pre/i.test(stage || '')) return 'pre';
-  const m = String(week || '').match(/(\d+)/);
-  return m ? m[1] : 'post';
+  const st = String(stage || ''), wk = String(week || '');
+  if (/post|bowl|playoff|championship|super bowl|wild ?card|divisional/i.test(st) || /bowl|playoff|championship|super bowl|wild ?card|divisional/i.test(wk)) return 'post';
+  if (/^pre|pre[- ]?season/i.test(st) || /pre[- ]?season|hall of fame/i.test(wk)) return 'pre';
+  const m = wk.match(/(\d+)/) || st.match(/(\d+)\s*$/);
+  return m ? String(Number(m[1])) : 'post';
 }
 
 const logoOf = (id: number | null, given: string | null) => given || (id ? ((db.prepare(`SELECT logo FROM nfl_teams WHERE team_id = ?`).get(id) as any)?.logo ?? null) : null);
@@ -484,6 +488,27 @@ export function nflLeaders(season: number, top = 5, league: LeagueId = 1) {
         .map(x => ({ ...x, team: nflTeamRow(x.teamId) ? { id: x.teamId, name: nflTeamRow(x.teamId)!.name, logo: nflTeamRow(x.teamId)!.logo } : null }))
     })).filter(c => c.rows.length);
   });
+}
+
+/* ---------- fix150: college list diagnostics ---------- */
+
+/**
+ * What the college lists see: the current season, its weeks (keys + game counts), the default week and its games, the
+ * season's games with and without the 'other' filter, team levels and the raw (stage, week) values. Logged once after
+ * boot ("college lists: season S, week W, n games") and at /api/admin/nfl-college-debug.
+ */
+export function collegeListsDebug() {
+  const season = nflCurrentSeason(2);
+  const all = season ? (db.prepare(`SELECT COUNT(*) AS n FROM nfl_games WHERE league = 2 AND season = ?`).get(season) as any).n : 0;
+  const shown = season ? (db.prepare(`SELECT COUNT(*) AS n FROM nfl_games WHERE league = 2 ${HIDE_OTHER} AND season = ?`).get(season) as any).n : 0;
+  const w = season ? nflWeeks(season, 2) : { weeks: [], current: null };
+  const games = season && w.current ? nflWeekGames(season, w.current, 2).length : 0;
+  const raw = season ? db.prepare(`SELECT stage, week, COUNT(*) AS n FROM nfl_games WHERE league = 2 AND season = ? GROUP BY stage, week ORDER BY MIN(kickoff) LIMIT 40`).all(season) : [];
+  const levels = db.prepare(`SELECT COALESCE(level, 'unknown') AS level, COUNT(*) AS n FROM nfl_teams WHERE league = 2 GROUP BY level`).all();
+  const seasons = db.prepare(`SELECT season, COUNT(*) AS n FROM nfl_games WHERE league = 2 GROUP BY season ORDER BY season DESC LIMIT 4`).all();
+  const now = new Date();
+  const today = season ? nflGamesBetween(new Date(now.getTime() - 12 * 3600e3).toISOString(), new Date(now.getTime() + 12 * 3600e3).toISOString(), 2).length : 0;
+  return { season, seasons, gamesInSeason: all, shownAfterHideOther: shown, weeks: w.weeks.map(x => `${x.key}:${x.games}`), current: w.current, currentWeekGames: games, next24h: today, levels, rawStageWeek: raw };
 }
 
 /* ---------- search, SEO helpers ---------- */

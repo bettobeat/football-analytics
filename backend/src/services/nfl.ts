@@ -123,13 +123,18 @@ export function classifyCollegeTeams(): Record<string, number> {
     for (const [id, ss] of seasonsOf) if (!level.get(id) && (fbsSeasons.get(id)?.size || 0) >= Math.max(1, ss.size / 2)) level.set(id, 'FCS');
     propagate();
   }
+  const nFbs = [...level.values()].filter(l => l === 'FBS').length, nFcs = [...level.values()].filter(l => l === 'FCS').length;
+  const classifiedOk = nFbs >= 60 && nFcs >= 40;
+  if (fallback && !classifiedOk) logger.warn(`ncaa levels: only FBS=${nFbs} FCS=${nFcs} found — the rest stay unknown (shown), not 'other'`);
   const upd = db.prepare(`UPDATE nfl_teams SET level = ? WHERE team_id = ?`);
   const count: Record<string, number> = { FBS: 0, FCS: 0, other: 0, unknown: 0 };
   db.exec('BEGIN');
   try {
     for (const t of teams) {
       let L = level.get(t.team_id) ?? null;
-      if (!L && (fallback || t.conference || t.division)) L = 'other';
+      // fix150: leftovers become 'other' (hidden) only when FBS and FCS were both found in numbers; a failed
+      // classification must not hide every college game — then they stay unknown (shown)
+      if (!L && (t.conference || t.division || (fallback && classifiedOk))) L = 'other';
       upd.run(L, t.team_id);
       count[L || 'unknown']++;
     }
@@ -140,13 +145,23 @@ export function classifyCollegeTeams(): Record<string, number> {
 }
 
 /** fix146: on boot, college teams without any level → teams + standings sync now, levels, then ncaa-v1 retrained. */
+/** fix150: "college lists: season S, week W, n games" + the full numbers (once per boot). */
+async function logCollegeLists() {
+  try {
+    const { collegeListsDebug } = await import('./nflSite');
+    const d = collegeListsDebug();
+    logger.info(`college lists: season ${d.season}, week ${d.current}, ${d.currentWeekGames} games (season ${d.gamesInSeason} games, ${d.shownAfterHideOther} after HIDE_OTHER; next 24 h ${d.next24h}; levels ${JSON.stringify(d.levels)}; weeks ${d.weeks.join(' ')}; raw stage/week ${JSON.stringify(d.rawStageWeek).slice(0, 600)})`);
+  } catch (e: any) { logger.warn(`college lists: ${e.message}`); }
+}
+
 export async function collegeLevelsOnBoot(): Promise<void> {
   const known = (db.prepare(`SELECT COUNT(*) AS n FROM nfl_teams WHERE league = 2 AND level IS NOT NULL`).get() as any)?.n || 0;
-  const done = db.prepare(`SELECT 1 FROM nfl_sync WHERE key = 'ncaa|levels-fix146'`).get();
-  if (known > 0 && done) return;
+  const done = db.prepare(`SELECT 1 FROM nfl_sync WHERE key = 'ncaa|levels-fix150'`).get();
+  if (known > 0 && done) { await logCollegeLists(); return; }
   try { await teamsAndStandings(2); } catch (e: any) { logger.warn(`College teams / standings: ${e.message}`); }
   const c = classifyCollegeTeams();
-  db.prepare(`INSERT OR REPLACE INTO nfl_sync (key, at, detail) VALUES ('ncaa|levels-fix146', ?, ?)`).run(new Date().toISOString(), JSON.stringify(c));
+  db.prepare(`INSERT OR REPLACE INTO nfl_sync (key, at, detail) VALUES ('ncaa|levels-fix150', ?, ?)`).run(new Date().toISOString(), JSON.stringify(c));
+  logCollegeLists();
   if (!c.FBS) return;
   const { retrain } = await import('./nflModel');
   const rep = await retrain(2); // logs FBS vs FBS / FBS vs FCS / all per season
