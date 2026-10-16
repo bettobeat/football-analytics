@@ -23,7 +23,7 @@ import { yieldLoop } from './perf';
 import { teamBox } from './nflSite';
 import { modelInternals as M, type NflG as G, type NflPre as Pre, type NflCtx as Ctx, type NflRow as Row, type Params } from './nflModel';
 
-export const EXP_VERSION = 'fix146-1';
+export const EXP_VERSION = 'fix148-1'; // a new version runs the experiments again on the next tick after deploy
 export const NFL_V2 = 'nfl-v2';
 const DAY = 86400000, WEEK = 7 * DAY;
 const bucketOf = (t: number) => Math.floor((t - 5 * DAY) / WEEK); // Tuesday to Monday
@@ -274,7 +274,8 @@ const CITY: Record<string, [number, number, number]> = {
   packers: [44.5, -88.06, 1], vikings: [44.97, -93.26, 1], falcons: [33.76, -84.4, 0], panthers: [35.23, -80.85, 0], saints: [29.95, -90.08, 1], buccaneers: [27.98, -82.5, 0],
   cardinals: [33.53, -112.26, 2], rams: [33.95, -118.34, 3], '49ers': [37.4, -121.97, 3], seahawks: [47.6, -122.33, 3]
 };
-const cityOf = (name: string) => CITY[name.trim().split(/\s+/).pop()!.toLowerCase()] || null;
+// fix148: a game may come without a team name (null): no city then, never a crash
+const cityOf = (name: string | null | undefined) => (name ? CITY[String(name).trim().split(/\s+/).pop()!.toLowerCase()] || null : null);
 const km = (a: [number, number, number], b: [number, number, number]) => {
   const R = 6371, rad = Math.PI / 180, dLat = (b[0] - a[0]) * rad, dLon = (b[1] - a[1]) * rad;
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * rad) * Math.cos(b[0] * rad) * Math.sin(dLon / 2) ** 2;
