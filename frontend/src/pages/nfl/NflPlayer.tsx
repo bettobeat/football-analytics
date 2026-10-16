@@ -3,7 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../../lib/socket'
 import { t, LOCALE } from '../../lib/i18n'
-import type { NflGame } from '../../lib/nfl'
+import { setNflLeague, type NflGame } from '../../lib/nfl'
+import { LeagueSwitch } from './parts'
 import { Card, Skeleton, TeamLogo } from '../bb/parts'
 
 interface Data {
@@ -22,7 +23,11 @@ export default function NflPlayer() {
   const [imgBroken, setImgBroken] = useState(false)
   useEffect(() => {
     setD(null); setMissing(false); setImgBroken(false)
-    axios.get(`${API_URL}/nfl/player/${id}`).then(r => { setD(r.data.data); document.title = `${r.data.data.player.name} · NFL | SportLikely` }).catch(() => setMissing(true))
+    axios.get(`${API_URL}/nfl/player/${id}`).then(r => {
+      const lg = r.data.data.team?.league === 2 ? 2 : 1
+      setD(r.data.data); setNflLeague(lg)
+      document.title = `${r.data.data.player.name} · ${lg === 2 ? 'College football' : 'NFL'} | SportLikely`
+    }).catch(() => setMissing(true))
   }, [id])
   if (missing) return <div className="max-w-2xl mx-auto px-4 py-16 text-center text-muted">{t('Player not found.')}</div>
   if (!d) return <div className="max-w-5xl mx-auto px-4 py-8"><Skeleton rows={6} /></div>
@@ -33,6 +38,7 @@ export default function NflPlayer() {
   ].filter(Boolean) as [string, string][]
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
+      <LeagueSwitch />
       <header className="flex items-center gap-4">
         {p.image && !imgBroken ? <img src={p.image} alt="" width={80} height={80} onError={() => setImgBroken(true)} className="w-20 h-20 rounded-full object-cover bg-surface2" /> : <span className="w-20 h-20 rounded-full bg-surface2" />}
         <div className="min-w-0 space-y-1">

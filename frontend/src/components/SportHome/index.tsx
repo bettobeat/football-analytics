@@ -22,6 +22,14 @@ export default function SportHome({ adapter: a }: { adapter: SportAdapter }) {
     <div className="max-w-7xl 2xl:max-w-[1760px] mx-auto px-4 sm:px-6 py-6 sm:py-8 2xl:grid 2xl:grid-cols-[minmax(0,1fr)_360px] 2xl:gap-8 2xl:items-start">
       <div className="space-y-10 min-w-0">
         {a.banner && <div className="rounded-2xl border border-draw/30 bg-draw/10 px-4 py-2.5 text-sm text-ink">{a.banner}</div>}
+        {a.switcher && (
+          <nav aria-label={tt('League')} className="inline-flex items-center gap-0.5 p-0.5 rounded-full border border-line bg-surface2/60">
+            {a.switcher.options.map(o => (
+              <Link key={o.key} to={o.to} aria-current={a.switcher!.value === o.key ? 'page' : undefined}
+                className={`h-8 px-3.5 inline-flex items-center rounded-full text-xs font-bold transition-colors ${a.switcher!.value === o.key ? 'bg-accent text-bg' : 'text-muted hover:text-ink'}`}>{o.label}</Link>
+            ))}
+          </nav>
+        )}
 
         {access === 'anon' && <FirstVisit a={a.intro} stats={d.introStats} />}
 

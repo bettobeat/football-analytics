@@ -4,13 +4,13 @@ import axios from 'axios'
 import { API_URL } from '../../lib/socket'
 import { t, LOCALE } from '../../lib/i18n'
 import { FavStar } from '../../lib/favorites'
-import { NFL_STATUS, weekLabel, timeOf, nick, nflTeamFav, nflRid, nflRstatus, type NflGame as Game, type NflSide, type NflPred } from '../../lib/nfl'
+import { NFL_STATUS, weekLabel, timeOf, nick, nflTeamFav, nflRid, nflRstatus, setNflLeague, nflBase, nflLeagueName, nflModelOf, nflStrongAt, type NflGame as Game, type NflSide, type NflPred } from '../../lib/nfl'
 import { useReveal, justRevealed } from '../../lib/reveal'
 import { RevealCover } from '../../components/Reveal'
 import CountUp from '../../components/CountUp'
 import StickyBar from '../../components/StickyBar'
 import { Card, Skeleton, TeamLogo, LockedNote } from '../bb/parts'
-import { StatBars } from './parts'
+import { StatBars, LeagueSwitch } from './parts'
 import { useNews, NewsRows, type NewsItem } from '../../components/NewsList'
 
 type Box = {
@@ -41,7 +41,13 @@ export default function NflGame() {
     return () => clearInterval(iv)
   }, [id])
   // the same title search engines get (seo.ts): "Chiefs vs Bills · NFL Week 7 | SportLikely"
-  useEffect(() => { if (d) document.title = `${nick(d.game.home.name)} vs ${nick(d.game.away.name)} · NFL ${d.game.weekKey === 'post' ? 'Playoffs' : `Week ${d.game.weekKey}`} | SportLikely` }, [d?.game.id])
+  // fix142: college titles use the school names ("Alabama vs Georgia · College football Week 7")
+  useEffect(() => {
+    if (!d) return
+    const lg = d.game.league || 1
+    setNflLeague(lg)
+    document.title = `${nick(d.game.home.name, lg)} vs ${nick(d.game.away.name, lg)} · ${lg === 2 ? 'College football' : 'NFL'} ${d.game.weekKey === 'post' ? (lg === 2 ? 'Bowls' : 'Playoffs') : `Week ${d.game.weekKey}`} | SportLikely`
+  }, [d?.game.id])
 
   if (missing) return <div className="max-w-2xl mx-auto px-4 py-16 text-center text-muted">{t('Game not found.')}</div>
   if (!d) return <div className="max-w-5xl mx-auto px-4 py-8"><Skeleton rows={6} h="h-16" /></div>
@@ -64,11 +70,14 @@ export default function NflGame() {
   )
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
-      <Link to="/american-football/games" className="text-sm text-muted hover:text-ink">← {t('All games')}</Link>
-      <h1 className="sr-only">{g.home.name} vs {g.away.name} · NFL {weekLabel(g.weekKey)}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Link to={`${nflBase(g.league || 1)}/games`} className="text-sm text-muted hover:text-ink">← {t('All games')}</Link>
+        <LeagueSwitch />
+      </div>
+      <h1 className="sr-only">{g.home.name} vs {g.away.name} · {nflLeagueName(g.league || 1)} {weekLabel(g.weekKey, g.league)}</h1>
       <div className="card mt-3 p-4 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-faint mb-4">
-          <span>NFL · {weekLabel(g.weekKey)} · {g.season}</span>
+          <span>{nflLeagueName(g.league || 1)} · {weekLabel(g.weekKey, g.league)} · {g.season}</span>
           <span>{new Date(g.kickoff).toLocaleDateString(LOCALE, { weekday: 'long', day: 'numeric', month: 'long' })}</span>
         </div>
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
@@ -133,7 +142,7 @@ function whyRows(g: Game, p: NflPred): { tone: 'H' | 'A' | 'N'; text: string }[]
   const w = p.why
   if (!w) return []
   const out: { tone: 'H' | 'A' | 'N'; text: string }[] = []
-  const name = (s: 'H' | 'A') => nick((s === 'H' ? g.home : g.away).name)
+  const name = (s: 'H' | 'A') => nick((s === 'H' ? g.home : g.away).name, g.league)
   const pts = (elo: number) => (Math.abs(elo) / 25).toFixed(1)
   const gap = Math.abs(w.eloGap), up: 'H' | 'A' = w.eloGap >= 0 ? 'H' : 'A'
   out.push(gap < 15
@@ -177,7 +186,8 @@ function PredictionSection({ g }: { g: Game }) {
     scrolled.current = true
     if (window.location.hash === '#prediction') requestAnimationFrame(() => document.getElementById('prediction')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }, [])
-  const note = p ? [p.model || 'nfl-v1', g.state === 'upcoming' ? t('Updated until kick-off') : t('Saved before kick-off')].join(' · ') : undefined
+  const strongAt = nflStrongAt(g.league || 1)
+  const note = p ? [p.model || nflModelOf(g.league || 1), g.state === 'upcoming' ? t('Updated until kick-off') : t('Saved before kick-off')].join(' · ') : undefined
   return (
     <div id="prediction" className="scroll-mt-32">
       <Card title={t('Prediction')} action={note ? <span className="text-xs text-faint">{note}</span> : undefined}>
@@ -199,8 +209,8 @@ function PredictionSection({ g }: { g: Game }) {
                 <Tile k="A" label={g.away.name} v={p.pAway} active={pick === 'A'} roll={roll} delay={240} />
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-                <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${topV >= 70 ? 'bg-accent/15 text-accent border-accent/40' : 'bg-surface2 text-ink border-line'}`}>
-                  {topV >= 80 ? t('Very strong pick') : topV >= 70 ? t('Strong pick') : topV >= 55 ? t('Pick') : t('Close game')}
+                <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${topV >= strongAt ? 'bg-accent/15 text-accent border-accent/40' : 'bg-surface2 text-ink border-line'}`}>
+                  {topV >= strongAt + 10 ? t('Very strong pick') : topV >= strongAt ? t('Strong pick') : topV >= 55 ? t('Pick') : t('Close game')}
                 </span>
                 <span className="text-muted">{t('Our pick')} · <span className="text-ink font-semibold">{team.name}</span> · <span className="num text-accent font-extrabold">{Math.round(topV)}%</span></span>
                 {typeof p.hit === 'boolean' && <span className={`ml-auto rounded-full px-3 py-1 text-xs font-bold ${p.hit ? 'bg-win/15 text-win' : 'bg-loss/15 text-loss'}`}>{p.hit ? t('Right') : t('Wrong')}</span>}
@@ -216,7 +226,7 @@ function PredictionSection({ g }: { g: Game }) {
                 </div>
               )}
               <div className="mt-5 grid grid-cols-3 gap-2">
-                <Stat label={t('Expected margin')} value={typeof p.margin === 'number' ? t('{0} by {1}', { 0: nick((p.margin >= 0 ? g.home : g.away).name), 1: Math.abs(p.margin).toFixed(1) }) : '–'} />
+                <Stat label={t('Expected margin')} value={typeof p.margin === 'number' ? t('{0} by {1}', { 0: nick((p.margin >= 0 ? g.home : g.away).name, g.league), 1: Math.abs(p.margin).toFixed(1) }) : '–'} />
                 <Stat label={t('Predicted score')} value={typeof p.homePts === 'number' ? `${Math.round(p.homePts)}–${Math.round(p.awayPts!)}` : '–'} />
                 <Stat label={t('Total points')} value={typeof p.total === 'number' ? p.total.toFixed(1) : '–'} />
               </div>

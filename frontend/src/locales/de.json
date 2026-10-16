@@ -1806,5 +1806,16 @@
  "Every prediction is saved before tip-off and scored after the game.": "Jede Prognose wird vor dem Sprungball gespeichert und nach dem Spiel bewertet.",
  "Who wins every NFL game, with the chance of each side, the expected score and the reasons behind each pick. Every prediction is saved before kick-off and checked in public.": "Wer jedes NFL-Spiel gewinnt, mit der Chance beider Teams, dem erwarteten Ergebnis und den Gründen hinter jedem Tipp. Jede Prognose wird vor dem Anstoß gespeichert und öffentlich überprüft.",
  "Winner · all picks": "Sieger · alle Tipps",
- "Winner · {0}%+ sure": "Sieger · zu {0}%+ sicher"
+ "Winner · {0}%+ sure": "Sieger · zu {0}%+ sicher",
+ "Once our college football model is live, every prediction is saved before kick-off and checked after the game, here and in public.": "Sobald unser College-Football-Modell live ist, wird jede Prognose vor dem Anstoß gespeichert und nach dem Spiel überprüft, hier und öffentlich.",
+ "Who wins every college football game, with the chance of each side, the expected score and the reasons behind each pick. Every prediction is saved before kick-off and checked in public.": "Wer jedes College-Football-Spiel gewinnt, mit der Chance beider Teams, dem erwarteten Ergebnis und den Gründen hinter jedem Tipp. Jede Prognose wird vor dem Anstoß gespeichert und öffentlich überprüft.",
+ "Bowls": "Bowls",
+ "College football": "College Football",
+ "College football today": "College Football heute",
+ "College football games": "College-Football-Spiele",
+ "No college football games today.": "Heute keine College-Football-Spiele.",
+ "College football standings": "College-Football-Tabellen",
+ "{0} season · by conference, FBS first": "Saison {0} · nach Conference, FBS zuerst",
+ "Conference games": "Conference-Spiele",
+ "Conf": "Conf"
 }

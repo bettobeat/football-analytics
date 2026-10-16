@@ -1806,5 +1806,16 @@
  "Every prediction is saved before tip-off and scored after the game.": "Her tahmin maç başlamadan kaydedilir ve maçtan sonra puanlanır.",
  "Who wins every NFL game, with the chance of each side, the expected score and the reasons behind each pick. Every prediction is saved before kick-off and checked in public.": "Her NFL maçını kimin kazanacağı: iki tarafın şansı, beklenen skor ve her tahminin gerekçesi. Her tahmin maç başlamadan kaydedilir ve herkesin önünde kontrol edilir.",
  "Winner · all picks": "Kazanan · tüm tahminler",
- "Winner · {0}%+ sure": "Kazanan · %{0}+ emin"
+ "Winner · {0}%+ sure": "Kazanan · %{0}+ emin",
+ "Once our college football model is live, every prediction is saved before kick-off and checked after the game, here and in public.": "Kolej futbolu modelimiz yayına girdiğinde her tahmin maç başlamadan kaydedilecek ve maçtan sonra burada ve herkesin önünde kontrol edilecek.",
+ "Who wins every college football game, with the chance of each side, the expected score and the reasons behind each pick. Every prediction is saved before kick-off and checked in public.": "Her kolej futbolu maçını kimin kazanacağı: iki tarafın şansı, beklenen skor ve her tahminin gerekçesi. Her tahmin maç başlamadan kaydedilir ve herkesin önünde kontrol edilir.",
+ "Bowls": "Bowl maçları",
+ "College football": "Kolej futbolu",
+ "College football today": "Bugün kolej futbolu",
+ "College football games": "Kolej futbolu maçları",
+ "No college football games today.": "Bugün kolej futbolu maçı yok.",
+ "College football standings": "Kolej futbolu puan durumu",
+ "{0} season · by conference, FBS first": "{0} sezonu · konferansa göre, önce FBS",
+ "Conference games": "Konferans maçları",
+ "Conf": "Konf"
 }

@@ -173,13 +173,14 @@ export function FeaturedHero({ g, a, label }: { g: HGame | null; a: SportAdapter
       </div>
     )
   const roll = rolling(g)
+  const longestWord = (s: string) => Math.max(0, ...s.split(/\s+/).map(w => w.length))
   const side = (t: HTeam) => (
     <Link to={t.href} className="group flex flex-col items-center gap-3 sm:gap-4 min-w-0">
       <span className="relative grid place-items-center w-24 h-24 sm:w-36 sm:h-36 rounded-full bg-white/[0.06] border border-white/10 backdrop-blur-md shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)] transition-transform group-hover:scale-[1.04]">
         <Crest team={t} size={72} />
       </span>
-      {/* phones: a long name (9+ letters, "Cardinals") one size smaller so it never breaks inside the word */}
-      <span className={`font-display font-extrabold ${t.short.length >= 9 ? 'text-sm' : 'text-base'} sm:text-3xl tracking-tight text-center leading-tight max-w-full break-words`}>
+      {/* phones: a long word (8+ letters, "Kentucky", "Cardinals") one size smaller, 11+ two sizes, so it never breaks inside the word */}
+      <span className={`font-display font-extrabold ${longestWord(t.short) >= 11 ? 'text-xs' : longestWord(t.short) >= 8 ? 'text-sm' : 'text-base'} sm:text-3xl tracking-tight text-center leading-tight max-w-full break-words`}>
         {t.short !== t.name ? <><span className="sm:hidden">{t.short}</span><span className="hidden sm:inline">{t.name}</span></> : t.name}
       </span>
     </Link>

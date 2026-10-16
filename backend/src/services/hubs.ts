@@ -24,6 +24,8 @@ export const HUBS: HubDef[] = [
   { slug: 'nba', old: 'NBA', sport: 'basketball', code: 'NBA', name: 'NBA', intro: 'NBA predictions for the coming games: each team\'s chance to win, the expected margin and total points, with rest, back-to-backs and the latest injury report taken into account. Saved before tip-off and checked after the final buzzer.' },
   // fix137: NFL week hub, listed once NFL_PUBLIC=1 (fix139: predictions)
   { slug: 'nfl', old: 'NFL', sport: 'american-football', code: 'NFL', name: 'NFL', intro: "NFL predictions for this week's games: each team's chance to win, the expected margin and total points, with rest, the starting quarterback and the latest injury report taken into account. Kick-off times, form, head-to-head and injuries for every game. Saved before kick-off and checked after the final whistle." },
+  // fix142: college football (FBS games), same rules
+  { slug: 'college-football', old: 'NCAA', sport: 'american-football', code: 'NCAA', name: 'College football', intro: "College football predictions for this week's FBS games: each team's chance to win, the expected margin and total points, with home field, neutral sites and rest taken into account. Kick-off times, form and head-to-head for every game. Saved before kick-off and checked after the final whistle." },
   { slug: 'euroleague', old: 'EUROLEAGUE', sport: 'basketball', code: 'EL', name: 'EuroLeague', intro: 'EuroLeague predictions for this round: win chances, expected margin and total points for every game, based on each team\'s attack, defence, pace and the players they actually use. Saved before tip-off and checked after every game.' }
 ];
 export const hubBySlug = (slug: string) => HUBS.find(h => h.slug === slug.toLowerCase()) || null;
@@ -63,10 +65,13 @@ export function buildHub(h: HubDef): Hub {
     }));
     if (!games.length) next = (db.prepare(`SELECT MIN(utc_date) AS d FROM predictions WHERE competition_code = ? AND utc_date > ?`).get(h.code, to) as any)?.d || null;
   } else if (h.sport === 'american-football') {
+    // fix142: NFL hub = league 1; college hub = league 2, games with at least one FBS team
+    const league = h.code === 'NCAA' ? 2 : 1;
+    const fbs = league === 2 ? `AND (home_id IN (SELECT team_id FROM nfl_teams WHERE league = 2 AND level = 'FBS') OR away_id IN (SELECT team_id FROM nfl_teams WHERE league = 2 AND level = 'FBS'))` : '';
     const rows = db.prepare(`SELECT game_id AS id, kickoff, home_name AS home, away_name AS away, home_pts AS hs, away_pts AS as_, status FROM nfl_games
-      WHERE kickoff >= ? AND kickoff <= ? AND (stage IS NULL OR stage NOT LIKE 'Pre%') AND (status IS NULL OR status NOT IN ('CANC','PST')) ORDER BY kickoff`).all(from, to) as any[];
+      WHERE league = ? AND kickoff >= ? AND kickoff <= ? AND (stage IS NULL OR stage NOT LIKE 'Pre%') AND (status IS NULL OR status NOT IN ('CANC','PST')) ${fbs} ORDER BY kickoff`).all(league, from, to) as any[];
     games = rows.map(r => ({ id: r.id, kickoff: r.kickoff, home: r.home, away: r.away, score: (r.status === 'FT' || r.status === 'AOT') && r.hs != null ? [r.hs, r.as_] : null, preview: null, url: `/american-football/game/${r.id}` }));
-    if (!games.length) next = (db.prepare(`SELECT MIN(kickoff) AS d FROM nfl_games WHERE kickoff > ? AND (stage IS NULL OR stage NOT LIKE 'Pre%')`).get(to) as any)?.d || null;
+    if (!games.length) next = (db.prepare(`SELECT MIN(kickoff) AS d FROM nfl_games WHERE league = ? AND kickoff > ? AND (stage IS NULL OR stage NOT LIKE 'Pre%')`).get(league, to) as any)?.d || null;
   } else {
     const rows = db.prepare(`SELECT game_id AS id, kickoff, home_name AS home, away_name AS away, hs, as_, status FROM bb_games
       WHERE code = ? AND kickoff >= ? AND kickoff <= ? AND (status IS NULL OR status NOT IN ('CANC','POST')) ORDER BY kickoff`).all(h.code, from, to) as any[];

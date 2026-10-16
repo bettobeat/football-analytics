@@ -3,9 +3,11 @@
  * standings by conference and division, team pages with the rule-based team analysis, player pages, leaders.
  * Predictions come from services/nflModel.ts (fix139, attached in index.ts), no odds. Built from services/nfl.ts tables only.
  * Visible to everyone when NFL_PUBLIC=1; before that, admins only. Past seasons: admins only.
+ * fix142: every list takes a league (1 = NFL, 2 = college football); games, teams and players are found by their id.
+ * College standings are grouped by conference (FBS conferences first).
  */
 import { db } from '../db';
-import { nflCurrentSeason, NFL_LIVE, NFL_DONE } from './nfl';
+import { nflCurrentSeason, NFL_LIVE, NFL_DONE, LeagueId } from './nfl';
 
 export const nflPublic = () => process.env.NFL_PUBLIC === '1';
 
@@ -23,7 +25,7 @@ export interface NflSide { id: number; name: string; logo: string | null }
 export interface NflGame {
   id: number; season: number; week: string | null; weekKey: string; stage: string | null; kickoff: string; status: string;
   state: 'upcoming' | 'live' | 'done' | 'off'; home: NflSide; away: NflSide; score: { home: number; away: number } | null;
-  quarters: { home: (number | null)[]; away: (number | null)[] } | null; venue: string | null
+  quarters: { home: (number | null)[]; away: (number | null)[] } | null; venue: string | null; league: LeagueId
 }
 
 /** "1".."18" for the regular season, "post" for the playoffs, "pre" for pre-season. */
@@ -46,119 +48,132 @@ export function shapeGame(r: any): NflGame {
     away: { id: r.away_id, name: r.away_name, logo: logoOf(r.away_id, r.away_logo) },
     score: r.home_pts != null && r.away_pts != null && state !== 'upcoming' ? { home: r.home_pts, away: r.away_pts } : null,
     quarters: Array.isArray(q) && q.length === 2 ? { home: q[0], away: q[1] } : null,
-    venue: r.venue || null
+    venue: r.venue || null, league: r.league === 2 ? 2 : 1
   };
 }
 
-const GAME_COLS = `game_id, season, week, stage, kickoff, home_id, home_name, home_logo, away_id, away_name, away_logo, status, home_pts, away_pts, quarters, venue`;
+const GAME_COLS = `game_id, season, week, stage, kickoff, home_id, home_name, home_logo, away_id, away_name, away_logo, status, home_pts, away_pts, quarters, venue, league`;
+export const leagueOfTeamId = (id: number): LeagueId => ((db.prepare(`SELECT league FROM nfl_teams WHERE team_id = ?`).get(id) as any)?.league === 2 ? 2 : 1);
 
 /** Seasons we hold (admins see all; everyone else only the current one). */
-export function nflSeasonsHeld(admin: boolean): number[] {
-  const cur = nflCurrentSeason();
-  const all = (db.prepare(`SELECT DISTINCT season FROM nfl_games ORDER BY season DESC`).all() as any[]).map(r => r.season as number);
+export function nflSeasonsHeld(admin: boolean, league: LeagueId = 1): number[] {
+  const cur = nflCurrentSeason(league);
+  const all = (db.prepare(`SELECT DISTINCT season FROM nfl_games WHERE league = ? ORDER BY season DESC`).all(league) as any[]).map(r => r.season as number);
   return admin ? all : all.filter(s => s === cur);
 }
 /** The season a visitor may look at: past seasons are admin-only. */
-export function allowedSeason(asked: unknown, admin: boolean): number | null {
-  const cur = nflCurrentSeason();
+export function allowedSeason(asked: unknown, admin: boolean, league: LeagueId = 1): number | null {
+  const cur = nflCurrentSeason(league);
   const s = num(asked);
   if (s && (admin || s === cur)) return s;
   return cur;
 }
 
 /** The week list of a season (with dates and game counts) and the week to open by default. */
-export function nflWeeks(season: number) {
-  const rows = db.prepare(`SELECT stage, week, MIN(kickoff) AS first, MAX(kickoff) AS last, COUNT(*) AS n FROM nfl_games WHERE season = ? GROUP BY stage, week`).all(season) as any[];
+export function nflWeeks(season: number, league: LeagueId = 1) {
+  const rows = db.prepare(`SELECT stage, week, MIN(kickoff) AS first, MAX(kickoff) AS last, COUNT(*) AS n FROM nfl_games WHERE league = ? AND season = ? GROUP BY stage, week`).all(league, season) as any[];
   const byKey = new Map<string, { key: string; label: string; first: string; last: string; games: number }>();
   for (const r of rows) {
     const key = weekKey(r.stage, r.week);
     if (key === 'pre') continue; // pre-season games are not shown
-    const w = byKey.get(key) || { key, label: key === 'post' ? 'Playoffs' : `Week ${key}`, first: r.first, last: r.last, games: 0 };
+    const w = byKey.get(key) || { key, label: key === 'post' ? (league === 2 ? 'Bowls' : 'Playoffs') : `Week ${key}`, first: r.first, last: r.last, games: 0 };
     w.first = r.first < w.first ? r.first : w.first; w.last = r.last > w.last ? r.last : w.last; w.games += r.n;
     byKey.set(key, w);
   }
   const weeks = [...byKey.values()].sort((a, b) => (a.key === 'post' ? 99 : Number(a.key)) - (b.key === 'post' ? 99 : Number(b.key)));
   // default: the week of the next game not finished yet (live or upcoming), else the last week
-  const next = db.prepare(`SELECT stage, week FROM nfl_games WHERE season = ? AND (status IS NULL OR status NOT IN ('FT','AOT','CANC','PST')) AND kickoff >= ? AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff LIMIT 1`)
-    .get(season, new Date(Date.now() - 6 * 3600 * 1000).toISOString()) as any;
+  const next = db.prepare(`SELECT stage, week FROM nfl_games WHERE league = ? AND season = ? AND (status IS NULL OR status NOT IN ('FT','AOT','CANC','PST')) AND kickoff >= ? AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff LIMIT 1`)
+    .get(league, season, new Date(Date.now() - 6 * 3600 * 1000).toISOString()) as any;
   const current = next ? weekKey(next.stage, next.week) : weeks[weeks.length - 1]?.key || null;
   return { weeks, current };
 }
 
 /** Games of a week ("1".."18" / "post") of a season. */
-export function nflWeekGames(season: number, key: string): NflGame[] {
-  const rows = db.prepare(`SELECT ${GAME_COLS} FROM nfl_games WHERE season = ? ORDER BY kickoff, game_id`).all(season) as any[];
+export function nflWeekGames(season: number, key: string, league: LeagueId = 1): NflGame[] {
+  const rows = db.prepare(`SELECT ${GAME_COLS} FROM nfl_games WHERE league = ? AND season = ? ORDER BY kickoff, game_id`).all(league, season) as any[];
   return rows.filter(r => weekKey(r.stage, r.week) === key).map(shapeGame);
 }
 /** Games between two moments (Today page, live strip). */
-export function nflGamesBetween(from: string, to: string): NflGame[] {
-  return (db.prepare(`SELECT ${GAME_COLS} FROM nfl_games WHERE kickoff >= ? AND kickoff < ? AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff, game_id`).all(from, to) as any[]).map(shapeGame);
+export function nflGamesBetween(from: string, to: string, league: LeagueId = 1): NflGame[] {
+  return (db.prepare(`SELECT ${GAME_COLS} FROM nfl_games WHERE league = ? AND kickoff >= ? AND kickoff < ? AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff, game_id`).all(league, from, to) as any[]).map(shapeGame);
 }
 /** The last finished games (home page "Latest results"). */
-export function nflRecentResults(n = 8): NflGame[] {
-  const season = nflCurrentSeason();
-  return (db.prepare(`SELECT ${GAME_COLS} FROM nfl_games WHERE season = ? AND status IN ('FT','AOT') AND home_pts IS NOT NULL AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff DESC LIMIT ?`).all(season, n) as any[]).map(shapeGame);
+export function nflRecentResults(n = 8, league: LeagueId = 1): NflGame[] {
+  const season = nflCurrentSeason(league);
+  return (db.prepare(`SELECT ${GAME_COLS} FROM nfl_games WHERE league = ? AND season = ? AND status IN ('FT','AOT') AND home_pts IS NOT NULL AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff DESC LIMIT ?`).all(league, season, n) as any[]).map(shapeGame);
 }
-export function nflLiveGames(): NflGame[] {
-  return (db.prepare(`SELECT ${GAME_COLS} FROM nfl_games WHERE status IN ('Q1','Q2','Q3','Q4','OT','HT') ORDER BY kickoff`).all() as any[]).map(shapeGame);
+export function nflLiveGames(league: LeagueId = 1): NflGame[] {
+  return (db.prepare(`SELECT ${GAME_COLS} FROM nfl_games WHERE league = ? AND status IN ('Q1','Q2','Q3','Q4','OT','HT') ORDER BY kickoff`).all(league) as any[]).map(shapeGame);
 }
 
 /* ---------- teams ---------- */
 
 export function nflTeamRow(id: number) {
-  const t = db.prepare(`SELECT team_id AS id, name, code, city, logo, conference, division, coach, stadium FROM nfl_teams WHERE team_id = ?`).get(id) as any;
+  const t = db.prepare(`SELECT team_id AS id, name, code, city, logo, conference, division, coach, stadium, league, level FROM nfl_teams WHERE team_id = ?`).get(id) as any;
   if (t) return t;
   const g = db.prepare(`SELECT CASE WHEN home_id = ? THEN home_name ELSE away_name END AS name, CASE WHEN home_id = ? THEN home_logo ELSE away_logo END AS logo FROM nfl_games WHERE home_id = ? OR away_id = ? ORDER BY kickoff DESC LIMIT 1`).get(id, id, id, id) as any;
-  return g ? { id, name: g.name, code: null, city: null, logo: g.logo, conference: null, division: null, coach: null, stadium: null } : null;
+  return g ? { id, name: g.name, code: null, city: null, logo: g.logo, conference: null, division: null, coach: null, stadium: null, league: leagueOfTeamId(id), level: null } : null;
 }
 
 /* ---------- standings (computed from our games; conference / division from the provider's standings) ---------- */
 
-export interface StandRow { team: NflSide; conference: string | null; division: string | null; w: number; l: number; t: number; pct: number; pf: number; pa: number; diff: number; streak: string | null; games: number }
+export interface StandRow { team: NflSide; conference: string | null; division: string | null; level?: string | null; confW?: number; confL?: number; w: number; l: number; t: number; pct: number; pf: number; pa: number; diff: number; streak: string | null; games: number }
 
-export function nflStandings(season: number): { season: number; conferences: { name: string; divisions: { name: string; rows: StandRow[] }[] }[]; rows: StandRow[] } {
-  const games = db.prepare(`SELECT home_id, away_id, home_pts, away_pts, kickoff FROM nfl_games WHERE season = ? AND status IN ('FT','AOT') AND home_pts IS NOT NULL AND stage LIKE 'Regular%' ORDER BY kickoff`).all(season) as any[];
+export function nflStandings(season: number, league: LeagueId = 1): { season: number; league: LeagueId; conferences: { name: string; level?: string | null; divisions: { name: string; rows: StandRow[] }[] }[]; rows: StandRow[] } {
+  return cached(`stand|${league}|${season}`, () => standingsOf(season, league), 60 * 1000);
+}
+function standingsOf(season: number, league: LeagueId) {
+  const games = db.prepare(`SELECT home_id, away_id, home_pts, away_pts, kickoff FROM nfl_games WHERE league = ? AND season = ? AND status IN ('FT','AOT') AND home_pts IS NOT NULL AND stage LIKE 'Regular%' ORDER BY kickoff`).all(league, season) as any[];
   const teams = new Map<number, StandRow & { seq: string[] }>();
   const ensure = (id: number) => {
     let r = teams.get(id);
     if (!r) {
       const t = nflTeamRow(id);
-      r = { team: { id, name: t?.name || String(id), logo: t?.logo || null }, conference: t?.conference || null, division: t?.division || null, w: 0, l: 0, t: 0, pct: 0, pf: 0, pa: 0, diff: 0, streak: null, games: 0, seq: [] };
+      r = { team: { id, name: t?.name || String(id), logo: t?.logo || null }, conference: t?.conference || null, division: t?.division || null, level: t?.level || null, confW: 0, confL: 0, w: 0, l: 0, t: 0, pct: 0, pf: 0, pa: 0, diff: 0, streak: null, games: 0, seq: [] };
       teams.set(id, r);
     }
     return r;
   };
   // teams with no game yet still get a row (from the regular-season schedule)
-  for (const r of db.prepare(`SELECT DISTINCT home_id AS id FROM nfl_games WHERE season = ? AND stage LIKE 'Regular%' UNION SELECT DISTINCT away_id FROM nfl_games WHERE season = ? AND stage LIKE 'Regular%'`).all(season, season) as any[]) if (r.id) ensure(r.id);
+  for (const r of db.prepare(`SELECT DISTINCT home_id AS id FROM nfl_games WHERE league = ? AND season = ? AND stage LIKE 'Regular%' UNION SELECT DISTINCT away_id FROM nfl_games WHERE league = ? AND season = ? AND stage LIKE 'Regular%'`).all(league, season, league, season) as any[]) if (r.id) ensure(r.id);
   for (const g of games) {
     const h = ensure(g.home_id), a = ensure(g.away_id);
     h.pf += g.home_pts; h.pa += g.away_pts; a.pf += g.away_pts; a.pa += g.home_pts; h.games++; a.games++;
     if (g.home_pts > g.away_pts) { h.w++; a.l++; h.seq.push('W'); a.seq.push('L'); }
     else if (g.home_pts < g.away_pts) { a.w++; h.l++; a.seq.push('W'); h.seq.push('L'); }
     else { h.t++; a.t++; h.seq.push('T'); a.seq.push('T'); }
+    // college: conference record (games between two teams of the same conference)
+    if (league === 2 && h.conference && h.conference === a.conference && g.home_pts !== g.away_pts) {
+      if (g.home_pts > g.away_pts) { h.confW!++; a.confL!++; } else { a.confW!++; h.confL!++; }
+    }
   }
   const rows: StandRow[] = [...teams.values()].map(({ seq, ...r }) => {
     let streak: string | null = null;
     if (seq.length) { const last = seq[seq.length - 1]; let n = 0; for (let i = seq.length - 1; i >= 0 && seq[i] === last; i--) n++; streak = `${last}${n}`; }
     return { ...r, pct: r.games ? Math.round(((r.w + 0.5 * r.t) / r.games) * 1000) / 1000 : 0, diff: r.pf - r.pa, streak };
-  }).sort((a, b) => b.pct - a.pct || b.diff - a.diff || b.pf - a.pf);
+  }).sort((a, b) => (league === 2 ? pctOf(b.confW!, b.confL!) - pctOf(a.confW!, a.confL!) : 0) || b.pct - a.pct || b.diff - a.diff || b.pf - a.pf);
   const confs = new Map<string, Map<string, StandRow[]>>();
   for (const r of rows) {
-    const c = r.conference || 'NFL', d = r.division || c;
+    const c = r.conference || (league === 2 ? 'Other teams' : 'NFL'), d = r.division || c;
     if (!confs.has(c)) confs.set(c, new Map());
     const m = confs.get(c)!;
     if (!m.has(d)) m.set(d, []);
     m.get(d)!.push(r);
   }
   const order = (s: string) => (/east/i.test(s) ? 0 : /north/i.test(s) ? 1 : /south/i.test(s) ? 2 : /west/i.test(s) ? 3 : 4);
+  // college: FBS conferences first, then FCS, teams without a conference last
+  const levelOf = (m: Map<string, StandRow[]>) => [...m.values()].flat().find(r => r.level)?.level || null;
+  const rankConf = (name: string, m: Map<string, StandRow[]>) => (league !== 2 ? 0 : name === 'Other teams' ? 2 : levelOf(m) === 'FBS' ? 0 : 1);
   return {
-    season,
-    conferences: [...confs.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([name, m]) => ({
-      name, divisions: [...m.entries()].sort((a, b) => order(a[0]) - order(b[0]) || a[0].localeCompare(b[0])).map(([dn, rs]) => ({ name: dn, rows: rs }))
+    season, league,
+    conferences: [...confs.entries()].sort((a, b) => rankConf(a[0], a[1]) - rankConf(b[0], b[1]) || a[0].localeCompare(b[0])).map(([name, m]) => ({
+      name, level: league === 2 ? levelOf(m) : undefined, divisions: [...m.entries()].sort((a, b) => order(a[0]) - order(b[0]) || a[0].localeCompare(b[0])).map(([dn, rs]) => ({ name: dn, rows: rs }))
     })),
     rows
   };
 }
+
+const pctOf = (w: number, l: number) => (w + l ? w / (w + l) : 0);
 
 /* ---------- box scores ---------- */
 
@@ -231,7 +246,7 @@ function formOf(teamId: number, before: string, n = 5) {
 export function nflGame(id: number, admin: boolean) {
   const r = db.prepare(`SELECT ${GAME_COLS} FROM nfl_games WHERE game_id = ?`).get(id) as any;
   if (!r) return null;
-  if (!admin && r.season !== nflCurrentSeason()) return null; // past seasons: admins only
+  if (!admin && r.season !== nflCurrentSeason(r.league === 2 ? 2 : 1)) return null; // past seasons: admins only
   const g = shapeGame(r);
   const h2h = (db.prepare(`SELECT ${GAME_COLS} FROM nfl_games WHERE ((home_id = ? AND away_id = ?) OR (home_id = ? AND away_id = ?)) AND kickoff < ? AND status IN ('FT','AOT') AND home_pts IS NOT NULL ORDER BY kickoff DESC LIMIT 10`)
     .all(g.home.id, g.away.id, g.away.id, g.home.id, g.kickoff) as any[]).map(shapeGame);
@@ -262,10 +277,10 @@ const cached = <T>(key: string, fn: () => T, ms = 10 * 60 * 1000): T => {
 };
 
 /** Season totals of every team (regular season + playoffs, finished games), up to week `upTo` if given. */
-function seasonAgg(season: number, upTo?: number): Map<number, Agg> {
-  const rows = db.prepare(`SELECT game_id, stage, week, home_id, away_id, home_pts, away_pts FROM nfl_games WHERE season = ? AND status IN ('FT','AOT') AND home_pts IS NOT NULL AND (stage IS NULL OR stage NOT LIKE 'Pre%')`).all(season) as any[];
+function seasonAgg(season: number, upTo?: number, league: LeagueId = 1): Map<number, Agg> {
+  const rows = db.prepare(`SELECT game_id, stage, week, home_id, away_id, home_pts, away_pts FROM nfl_games WHERE league = ? AND season = ? AND status IN ('FT','AOT') AND home_pts IS NOT NULL AND (stage IS NULL OR stage NOT LIKE 'Pre%')`).all(league, season) as any[];
   const box = new Map<string, any>();
-  for (const b of db.prepare(`SELECT s.game_id, s.team_id, s.json FROM nfl_team_stats s JOIN nfl_games g ON g.game_id = s.game_id WHERE g.season = ?`).all(season) as any[]) box.set(`${b.game_id}|${b.team_id}`, teamBox(parseJson(b.json)));
+  for (const b of db.prepare(`SELECT s.game_id, s.team_id, s.json FROM nfl_team_stats s JOIN nfl_games g ON g.game_id = s.game_id WHERE g.league = ? AND g.season = ?`).all(league, season) as any[]) box.set(`${b.game_id}|${b.team_id}`, teamBox(parseJson(b.json)));
   const out = new Map<number, Agg>();
   const get = (id: number) => { let a = out.get(id); if (!a) out.set(id, (a = { games: 0, pf: 0, pa: 0, yards: 0, plays: 0, give: 0, take: 0, thirdM: 0, thirdA: 0, rzM: 0, rzA: 0, sacks: 0, boxGames: 0 })); return a; };
   for (const r of rows) {
@@ -299,9 +314,19 @@ const MEASURES: { id: string; label: string; better: 'high' | 'low'; of: (a: Agg
 ];
 
 /** Every team's value, league rank and 1–10 score for each measure (cached 10 min per season). */
-function leagueScores(season: number) {
-  return cached(`scores|${season}`, () => {
-    const agg = seasonAgg(season);
+function leagueScores(season: number, league: LeagueId = 1) {
+  return cached(`scores|${league}|${season}`, () => {
+    const agg = seasonAgg(season, undefined, league);
+    // college: only FBS teams are scored against each other (an FCS team is scored among FCS teams)
+    if (league === 2) {
+      const lvl = new Map((db.prepare(`SELECT team_id, level FROM nfl_teams WHERE league = 2`).all() as any[]).map(r => [r.team_id, r.level]));
+      return new Map([...scoreAgg(new Map([...agg].filter(([id]) => lvl.get(id) === 'FBS'))), ...scoreAgg(new Map([...agg].filter(([id]) => lvl.get(id) !== 'FBS')))]);
+    }
+    return scoreAgg(agg);
+  });
+}
+function scoreAgg(agg: Map<number, Agg>) {
+  {
     const out = new Map<number, Record<string, { value: number; text: string; rank: number; of: number; score: number } | null>>();
     for (const id of agg.keys()) out.set(id, {});
     for (const m of MEASURES) {
@@ -314,12 +339,13 @@ function leagueScores(season: number) {
       for (const id of agg.keys()) if (!(m.id in out.get(id)!)) out.get(id)![m.id] = null;
     }
     return out;
-  });
+  }
 }
 
 /** Team analysis by fixed rules (fix137): strengths = league score 8+, weaknesses = 3 or less, on the six measures. */
 export function nflTeamAnalysis(teamId: number, season: number) {
-  const s = leagueScores(season).get(teamId);
+  const league = leagueOfTeamId(teamId);
+  const s = leagueScores(season, league).get(teamId);
   if (!s) return null;
   const measures = MEASURES.map(m => ({ id: m.id, label: m.label, better: m.better, ...(s[m.id] || { value: null, text: null, rank: null, of: null, score: null }) }));
   return {
@@ -328,17 +354,17 @@ export function nflTeamAnalysis(teamId: number, season: number) {
     strengths: measures.filter(m => m.score !== null && m.score >= 8).sort((a, b) => b.score! - a.score!),
     weaknesses: measures.filter(m => m.score !== null && m.score <= 3).sort((a, b) => a.score! - b.score!),
     // rank by point difference per game after each week of the regular season
-    rankByWeek: rankByWeek(teamId, season)
+    rankByWeek: rankByWeek(teamId, season, league)
   };
 }
 
-function rankByWeek(teamId: number, season: number) {
-  const all = cached(`rbw|${season}`, () => {
-    const weeks = (db.prepare(`SELECT DISTINCT week, stage FROM nfl_games WHERE season = ? AND status IN ('FT','AOT') AND stage LIKE 'Regular%'`).all(season) as any[])
+function rankByWeek(teamId: number, season: number, league: LeagueId = 1) {
+  const all = cached(`rbw|${league}|${season}`, () => {
+    const weeks = (db.prepare(`SELECT DISTINCT week, stage FROM nfl_games WHERE league = ? AND season = ? AND status IN ('FT','AOT') AND stage LIKE 'Regular%'`).all(league, season) as any[])
       .map(r => Number(weekKey(r.stage, r.week))).filter(n => Number.isFinite(n)).sort((a, b) => a - b);
     const out = new Map<number, { week: number; rank: number; of: number }[]>();
     for (const w of weeks) {
-      const agg = [...seasonAgg(season, w).entries()].filter(([, a]) => a.games > 0).map(([id, a]) => [id, (a.pf - a.pa) / a.games] as [number, number]).sort((x, y) => y[1] - x[1]);
+      const agg = [...seasonAgg(season, w, league).entries()].filter(([, a]) => a.games > 0).map(([id, a]) => [id, (a.pf - a.pa) / a.games] as [number, number]).sort((x, y) => y[1] - x[1]);
       agg.forEach(([id], i) => { if (!out.has(id)) out.set(id, []); out.get(id)!.push({ week: w, rank: i + 1, of: agg.length }); });
     }
     return out;
@@ -353,7 +379,7 @@ export function nflTeam(id: number, season: number) {
   const t = nflTeamRow(id);
   if (!t) return null;
   const games = (db.prepare(`SELECT ${GAME_COLS} FROM nfl_games WHERE season = ? AND (home_id = ? OR away_id = ?) AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff`).all(season, id, id) as any[]).map(shapeGame);
-  const stand = nflStandings(season).rows.find(r => r.team.id === id) || null;
+  const stand = nflStandings(season, leagueOfTeamId(id)).rows.find(r => r.team.id === id) || null;
   const players = db.prepare(`SELECT player_id AS id, name, position, grp, number, age, image FROM nfl_players WHERE team_id = ? ORDER BY grp, position, number`).all(id) as any[];
   const roster = GROUP_ORDER.concat([...new Set(players.map(p => p.grp || 'Other'))].filter(g => !GROUP_ORDER.includes(g)))
     .map(g => ({ group: g, players: players.filter(p => (p.grp || 'Other') === g) })).filter(x => x.players.length);
@@ -432,11 +458,11 @@ const LEADERS: { id: string; label: string; group: RegExp; stat: RegExp }[] = [
   { id: 'ints', label: 'Interceptions', group: /defens|intercept/i, stat: /^(interceptions|int)$/i }
 ];
 
-export function nflLeaders(season: number, top = 5) {
-  return cached(`leaders|${season}|${top}`, () => {
+export function nflLeaders(season: number, top = 5, league: LeagueId = 1) {
+  return cached(`leaders|${league}|${season}|${top}`, () => {
     const sums = new Map<string, Map<number, { id: number; name: string; image: string | null; teamId: number; value: number }>>();
     for (const L of LEADERS) sums.set(L.id, new Map());
-    for (const r of db.prepare(`SELECT p.team_id, p.json FROM nfl_player_stats p JOIN nfl_games g ON g.game_id = p.game_id WHERE g.season = ? AND (g.stage IS NULL OR g.stage NOT LIKE 'Pre%')`).all(season) as any[]) {
+    for (const r of db.prepare(`SELECT p.team_id, p.json FROM nfl_player_stats p JOIN nfl_games g ON g.game_id = p.game_id WHERE g.league = ? AND g.season = ? AND (g.stage IS NULL OR g.stage NOT LIKE 'Pre%')`).all(league, season) as any[]) {
       for (const [gname, list] of Object.entries(playerGroups(r.json))) {
         for (const L of LEADERS) {
           if (!L.group.test(gname)) continue;
@@ -462,6 +488,6 @@ export function nflLeaders(season: number, top = 5) {
 
 /* ---------- search, SEO helpers ---------- */
 
-export function nflTeamsList(): NflSide[] {
-  return (db.prepare(`SELECT team_id AS id, name, logo FROM nfl_teams ORDER BY name`).all() as any[]);
+export function nflTeamsList(league?: LeagueId): (NflSide & { league: LeagueId })[] {
+  return (db.prepare(`SELECT team_id AS id, name, logo, league FROM nfl_teams ${league ? 'WHERE league = ' + Number(league) : ''} ORDER BY name`).all() as any[]);
 }

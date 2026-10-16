@@ -88,6 +88,8 @@ export interface SportAdapter {
   field: 'pitch' | 'court' | 'gridiron'
   /** an admin preview line on top while the sport is not public */
   banner?: string | null
+  /** fix142: a league toggle on top (American football: NFL | College) */
+  switcher?: { value: string; options: { key: string; label: string; to: string }[] } | null
   labels: {
     featured: string
     modelPrediction: string

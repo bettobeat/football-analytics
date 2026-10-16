@@ -1806,5 +1806,16 @@
  "Every prediction is saved before tip-off and scored after the game.": "Ogni pronostico viene salvato prima della palla a due e valutato dopo la partita.",
  "Who wins every NFL game, with the chance of each side, the expected score and the reasons behind each pick. Every prediction is saved before kick-off and checked in public.": "Chi vince ogni partita NFL, con la probabilità di ciascuna squadra, il punteggio atteso e i motivi di ogni pronostico. Ogni pronostico viene salvato prima del calcio d'inizio e verificato in pubblico.",
  "Winner · all picks": "Vincitore · tutti i pronostici",
- "Winner · {0}%+ sure": "Vincitore · sicuri al {0}%+"
+ "Winner · {0}%+ sure": "Vincitore · sicuri al {0}%+",
+ "Once our college football model is live, every prediction is saved before kick-off and checked after the game, here and in public.": "Quando il nostro modello di football universitario sarà attivo, ogni pronostico verrà salvato prima del calcio d'inizio e verificato dopo la partita, qui e in pubblico.",
+ "Who wins every college football game, with the chance of each side, the expected score and the reasons behind each pick. Every prediction is saved before kick-off and checked in public.": "Chi vince ogni partita di football universitario, con la probabilità di ciascuna squadra, il punteggio atteso e i motivi di ogni pronostico. Ogni pronostico viene salvato prima del calcio d'inizio e verificato in pubblico.",
+ "Bowls": "Bowl",
+ "College football": "Football universitario",
+ "College football today": "Football universitario oggi",
+ "College football games": "Partite di football universitario",
+ "No college football games today.": "Nessuna partita di football universitario oggi.",
+ "College football standings": "Classifiche del football universitario",
+ "{0} season · by conference, FBS first": "Stagione {0} · per conference, prima la FBS",
+ "Conference games": "Partite di conference",
+ "Conf": "Conf"
 }

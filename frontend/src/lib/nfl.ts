@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useLocation } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from './socket'
 import { t, LOCALE } from './i18n'
@@ -7,7 +8,9 @@ import { useFavorites, type Favorite } from './favorites'
 
 /** NFL site (fix137): types and helpers shared by the /american-football pages. Predictions: nfl-v1 (fix139). */
 
-export interface NflConfig { public: boolean; open: boolean; season: number | null; seasons: number[] }
+export interface NflConfig { public: boolean; open: boolean; season: number | null; seasons: number[]; leagues?: { id: NflLeague; season: number | null }[] }
+/** fix142: 1 = NFL, 2 = college football (NCAA) */
+export type NflLeague = 1 | 2
 export interface NflSide { id: number; name: string; logo: string | null }
 export interface NflGame {
   id: number
@@ -24,6 +27,8 @@ export interface NflGame {
   score: { home: number; away: number } | null
   quarters: { home: (number | null)[]; away: (number | null)[] } | null
   venue: string | null
+  /** fix142: 1 = NFL, 2 = college */
+  league?: NflLeague
   /** fix139: our saved prediction (null = none yet). Locked = free / signed-out viewer, game not finished. */
   prediction?: NflPred | null
 }
@@ -45,8 +50,8 @@ export interface NflPred {
   why?: NflWhy | null
 }
 export interface NflWeek { key: string; label: string; first: string; last: string; games: number }
-export interface StandRow { team: NflSide; conference: string | null; division: string | null; w: number; l: number; t: number; pct: number; pf: number; pa: number; diff: number; streak: string | null; games: number }
-export interface Standings { season: number; conferences: { name: string; divisions: { name: string; rows: StandRow[] }[] }[]; rows: StandRow[] }
+export interface StandRow { team: NflSide; conference: string | null; division: string | null; level?: string | null; confW?: number; confL?: number; w: number; l: number; t: number; pct: number; pf: number; pa: number; diff: number; streak: string | null; games: number }
+export interface Standings { season: number; league?: NflLeague; conferences: { name: string; level?: string | null; divisions: { name: string; rows: StandRow[] }[] }[]; rows: StandRow[] }
 export interface LeaderCat { id: string; label: string; rows: { id: number; name: string; image: string | null; teamId: number; value: number; team: NflSide | null }[] }
 
 let configPromise: Promise<NflConfig> | null = null
@@ -75,11 +80,15 @@ export const NFL_STATUS: Record<string, string> = {
   Q1: t('Q1'), Q2: t('Q2'), Q3: t('Q3'), Q4: t('Q4'), OT: t('OT'), HT: t('Half-time'),
   FT: t('Final'), AOT: t('Final (OT)'), CANC: t('Cancelled'), PST: t('Postponed')
 }
-export const weekLabel = (key: string | null) => (!key ? '' : key === 'post' ? t('Playoffs') : t('Week {0}', { 0: key }))
+export const weekLabel = (key: string | null, league: NflLeague = 1) => (!key ? '' : key === 'post' ? (league === 2 ? t('Bowls') : t('Playoffs')) : t('Week {0}', { 0: key }))
 export const timeOf = (iso: string) => new Date(iso).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })
 export const dayOf = (iso: string) => new Date(iso).toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric', month: 'short' })
-/** "Kansas City Chiefs" → "Chiefs" for tight rows (the nickname is what people say). */
-export const nick = (name: string) => { const w = name.split(/\s+/); return w.length > 1 ? w[w.length - 1] : name }
+/** College nicknames of two words ("Crimson Tide"): dropped whole to leave the school name. */
+const TWO_WORD = /\s(crimson tide|nittany lions|fighting irish|yellow jackets|golden gophers|blue devils|tar heels|red raiders|horned frogs|sun devils|golden bears|demon deacons|scarlet knights|mean green|golden hurricane|golden eagles|green wave|red wolves|black knights|thundering herd|golden flashes|blue raiders|fighting illini|rainbow warriors|wolf pack|golden panthers|black bears|blue hens|golden lions|fighting hawks|big green|big red|purple eagles|mountain hawks|delta devils|golden rams|red flash|red foxes|blue hose|golden griffins|fighting camels|river hawks)$/i
+/** "Ohio State Buckeyes" → "Ohio State", "Alabama Crimson Tide" → "Alabama" (fix142: college rows use the school). */
+export const schoolName = (name: string) => { const m = name.match(TWO_WORD); if (m) return name.slice(0, m.index); const w = name.split(/\s+/); return w.length > 1 ? w.slice(0, -1).join(' ') : name }
+/** "Kansas City Chiefs" → "Chiefs" for tight rows (the nickname is what people say); college: the school name. */
+export const nick = (name: string, league: NflLeague = 1) => { if (league === 2) return schoolName(name); const w = name.split(/\s+/); return w.length > 1 ? w[w.length - 1] : name }
 /** Reveal ids for NFL games (own negative range: never clashes with football ids or basketball's -id). */
 export const nflRid = (g: { id: number }) => -(2e9 + g.id)
 export const nflRstatus = (g: NflGame) => (g.state === 'done' ? 'FT' : g.status)
@@ -94,4 +103,34 @@ export function useNflFavorites() {
   const teams = list.filter(f => f.kind === 'nfl-team')
   const reasons = (g: NflGame) => teams.filter(f => f.ref === String(g.home.id) || f.ref === String(g.away.id))
   return { teams, reasons }
+}
+
+/* ---------- fix142: the league on screen (NFL | College) ---------- */
+
+/** List pages of college football live under /american-football/college (games, today, league). */
+export const nflBase = (l: NflLeague) => (l === 2 ? '/american-football/college' : '/american-football')
+export const nflLeagueName = (l: NflLeague) => (l === 2 ? t('College football') : 'NFL')
+/** The model of the league and its strong-pick line (college has more mismatches: 75%). */
+export const nflModelOf = (l: NflLeague) => (l === 2 ? 'ncaa-v1' : 'nfl-v1')
+export const nflStrongAt = (l: NflLeague) => (l === 2 ? 75 : 70)
+const LKEY = 'nfl-league'
+let remembered: NflLeague = (() => { try { return localStorage.getItem(LKEY) === '2' ? 2 : 1 } catch { return 1 } })()
+const subs = new Set<() => void>()
+/** Game / team / player pages tell which league they show (the menu and the switcher follow). */
+export function setNflLeague(l: NflLeague | undefined | null) {
+  if (l !== 1 && l !== 2) return
+  if (l === remembered) return
+  remembered = l
+  try { localStorage.setItem(LKEY, String(l)) } catch { /* private mode */ }
+  subs.forEach(f => f())
+}
+const LIST = /^\/american-football(\/college)?(\/(games|today|league))?\/?$/
+/** The league on screen: from the path on list pages, else the last one shown (game / team / player pages set it). */
+export function useNflLeague() {
+  const { pathname } = useLocation()
+  const mem = useSyncExternalStore(cb => { subs.add(cb); return () => { subs.delete(cb) } }, () => remembered)
+  const m = pathname.match(LIST)
+  const league: NflLeague = m ? (m[1] ? 2 : 1) : mem
+  useEffect(() => { if (m) setNflLeague(league) }, [league, !!m])
+  return { league, base: nflBase(league), name: nflLeagueName(league), model: nflModelOf(league), strong: nflStrongAt(league), sub: m ? m[3] || '' : null }
 }

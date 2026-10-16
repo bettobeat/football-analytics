@@ -1,4 +1,19 @@
-# NFL model nfl-v1 (fix139, 16 Oct 2026)
+# NFL model nfl-v1 (fix139, 16 Oct 2026) + college ncaa-v1 (fix142)
+
+## ncaa-v1 (fix142, college football, league 2)
+
+Same code (`nflModel.ts`, every function takes the league), own settings tuned on college games only, stored under `model2|params` / `model2|report`. NFL settings got the new knobs fixed at the old behaviour (reg 1/3 to 1500, fcs 0, movCap 99) — the NFL walk-forward report is byte-identical to fix139 on the test data.
+
+- **Regression between seasons**: toward the mean Elo of the team's conference (tuned share `reg`, grid 0.1–0.6), not toward 1500.
+- **FCS teams** (and teams we have no row for) start `fcs` Elo below 1500 (grid 100–500).
+- **Blowouts**: the margin multiplier is capped at `movCap` (grid 1.8–3.0, 99 = no cap).
+- **Home field**: grids 40–130 (before 2020) / 30–120 (from 2020) — college home field is expected bigger than the NFL.
+- **Neutral sites**: the venue name does not match the home team's stadium (bowls, kickoff games); without a stadium, post-season = neutral.
+- **Rest / bye**, QB and efficiency: same as the NFL, only where box scores exist (last 3 seasons); the blend is kept only if it lowers the test log loss.
+- **Report**: per season all games and FBS vs FBS (`seasons[].fbsOnly`, `fbs` total), baselines (home team, better record, Elo only), calibration. `GET /api/admin/nfl-model?league=2` (`&rebuild=1`).
+- **Strong pick**: 75%+ (college has more mismatches).
+- Test on a fake 40-team league (24 FBS / 16 FCS, 7 seasons, hidden strengths): hit 71%, LL 0.555 all games, 64.7% / 0.628 FBS vs FBS; home team baseline 64.7% / 0.653. Says only that the pipeline learns; the real numbers come from the server.
+
 
 Code: `backend/src/services/nflModel.ts`. Data: `services/nfl.ts` tables (nfl_games, nfl_team_stats, nfl_player_stats, nfl_injuries). No odds anywhere.
 

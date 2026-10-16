@@ -12,6 +12,7 @@ export const HUBS: { slug: string; old: string; sport: HubSport; code: string; n
   { slug: 'champions-league', old: 'CL', sport: 'football', code: 'CL', name: 'Champions League' },
   { slug: 'nba', old: 'NBA', sport: 'basketball', code: 'NBA', name: 'NBA' },
   { slug: 'nfl', old: 'NFL', sport: 'american-football', code: 'NFL', name: 'NFL' },
+  { slug: 'college-football', old: 'NCAA', sport: 'american-football', code: 'NCAA', name: 'College football' },
   { slug: 'euroleague', old: 'EUROLEAGUE', sport: 'basketball', code: 'EL', name: 'EuroLeague' }
 ]
 export const hubByOld = (slug: string) => HUBS.find(h => h.old === slug.toUpperCase()) || null

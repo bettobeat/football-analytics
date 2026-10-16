@@ -4,8 +4,8 @@ import { bbPublic } from './bbSite';
 import { FONT_HEAD } from './fonts';
 import { getPreview, firstSentence, matchTitle, previewDates, previewFacts } from './matchPreview';
 import { bbPreview } from './bbPreview';
-import { nflCurrentSeason } from './nfl';
-import { nflPublic, nflWeeks, nflWeekGames, nflGamesBetween, nflGame, nflStandings, nflTeam, nflPlayer, type NflGame } from './nflSite';
+import { nflCurrentSeason, schoolName } from './nfl';
+import { nflPublic, nflWeeks, nflWeekGames, nflGamesBetween, nflGame, nflStandings, nflTeam, nflPlayer, leagueOfTeamId, type NflGame } from './nflSite';
 import { listGuides, getGuide } from './guides';
 import { HUBS, hubBySlug, hubByOld, hubForCode, hubOpen, buildHub, hubDescription, hubRange } from './hubs';
 import { fitDescription, pack, shortDate, titleDate, formLetters, STATIC, Lang, ui, longDate } from './seoText';
@@ -47,8 +47,9 @@ export interface SeoInfo {
 }
 
 /** NFL (fix137): "Week 7" / "Playoffs", and the nickname for short titles ("Kansas City Chiefs" → "Chiefs"). */
-const nflWeekText = (key: string) => (key === 'post' ? 'Playoffs' : `Week ${key}`);
-const nflNick = (name: string) => name.split(/\s+/).pop() || name;
+const nflWeekText = (key: string, league: 1 | 2 = 1) => (key === 'post' ? (league === 2 ? 'Bowls' : 'Playoffs') : `Week ${key}`);
+/** College titles keep the school name ("Alabama vs Georgia"); the NFL uses the nickname ("Chiefs"). */
+const nflNick = (name: string, league: 1 | 2 = 1) => (league === 2 ? schoolName(name) : name.split(/\s+/).pop() || name);
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const short = (iso: string, lang: Lang) => titleDate(iso, lang).replace(/[\s.,]*\d{4}\.?$/, '');
@@ -322,54 +323,62 @@ export function seoPage(rawPath: string): SeoInfo {
     // NFL (fix137): crawler HTML for every NFL page, English text (canonical to English); noindex until NFL_PUBLIC=1
     if (path === '/american-football' || path.startsWith('/american-football/')) {
       if (!nflPublic()) return page(`American football · coming soon | ${BRAND}`, 'NFL games, scores, standings and team analysis are coming soon to SportLikely.', '<h1>American football · coming soon</h1>', { noindex: true });
-      const nflNav = `<p><a href="/american-football">NFL</a> · <a href="/american-football/games">Games</a> · <a href="/american-football/today">Today</a> · <a href="/american-football/league">Standings</a></p>`;
-      const nflList = (gs: NflGame[]) => gs.length ? `<ul>${gs.map(g => `<li><a href="/american-football/game/${g.id}">${esc(g.home.name)} vs ${esc(g.away.name)}</a> · ${esc(nflWeekText(g.weekKey))} · ${short(g.kickoff, 'en')}${g.score ? ` · ${g.score.home}–${g.score.away}` : ''}</li>`).join('')}</ul>` : '<p>No games scheduled.</p>';
-      const season = nflCurrentSeason();
+      // fix142: college football lists live under /american-football/college; game / team / player pages know their league
+      const lg: 1 | 2 = /^\/american-football\/college(\/|$)/.test(path) ? 2 : 1;
+      if (lg === 2) path = path.replace('/american-football/college', '/american-football');
+      const base = lg === 2 ? '/american-football/college' : '/american-football';
+      let LN = lg === 2 ? 'College football' : 'NFL';
+      const nflNav = `<p><a href="/american-football">NFL</a> · <a href="/american-football/college">College football</a> · <a href="${base}/games">Games</a> · <a href="${base}/today">Today</a> · <a href="${base}/league">Standings</a></p>`;
+      const nflList = (gs: NflGame[]) => gs.length ? `<ul>${gs.map(g => `<li><a href="/american-football/game/${g.id}">${esc(g.home.name)} vs ${esc(g.away.name)}</a> · ${esc(nflWeekText(g.weekKey, g.league))} · ${short(g.kickoff, 'en')}${g.score ? ` · ${g.score.home}–${g.score.away}` : ''}</li>`).join('')}</ul>` : '<p>No games scheduled.</p>';
+      const season = nflCurrentSeason(lg);
       const extra = { canonicalEn: true } as Partial<SeoInfo>;
       if (path === '/american-football/favorites') return page(`NFL favorites | ${BRAND}`, 'Your NFL teams.', '', { noindex: true });
       if (path === '/american-football' || path === '/american-football/games') {
-        const { current } = season ? nflWeeks(season) : { current: null };
-        const games = season && current ? nflWeekGames(season, current) : [];
-        const label = current ? nflWeekText(current) : 'this week';
-        return page(path === '/american-football' ? `NFL games, scores and standings · ${label} | ${BRAND}` : `NFL games ${season || ''} · ${label} | ${BRAND}`,
-          `NFL ${season || ''} ${label}: every game with kick-off times, live scores, results, standings, team analysis and player statistics. Predictions are coming soon.`,
-          `${nflNav}<h1>NFL games · ${esc(label)}</h1><p>Every NFL game of ${esc(label)} with kick-off times and scores, the standings by conference and division, and each team's strengths and weaknesses. Our NFL predictions are coming soon.</p>${nflList(games)}`,
-          { ...extra, jsonld: games.slice(0, 20).map(g => sportsEvent(`${g.home.name} vs ${g.away.name}`, g.kickoff, g.home.name, g.away.name, `${SITE}/american-football/game/${g.id}`, 'NFL', 'American Football')) });
+        const { current } = season ? nflWeeks(season, lg) : { current: null };
+        const games = season && current ? nflWeekGames(season, current, lg) : [];
+        const label = current ? nflWeekText(current, lg) : 'this week';
+        return page(path === '/american-football' ? `${LN} predictions, scores and standings · ${label} | ${BRAND}` : `${LN} games ${season || ''} · ${label} | ${BRAND}`,
+          `${LN} ${season || ''} ${label}: every game with each team's chance to win, kick-off times, live scores, results, standings, team analysis and player statistics.`,
+          `${nflNav}<h1>${LN} games · ${esc(label)}</h1><p>Every ${LN} game of ${esc(label)} with each team's chance to win, kick-off times and scores, the standings by conference${lg === 1 ? ' and division' : ''}, and each team's strengths and weaknesses.</p>${nflList(games)}`,
+          { ...extra, jsonld: games.slice(0, 20).map(g => sportsEvent(`${g.home.name} vs ${g.away.name}`, g.kickoff, g.home.name, g.away.name, `${SITE}/american-football/game/${g.id}`, LN, 'American Football')) });
       }
       if (path === '/american-football/today') {
         const from = new Date(); from.setUTCHours(0, 0, 0, 0);
-        const games = nflGamesBetween(from.toISOString(), new Date(from.getTime() + 86400000).toISOString());
-        return page(`NFL games today | ${BRAND}`, 'Today’s NFL games with kick-off times and live scores.', `${nflNav}<h1>NFL games today</h1>${nflList(games)}`, extra);
+        const games = nflGamesBetween(from.toISOString(), new Date(from.getTime() + 86400000).toISOString(), lg);
+        return page(`${LN} games today | ${BRAND}`, `Today’s ${LN} games with kick-off times and live scores.`, `${nflNav}<h1>${LN} games today</h1>${nflList(games)}`, extra);
       }
       if (path === '/american-football/league') {
-        const st = season ? nflStandings(season) : null;
-        const body = st ? st.conferences.map(c => `<h2>${esc(c.name)}</h2>${c.divisions.map(d => `<h3>${esc(d.name)}</h3><ol>${d.rows.map(r => `<li><a href="/american-football/team/${r.team.id}">${esc(r.team.name)}</a> ${r.w}-${r.l}${r.t ? `-${r.t}` : ''}, ${r.pf} points for, ${r.pa} against</li>`).join('')}</ol>`).join('')}`).join('') : '';
+        const st = season ? nflStandings(season, lg) : null;
+        const body = st ? st.conferences.map(c => `<h2>${esc(c.name)}${c.level ? ` (${esc(c.level)})` : ''}</h2>${c.divisions.map(d => `${d.name !== c.name ? `<h3>${esc(d.name)}</h3>` : ''}<ol>${d.rows.map(r => `<li><a href="/american-football/team/${r.team.id}">${esc(r.team.name)}</a> ${r.w}-${r.l}${r.t ? `-${r.t}` : ''}, ${r.pf} points for, ${r.pa} against</li>`).join('')}</ol>`).join('')}`).join('') : '';
+        if (lg === 2) return page(`College football standings ${season || ''} by conference | ${BRAND}`, `College football standings ${season || ''}: every FBS and FCS conference with wins, losses, points for and against.`, `${nflNav}<h1>College football standings ${season || ''}</h1>${body}`, extra);
         return page(`NFL standings ${season || ''}: AFC and NFC by division | ${BRAND}`, `NFL standings ${season || ''}: every division of the AFC and NFC with wins, losses, ties, points for and against, and the league leaders.`, `${nflNav}<h1>NFL standings ${season || ''}</h1>${body}`, extra);
       }
       if ((m = path.match(/^\/american-football\/game\/(\d+)$/))) {
         const d = nflGame(Number(m[1]), false);
         if (!d) return page(`Game not found | ${BRAND}`, 'This game does not exist.', '', { noindex: true });
-        const g = d.game, wk = nflWeekText(g.weekKey);
-        const title = `${nflNick(g.home.name)} vs ${nflNick(g.away.name)} · NFL ${wk} | ${BRAND}`;
+        const g = d.game, wk = nflWeekText(g.weekKey, g.league);
+        LN = g.league === 2 ? 'College football' : 'NFL';
+        const title = `${nflNick(g.home.name, g.league)} vs ${nflNick(g.away.name, g.league)} · ${LN} ${wk} | ${BRAND}`;
         const when = longDate(g.kickoff, 'en');
         const form = (s: 'home' | 'away') => d.form[s].map(f => f.result).join('');
         const desc = g.score
-          ? `${g.home.name} ${g.score.home}–${g.score.away} ${g.away.name}, NFL ${wk} (${when}): score by quarter, team and player statistics, form and head-to-head.`
-          : `${g.home.name} vs ${g.away.name}, NFL ${wk} on ${when}${g.venue ? ` at ${g.venue}` : ''}: form, head-to-head, injuries and team statistics. Prediction coming soon.`;
+          ? `${g.home.name} ${g.score.home}–${g.score.away} ${g.away.name}, ${LN} ${wk} (${when}): score by quarter, team and player statistics, form and head-to-head.`
+          : `${g.home.name} vs ${g.away.name}, ${LN} ${wk} on ${when}${g.venue ? ` at ${g.venue}` : ''}: our prediction with each team's chance to win, form, head-to-head and team statistics.`;
         return page(title, desc,
-          `${nflNav}<h1>${esc(g.home.name)} vs ${esc(g.away.name)}</h1><p>NFL ${esc(wk)} · ${esc(when)}${g.venue ? ` · ${esc(g.venue)}` : ''}</p>${g.score ? `<p>Final score ${g.score.home}–${g.score.away}</p>` : ''}`
+          `${nflNav}<h1>${esc(g.home.name)} vs ${esc(g.away.name)}</h1><p>${LN} ${esc(wk)} · ${esc(when)}${g.venue ? ` · ${esc(g.venue)}` : ''}</p>${g.score ? `<p>Final score ${g.score.home}–${g.score.away}</p>` : ''}`
           + `<p>${esc(g.home.name)} last 5: ${form('home') || '–'} · ${esc(g.away.name)} last 5: ${form('away') || '–'}.</p>`
           + (d.h2h.length ? `<h2>Last meetings</h2>${nflList(d.h2h)}` : '')
-          + `<ul><li><a href="/american-football/team/${g.home.id}">${esc(g.home.name)}</a></li><li><a href="/american-football/team/${g.away.id}">${esc(g.away.name)}</a></li><li><a href="/american-football/league">NFL standings</a></li></ul>`,
-          { ...extra, jsonld: [sportsEvent(`${g.home.name} vs ${g.away.name}`, g.kickoff, g.home.name, g.away.name, `${SITE}/american-football/game/${g.id}`, 'NFL', 'American Football', desc)] });
+          + `<ul><li><a href="/american-football/team/${g.home.id}">${esc(g.home.name)}</a></li><li><a href="/american-football/team/${g.away.id}">${esc(g.away.name)}</a></li><li><a href="${g.league === 2 ? '/american-football/college' : '/american-football'}/league">${LN} standings</a></li></ul>`,
+          { ...extra, jsonld: [sportsEvent(`${g.home.name} vs ${g.away.name}`, g.kickoff, g.home.name, g.away.name, `${SITE}/american-football/game/${g.id}`, LN, 'American Football', desc)] });
       }
       if ((m = path.match(/^\/american-football\/team\/(\d+)$/)) && season) {
-        const d = nflTeam(Number(m[1]), season);
+        const tl = leagueOfTeamId(Number(m[1]));
+        const d = nflTeam(Number(m[1]), nflCurrentSeason(tl) || season);
         if (!d) return page(`Team not found | ${BRAND}`, 'This team does not exist.', '', { noindex: true });
         const rec = d.standing ? `${d.standing.w}-${d.standing.l}${d.standing.t ? `-${d.standing.t}` : ''}` : null;
         const a = d.analysis;
-        return page(`${d.team.name}: schedule, results and team analysis ${season} | ${BRAND}`,
-          `${d.team.name} ${season}${rec ? ` (${rec})` : ''}: next games, results, roster, injuries and a team analysis of strengths and weaknesses.`,
+        return page(`${d.team.name}: schedule, results and team analysis ${d.season} | ${BRAND}`,
+          `${d.team.name} ${d.season}${rec ? ` (${rec})` : ''}${tl === 2 ? ' college football' : ''}: next games, results, roster, injuries and a team analysis of strengths and weaknesses.`,
           `${nflNav}<h1>${esc(d.team.name)}</h1><p>${esc([d.team.conference, d.team.division].filter(Boolean).join(' · '))}${rec ? ` · ${rec}` : ''}</p>`
           + (a && (a.strengths.length || a.weaknesses.length) ? `<h2>Team analysis</h2><ul>${a.strengths.map(x => `<li>Strength: ${esc(x.label)} ${esc(x.text || '')} (#${x.rank} of ${x.of})</li>`).join('')}${a.weaknesses.map(x => `<li>Weakness: ${esc(x.label)} ${esc(x.text || '')} (#${x.rank} of ${x.of})</li>`).join('')}</ul>` : '')
           + `<h2>Next games</h2>${nflList(d.schedule.slice(0, 8))}<h2>Results</h2>${nflList(d.results.slice(0, 17))}`, extra);
@@ -382,7 +391,7 @@ export function seoPage(rawPath: string): SeoInfo {
           `${p.name}${d.team ? `, ${d.team.name}` : ''}: ${season} season statistics and game log.`,
           `${nflNav}<h1>${esc(p.name)}</h1><p>${esc([p.position, d.team?.name].filter(Boolean).join(' · '))}</p>${Object.entries(d.totals).map(([g, st]) => `<h2>${esc(g)}</h2><p>${Object.entries(st).map(([k, v]) => `${esc(k)} ${esc(v)}`).join(', ')}</p>`).join('')}`, extra);
       }
-      return page(`NFL | ${BRAND}`, 'NFL games, scores and standings on SportLikely.', `${nflNav}<h1>NFL</h1>`, extra);
+      return page(`${LN} | ${BRAND}`, `${LN} games, scores and standings on SportLikely.`, `${nflNav}<h1>${LN}</h1>`, extra);
     }
     if (path.startsWith('/basketball')) {
       if (!bbPublic()) return page(`Basketball predictions · coming soon | ${BRAND}`, S('basketball'), '<h1>Basketball · coming soon</h1>', { noindex: true });
@@ -537,15 +546,19 @@ function sitemapBasketball(): string {
 /** sitemap-nfl.xml (fix137): the NFL pages of the current season, once NFL_PUBLIC=1 (English only). */
 function sitemapNfl(): string {
   if (!nflPublic()) return urlset([]);
-  const season = nflCurrentSeason();
   const today = isoDay();
-  const urls: SmUrl[] = ['/american-football', '/american-football/games', '/american-football/today', '/american-football/league']
-    .map(loc => ({ loc, freq: 'daily', pri: loc === '/american-football' ? '0.8' : '0.7', mod: today, enOnly: true }));
-  if (season) {
+  const urls: SmUrl[] = [];
+  // fix142: NFL and college football (college: games and teams of FBS only)
+  for (const lg of [1, 2] as const) {
+    const season = nflCurrentSeason(lg);
+    const base = lg === 2 ? '/american-football/college' : '/american-football';
+    if (!season) continue;
+    for (const loc of [base, `${base}/games`, `${base}/today`, `${base}/league`]) urls.push({ loc, freq: 'daily', pri: loc === base ? '0.8' : '0.7', mod: today, enOnly: true });
+    const fbs = lg === 2 ? `AND (home_id IN (SELECT team_id FROM nfl_teams WHERE league = 2 AND level = 'FBS') OR away_id IN (SELECT team_id FROM nfl_teams WHERE league = 2 AND level = 'FBS'))` : '';
     const now = new Date().toISOString();
-    for (const g of db.prepare(`SELECT game_id, kickoff, updated_at FROM nfl_games WHERE season = ? AND (stage IS NULL OR stage NOT LIKE 'Pre%') AND (status IS NULL OR status NOT IN ('CANC','PST')) ORDER BY kickoff`).all(season) as any[])
+    for (const g of db.prepare(`SELECT game_id, kickoff, updated_at FROM nfl_games WHERE league = ? AND season = ? AND (stage IS NULL OR stage NOT LIKE 'Pre%') AND (status IS NULL OR status NOT IN ('CANC','PST')) ${fbs} ORDER BY kickoff`).all(lg, season) as any[])
       urls.push({ loc: `/american-football/game/${g.game_id}`, freq: g.kickoff >= now ? 'daily' : 'weekly', pri: g.kickoff >= now ? '0.7' : '0.4', mod: isoDay(g.updated_at || g.kickoff), enOnly: true });
-    for (const t of db.prepare(`SELECT team_id FROM nfl_teams ORDER BY team_id`).all() as any[]) urls.push({ loc: `/american-football/team/${t.team_id}`, freq: 'weekly', pri: '0.6', mod: today, enOnly: true });
+    for (const t of db.prepare(`SELECT team_id FROM nfl_teams WHERE league = ? ${lg === 2 ? "AND level = 'FBS'" : ''} ORDER BY team_id`).all(lg) as any[]) urls.push({ loc: `/american-football/team/${t.team_id}`, freq: 'weekly', pri: '0.6', mod: today, enOnly: true });
   }
   return urlset(urls);
 }

@@ -11,6 +11,7 @@
  * Home page = every story combined; league page = that league's stories.
  */
 import logger from '../utils/logger';
+import { schoolName, collegeNick } from './nfl';
 import { db } from '../db';
 
 type Sport = 'football' | 'basketball' | 'american-football';
@@ -63,7 +64,12 @@ const FEEDS: Feed[] = [
   { source: 'CBS Sports', url: 'https://www.cbssports.com/rss/headlines/nfl/', league: 'NFL', sport: 'american-football' },
   { source: 'Yahoo Sports', url: 'https://sports.yahoo.com/nfl/rss.xml', league: 'NFL', sport: 'american-football' },
   { source: 'BBC Sport', url: 'https://feeds.bbci.co.uk/sport/american-football/rss.xml', league: 'NFL', sport: 'american-football' },
-  { source: 'ProFootballTalk', url: 'https://profootballtalk.nbcsports.com/feed/', league: 'NFL', sport: 'american-football' }
+  { source: 'ProFootballTalk', url: 'https://profootballtalk.nbcsports.com/feed/', league: 'NFL', sport: 'american-football' },
+  // College football (fix142; each feed checked on 16 Oct 2026)
+  { source: 'ESPN', url: 'https://www.espn.com/espn/rss/ncf/news', league: 'NCAA', sport: 'american-football' },
+  { source: 'CBS Sports', url: 'https://www.cbssports.com/rss/headlines/college-football/', league: 'NCAA', sport: 'american-football' },
+  { source: 'Yahoo Sports', url: 'https://sports.yahoo.com/college-football/rss.xml', league: 'NCAA', sport: 'american-football' },
+  { source: 'The Guardian', url: 'https://www.theguardian.com/sport/college-football/rss', league: 'NCAA', sport: 'american-football' }
 ];
 
 /** Basketball leagues for filing stories (team names come from bb_games). */
@@ -390,16 +396,27 @@ export function nflTeamNames(full: string, cities: string[] = []): string[] {
 }
 export function nflTeamNamesById(id: number): string[] {
   try {
-    const all = (db.prepare(`SELECT team_id, name FROM nfl_teams`).all() as any[]);
-    const me = all.find(r => r.team_id === id);
-    return me ? nflTeamNames(me.name, all.map(r => String(r.name).split(/\s+/).slice(0, -1).join(' '))) : [];
+    const me = db.prepare(`SELECT team_id, name, league FROM nfl_teams WHERE team_id = ?`).get(id) as any;
+    if (!me) return [];
+    const all = (db.prepare(`SELECT name FROM nfl_teams WHERE league = ?`).all(me.league) as any[]).map(r => String(r.name));
+    if (me.league === 2) return collegeTeamNames(me.name, all);
+    return nflTeamNames(me.name, all.map(n => n.split(/\s+/).slice(0, -1).join(' ')));
   } catch { return []; }
+}
+/** College (fix142): the full name, the school ("Ohio State") and the nickname ("Buckeyes", 5+ letters) when no other
+ *  college team shares them. */
+export function collegeTeamNames(full: string, all: string[]): string[] {
+  const out = new Set<string>([full]);
+  const school = schoolName(full), nick = collegeNick(full);
+  if (school !== full && school.length >= 4 && all.filter(n => n === school || n.startsWith(school + ' ')).length <= 1) out.add(school);
+  if (nick.length >= 5 && all.filter(n => n.endsWith(' ' + nick)).length <= 1) out.add(nick);
+  return [...out];
 }
 
 /** League codes a story belongs to. */
 export function leaguesFor(title: string, summary: string, feedLeague?: string, sport: Sport = 'football'): string[] {
-  // NFL feeds are NFL-only; the team pages find their stories by team name (newsFor team)
-  if (sport === 'american-football') return ['NFL'];
+  // NFL / college feeds belong to their league only; the team pages find their stories by team name (newsFor team)
+  if (sport === 'american-football') return [feedLeague || 'NFL'];
   if (!matcher || Date.now() - matcherAt > 6 * 3600 * 1000) buildMatcher();
   if (sport === 'basketball' && !bbMatcher) buildBbMatcher();
   const M = sport === 'basketball' ? bbMatcher! : matcher!;
@@ -566,8 +583,10 @@ export async function newsFor(opts: { sport?: Sport; limit?: number; league?: st
     const names = [...new Set(opts.team.map(n => norm(n).trim()).filter(n => n.length >= 3))].sort((a, b) => b.length - a.length);
     if (!names.length) return [];
     const re = new RegExp(`(?<![\\p{L}\\p{N}])(?:${names.map(esc).join('|')})(?![\\p{L}\\p{N}])`, 'u');
-    const rows = db.prepare(`SELECT * FROM news_items WHERE sport = ? AND COALESCE(published, seen_at) >= ? ORDER BY COALESCE(published, seen_at) DESC LIMIT 3000`)
-      .all(sport, new Date(Date.now() - 30 * 86400000).toISOString()) as any[];
+    // american football: a team's stories come from its own league's feeds (Miami NFL vs Miami college)
+    const lg = sport === 'american-football' && opts.league ? `%,${opts.league.toUpperCase()},%` : '%';
+    const rows = db.prepare(`SELECT * FROM news_items WHERE sport = ? AND leagues LIKE ? AND COALESCE(published, seen_at) >= ? ORDER BY COALESCE(published, seen_at) DESC LIMIT 3000`)
+      .all(sport, lg, new Date(Date.now() - 30 * 86400000).toISOString()) as any[];
     return dedupe(rows.filter(r => re.test(norm(`${r.title} . ${r.summary}`)))).slice(0, limit).map(toItem);
   }
   if (opts.league) {

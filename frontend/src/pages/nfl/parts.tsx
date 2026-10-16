@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { useNflLeague, nflBase, type NflLeague } from '../../lib/nfl'
 import { t, LOCALE } from '../../lib/i18n'
 import { NFL_STATUS, timeOf, nick, record, useNflFavorites, nflRid, nflRstatus, type NflGame, type StandRow, type Standings } from '../../lib/nfl'
 import { SectionTitle, TeamLogo, dayTitle, BbPickBlock, LockIcon } from '../bb/parts'
@@ -7,6 +8,24 @@ import { useReveal, justRevealed } from '../../lib/reveal'
 /** Shared pieces of the NFL pages (fix137) — the same look as basketball's and football's. */
 
 /** "Prediction coming soon" in the prediction slot of a row / card (no prediction saved for the game yet). */
+/**
+ * NFL | College switcher (fix142), on top of every American-football page. On a list page it opens the same page of the
+ * other league (games → games); on a game / team / player page, the other league's home.
+ */
+export function LeagueSwitch({ className = '' }: { className?: string }) {
+  const { league, sub } = useNflLeague()
+  const to = (l: NflLeague) => nflBase(l) + (sub ? '/' + sub : '')
+  const opt = (l: NflLeague, label: string) => (
+    <Link key={l} to={to(l)} aria-current={league === l ? 'page' : undefined}
+      className={`h-8 px-3.5 inline-flex items-center rounded-full text-xs font-bold transition-colors ${league === l ? 'bg-accent text-bg' : 'text-muted hover:text-ink'}`}>{label}</Link>
+  )
+  return (
+    <nav aria-label={t('League')} className={`inline-flex items-center gap-0.5 p-0.5 rounded-full border border-line bg-surface2/60 ${className}`}>
+      {opt(1, 'NFL')}{opt(2, t('College'))}
+    </nav>
+  )
+}
+
 export function SoonChip({ className = '' }: { className?: string }) {
   return <span className={`inline-flex items-center h-7 px-2.5 rounded-md text-[11px] font-semibold text-faint border border-dashed border-line/80 whitespace-nowrap ${className}`}>{t('Prediction coming soon')}</span>
 }
@@ -58,7 +77,7 @@ export function NflGameRow({ g, showDay = false }: { g: NflGame; showDay?: boole
             <div key={side} className="flex items-center gap-2 min-w-0 h-5">
               <TeamLogo team={team} size={15} />
               <span className={`text-[13px] truncate ${pick === side || won(side) ? 'font-bold text-ink' : 'text-ink/85'}`}>
-                <span className="sm:hidden">{nick(team.name)}</span><span className="hidden sm:inline">{team.name}</span>
+                <span className="sm:hidden">{nick(team.name, g.league)}</span><span className="hidden sm:inline">{team.name}</span>
               </span>
               {score !== null && <span className={`ml-auto pl-2 num text-[13px] font-extrabold tabular-nums ${isLive ? 'text-live' : done && !won(side) ? 'text-muted' : 'text-ink'}`}>{score}</span>}
             </div>
@@ -82,7 +101,7 @@ export function NflGameRow({ g, showDay = false }: { g: NflGame; showDay?: boole
           <span className="inline-flex items-center gap-1.5 text-xs text-faint"><LockIcon /> {t('Locked')}</span>
         ) : pick ? (
           <span className="flex items-center gap-1">
-            <BbPickBlock p={p!} pick={pick} home={nick(g.home.name)} away={nick(g.away.name)} roll={roll} />
+            <BbPickBlock p={p!} pick={pick} home={nick(g.home.name, g.league)} away={nick(g.away.name, g.league)} roll={roll} />
             {typeof p!.margin === 'number' && typeof p!.total === 'number' && (
               <>
                 <span className="hidden lg:block w-px h-5 bg-line mx-1" aria-hidden />
@@ -150,19 +169,21 @@ export function NflLiveCard({ g }: { g: NflGame }) {
 }
 
 /** Standings of one division (or a conference snapshot): W-L-T, PCT, PF, PA, diff, streak. */
-export function StandTable({ title, rows, compact = false, highlight }: { title?: string; rows: StandRow[]; compact?: boolean; highlight?: number }) {
+export function StandTable({ title, rows, compact = false, highlight, league = 1 }: { title?: string; rows: StandRow[]; compact?: boolean; highlight?: number; league?: NflLeague }) {
+  const conf = league === 2 && !compact // college: conference record first (the order of the table)
   return (
     <div>
       {title && <div className="label pb-1.5">{title}</div>}
       <div className="overflow-x-auto -mx-1">
-        <table className={`w-full text-sm ${compact ? '' : 'min-w-[420px]'}`}>
+        <table className={`w-full text-sm ${compact ? '' : 'sm:min-w-[420px]'}`}>
           <thead>
             <tr className="text-[10px] uppercase tracking-wide text-faint">
               <th className="text-left font-semibold py-1.5 px-1">{t('Team')}</th>
+              {conf && <th className="text-right font-semibold py-1.5 px-1" title={t('Conference games')}>{t('Conf')}</th>}
               <th className="text-right font-semibold py-1.5 px-1">{t('W-L-T')}</th>
-              {!compact && <th className="text-right font-semibold py-1.5 px-1">{t('PCT')}</th>}
-              {!compact && <th className="text-right font-semibold py-1.5 px-1">{t('PF')}</th>}
-              {!compact && <th className="text-right font-semibold py-1.5 px-1">{t('PA')}</th>}
+              {!compact && <th className="hidden sm:table-cell text-right font-semibold py-1.5 px-1">{t('PCT')}</th>}
+              {!compact && <th className="hidden sm:table-cell text-right font-semibold py-1.5 px-1">{t('PF')}</th>}
+              {!compact && <th className="hidden sm:table-cell text-right font-semibold py-1.5 px-1">{t('PA')}</th>}
               <th className="text-right font-semibold py-1.5 px-1">{t('Diff')}</th>
               {!compact && <th className="text-right font-semibold py-1.5 px-1">{t('Streak')}</th>}
             </tr>
@@ -173,13 +194,14 @@ export function StandTable({ title, rows, compact = false, highlight }: { title?
                 <td className="py-1.5 px-1">
                   <Link to={`/american-football/team/${r.team.id}`} className="flex items-center gap-2 min-w-0 hover:text-accent">
                     <TeamLogo team={r.team} size={18} />
-                    <span className="truncate text-ink"><span className="sm:hidden">{nick(r.team.name)}</span><span className="hidden sm:inline">{r.team.name}</span></span>
+                    <span className="truncate text-ink"><span className="sm:hidden">{nick(r.team.name, league)}</span><span className="hidden sm:inline">{r.team.name}</span></span>
                   </Link>
                 </td>
-                <td className="py-1.5 px-1 text-right num font-semibold text-ink">{record(r)}</td>
-                {!compact && <td className="py-1.5 px-1 text-right num text-muted">{r.pct.toFixed(3).replace(/^0/, '')}</td>}
-                {!compact && <td className="py-1.5 px-1 text-right num text-muted">{r.pf}</td>}
-                {!compact && <td className="py-1.5 px-1 text-right num text-muted">{r.pa}</td>}
+                {conf && <td className="py-1.5 px-1 text-right num font-semibold text-ink">{r.confW ?? 0}-{r.confL ?? 0}</td>}
+                <td className={`py-1.5 px-1 text-right num ${conf ? 'text-muted' : 'font-semibold text-ink'}`}>{record(r)}</td>
+                {!compact && <td className="hidden sm:table-cell py-1.5 px-1 text-right num text-muted">{r.pct.toFixed(3).replace(/^0/, '')}</td>}
+                {!compact && <td className="hidden sm:table-cell py-1.5 px-1 text-right num text-muted">{r.pf}</td>}
+                {!compact && <td className="hidden sm:table-cell py-1.5 px-1 text-right num text-muted">{r.pa}</td>}
                 <td className={`py-1.5 px-1 text-right num font-semibold ${r.diff > 0 ? 'text-win' : r.diff < 0 ? 'text-loss' : 'text-muted'}`}>{r.diff > 0 ? '+' : ''}{r.diff}</td>
                 {!compact && <td className="py-1.5 px-1 text-right num text-muted">{r.streak || '–'}</td>}
               </tr>
@@ -196,9 +218,9 @@ export function StandingsBlock({ data, compact = false, highlight }: { data: Sta
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       {data.conferences.map(c => (
-        <section key={c.name} className="space-y-4">
-          <h3 className="font-display text-base font-bold text-ink">{c.name}</h3>
-          {c.divisions.map(d => <StandTable key={d.name} title={d.name} rows={d.rows} compact={compact} highlight={highlight} />)}
+        <section key={c.name} className="space-y-4 min-w-0">
+          <h3 className="font-display text-base font-bold text-ink flex items-center gap-2">{c.name}{c.level && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-surface2 text-faint">{c.level}</span>}</h3>
+          {c.divisions.map(d => <StandTable key={d.name} title={d.name !== c.name ? d.name : undefined} rows={d.rows} compact={compact} highlight={highlight} league={data.league || 1} />)}
         </section>
       ))}
     </div>

@@ -4,16 +4,16 @@ import axios from 'axios'
 import { API_URL } from '../../lib/socket'
 import { t } from '../../lib/i18n'
 import { FavStar } from '../../lib/favorites'
-import { record, nflTeamFav, type NflGame, type StandRow } from '../../lib/nfl'
+import { record, nflTeamFav, setNflLeague, nflLeagueName, type NflGame, type StandRow, type NflLeague } from '../../lib/nfl'
 import { Card, Skeleton, TeamLogo, LockIcon } from '../bb/parts'
-import { NflGameRow } from './parts'
+import { NflGameRow, LeagueSwitch } from './parts'
 import { useNews, NewsRows } from '../../components/NewsList'
 
 interface Measure { id: string; label: string; better: 'high' | 'low'; value: number | null; text: string | null; rank: number | null; of: number | null; score: number | null }
 interface Analysis { season: number; measures: Measure[]; strengths: Measure[]; weaknesses: Measure[]; rankByWeek: { week: number; rank: number; of: number }[] }
 interface Player { id: number; name: string; position: string | null; grp: string | null; number: number | null; age: number | null; image: string | null }
 interface Data {
-  team: { id: number; name: string; code: string | null; city: string | null; logo: string | null; conference: string | null; division: string | null; coach: string | null; stadium: string | null }
+  team: { id: number; name: string; code: string | null; city: string | null; logo: string | null; conference: string | null; division: string | null; coach: string | null; stadium: string | null; league?: NflLeague; level?: string | null }
   season: number; standing: StandRow | null; schedule: NflGame[]; results: NflGame[]
   roster: { group: string; players: Player[] }[]; injuries: { id: number; name: string; status: string | null; description: string | null }[]; analysis: Analysis | null
   /** fix139: nfl-v1 ratings (paid plans; null + modelLocked for the rest); record = our picks on this team (admins) */
@@ -43,17 +43,22 @@ export default function NflTeam() {
   const news = useNews({ sport: 'american-football', teamId: id, limit: 8 })
   useEffect(() => {
     setD(null); setMissing(false)
-    axios.get(`${API_URL}/nfl/team/${id}`).then(r => { setD(r.data.data); document.title = `${r.data.data.team.name} · NFL | SportLikely` }).catch(() => setMissing(true))
+    axios.get(`${API_URL}/nfl/team/${id}`).then(r => {
+      const lg: NflLeague = r.data.data.team.league || 1
+      setD(r.data.data); setNflLeague(lg)
+      document.title = `${r.data.data.team.name} · ${lg === 2 ? 'College football' : 'NFL'} | SportLikely`
+    }).catch(() => setMissing(true))
   }, [id])
   if (missing) return <div className="max-w-2xl mx-auto px-4 py-16 text-center text-muted">{t('Team not found.')}</div>
   if (!d) return <div className="max-w-5xl mx-auto px-4 py-8"><Skeleton rows={8} /></div>
   const tm = d.team
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
+      <LeagueSwitch />
       <header className="flex items-center gap-4">
         <TeamLogo team={tm} size={72} />
         <div className="min-w-0 space-y-1">
-          <div className="text-xs text-faint">{[tm.conference, tm.division].filter(Boolean).join(' · ') || 'NFL'}</div>
+          <div className="text-xs text-faint">{[tm.level, tm.conference, tm.division !== tm.conference ? tm.division : null].filter(Boolean).join(' · ') || nflLeagueName(tm.league || 1)}</div>
           <h1 className="font-display text-2xl sm:text-4xl font-extrabold tracking-tight text-ink leading-tight">{tm.name}</h1>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
             {d.standing && <span className="num font-bold text-ink">{record(d.standing)}</span>}

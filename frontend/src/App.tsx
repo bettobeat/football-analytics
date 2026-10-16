@@ -11,7 +11,7 @@ import FeedbackButton from './components/FeedbackButton'
 import ConsoleGate from './components/ConsoleGate'
 import SportSwitch from './components/SportSwitch'
 import { useBbConfig } from './lib/bb'
-import { useNflConfig } from './lib/nfl'
+import { useNflConfig, useNflLeague } from './lib/nfl'
 import { sportOfPath } from './lib/sports'
 import { socket } from './lib/socket'
 import { useTheme } from './lib/theme'
@@ -404,12 +404,13 @@ function FooterSocial() {
 
 /** NFL menu (fix137): Home · Games · Today · Favorites (no predictions yet, so no Premium link here). */
 function NflNavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
+  const { base } = useNflLeague() // fix142: the menu follows the league on screen (NFL | College)
   return (
     <>
-      <NavLink to="/american-football" end className={cls}>{tt("Home")}</NavLink>
-      <NavLink to="/american-football/games" className={cls}>{tt("Games")}</NavLink>
-      <NavLink to="/american-football/today" className={cls}>{tt("Today")}</NavLink>
-      <NavLink to="/american-football/league" className={cls}>{tt("Standings")}</NavLink>
+      <NavLink to={base} end className={cls}>{tt("Home")}</NavLink>
+      <NavLink to={`${base}/games`} className={cls}>{tt("Games")}</NavLink>
+      <NavLink to={`${base}/today`} className={cls}>{tt("Today")}</NavLink>
+      <NavLink to={`${base}/league`} className={cls}>{tt("Standings")}</NavLink>
       <NavLink to="/american-football/favorites" className={cls}>{tt("Favorites")}</NavLink>
     </>
   )
@@ -489,6 +490,7 @@ const TAB_ICONS: Record<string, string> = {
 function BottomTabs() {
   const bb = useBbOpen()
   const nfl = useNflOpen()
+  const nflBaseNow = useNflLeague().base
   const { access } = useAuth()
   const admin = access === 'admin' // the Accuracy tab is admin-only for now (fix118)
   const [searching, setSearching] = useState(false)
@@ -521,9 +523,9 @@ function BottomTabs() {
       <nav aria-label={tt("Tabs")} className={`xl:hidden fixed left-3 right-3 bottom-3 z-40 grid ${admin ? 'grid-cols-6' : 'grid-cols-5'} gap-1 p-1.5 rounded-3xl bg-surface/85 backdrop-blur-xl border border-line/80 shadow-lift sm:max-w-lg sm:mx-auto`}>
         {nfl ? (
           <>
-            {tab('/american-football', 'Home', true)}
-            {tab('/american-football/games', 'Games')}
-            {tab('/american-football/today', 'Today')}
+            {tab(nflBaseNow, 'Home', true)}
+            {tab(`${nflBaseNow}/games`, 'Games')}
+            {tab(`${nflBaseNow}/today`, 'Today')}
             {tab('/american-football/favorites', 'Favorites')}
             {admin && tab('/', 'Football', true)}
           </>
@@ -763,6 +765,11 @@ function NflRoutes() {
       <Route index element={<NflHome />} />
       <Route path="games" element={<NflGames />} />
       <Route path="today" element={<NflGames today />} />
+      {/* fix142: college football lists (games / teams / players by id are shared) */}
+      <Route path="college" element={<NflHome />} />
+      <Route path="college/games" element={<NflGames />} />
+      <Route path="college/today" element={<NflGames today />} />
+      <Route path="college/league" element={<NflLeague />} />
       <Route path="game/:id" element={<NflGame />} />
       <Route path="league" element={<NflLeague />} />
       <Route path="team/:id" element={<NflTeam />} />
