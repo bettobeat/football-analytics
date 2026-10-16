@@ -396,8 +396,9 @@ export function bbShort(name: string, code: string) {
 /**
  * fix132 — basketball's version of football's fix127 row block (components/DcPick.tsx DcBlock): two 36 px cells
  * "1 · 2" with each team's win %, our pick outlined lime and the other dimmed, then "Our pick · Fenerbahce · 80%".
+ * Also used by the NFL rows (fix139).
  */
-function BbPickBlock({ p, pick, home, away, roll }: { p: NonNullable<BbGame['prediction']>; pick: 'H' | 'A'; home: string; away: string; roll: boolean }) {
+export function BbPickBlock({ p, pick, home, away, roll }: { p: { pHome?: number | null; pAway?: number | null }; pick: 'H' | 'A'; home: string; away: string; roll: boolean }) {
   const pct = Math.round(pick === 'H' ? p.pHome! : p.pAway!)
   return (
     <span className="inline-flex flex-col items-end gap-1">

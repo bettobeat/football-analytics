@@ -1,18 +1,51 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../../lib/socket'
 import { t } from '../../lib/i18n'
 import { useAuth } from '../../lib/auth'
-import { useNflConfig, useNflFavorites, NFL_STATUS, weekLabel, record, nick, type NflGame, type NflWeek, type Standings, type LeaderCat } from '../../lib/nfl'
+import { useNflConfig, useNflFavorites, NFL_STATUS, weekLabel, record, nick, nflRid, nflRstatus, type NflGame, type NflWeek, type Standings, type LeaderCat } from '../../lib/nfl'
+import { isCovered, revealMatch, useRevealState, justRevealed } from '../../lib/reveal'
+import CountUp from '../../components/CountUp'
+import { RevealChip } from '../../components/Reveal'
 import { useNews, NewsLead } from '../../components/NewsList'
 import { HomeSection, FirstVisit, HeroFrame, HeroEmpty, HeroLoading, SideHeader, NextList, SideLoading, RecordCard } from '../../components/SportHome'
-import { TeamLogo } from '../bb/parts'
+import { TeamLogo, LockIcon } from '../bb/parts'
 import { NflGameRow } from './parts'
 
 interface HomeData {
   season: number | null; live: NflGame[]; week: NflWeek | null; games: NflGame[]; upcoming: NflGame[]; results: NflGame[]
   standings: Standings | null; leaders: LeaderCat[]
+}
+
+/** The featured game's prediction in the hero (fix139, like basketball's): 1 · total · 2, covered → Reveal, locked → lock. */
+function HeroPick({ g }: { g: NflGame }) {
+  useRevealState()
+  const p = g.prediction
+  if (!p) return <span className="glass !rounded-full px-4 py-2 text-sm font-semibold text-[#C9D0DB]">{t('Prediction coming soon')}</span>
+  const open = !p.locked && typeof p.pHome === 'number'
+  if (!open) return (
+    <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 text-sm">
+      <span className="glass !rounded-full px-4 py-2 font-semibold inline-flex items-center gap-2"><LockIcon /> {t('Prediction locked')}</span>
+      <Link to="/premium" className="inline-flex items-center gap-1.5 text-[#C8FF3D] font-semibold">{t('Unlock it →')}</Link>
+    </div>
+  )
+  if (isCovered(nflRid(g), nflRstatus(g), true)) return <RevealChip dark onReveal={() => revealMatch(nflRid(g))} />
+  const k = p.pick || null
+  const roll = justRevealed(nflRid(g))
+  const pill = (o: 'H' | 'T' | 'A', label: string, v: ReactNode) => (
+    <div className={`glass min-w-0 px-3 py-2.5 sm:px-4 text-center ${k === o ? 'ring-2 ring-[#C8FF3D]/70' : ''} ${roll && k === o ? 'animate-pop' : ''}`}>
+      <div className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.08em] text-[#9AA3B2] truncate">{label}</div>
+      <div className={`font-display font-extrabold text-xl sm:text-2xl ${k === o ? 'text-[#C8FF3D]' : 'text-white'}`}>{v}</div>
+    </div>
+  )
+  return (
+    <div className="w-full min-w-0 grid grid-cols-3 gap-2 sm:gap-3">
+      {pill('H', nick(g.home.name), <CountUp value={p.pHome!} suffix="%" animate={roll} />)}
+      {pill('T', t('Total points'), <span className="num">{typeof p.total === 'number' ? p.total.toFixed(1) : '–'}</span>)}
+      {pill('A', nick(g.away.name), <CountUp value={p.pAway!} suffix="%" animate={roll} delay={240} />)}
+    </div>
+  )
 }
 
 /** Primetime: Thursday / Sunday / Monday night games start 00:00–03:59 UTC (8:15 pm Eastern). */
@@ -67,23 +100,21 @@ export default function NflHome() {
 
         {/* first visit (signed-out visitors only) */}
         {access === 'anon' && (
-          <FirstVisit title={t('American football predictions')} text={t('Every NFL game with kick-off times, live scores, standings, team analysis and the latest news. Our NFL predictions are coming soon, tested in public like every other sport on SportLikely.')}>
+          <FirstVisit title={t('American football predictions')} text={t('Every NFL game with win chances, expected margin and total points, plus live scores, standings, team analysis and the latest news. Every prediction is saved before kick-off and checked after the game.')}>
             <Link to="/signup" className="h-11 px-5 rounded-2xl bg-accent text-bg font-extrabold grid place-items-center">{t('Create a free account')}</Link>
             <Link to="/american-football/games" className="h-11 px-5 rounded-2xl border border-line text-ink font-semibold grid place-items-center hover:border-faint">{t('See the games')}</Link>
           </FirstVisit>
         )}
 
         {/* hero: featured game + live / next kick-offs */}
-        <div className="grid gap-5 lg:grid-cols-[1.75fr_1fr]">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.75fr_1fr]">
           {!featured && !loaded ? <HeroLoading /> : !featured ? (
             <HeroEmpty line1={t('American football,')} line2={t('tested in public.')} text={t('The next games appear here as soon as they are scheduled.')} />
           ) : (
             <HeroFrame home={{ ...featured.home, short: nick(featured.home.name) }} away={{ ...featured.away, short: nick(featured.away.name) }} kickoff={featured.kickoff} field="gridiron"
               competition={`NFL · ${weekLabel(featured.weekKey)}${primetime(featured) ? ` · ${t('Primetime')}` : ''}`}
               teamHref={tm => `/american-football/team/${tm.id}`} gameHref={`/american-football/game/${featured.id}`}>
-              <div className="flex justify-center sm:justify-start">
-                <span className="glass !rounded-full px-4 py-2 text-sm font-semibold text-[#C9D0DB]">{t('Prediction coming soon')}</span>
-              </div>
+              <div className="flex justify-center sm:justify-start min-w-0"><HeroPick g={featured} /></div>
             </HeroFrame>
           )}
 
@@ -151,11 +182,11 @@ export default function NflHome() {
         )}
 
         {/* record · standings · latest results */}
-        <div className="grid gap-5 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
           <RecordCard>
             <div className="space-y-1.5">
-              <div className="font-display text-xl font-bold text-ink">{t('Predictions start soon')}</div>
-              <p className="text-sm text-muted leading-relaxed">{t('Once our NFL model is live, every prediction is saved before kick-off and checked after the game, here and in public.')}</p>
+              <div className="font-display text-xl font-bold text-ink">{t('Our NFL record starts on launch day')}</div>
+              <p className="text-sm text-muted leading-relaxed">{t('Every NFL prediction is saved before kick-off and checked after the game. The public record starts the day NFL predictions go public.')}</p>
             </div>
           </RecordCard>
 

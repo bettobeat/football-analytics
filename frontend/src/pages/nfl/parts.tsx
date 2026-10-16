@@ -1,24 +1,32 @@
 import { Link } from 'react-router-dom'
 import { t, LOCALE } from '../../lib/i18n'
-import { NFL_STATUS, timeOf, nick, record, useNflFavorites, type NflGame, type StandRow, type Standings } from '../../lib/nfl'
-import { SectionTitle, TeamLogo, dayTitle } from '../bb/parts'
+import { NFL_STATUS, timeOf, nick, record, useNflFavorites, nflRid, nflRstatus, type NflGame, type StandRow, type Standings } from '../../lib/nfl'
+import { SectionTitle, TeamLogo, dayTitle, BbPickBlock, LockIcon } from '../bb/parts'
+import { useReveal, justRevealed } from '../../lib/reveal'
 
 /** Shared pieces of the NFL pages (fix137) — the same look as basketball's and football's. */
 
-/** "Prediction coming soon" in the prediction slot of a row / card (no NFL model yet). */
+/** "Prediction coming soon" in the prediction slot of a row / card (no prediction saved for the game yet). */
 export function SoonChip({ className = '' }: { className?: string }) {
   return <span className={`inline-flex items-center h-7 px-2.5 rounded-md text-[11px] font-semibold text-faint border border-dashed border-line/80 whitespace-nowrap ${className}`}>{t('Prediction coming soon')}</span>
 }
 
 /**
- * One game as a thin row (the fix127 layout): time / status · both teams with logos and the score · prediction slot.
+ * One game as a thin row (the fix127 layout): time / status · both teams with logos and the score · prediction slot
+ * (fix139: the fix127 block — 1 · 2 cells with each team's win %, our pick lime, "Our pick · Chiefs · 64%", then the
+ * expected margin and total points on wide screens; covered → Reveal, locked → lock, finished → ✓ / ✗).
  */
 export function NflGameRow({ g, showDay = false }: { g: NflGame; showDay?: boolean }) {
   const isLive = g.state === 'live', done = g.state === 'done'
+  const p = g.prediction || null
+  const open = !!p && !p.locked && typeof p.pHome === 'number'
+  const { hidden: covered, reveal } = useReveal(nflRid(g), nflRstatus(g), open)
+  const pick = open && !covered ? p!.pick! : null
+  const roll = justRevealed(nflRid(g))
   const won = (side: 'H' | 'A') => (done && g.score ? (side === 'H' ? g.score.home > g.score.away : g.score.away > g.score.home) : false)
   const favWhy = useNflFavorites().reasons(g)
   return (
-    <Link to={`/american-football/game/${g.id}`} className={`group relative flex items-center gap-2.5 px-3 sm:px-4 py-1.5 hover:bg-surface2/50 transition-colors ${isLive ? 'bg-live/[0.06]' : ''}`}>
+    <Link to={`/american-football/game/${g.id}${p ? '#prediction' : ''}`} className={`group relative flex items-center gap-2.5 px-3 sm:px-4 py-1.5 hover:bg-surface2/50 transition-colors ${isLive ? 'bg-live/[0.06]' : ''}`}>
       {isLive && <span className="absolute left-0 inset-y-0 w-0.5 bg-live" aria-hidden />}
       <div className="relative w-10 flex-shrink-0 text-center leading-tight">
         {favWhy.length > 0 && (
@@ -49,7 +57,7 @@ export function NflGameRow({ g, showDay = false }: { g: NflGame; showDay?: boole
           return (
             <div key={side} className="flex items-center gap-2 min-w-0 h-5">
               <TeamLogo team={team} size={15} />
-              <span className={`text-[13px] truncate ${won(side) ? 'font-bold text-ink' : 'text-ink/85'}`}>
+              <span className={`text-[13px] truncate ${pick === side || won(side) ? 'font-bold text-ink' : 'text-ink/85'}`}>
                 <span className="sm:hidden">{nick(team.name)}</span><span className="hidden sm:inline">{team.name}</span>
               </span>
               {score !== null && <span className={`ml-auto pl-2 num text-[13px] font-extrabold tabular-nums ${isLive ? 'text-live' : done && !won(side) ? 'text-muted' : 'text-ink'}`}>{score}</span>}
@@ -57,8 +65,42 @@ export function NflGameRow({ g, showDay = false }: { g: NflGame; showDay?: boole
           )
         })}
       </div>
-      <div className="flex-shrink-0 flex items-center justify-end min-w-[84px] sm:min-w-[150px]">
-        {g.state === 'upcoming' ? <SoonChip /> : <span className="text-xs text-faint">{done ? '' : '–'}</span>}
+      <div className="flex-shrink-0 flex items-center justify-end min-w-[84px] sm:min-w-[150px] gap-1.5">
+        {covered ? (
+          <button
+            type="button"
+            onClick={e => { e.preventDefault(); e.stopPropagation(); reveal() }}
+            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[11px] font-bold bg-accent/10 text-accent border border-accent/30 hover:bg-accent/15"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+            {t('Reveal')}
+          </button>
+        ) : p && p.locked ? (
+          <span className="inline-flex items-center gap-1.5 text-xs text-faint"><LockIcon /> {t('Locked')}</span>
+        ) : pick ? (
+          <span className="flex items-center gap-1">
+            <BbPickBlock p={p!} pick={pick} home={nick(g.home.name)} away={nick(g.away.name)} roll={roll} />
+            {typeof p!.margin === 'number' && typeof p!.total === 'number' && (
+              <>
+                <span className="hidden lg:block w-px h-5 bg-line mx-1" aria-hidden />
+                <span className={`hidden lg:grid w-[60px] h-7 rounded-md place-items-center leading-none border border-line/70 text-muted ${roll ? 'pop-in' : ''}`} title={t('Expected margin')}>
+                  <span className="text-[8px] font-bold opacity-75">{t('Margin')}</span>
+                  <span className="num text-[11px] font-bold text-ink">{p!.margin! >= 0 ? '1' : '2'} +{Math.abs(p!.margin!).toFixed(1)}</span>
+                </span>
+                <span className={`hidden lg:grid w-[60px] h-7 rounded-md place-items-center leading-none border border-line/70 text-muted ${roll ? 'pop-in' : ''}`} title={t('Total points')}>
+                  <span className="text-[8px] font-bold opacity-75">{t('Total')}</span>
+                  <span className="num text-[11px] font-bold text-ink">{p!.total!.toFixed(1)}</span>
+                </span>
+              </>
+            )}
+          </span>
+        ) : g.state === 'upcoming' ? <SoonChip /> : <span className="text-xs text-faint">{done ? '' : '–'}</span>}
+        {done && p && typeof p.hit === 'boolean' && (
+          <span className={`w-5 h-5 rounded grid place-items-center text-[10px] font-extrabold ${p.hit ? 'bg-win/15 text-win' : 'bg-loss/15 text-loss'}`} title={p.hit ? t('Hit') : t('Miss')}>{p.hit ? '✓' : '✗'}</span>
+        )}
       </div>
     </Link>
   )

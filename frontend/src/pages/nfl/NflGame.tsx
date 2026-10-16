@@ -1,12 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../../lib/socket'
 import { t, LOCALE } from '../../lib/i18n'
 import { FavStar } from '../../lib/favorites'
-import { NFL_STATUS, weekLabel, timeOf, nick, nflTeamFav, type NflGame as Game, type NflSide } from '../../lib/nfl'
+import { NFL_STATUS, weekLabel, timeOf, nick, nflTeamFav, nflRid, nflRstatus, type NflGame as Game, type NflSide, type NflPred } from '../../lib/nfl'
+import { useReveal, justRevealed } from '../../lib/reveal'
+import { RevealCover } from '../../components/Reveal'
+import CountUp from '../../components/CountUp'
 import StickyBar from '../../components/StickyBar'
-import { Card, Skeleton, TeamLogo } from '../bb/parts'
+import { Card, Skeleton, TeamLogo, LockedNote } from '../bb/parts'
 import { StatBars } from './parts'
 import { useNews, NewsRows, type NewsItem } from '../../components/NewsList'
 
@@ -20,16 +23,16 @@ interface FormRow { id: number; kickoff: string; opponent: NflSide; home: boolea
 interface Injury { id: number; name: string; image: string | null; status: string | null; description: string | null; date: string | null }
 interface Data {
   game: Game; form: { home: FormRow[]; away: FormRow[] }; h2h: Game[]; teamStats: { home: Box | null; away: Box | null } | null
-  players: { home: Groups; away: Groups } | null; injuries: { home: Injury[]; away: Injury[] } | null; prediction: null
+  players: { home: Groups; away: Groups } | null; injuries: { home: Injury[]; away: Injury[] } | null; prediction: NflPred | null
 }
 type Tab = 'overview' | 'stats' | 'players' | 'injuries' | 'prediction'
 
-/** NFL game page (fix137): hero, then Overview · Team stats · Players · Injuries · Prediction (coming soon). */
+/** NFL game page (fix137): hero, then Overview · Team stats · Players · Injuries · Prediction (nfl-v1 since fix139). */
 export default function NflGame() {
   const { id } = useParams()
   const [d, setD] = useState<Data | null>(null)
   const [missing, setMissing] = useState(false)
-  const [tab, setTab] = useState<Tab>('overview')
+  const [tab, setTab] = useState<Tab>(() => (window.location.hash === '#prediction' ? 'prediction' : 'overview'))
   useEffect(() => {
     setD(null); setMissing(false)
     const load = () => axios.get(`${API_URL}/nfl/game/${id}`).then(r => setD(r.data.data)).catch(e => { if (e?.response?.status === 404) setMissing(true) })
@@ -97,12 +100,144 @@ export default function NflGame() {
         {tab === 'stats' && d.teamStats && <TeamStats g={g} home={d.teamStats.home} away={d.teamStats.away} />}
         {tab === 'players' && d.players && <Players g={g} data={d.players} />}
         {tab === 'injuries' && d.injuries && <Injuries g={g} data={d.injuries} />}
-        {tab === 'prediction' && (
-          <Card title={t('Prediction')}>
-            <p className="text-sm text-muted">{t('Our NFL predictions are coming soon: win chances, point spread and total points, tested in public like every other sport on SportLikely.')}</p>
-          </Card>
-        )}
+        {tab === 'prediction' && <PredictionSection g={g} />}
       </div>
+    </div>
+  )
+}
+
+function Tile({ k, label, v, active, roll, delay = 0, text }: { k: 'H' | 'A' | 'T'; label: string; v?: number; active: boolean; roll: boolean; delay?: number; text?: string }) {
+  const color = k === 'H' ? 'text-home' : k === 'A' ? 'text-away' : 'text-ink'
+  const border = k === 'H' ? 'border-home/50 bg-home/10' : 'border-away/50 bg-away/10'
+  return (
+    <div className={`rounded-xl border p-3 sm:p-4 text-center ${active ? border : 'border-line/70 bg-surface2/40'} ${roll && active ? 'animate-pop' : ''}`}>
+      <div className="text-[11px] text-faint mb-1 truncate">
+        {k !== 'T' && <span className={`font-bold mr-1 ${active ? color : ''}`}>{k === 'H' ? '1' : '2'}</span>}
+        {label}
+      </div>
+      <div className={`num text-2xl sm:text-3xl font-extrabold ${active ? color : k === 'T' ? 'text-ink' : 'text-ink/70'}`}>
+        {text !== undefined ? text : <CountUp value={v || 0} decimals={1} suffix="%" animate={roll} delay={delay} />}
+      </div>
+    </div>
+  )
+}
+const Stat = ({ label, value }: { label: string; value: string }) => (
+  <div className="rounded-xl bg-surface2/50 border border-line/60 px-3 py-2.5 text-center">
+    <div className="text-[11px] text-faint leading-tight">{label}</div>
+    <div className="num text-base sm:text-lg font-extrabold text-ink">{value}</div>
+  </div>
+)
+
+/** "Why we think so" (fix139): the model's own inputs in plain words — Elo gap, home field, rest, quarterbacks, efficiency. */
+function whyRows(g: Game, p: NflPred): { tone: 'H' | 'A' | 'N'; text: string }[] {
+  const w = p.why
+  if (!w) return []
+  const out: { tone: 'H' | 'A' | 'N'; text: string }[] = []
+  const name = (s: 'H' | 'A') => nick((s === 'H' ? g.home : g.away).name)
+  const pts = (elo: number) => (Math.abs(elo) / 25).toFixed(1)
+  const gap = Math.abs(w.eloGap), up: 'H' | 'A' = w.eloGap >= 0 ? 'H' : 'A'
+  out.push(gap < 15
+    ? { tone: 'N', text: t('The two teams are rated about the same ({0} against {1} Elo).', { 0: w.eloHome, 1: w.eloAway }) }
+    : { tone: up, text: t('{0} are the stronger team: {1} Elo points ahead ({2} against {3}), worth about {4} points.', { 0: name(up), 1: gap, 2: up === 'H' ? w.eloHome : w.eloAway, 3: up === 'H' ? w.eloAway : w.eloHome, 4: pts(gap) }) })
+  out.push(w.neutral
+    ? { tone: 'N', text: t('Neutral site: no home-field edge for either team.') }
+    : { tone: 'H', text: t('Home field is worth about {0} points to {1}.', { 0: pts(w.homeField), 1: name('H') }) })
+  ;(['H', 'A'] as const).forEach((s, i) => {
+    const days = w.rest[i], adj = w.restAdj[i]
+    if (days === null || !adj) return
+    out.push(adj > 0
+      ? { tone: s, text: t('{0} come off a bye week ({1} days of rest).', { 0: name(s), 1: days }) }
+      : { tone: s === 'H' ? 'A' : 'H', text: t('{0} play on a short week ({1} days of rest).', { 0: name(s), 1: days }) })
+  })
+  ;(['H', 'A'] as const).forEach((s, i) => {
+    const q = w.qb[i]
+    if (!q) return
+    const other: 'H' | 'A' = s === 'H' ? 'A' : 'H'
+    if (q.reason === 'injury' && q.usualName) out.push({ tone: other, text: t('{0} is on the injury report: {1} should start at quarterback for {2} ({3} points in our ratings).', { 0: q.usualName, 1: q.name, 2: name(s), 3: (q.adj / 25).toFixed(1) }) })
+    else if (q.reason === 'changed' && q.usualName) out.push({ tone: q.adj >= 0 ? s : other, text: t('{0} starts at quarterback for {1} instead of {2} ({3} points in our ratings).', { 0: q.name, 1: name(s), 2: q.usualName, 3: (q.adj >= 0 ? '+' : '') + (q.adj / 25).toFixed(1) }) })
+    else out.push({ tone: 'N', text: t('Quarterback {0} ({1}): {2} net yards per pass attempt.', { 0: q.name, 1: name(s), 2: q.value.toFixed(1) }) })
+  })
+  if (w.eff) {
+    const better: 'H' | 'A' = w.eff.yppHome >= w.eff.yppAway ? 'H' : 'A'
+    out.push({ tone: Math.abs(w.eff.yppHome - w.eff.yppAway) < 0.3 ? 'N' : better, text: t('Yards per play, gained minus allowed: {0} {1}, {2} {3}.', { 0: name('H'), 1: (w.eff.yppHome >= 0 ? '+' : '') + w.eff.yppHome.toFixed(1), 2: name('A'), 3: (w.eff.yppAway >= 0 ? '+' : '') + w.eff.yppAway.toFixed(1) }) })
+    out.push({ tone: 'N', text: t('Turnover margin per game: {0} {1}, {2} {3}.', { 0: name('H'), 1: (w.eff.toHome >= 0 ? '+' : '') + w.eff.toHome.toFixed(1), 2: name('A'), 3: (w.eff.toAway >= 0 ? '+' : '') + w.eff.toAway.toFixed(1) }) })
+  }
+  return out
+}
+
+/** Prediction (fix139): 1 · total · 2 tiles, the pick and how strong it is, expected margin, score and total, and why. */
+function PredictionSection({ g }: { g: Game }) {
+  const p = g.prediction || null
+  const open = !!p && !p.locked && typeof p.pHome === 'number'
+  const { hidden, reveal } = useReveal(nflRid(g), nflRstatus(g), open)
+  const roll = justRevealed(nflRid(g))
+  const scrolled = useRef(false)
+  useEffect(() => {
+    if (scrolled.current) return
+    scrolled.current = true
+    if (window.location.hash === '#prediction') requestAnimationFrame(() => document.getElementById('prediction')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }, [])
+  const note = p ? [p.model || 'nfl-v1', g.state === 'upcoming' ? t('Updated until kick-off') : t('Saved before kick-off')].join(' · ') : undefined
+  return (
+    <div id="prediction" className="scroll-mt-32">
+      <Card title={t('Prediction')} action={note ? <span className="text-xs text-faint">{note}</span> : undefined}>
+        {!p ? (
+          <p className="text-sm text-muted">{g.state === 'upcoming' ? t('Our prediction for this game is saved in the week of the game, before kick-off.') : t('No prediction for this game.')}</p>
+        ) : p.locked ? (
+          <LockedNote />
+        ) : hidden ? (
+          <RevealCover onReveal={reveal} />
+        ) : (() => {
+          const pick = p.pick!, team = pick === 'H' ? g.home : g.away
+          const topV = Math.max(p.pHome || 0, p.pAway || 0)
+          const rows = whyRows(g, p)
+          return (
+            <>
+              <div className="grid grid-cols-3 gap-3">
+                <Tile k="H" label={g.home.name} v={p.pHome} active={pick === 'H'} roll={roll} />
+                <Tile k="T" label={t('Total points')} text={typeof p.total === 'number' ? p.total.toFixed(1) : '–'} active={false} roll={roll} />
+                <Tile k="A" label={g.away.name} v={p.pAway} active={pick === 'A'} roll={roll} delay={240} />
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${topV >= 70 ? 'bg-accent/15 text-accent border-accent/40' : 'bg-surface2 text-ink border-line'}`}>
+                  {topV >= 80 ? t('Very strong pick') : topV >= 70 ? t('Strong pick') : topV >= 55 ? t('Pick') : t('Close game')}
+                </span>
+                <span className="text-muted">{t('Our pick')} · <span className="text-ink font-semibold">{team.name}</span> · <span className="num text-accent font-extrabold">{Math.round(topV)}%</span></span>
+                {typeof p.hit === 'boolean' && <span className={`ml-auto rounded-full px-3 py-1 text-xs font-bold ${p.hit ? 'bg-win/15 text-win' : 'bg-loss/15 text-loss'}`}>{p.hit ? t('Right') : t('Wrong')}</span>}
+              </div>
+              <div className="flex h-2.5 gap-[3px] mt-4">
+                <div className={`rounded-full bg-home ${pick === 'H' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.pHome}% - 2px)` }} />
+                <div className={`rounded-full bg-away ${pick === 'A' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.pAway}% - 2px)` }} />
+              </div>
+              {g.state !== 'upcoming' && (
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
+                  <span className="px-2.5 py-1 rounded-full bg-surface2 border border-line font-semibold text-ink">{t('Saved before kick-off')}</span>
+                  <span>{t('This is exactly what we predicted before the game — it is never recalculated after the result.')}</span>
+                </div>
+              )}
+              <div className="mt-5 grid grid-cols-3 gap-2">
+                <Stat label={t('Expected margin')} value={typeof p.margin === 'number' ? t('{0} by {1}', { 0: nick((p.margin >= 0 ? g.home : g.away).name), 1: Math.abs(p.margin).toFixed(1) }) : '–'} />
+                <Stat label={t('Predicted score')} value={typeof p.homePts === 'number' ? `${Math.round(p.homePts)}–${Math.round(p.awayPts!)}` : '–'} />
+                <Stat label={t('Total points')} value={typeof p.total === 'number' ? p.total.toFixed(1) : '–'} />
+              </div>
+              {rows.length > 0 && (
+                <div className="mt-5 rounded-2xl border border-line/60 bg-surface2/30 p-4">
+                  <div className="text-sm font-bold text-ink mb-2">{t('Why we think so')}</div>
+                  <ul className="space-y-2">
+                    {rows.map((r, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-muted leading-relaxed">
+                        <span className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${r.tone === 'H' ? 'bg-home' : r.tone === 'A' ? 'bg-away' : 'bg-faint'}`} aria-hidden />
+                        <span>{r.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <p className="mt-4 text-xs text-faint">{t('Probabilities, not promises. 18+.')}</p>
+            </>
+          )
+        })()}
+      </Card>
     </div>
   )
 }

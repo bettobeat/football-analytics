@@ -84,6 +84,7 @@ import { tuneV3Full, tuneStatus, isTuning } from './services/v3Tuner';
 import { hiddenModels, v3MixBacktest, featureModelStatus, setConfig as setModelConfig, setMixLive, startFeatureModelScheduler } from './services/featureModel';
 import { runModelDaily, sendMorningReport, modelDailyLog, buildReport, startModelDailyScheduler, dailyRunning } from './services/modelDaily';
 import { nflProbe, startNflScheduler, nflCurrentSeason } from './services/nfl';
+import { withNflPrediction, nflTeamModel, nflTeamRecord, nflModelReport, retrain as nflRetrain, NFL_MODEL } from './services/nflModel';
 import { nflPublic, nflWeeks, nflWeekGames, nflGamesBetween, nflLiveGames, nflRecentResults, nflGame, nflStandings, nflTeam, nflPlayer, nflLeaders, nflSeasonsHeld, allowedSeason } from './services/nflSite';
 import { askAssistant, assistantConfigured, messagesToday, assistantStats } from './services/assistant';
 import { normalizeName } from './services/history';
@@ -864,6 +865,17 @@ app.get('/api/admin/nfl-probe', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   try { res.json({ data: await nflProbe(req.query.refresh === '1') }); }
   catch (e: any) { res.status(502).json({ error: `NFL probe failed: ${e.message}` }); }
+});
+// NFL model report (fix139, admin only): walk-forward test of nfl-v1 (each of the last 5 seasons tuned on the seasons
+// before it), baselines, calibration, the live settings. ?rebuild=1 re-tunes now (takes a minute; runs in the background).
+let nflRebuilding = false;
+app.get('/api/admin/nfl-model', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (req.query.rebuild === '1' && !nflRebuilding) {
+    nflRebuilding = true;
+    nflRetrain().catch(e => logger.warn(`${NFL_MODEL} rebuild: ${e.message}`)).finally(() => { nflRebuilding = false; });
+  }
+  res.json({ data: { model: NFL_MODEL, rebuilding: nflRebuilding, report: nflModelReport() } });
 });
 app.get('/api/admin/bb-league-coverage', async (req, res) => {
   res.set('Cache-Control', 'no-store');
@@ -2039,16 +2051,18 @@ app.get('/api/af/raw', async (req, res) => {
 
 // ---------- NFL site (fix137) ----------
 // Open API, but until NFL_PUBLIC=1 only admins get data (everyone else sees the "coming soon" page).
-// No predictions yet, no odds. Past seasons: admins only (allowedSeason).
+// Predictions (fix139, nfl-v1): paid plans see them before kick-off, everyone sees finished ones; no odds. Past seasons: admins only.
 app.use('/api/nfl', (req, res, next) => {
   if (req.path === '/config' || nflPublic() || req.access === 'admin') return next();
   res.status(404).json({ error: 'Not found' });
 });
 const nflAdmin = (req: express.Request) => req.access === 'admin';
+const nflFull = (req: express.Request) => isPaid(req.access || 'anon');
+const nflWith = <T extends { id: number; state: string }>(req: express.Request, games: T[]) => games.map(g => withNflPrediction(g as any, nflFull(req)) as unknown as T & { prediction: any });
 app.get('/api/nfl/config', (req, res) => {
   res.json({ data: { public: nflPublic(), open: nflPublic() || nflAdmin(req), season: nflCurrentSeason(), seasons: nflSeasonsHeld(nflAdmin(req)) } });
 });
-app.get('/api/nfl/home', (_req, res) => {
+app.get('/api/nfl/home', (req, res) => {
   try {
     const season = nflCurrentSeason();
     if (!season) return res.json({ data: { season: null, live: [], week: null, games: [], upcoming: [], results: [], standings: null, leaders: [] } });
@@ -2056,9 +2070,9 @@ app.get('/api/nfl/home', (_req, res) => {
     // fix138: the next two weeks too (favorites rail), and the last 8 finals (Latest results)
     const now = Date.now();
     res.json({ data: {
-      season, live: nflLiveGames(), week: weeks.find(w => w.key === current) || null, games: current ? nflWeekGames(season, current) : [],
-      upcoming: nflGamesBetween(new Date(now - 6 * 3600 * 1000).toISOString(), new Date(now + 14 * 86400000).toISOString()).filter(g => g.state === 'upcoming'),
-      results: nflRecentResults(8), standings: nflStandings(season), leaders: nflLeaders(season, 3)
+      season, live: nflWith(req, nflLiveGames()), week: weeks.find(w => w.key === current) || null, games: nflWith(req, current ? nflWeekGames(season, current) : []),
+      upcoming: nflWith(req, nflGamesBetween(new Date(now - 6 * 3600 * 1000).toISOString(), new Date(now + 14 * 86400000).toISOString()).filter(g => g.state === 'upcoming')),
+      results: nflWith(req, nflRecentResults(8)), standings: nflStandings(season), leaders: nflLeaders(season, 3)
     } });
   } catch (e) { sendError(res, e, 'Failed to load the NFL home'); }
 });
@@ -2068,21 +2082,22 @@ app.get('/api/nfl/games', (req, res) => {
     if (typeof req.query.from === 'string' && typeof req.query.to === 'string') {
       const f = new Date(req.query.from), t = new Date(req.query.to);
       if (isNaN(f.getTime()) || isNaN(t.getTime()) || t <= f || t.getTime() - f.getTime() > 8 * 86400000) return res.status(400).json({ error: 'Bad range' });
-      return res.json({ data: { games: nflGamesBetween(f.toISOString(), t.toISOString()) } });
+      return res.json({ data: { games: nflWith(req, nflGamesBetween(f.toISOString(), t.toISOString())) } });
     }
     const season = allowedSeason(req.query.season, nflAdmin(req));
     if (!season) return res.json({ data: { season: null, weeks: [], week: null, games: [] } });
     const { weeks, current } = nflWeeks(season);
     const asked = typeof req.query.week === 'string' && /^(\d{1,2}|post)$/.test(req.query.week) ? req.query.week : null;
     const week = asked && weeks.some(w => w.key === asked) ? asked : current;
-    res.json({ data: { season, weeks, week, games: week ? nflWeekGames(season, week) : [] } });
+    res.json({ data: { season, weeks, week, games: nflWith(req, week ? nflWeekGames(season, week) : []) } });
   } catch (e) { sendError(res, e, 'Failed to load games'); }
 });
 app.get('/api/nfl/game/:id(\\d+)', (req, res) => {
   try {
     const d = nflGame(parseInt(req.params.id, 10), nflAdmin(req));
     if (!d) return res.status(404).json({ error: 'Game not found' });
-    res.json({ data: d });
+    const game = withNflPrediction(d.game, nflFull(req));
+    res.json({ data: { ...d, game, prediction: game.prediction } });
   } catch (e) { sendError(res, e, 'Failed to load game'); }
 });
 app.get('/api/nfl/standings', (req, res) => {
@@ -2096,7 +2111,11 @@ app.get('/api/nfl/team/:id(\\d+)', (req, res) => {
     const season = allowedSeason(req.query.season, nflAdmin(req));
     const d = season ? nflTeam(parseInt(req.params.id, 10), season) : null;
     if (!d) return res.status(404).json({ error: 'Team not found' });
-    res.json({ data: d });
+    // fix139: model tiles for paid plans (null + locked for the rest); our record on the team: admins only for now
+    const full = nflFull(req), cur = season === nflCurrentSeason();
+    res.json({ data: { ...d, schedule: nflWith(req, d.schedule), results: nflWith(req, d.results),
+      model: full && cur ? nflTeamModel(d.team.id) : null, modelLocked: !full,
+      record: nflAdmin(req) ? nflTeamRecord(d.team.id, season!) : null } });
   } catch (e) { sendError(res, e, 'Failed to load team'); }
 });
 app.get('/api/nfl/player/:id(\\d+)', (req, res) => {

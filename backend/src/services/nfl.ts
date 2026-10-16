@@ -238,11 +238,12 @@ export async function syncBoxScore(gameId: number): Promise<boolean> {
   return teams.length > 0;
 }
 
-/** Finished games of the current and last season without a box score yet, newest first (up to `max` per run). */
-export async function nflBoxScores(max = 40): Promise<number> {
+/** Finished games of the last 10 seasons without a box score yet, newest first (up to `max` per run; fix139: ~600 calls a
+ *  season, so the backfill is spread over a few hours of 30-min ticks). */
+export async function nflBoxScores(max = 150): Promise<number> {
   const cur = nflCurrentSeason();
   if (!cur) return 0;
-  const todo = db.prepare(`SELECT game_id FROM nfl_games WHERE season IN (?, ?) AND status IN ('FT','AOT') AND COALESCE(stats, 0) = 0 ORDER BY kickoff DESC LIMIT ?`).all(cur, cur - 1, max) as any[];
+  const todo = db.prepare(`SELECT game_id FROM nfl_games WHERE season BETWEEN ? AND ? AND status IN ('FT','AOT') AND COALESCE(stats, 0) = 0 ORDER BY kickoff DESC LIMIT ?`).all(cur - 9, cur, max) as any[];
   let n = 0;
   for (const g of todo) {
     if (budget() < 2) break;
@@ -364,6 +365,9 @@ export function startNflScheduler() {
       if (Date.now() - ranAt('job|standings') > 6 * 3600 * 1000) mark('job|standings', await timed('nfl standings', () => nflTeamsAndStandings()));
       if (Date.now() - ranAt('job|injuries') > 2 * 3600 * 1000) mark('job|injuries', await timed('nfl injuries', () => nflInjuries()));
       if (Date.now() - ranAt('job|rosters') > 24 * 3600 * 1000) mark('job|rosters', await timed('nfl rosters', () => nflRosters()));
+      // fix139: weekly re-tune (Tuesday) + save the coming predictions (after the injury report)
+      const { nflModelTick } = await import('./nflModel');
+      await timed('nfl model', () => nflModelTick());
     } catch (e: any) {
       logger.warn(`NFL sync: ${e.message}`);
     } finally { tickBusy = false; }
@@ -377,6 +381,8 @@ export function startNflScheduler() {
     const ended = (db.prepare(`SELECT game_id FROM nfl_games WHERE status IN ('FT','AOT') AND COALESCE(stats, 0) = 0 AND kickoff > ?`).all(new Date(Date.now() - 8 * 3600 * 1000).toISOString()) as any[])
       .filter(r => !before.has(r.game_id));
     for (const g of ended) if (budget() >= 2) { try { await syncBoxScore(g.game_id); } catch (e: any) { logger.warn(`NFL box score ${g.game_id}: ${e.message}`); } }
+    // fix139: a game ended → ratings replay on next use; refresh the saved predictions of the coming games
+    if (ended.length) { const { saveNflPredictions } = await import('./nflModel'); await yieldLoop(); saveNflPredictions(); }
   }).catch(e => logger.warn(`NFL live: ${e.message}`)), 30 * 1000).unref();
 }
 

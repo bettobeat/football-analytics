@@ -1,7 +1,7 @@
 /**
  * The NFL site's data (fix137, Oct 2026): game lists by week, game pages (quarters, form, H2H, box score, injuries),
  * standings by conference and division, team pages with the rule-based team analysis, player pages, leaders.
- * No predictions yet (every prediction slot says "coming soon"), no odds. Built from services/nfl.ts tables only.
+ * Predictions come from services/nflModel.ts (fix139, attached in index.ts), no odds. Built from services/nfl.ts tables only.
  * Visible to everyone when NFL_PUBLIC=1; before that, admins only. Past seasons: admins only.
  */
 import { db } from '../db';
@@ -245,7 +245,7 @@ export function nflGame(id: number, admin: boolean) {
     teamStats: ts.size ? { home: teamBox(ts.get(g.home.id)), away: teamBox(ts.get(g.away.id)) } : null,
     players: ps.size ? { home: playerGroups(ps.get(g.home.id) ?? null), away: playerGroups(ps.get(g.away.id) ?? null) } : null,
     injuries: g.state === 'done' ? null : { home: inj(g.home.id), away: inj(g.away.id) },
-    prediction: null // fix137: no NFL model yet
+    prediction: null // fix139: filled in by the route (withNflPrediction)
   };
 }
 

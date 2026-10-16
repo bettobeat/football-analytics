@@ -5,7 +5,7 @@ import { t, LOCALE } from './i18n'
 import { useAuth } from './auth'
 import { useFavorites, type Favorite } from './favorites'
 
-/** NFL site (fix137): types and helpers shared by the /american-football pages. No predictions yet. */
+/** NFL site (fix137): types and helpers shared by the /american-football pages. Predictions: nfl-v1 (fix139). */
 
 export interface NflConfig { public: boolean; open: boolean; season: number | null; seasons: number[] }
 export interface NflSide { id: number; name: string; logo: string | null }
@@ -24,6 +24,25 @@ export interface NflGame {
   score: { home: number; away: number } | null
   quarters: { home: (number | null)[]; away: (number | null)[] } | null
   venue: string | null
+  /** fix139: our saved prediction (null = none yet). Locked = free / signed-out viewer, game not finished. */
+  prediction?: NflPred | null
+}
+export interface NflQb { id: number; name: string; value: number; usualId: number | null; usualName: string | null; usualValue: number | null; adj: number; reason: 'same' | 'changed' | 'injury' | 'new' }
+export interface NflWhy {
+  eloHome: number; eloAway: number; eloGap: number; homeField: number; neutral: boolean
+  rest: [number | null, number | null]; restAdj: [number, number]
+  qb: [NflQb | null, NflQb | null]
+  eff: { yppHome: number; yppAway: number; toHome: number; toAway: number } | null
+  blend: boolean
+}
+export interface NflPred {
+  locked: boolean
+  model?: string
+  pHome?: number; pAway?: number; pick?: 'H' | 'A'
+  /** expected margin, home minus away (points) */
+  margin?: number; total?: number; homePts?: number; awayPts?: number
+  strong?: boolean; hit?: boolean | null
+  why?: NflWhy | null
 }
 export interface NflWeek { key: string; label: string; first: string; last: string; games: number }
 export interface StandRow { team: NflSide; conference: string | null; division: string | null; w: number; l: number; t: number; pct: number; pf: number; pa: number; diff: number; streak: string | null; games: number }
@@ -61,6 +80,9 @@ export const timeOf = (iso: string) => new Date(iso).toLocaleTimeString(LOCALE, 
 export const dayOf = (iso: string) => new Date(iso).toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric', month: 'short' })
 /** "Kansas City Chiefs" → "Chiefs" for tight rows (the nickname is what people say). */
 export const nick = (name: string) => { const w = name.split(/\s+/); return w.length > 1 ? w[w.length - 1] : name }
+/** Reveal ids for NFL games (own negative range: never clashes with football ids or basketball's -id). */
+export const nflRid = (g: { id: number }) => -(2e9 + g.id)
+export const nflRstatus = (g: NflGame) => (g.state === 'done' ? 'FT' : g.status)
 export const record = (r: { w: number; l: number; t: number }) => `${r.w}-${r.l}${r.t ? `-${r.t}` : ''}`
 
 /* ---------- favorites (NFL teams, in the same account list as football's) ---------- */
