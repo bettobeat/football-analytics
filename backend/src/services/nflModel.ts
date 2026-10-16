@@ -38,6 +38,8 @@ export const NCAA_MODEL = 'ncaa-v1';
 const MODEL_OF: Record<LeagueId, string> = { 1: NFL_MODEL, 2: NCAA_MODEL };
 /** Strong pick: the picked side's chance at least this (college: more mismatches → 75%). */
 export const STRONG_OF: Record<LeagueId, number> = { 1: 0.7, 2: 0.75 };
+/** fix146: the experiments module, loaded when first needed (it imports this file's internals). */
+const exps = () => require('./nflExperiments') as typeof import('./nflExperiments');
 export const strongForModel = (model: string | null | undefined) => (model === NCAA_MODEL ? STRONG_OF[2] : STRONG_OF[1]);
 /** Settings / report keys in nfl_sync (NFL keeps its fix139 keys). */
 const KEY_OF: Record<LeagueId, string> = { 1: 'model', 2: 'model2' };
@@ -570,13 +572,16 @@ export function predictNfl(gameId: number): NflPred | null {
   // the engine's state is "after every finished game"; a copy is not needed: pre() only reads (team() may regress a new season)
   const pr = L.engine.pre(g, outs);
   const x = featOf(pr);
-  const p = L.blend && x ? blendP(L.blend, x) : pr.p;
-  const margin = L.blend && x ? marginFromP(p) : pr.margin;
+  let p = L.blend && x ? blendP(L.blend, x) : pr.p;
+  let margin = L.blend && x ? marginFromP(p) : pr.margin;
+  // fix146: the NFL uses nfl-v2 once the experiments adopted one (the reasons below stay nfl-v1's numbers)
+  let model = MODEL_OF[league];
+  if (league === 1) { const q = exps().v2Prob(g as any, pr as any); if (q !== null) { p = q; margin = marginFromP(q); model = exps().NFL_V2; } }
   const r1 = (v: number) => Math.round(v * 10) / 10;
   const pHome = Math.round(p * 1000) / 10;
   return {
     pHome, pAway: r1(100 - pHome), pick: p >= 0.5 ? 'H' : 'A', margin: r1(margin), total: r1(pr.total),
-    homePts: r1((pr.total + margin) / 2), awayPts: r1((pr.total - margin) / 2), strong: Math.max(p, 1 - p) >= STRONG_OF[league], model: MODEL_OF[league],
+    homePts: r1((pr.total + margin) / 2), awayPts: r1((pr.total - margin) / 2), strong: Math.max(p, 1 - p) >= STRONG_OF[league], model,
     why: {
       eloHome: Math.round(pr.eloH), eloAway: Math.round(pr.eloA), eloGap: Math.round(pr.eloH - pr.eloA), homeField: Math.round(pr.hfa), neutral: g.neutral,
       rest: [pr.rest[0] === null ? null : Math.round(pr.rest[0]), pr.rest[1] === null ? null : Math.round(pr.rest[1])], restAdj: pr.restAdj,
@@ -725,6 +730,7 @@ export async function nflModelTick(): Promise<void> {
   if (busy) return;
   busy = true;
   try {
+    let retrainedNfl = false;
     for (const league of [1, 2] as LeagueId[]) {
       const MODEL = MODEL_OF[league];
       try {
@@ -733,13 +739,25 @@ export async function nflModelTick(): Promise<void> {
         const finished = (db.prepare(`SELECT COUNT(*) AS n FROM nfl_games WHERE league = ? AND status IN ('FT','AOT') AND home_pts IS NOT NULL`).get(league) as any)?.n || 0;
         if (finished >= 200 && (!stored || (new Date().getUTCDay() === 2 && Date.now() - last > 5 * DAY) || Date.now() - last > 8 * DAY)) {
           const rep = await retrain(league);
+          if (league === 1) retrainedNfl = true;
           logger.info(`${MODEL}: re-tuned (${rep.live?.seasonsTrained.join(', ')}), test LL ${rep.blend.testLogLossAB}${rep.blend.used ? ` → blend ${rep.blend.testLogLossD}` : ''}`);
         }
       } catch (e: any) { logger.warn(`${MODEL}: ${e.message}`); }
     }
+    // fix146: nfl-v2 experiments — once after a deploy (new version), then with every weekly re-tune
+    try {
+      const fin = (db.prepare(`SELECT COUNT(*) AS n FROM nfl_games WHERE league = 1 AND status IN ('FT','AOT') AND home_pts IS NOT NULL`).get() as any)?.n || 0;
+      const ex = exps().nflExperimentReport();
+      if (fin >= 200 && (!ex || ex.version !== exps().EXP_VERSION || retrainedNfl)) await exps().runNflExperiments();
+      await exps().refreshV2();
+    } catch (e: any) { logger.warn(`nfl-exp: ${e.message}`); }
     const n = saveNflPredictions();
-    if (n) logger.info(`nfl-v1 / ncaa-v1: ${n} predictions saved`);
+    if (n) logger.info(`NFL / college: ${n} predictions saved`);
   } catch (e: any) {
     logger.warn(`NFL model: ${e.message}`);
   } finally { busy = false; }
 }
+
+/* ---------- fix146: internals the nfl-v2 experiments reuse (services/nflExperiments.ts) ---------- */
+export type { G as NflG, Pre as NflPre, Ctx as NflCtx, Row as NflRow, Box as NflBox, Passer as NflPasser };
+export const modelInternals = { loadGames, loadCtx, run, tune, metrics, marginFromP, readSync, sync, logLossOf, clip, DEFAULTS, featOf, fitBlend, blendP };

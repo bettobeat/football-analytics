@@ -5,6 +5,9 @@ import { Card, Skeleton } from '../bb/parts'
 
 interface M { games: number; hit: number; logLoss: number; brier: number }
 interface Season { season: number; ab: M; blend: M | null; eloOnly: M; homeTeamHit: number; fbsOnly?: M; fbsFcs?: M }
+/** fix146: the nfl-v2 experiments (walk-forward, NFL only) */
+interface ExpV { id: string; name: string; total: M; perSeason: { season: number; games: number; hit: number; logLoss: number }[]; weeks1to4: M; rest: M }
+interface Exp { builtAt: string; testSeasons: number[]; variants: ExpV[]; best: string; adopted: boolean; reason: string }
 interface Report { model: string; builtAt: string; seasons: Season[]; total: { ab: M; blend: M; eloOnly: M }; baselines: { homeTeam: { hit: number; logLoss: number }; betterRecord: { hit: number } }; fbs?: M; fbsFcs?: M; levels?: Record<string, number>; blend?: { used: boolean } }
 
 /**
@@ -12,7 +15,7 @@ interface Report { model: string; builtAt: string; seasons: Season[]; total: { a
  * the last 5 seasons tuned on the seasons before it. Internal, English only. Rebuild from /api/admin/nfl-model?rebuild=1.
  */
 export default function NflPast() {
-  const [d, setD] = useState<{ nfl: Report | null; college: Report | null } | null>(null)
+  const [d, setD] = useState<{ nfl: Report | null; college: Report | null; experiments?: Exp | null } | null>(null)
   useEffect(() => { axios.get(`${API_URL}/nfl-past`).then(r => setD(r.data.data)).catch(() => setD({ nfl: null, college: null })) }, [])
   const row = (label: string, m: M | null | undefined, home?: number) => (
     <tr key={label} className="border-t border-line/50">
@@ -51,7 +54,20 @@ export default function NflPast() {
         <h1 className="font-display text-2xl sm:text-3xl font-extrabold text-ink">American football · past seasons (admin)</h1>
         <p className="mt-1 text-sm text-muted">Walk-forward: each test season is predicted with settings tuned only on the seasons before it. Picks saved before kick-off count in the public record from launch day on; these seasons never do.</p>
       </div>
-      {!d ? <Skeleton rows={4} h="h-32" /> : <>{block('NFL', d.nfl)}{block('College football', d.college)}</>}
+      {!d ? <Skeleton rows={4} h="h-32" /> : <>{block('NFL', d.nfl)}{d.experiments && <Card title={`nfl-v2 experiments · test seasons ${d.experiments.testSeasons.join(', ')}`}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs sm:text-sm">
+            <thead><tr className="text-faint text-[11px]"><th className="text-left font-semibold">Variant</th><th className="text-right font-semibold">Games</th><th className="text-right font-semibold">Hit</th><th className="text-right font-semibold">Log loss</th><th className="text-right font-semibold">Weeks 1–4 LL</th><th className="text-right font-semibold">Rest LL</th></tr></thead>
+            <tbody>{d.experiments.variants.map(v => (
+              <tr key={v.id} className={`border-t border-line/50 ${v.id === d.experiments!.best ? 'text-accent' : ''}`}>
+                <td className="py-1.5">{v.id} · {v.name}</td><td className="text-right num">{v.total.games}</td><td className="text-right num font-bold">{v.total.hit}%</td>
+                <td className="text-right num">{v.total.logLoss}</td><td className="text-right num text-muted">{v.weeks1to4.logLoss ?? '–'}</td><td className="text-right num text-muted">{v.rest.logLoss ?? '–'}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+          <p className="mt-2 text-[11px] text-faint">Best {d.experiments.best}: {d.experiments.adopted ? 'adopted as nfl-v2' : 'nfl-v1 kept'} ({d.experiments.reason}). Built {new Date(d.experiments.builtAt).toLocaleString()}. Per season and calibration: /api/admin/nfl-model.</p>
+        </div>
+      </Card>}{block('College football', d.college)}</>}
     </div>
   )
 }

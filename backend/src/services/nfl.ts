@@ -54,33 +54,74 @@ export function levelOf(conference: string | null, division: string | null = nul
   return null; // a name we don't know: decided from the schedule (classifyCollegeTeams)
 }
 /** Games of FBS + FCS teams only: college lists leave out games with a Division II / III / other team (fix143). */
+import { isFbsName } from './collegeFbs';
 export const HIDE_OTHER = `AND home_id NOT IN (SELECT team_id FROM nfl_teams WHERE level = 'other') AND away_id NOT IN (SELECT team_id FROM nfl_teams WHERE level = 'other')`;
 
 /**
- * Every college team's level (fix143): from its conference / division; teams still unknown take the level most of their
- * opponents have (last 2 seasons, 60%+ of 3+ games; a few passes, so it spreads); a team with a conference we could not
- * place and no clear schedule = 'other'. Logs the counts and the conference names it did not know.
+ * Every college team's level (fix143, fix146). Steps:
+ *  1. every team of a college game gets a row (the provider's /teams list misses many: ~3,600 games a season);
+ *  2. conference / division (levelOf); 3. the FBS school list (collegeFbs.ts) for teams still unknown;
+ *  4. opponents: an unknown team takes the level 60%+ of its known opponents have (last 2 seasons);
+ *  5. when more than 10% are still unknown (no conferences from the provider): a team with 8+ games against known FBS
+ *     teams in a season = FBS; a team that played an FBS team in at least half of its seasons = FCS (FCS teams play
+ *     1–2 "guarantee games" a year, Division II teams almost never); opponents again; the rest = 'other'.
+ * Logs "ncaa levels: FBS=n FCS=n other=n unknown=n" (+ conference names it did not know).
  */
 export function classifyCollegeTeams(): Record<string, number> {
-  const teams = db.prepare(`SELECT team_id, conference, division FROM nfl_teams WHERE league = 2`).all() as any[];
+  const now = new Date().toISOString();
+  // 1. a row for every team that played a college game
+  db.prepare(`INSERT OR IGNORE INTO nfl_teams (team_id, name, logo, updated_at, league)
+    SELECT id, name, logo, ?, 2 FROM (SELECT home_id AS id, MAX(home_name) AS name, MAX(home_logo) AS logo FROM nfl_games WHERE league = 2 AND home_id IS NOT NULL GROUP BY home_id
+      UNION SELECT away_id, MAX(away_name), MAX(away_logo) FROM nfl_games WHERE league = 2 AND away_id IS NOT NULL GROUP BY away_id)`).run(now);
+  const teams = db.prepare(`SELECT team_id, name, conference, division FROM nfl_teams WHERE league = 2`).all() as any[];
   const level = new Map<number, Level | null>(teams.map(t => [t.team_id as number, levelOf(t.conference, t.division)]));
   const unknownNames = new Set<string>();
   for (const t of teams) if (!level.get(t.team_id) && (t.conference || t.division)) unknownNames.add([t.conference, t.division].filter(Boolean).join(' · '));
-  const last = (db.prepare(`SELECT MAX(season) AS s FROM nfl_games WHERE league = 2 AND status IN ('FT','AOT')`).get() as any)?.s;
-  if (last) {
-    const games = db.prepare(`SELECT home_id, away_id FROM nfl_games WHERE league = 2 AND season >= ? AND status IN ('FT','AOT') AND (stage IS NULL OR stage NOT LIKE 'Pre%')`).all(last - 1) as any[];
+  // 3. the FBS school list
+  const games = db.prepare(`SELECT season, home_id, away_id FROM nfl_games WHERE league = 2 AND status IN ('FT','AOT') AND (stage IS NULL OR stage NOT LIKE 'Pre%') AND home_id IS NOT NULL AND away_id IS NOT NULL`).all() as any[];
+  // a name match counts only with an FBS schedule: 5+ games against other listed schools in one season (keeps out
+  // Division II namesakes like "Ohio Dominican" that slip past the name rules)
+  const byName = new Set(teams.filter(t => !level.get(t.team_id) && t.name && isFbsName(t.name)).map(t => t.team_id as number));
+  const vsListed = new Map<string, number>();
+  for (const g of games) if (byName.has(g.home_id) && byName.has(g.away_id)) for (const id of [g.home_id, g.away_id]) vsListed.set(`${id}|${g.season}`, (vsListed.get(`${id}|${g.season}`) || 0) + 1);
+  const confirmed = new Set([...vsListed].filter(([, n]) => n >= 5).map(([k]) => Number(k.split('|')[0])));
+  for (const id of byName) if (confirmed.has(id) || !games.length) level.set(id, 'FBS');
+  const last = games.reduce((m, g) => Math.max(m, g.season), 0);
+  // 4. opponents (last 2 seasons)
+  const propagate = () => {
     const opp = new Map<number, number[]>();
-    for (const g of games) { (opp.get(g.home_id) || opp.set(g.home_id, []).get(g.home_id)!).push(g.away_id); (opp.get(g.away_id) || opp.set(g.away_id, []).get(g.away_id)!).push(g.home_id); }
+    for (const g of games) if (g.season >= last - 1) { (opp.get(g.home_id) || opp.set(g.home_id, []).get(g.home_id)!).push(g.away_id); (opp.get(g.away_id) || opp.set(g.away_id, []).get(g.away_id)!).push(g.home_id); }
     for (let pass = 0; pass < 4; pass++) {
       let changed = 0;
       for (const [id, list] of opp) {
         if (level.get(id)) continue;
         const known = list.map(o => level.get(o)).filter(Boolean) as Level[];
         if (known.length < 3) continue;
-        for (const L of ['FBS', 'FCS', 'other'] as Level[]) if (known.filter(k => k === L).length / known.length >= 0.6) { level.set(id, L); changed++; break; }
+        // share of ALL opponents (not only the known ones): FCS teams play 1–3 FBS teams a year and must not become FBS
+        for (const L of ['FBS', 'FCS', 'other'] as Level[]) if (known.filter(k => k === L).length / list.length >= 0.6) { level.set(id, L); changed++; break; }
       }
       if (!changed) break;
     }
+  };
+  propagate();
+  // 5. the schedule fallback
+  const unknownShare = () => teams.filter(t => !level.get(t.team_id)).length / Math.max(1, teams.length);
+  const fallback = unknownShare() > 0.1;
+  if (fallback) {
+    const vsFbs = new Map<string, number>(), seasonsOf = new Map<number, Set<number>>(), fbsSeasons = new Map<number, Set<number>>();
+    for (let round = 0; round < 2; round++) {
+      vsFbs.clear();
+      for (const g of games) for (const [me, op] of [[g.home_id, g.away_id], [g.away_id, g.home_id]]) {
+        if (level.get(op) === 'FBS') vsFbs.set(`${me}|${g.season}`, (vsFbs.get(`${me}|${g.season}`) || 0) + 1);
+      }
+      for (const [k, n] of vsFbs) { const id = Number(k.split('|')[0]); if (n >= 8 && !level.get(id)) level.set(id, 'FBS'); }
+    }
+    for (const g of games) for (const [me, op] of [[g.home_id, g.away_id], [g.away_id, g.home_id]]) {
+      (seasonsOf.get(me) || seasonsOf.set(me, new Set()).get(me)!).add(g.season);
+      if (level.get(op) === 'FBS') (fbsSeasons.get(me) || fbsSeasons.set(me, new Set()).get(me)!).add(g.season);
+    }
+    for (const [id, ss] of seasonsOf) if (!level.get(id) && (fbsSeasons.get(id)?.size || 0) >= Math.max(1, ss.size / 2)) level.set(id, 'FCS');
+    propagate();
   }
   const upd = db.prepare(`UPDATE nfl_teams SET level = ? WHERE team_id = ?`);
   const count: Record<string, number> = { FBS: 0, FCS: 0, other: 0, unknown: 0 };
@@ -88,14 +129,28 @@ export function classifyCollegeTeams(): Record<string, number> {
   try {
     for (const t of teams) {
       let L = level.get(t.team_id) ?? null;
-      if (!L && (t.conference || t.division)) L = 'other';
+      if (!L && (fallback || t.conference || t.division)) L = 'other';
       upd.run(L, t.team_id);
       count[L || 'unknown']++;
     }
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
-  if (teams.length) logger.info(`College levels: FBS ${count.FBS}, FCS ${count.FCS}, other ${count.other}, unknown ${count.unknown}${unknownNames.size ? ` · conferences not recognised: ${[...unknownNames].slice(0, 15).join(', ')}` : ''}`);
+  if (teams.length) logger.info(`ncaa levels: FBS=${count.FBS} FCS=${count.FCS} other=${count.other} unknown=${count.unknown}${fallback ? ' (schedule fallback used)' : ''}${unknownNames.size ? ` · conferences not recognised: ${[...unknownNames].slice(0, 15).join(', ')}` : ''}`);
   return count;
+}
+
+/** fix146: on boot, college teams without any level → teams + standings sync now, levels, then ncaa-v1 retrained. */
+export async function collegeLevelsOnBoot(): Promise<void> {
+  const known = (db.prepare(`SELECT COUNT(*) AS n FROM nfl_teams WHERE league = 2 AND level IS NOT NULL`).get() as any)?.n || 0;
+  const done = db.prepare(`SELECT 1 FROM nfl_sync WHERE key = 'ncaa|levels-fix146'`).get();
+  if (known > 0 && done) return;
+  try { await teamsAndStandings(2); } catch (e: any) { logger.warn(`College teams / standings: ${e.message}`); }
+  const c = classifyCollegeTeams();
+  db.prepare(`INSERT OR REPLACE INTO nfl_sync (key, at, detail) VALUES ('ncaa|levels-fix146', ?, ?)`).run(new Date().toISOString(), JSON.stringify(c));
+  if (!c.FBS) return;
+  const { retrain } = await import('./nflModel');
+  const rep = await retrain(2); // logs FBS vs FBS / FBS vs FCS / all per season
+  logger.info(`ncaa-v1 retrained after levels: all LL ${(rep.total.ab as any).logLoss} n=${(rep.total.ab as any).games}, FBS vs FBS n=${rep.fbs?.games ?? 0}, FBS vs FCS n=${rep.fbsFcs?.games ?? 0}`);
 }
 const MIN_GAP_MS = 400;
 
@@ -465,7 +520,8 @@ let tickBusy = false;
 export function startNflScheduler() {
   if (started || !KEY()) return;
   started = true;
-  try { classifyCollegeTeams(); } catch (e: any) { logger.warn(`College levels: ${e.message}`); } // fix143: apply the rules to the teams we hold
+  // fix143 / fix146: levels for every college team; with none yet, sync teams + standings now and retrain ncaa-v1
+  setTimeout(() => { collegeLevelsOnBoot().catch(e => logger.warn(`College levels: ${e.message}`)); }, 20 * 1000);
   // every 30 min: games of the current season (+ backfill), box scores, then whatever is due (each job keeps its own clock)
   const tick = async () => {
     if (tickBusy) return;

@@ -1,5 +1,9 @@
 # NFL model nfl-v1 (fix139, 16 Oct 2026) + college ncaa-v1 (fix142)
 
+## nfl-v2 experiments (fix146)
+
+`services/nflExperiments.ts`: E1–E7b compared walk-forward (test seasons 2021 → now, fitted only on earlier seasons); adopted as nfl-v2 only if total log loss beats nfl-v1 (as it runs, incl. its blend) and hit % is not lower. Results: `/api/admin/nfl-model` → `experiments`, /american-football/past. Synthetic test (8 fake seasons): nfl-v1 with blend LL 0.5947 best, E3 efficiency 0.5969, E7 stack 0.5974, E7b trees 0.6161 (overfit) → nfl-v1 kept. Real numbers: server log after deploy.
+
 ## ncaa-v1 (fix142, college football, league 2)
 
 Same code (`nflModel.ts`, every function takes the league), own settings tuned on college games only, stored under `model2|params` / `model2|report`. NFL settings got the new knobs fixed at the old behaviour (reg 1/3 to 1500, fcs 0, movCap 99) — the NFL walk-forward report is byte-identical to fix139 on the test data.

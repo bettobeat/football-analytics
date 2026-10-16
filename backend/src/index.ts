@@ -909,7 +909,13 @@ app.get('/api/admin/nfl-model', (req, res) => {
     nflRebuilding = true;
     nflRetrain(league).catch(e => logger.warn(`${model} rebuild: ${e.message}`)).finally(() => { nflRebuilding = false; });
   }
-  res.json({ data: { model, league, rebuilding: nflRebuilding, report: nflModelReport(league) } });
+  // fix146: ?experiments=1 runs the nfl-v2 experiments now (background); the table comes with the NFL report
+  if (league === 1 && req.query.experiments === '1' && !nflRebuilding) {
+    nflRebuilding = true;
+    import('./services/nflExperiments').then(m => m.runNflExperiments()).catch(e => logger.warn(`nfl-exp: ${e.message}`)).finally(() => { nflRebuilding = false; });
+  }
+  const experiments = league === 1 ? require('./services/nflExperiments').nflExperimentReport() : null;
+  res.json({ data: { model, league, rebuilding: nflRebuilding, report: nflModelReport(league), experiments } });
 });
 app.get('/api/admin/bb-league-coverage', async (req, res) => {
   res.set('Cache-Control', 'no-store');
@@ -2205,7 +2211,7 @@ app.get('/api/nfl/accuracy', (req, res) => {
 // fix144: NFL past seasons (admins and the model permission; not under the open /api/nfl/): the walk-forward reports
 app.get('/api/nfl-past', (_req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json({ data: { nfl: nflModelReport(1), college: nflModelReport(2) } });
+  res.json({ data: { nfl: nflModelReport(1), college: nflModelReport(2), experiments: require('./services/nflExperiments').nflExperimentReport() } });
 });
 // fix141: home "Our record" — last 30 days, picks saved before kick-off only
 app.get('/api/nfl/record', (req, res) => {
