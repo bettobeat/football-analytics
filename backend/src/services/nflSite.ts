@@ -7,7 +7,7 @@
  * College standings are grouped by conference (FBS conferences first).
  */
 import { db } from '../db';
-import { nflCurrentSeason, NFL_LIVE, NFL_DONE, LeagueId } from './nfl';
+import { nflCurrentSeason, NFL_LIVE, NFL_DONE, LeagueId, HIDE_OTHER } from './nfl';
 
 export const nflPublic = () => process.env.NFL_PUBLIC === '1';
 
@@ -71,7 +71,7 @@ export function allowedSeason(asked: unknown, admin: boolean, league: LeagueId =
 
 /** The week list of a season (with dates and game counts) and the week to open by default. */
 export function nflWeeks(season: number, league: LeagueId = 1) {
-  const rows = db.prepare(`SELECT stage, week, MIN(kickoff) AS first, MAX(kickoff) AS last, COUNT(*) AS n FROM nfl_games WHERE league = ? AND season = ? GROUP BY stage, week`).all(league, season) as any[];
+  const rows = db.prepare(`SELECT stage, week, MIN(kickoff) AS first, MAX(kickoff) AS last, COUNT(*) AS n FROM nfl_games WHERE league = ? ${HIDE_OTHER} AND season = ? GROUP BY stage, week`).all(league, season) as any[];
   const byKey = new Map<string, { key: string; label: string; first: string; last: string; games: number }>();
   for (const r of rows) {
     const key = weekKey(r.stage, r.week);
@@ -82,7 +82,7 @@ export function nflWeeks(season: number, league: LeagueId = 1) {
   }
   const weeks = [...byKey.values()].sort((a, b) => (a.key === 'post' ? 99 : Number(a.key)) - (b.key === 'post' ? 99 : Number(b.key)));
   // default: the week of the next game not finished yet (live or upcoming), else the last week
-  const next = db.prepare(`SELECT stage, week FROM nfl_games WHERE league = ? AND season = ? AND (status IS NULL OR status NOT IN ('FT','AOT','CANC','PST')) AND kickoff >= ? AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff LIMIT 1`)
+  const next = db.prepare(`SELECT stage, week FROM nfl_games WHERE league = ? ${HIDE_OTHER} AND season = ? AND (status IS NULL OR status NOT IN ('FT','AOT','CANC','PST')) AND kickoff >= ? AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff LIMIT 1`)
     .get(league, season, new Date(Date.now() - 6 * 3600 * 1000).toISOString()) as any;
   const current = next ? weekKey(next.stage, next.week) : weeks[weeks.length - 1]?.key || null;
   return { weeks, current };
@@ -90,20 +90,20 @@ export function nflWeeks(season: number, league: LeagueId = 1) {
 
 /** Games of a week ("1".."18" / "post") of a season. */
 export function nflWeekGames(season: number, key: string, league: LeagueId = 1): NflGame[] {
-  const rows = db.prepare(`SELECT ${GAME_COLS} FROM nfl_games WHERE league = ? AND season = ? ORDER BY kickoff, game_id`).all(league, season) as any[];
+  const rows = db.prepare(`SELECT ${GAME_COLS} FROM nfl_games WHERE league = ? ${HIDE_OTHER} AND season = ? ORDER BY kickoff, game_id`).all(league, season) as any[];
   return rows.filter(r => weekKey(r.stage, r.week) === key).map(shapeGame);
 }
 /** Games between two moments (Today page, live strip). */
 export function nflGamesBetween(from: string, to: string, league: LeagueId = 1): NflGame[] {
-  return (db.prepare(`SELECT ${GAME_COLS} FROM nfl_games WHERE league = ? AND kickoff >= ? AND kickoff < ? AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff, game_id`).all(league, from, to) as any[]).map(shapeGame);
+  return (db.prepare(`SELECT ${GAME_COLS} FROM nfl_games WHERE league = ? ${HIDE_OTHER} AND kickoff >= ? AND kickoff < ? AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff, game_id`).all(league, from, to) as any[]).map(shapeGame);
 }
 /** The last finished games (home page "Latest results"). */
 export function nflRecentResults(n = 8, league: LeagueId = 1): NflGame[] {
   const season = nflCurrentSeason(league);
-  return (db.prepare(`SELECT ${GAME_COLS} FROM nfl_games WHERE league = ? AND season = ? AND status IN ('FT','AOT') AND home_pts IS NOT NULL AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff DESC LIMIT ?`).all(league, season, n) as any[]).map(shapeGame);
+  return (db.prepare(`SELECT ${GAME_COLS} FROM nfl_games WHERE league = ? ${HIDE_OTHER} AND season = ? AND status IN ('FT','AOT') AND home_pts IS NOT NULL AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff DESC LIMIT ?`).all(league, season, n) as any[]).map(shapeGame);
 }
 export function nflLiveGames(league: LeagueId = 1): NflGame[] {
-  return (db.prepare(`SELECT ${GAME_COLS} FROM nfl_games WHERE league = ? AND status IN ('Q1','Q2','Q3','Q4','OT','HT') ORDER BY kickoff`).all(league) as any[]).map(shapeGame);
+  return (db.prepare(`SELECT ${GAME_COLS} FROM nfl_games WHERE league = ? ${HIDE_OTHER} AND status IN ('Q1','Q2','Q3','Q4','OT','HT') ORDER BY kickoff`).all(league) as any[]).map(shapeGame);
 }
 
 /* ---------- teams ---------- */
@@ -123,7 +123,7 @@ export function nflStandings(season: number, league: LeagueId = 1): { season: nu
   return cached(`stand|${league}|${season}`, () => standingsOf(season, league), 60 * 1000);
 }
 function standingsOf(season: number, league: LeagueId) {
-  const games = db.prepare(`SELECT home_id, away_id, home_pts, away_pts, kickoff FROM nfl_games WHERE league = ? AND season = ? AND status IN ('FT','AOT') AND home_pts IS NOT NULL AND stage LIKE 'Regular%' ORDER BY kickoff`).all(league, season) as any[];
+  const games = db.prepare(`SELECT home_id, away_id, home_pts, away_pts, kickoff FROM nfl_games WHERE league = ? ${HIDE_OTHER} AND season = ? AND status IN ('FT','AOT') AND home_pts IS NOT NULL AND stage LIKE 'Regular%' ORDER BY kickoff`).all(league, season) as any[];
   const teams = new Map<number, StandRow & { seq: string[] }>();
   const ensure = (id: number) => {
     let r = teams.get(id);
@@ -135,7 +135,7 @@ function standingsOf(season: number, league: LeagueId) {
     return r;
   };
   // teams with no game yet still get a row (from the regular-season schedule)
-  for (const r of db.prepare(`SELECT DISTINCT home_id AS id FROM nfl_games WHERE league = ? AND season = ? AND stage LIKE 'Regular%' UNION SELECT DISTINCT away_id FROM nfl_games WHERE league = ? AND season = ? AND stage LIKE 'Regular%'`).all(league, season, league, season) as any[]) if (r.id) ensure(r.id);
+  for (const r of db.prepare(`SELECT DISTINCT home_id AS id FROM nfl_games WHERE league = ? ${HIDE_OTHER} AND season = ? AND stage LIKE 'Regular%' UNION SELECT DISTINCT away_id FROM nfl_games WHERE league = ? ${HIDE_OTHER} AND season = ? AND stage LIKE 'Regular%'`).all(league, season, league, season) as any[]) if (r.id) ensure(r.id);
   for (const g of games) {
     const h = ensure(g.home_id), a = ensure(g.away_id);
     h.pf += g.home_pts; h.pa += g.away_pts; a.pf += g.away_pts; a.pa += g.home_pts; h.games++; a.games++;
@@ -278,7 +278,7 @@ const cached = <T>(key: string, fn: () => T, ms = 10 * 60 * 1000): T => {
 
 /** Season totals of every team (regular season + playoffs, finished games), up to week `upTo` if given. */
 function seasonAgg(season: number, upTo?: number, league: LeagueId = 1): Map<number, Agg> {
-  const rows = db.prepare(`SELECT game_id, stage, week, home_id, away_id, home_pts, away_pts FROM nfl_games WHERE league = ? AND season = ? AND status IN ('FT','AOT') AND home_pts IS NOT NULL AND (stage IS NULL OR stage NOT LIKE 'Pre%')`).all(league, season) as any[];
+  const rows = db.prepare(`SELECT game_id, stage, week, home_id, away_id, home_pts, away_pts FROM nfl_games WHERE league = ? ${HIDE_OTHER} AND season = ? AND status IN ('FT','AOT') AND home_pts IS NOT NULL AND (stage IS NULL OR stage NOT LIKE 'Pre%')`).all(league, season) as any[];
   const box = new Map<string, any>();
   for (const b of db.prepare(`SELECT s.game_id, s.team_id, s.json FROM nfl_team_stats s JOIN nfl_games g ON g.game_id = s.game_id WHERE g.league = ? AND g.season = ?`).all(league, season) as any[]) box.set(`${b.game_id}|${b.team_id}`, teamBox(parseJson(b.json)));
   const out = new Map<number, Agg>();
@@ -360,7 +360,7 @@ export function nflTeamAnalysis(teamId: number, season: number) {
 
 function rankByWeek(teamId: number, season: number, league: LeagueId = 1) {
   const all = cached(`rbw|${league}|${season}`, () => {
-    const weeks = (db.prepare(`SELECT DISTINCT week, stage FROM nfl_games WHERE league = ? AND season = ? AND status IN ('FT','AOT') AND stage LIKE 'Regular%'`).all(league, season) as any[])
+    const weeks = (db.prepare(`SELECT DISTINCT week, stage FROM nfl_games WHERE league = ? ${HIDE_OTHER} AND season = ? AND status IN ('FT','AOT') AND stage LIKE 'Regular%'`).all(league, season) as any[])
       .map(r => Number(weekKey(r.stage, r.week))).filter(n => Number.isFinite(n)).sort((a, b) => a - b);
     const out = new Map<number, { week: number; rank: number; of: number }[]>();
     for (const w of weeks) {
@@ -498,13 +498,13 @@ export function nflSearch(q: string) {
   if (term.length < 2) return { teams: [], players: [], leagues: [], games: [] };
   const like = `%${term}%`, start = `${term}%`;
   const lname = (l: number) => (l === 2 ? 'College football' : 'NFL');
-  const teams = (db.prepare(`SELECT team_id AS id, name, logo, league FROM nfl_teams WHERE name LIKE ? ORDER BY (name LIKE ?) DESC, league, name LIMIT 8`).all(like, start) as any[])
+  const teams = (db.prepare(`SELECT team_id AS id, name, logo, league FROM nfl_teams WHERE (level IS NULL OR level != 'other') AND name LIKE ? ORDER BY (name LIKE ?) DESC, league, name LIMIT 8`).all(like, start) as any[])
     .map(t => ({ id: t.id, name: t.name, logo: t.logo || null, league: lname(t.league) }));
   const players = (db.prepare(`SELECT p.player_id AS id, p.name, p.position, t.name AS team, t.logo AS teamLogo, t.league FROM nfl_players p LEFT JOIN nfl_teams t ON t.team_id = p.team_id
     WHERE p.name LIKE ? ORDER BY (p.name LIKE ?) DESC, p.name LIMIT 6`).all(like, start) as any[])
     .map(p => ({ id: p.id, name: p.name, team: p.team || '', teamLogo: p.teamLogo || null, league: lname(p.league || 1), position: p.position || null }));
   const games = (db.prepare(`SELECT game_id AS id, kickoff, status, league, home_name AS home, away_name AS away FROM nfl_games
-    WHERE (home_name LIKE ? OR away_name LIKE ?) AND kickoff >= ? AND kickoff < ? AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff LIMIT 6`)
+    WHERE (home_name LIKE ? OR away_name LIKE ?) ${HIDE_OTHER} AND kickoff >= ? AND kickoff < ? AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff LIMIT 6`)
     .all(like, like, new Date(Date.now() - 5 * 3600000).toISOString(), new Date(Date.now() + 14 * 86400000).toISOString()) as any[])
     .map(g => ({ id: g.id, kickoff: g.kickoff, status: g.status, league: lname(g.league), home: g.home, away: g.away }));
   return { teams, players, leagues: [], games };

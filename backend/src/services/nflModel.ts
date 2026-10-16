@@ -31,7 +31,7 @@ import { winnerBands } from '../utils/winnerBands';
 import logger from '../utils/logger';
 import { yieldLoop } from './perf';
 import { teamBox, NflGame } from './nflSite';
-import type { LeagueId } from './nfl';
+import { HIDE_OTHER, type LeagueId } from './nfl';
 
 export const NFL_MODEL = 'nfl-v1';
 export const NCAA_MODEL = 'ncaa-v1';
@@ -58,7 +58,7 @@ interface G { id: number; season: number; kickoff: string; t: number; stage: str
 interface Passer { id: number; name: string; att: number; anya: number }
 interface Box { ypp: number | null; to: number | null; third: [number, number] | null; rz: [number, number] | null; sacks: number | null }
 /** conf / fcs: college teams (regression to the conference mean, FCS start); empty for the NFL */
-interface Ctx { qb: Map<string, Passer[]>; box: Map<string, Box>; teams: Map<number, { conf: string | null; fcs: boolean; fbs: boolean }> }
+interface Ctx { qb: Map<string, Passer[]>; box: Map<string, Box>; teams: Map<number, { conf: string | null; fcs: boolean; fbs: boolean; isFcs?: boolean }> }
 
 const INTL = /london|wembley|tottenham|twickenham|munich|m[üu]nchen|frankfurt|berlin|madrid|mexico|s[ãa]o paulo|dublin|croke|toronto|rio de janeiro|melbourne/i;
 const isNeutral = (stage: string | null, week: string | null, venue: string | null) => INTL.test(venue || '') || (/post/i.test(stage || '') && /super/i.test(week || ''));
@@ -74,7 +74,7 @@ function collegeNeutral(stage: string | null, venue: string | null, stadium: str
 function loadGames(league: LeagueId = 1): G[] {
   const stadium = league === 2 ? new Map((db.prepare(`SELECT team_id, stadium FROM nfl_teams WHERE league = 2`).all() as any[]).map(r => [r.team_id, r.stadium as string | null])) : null;
   return (db.prepare(`SELECT game_id, season, week, stage, kickoff, home_id, away_id, home_name, away_name, status, home_pts, away_pts, venue FROM nfl_games
-      WHERE league = ? AND kickoff IS NOT NULL AND home_id IS NOT NULL AND away_id IS NOT NULL AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff, game_id`).all(league) as any[])
+      WHERE league = ? ${HIDE_OTHER} AND kickoff IS NOT NULL AND home_id IS NOT NULL AND away_id IS NOT NULL AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff, game_id`).all(league) as any[])
     .map(r => ({
       id: r.game_id, season: r.season, kickoff: r.kickoff, t: Date.parse(r.kickoff), stage: r.stage, week: r.week, h: r.home_id, a: r.away_id, hn: r.home_name, an: r.away_name,
       hs: r.home_pts, as: r.away_pts, done: ['FT', 'AOT'].includes(r.status) && r.home_pts != null && r.away_pts != null,
@@ -116,7 +116,9 @@ const ctxCache = new Map<LeagueId, { n: number; ctx: Ctx }>();
 /** QB lines and efficiency numbers of every game with a box score (parsed once; rebuilt when new box scores arrive). */
 function loadCtx(league: LeagueId = 1): Ctx {
   const n = (db.prepare(`SELECT COUNT(*) AS n FROM nfl_team_stats`).get() as any)?.n + (db.prepare(`SELECT COUNT(*) AS n FROM nfl_player_stats`).get() as any)?.n
-    + (db.prepare(`SELECT COUNT(*) AS n FROM nfl_teams WHERE league = ?`).get(league) as any)?.n;
+    + (db.prepare(`SELECT COUNT(*) AS n FROM nfl_teams WHERE league = ?`).get(league) as any)?.n
+    + 1000 * ((db.prepare(`SELECT COUNT(*) AS n FROM nfl_teams WHERE league = ? AND level = 'FBS'`).get(league) as any)?.n || 0)
+    + 1e6 * ((db.prepare(`SELECT COUNT(*) AS n FROM nfl_teams WHERE league = ? AND level = 'FCS'`).get(league) as any)?.n || 0);
   const c = ctxCache.get(league);
   if (c && c.n === n) return c.ctx;
   const qb = new Map<string, Passer[]>(), box = new Map<string, Box>();
@@ -134,8 +136,8 @@ function loadCtx(league: LeagueId = 1): Ctx {
     });
   }
   // college teams: conference (regression target) and level (FCS start lower); a team we have no row for = FCS
-  const teams = new Map<number, { conf: string | null; fcs: boolean; fbs: boolean }>();
-  if (league === 2) for (const r of db.prepare(`SELECT team_id, conference, level FROM nfl_teams WHERE league = 2`).all() as any[]) teams.set(r.team_id, { conf: r.conference || null, fcs: r.level !== 'FBS', fbs: r.level === 'FBS' });
+  const teams = new Map<number, { conf: string | null; fcs: boolean; fbs: boolean; isFcs?: boolean }>();
+  if (league === 2) for (const r of db.prepare(`SELECT team_id, conference, level FROM nfl_teams WHERE league = 2`).all() as any[]) teams.set(r.team_id, { conf: r.conference || null, fcs: r.level !== 'FBS', fbs: r.level === 'FBS', isFcs: r.level === 'FCS' });
   const ctx = { qb, box, teams };
   ctxCache.set(league, { n, ctx });
   return ctx;
@@ -420,7 +422,7 @@ async function tune(games: G[], ctx: Ctx, before: number, eloOnly = false, leagu
 /* ---------- walk-forward test ---------- */
 
 export interface Report {
-  model: string; league?: LeagueId; builtAt: string; seasons: any[]; total: any; baselines: any; fbs?: any; blend: { used: boolean; testLogLossAB: number | null; testLogLossD: number | null };
+  model: string; league?: LeagueId; builtAt: string; seasons: any[]; total: any; baselines: any; fbs?: any; fbsFcs?: any; levels?: Record<string, number>; blend: { used: boolean; testLogLossAB: number | null; testLogLossD: number | null };
   live: { params: Params; blend: boolean; seasonsTrained: number[] } | null; data: { games: number; finished: number; withBox: number; withQb: number; seasons: number[] }
 }
 
@@ -430,7 +432,9 @@ export async function buildReport(league: LeagueId = 1): Promise<Report> {
   const ctx = loadCtx(league);
   // college: FBS vs FBS games reported apart as well
   const isFbs = (g: G) => league === 2 && !!ctx.teams.get(g.h)?.fbs && !!ctx.teams.get(g.a)?.fbs;
-  const fbsAll: Row[] = [];
+  // fix143: FBS against FCS (either way round)
+  const isMix = (g: G) => league === 2 && ((!!ctx.teams.get(g.h)?.fbs && !!ctx.teams.get(g.a)?.isFcs) || (!!ctx.teams.get(g.a)?.fbs && !!ctx.teams.get(g.h)?.isFcs));
+  const fbsAll: Row[] = [], mixAll: Row[] = [];
   const finished = games.filter(g => g.done);
   const seasons = [...new Set(finished.map(g => g.season))].sort((a, b) => a - b);
   const testSeasons = seasons.filter(s => finished.filter(g => g.season === s).length >= 30).slice(-5).filter(s => s !== seasons[0]);
@@ -446,13 +450,14 @@ export async function buildReport(league: LeagueId = 1): Promise<Report> {
     run(games, p, ctx, pr => { if (pr.g.t < start && pr.g.season !== seasons[0]) { const x = featOf(pr); if (x) trainRows.push({ x, y: rowOf(pr).y }); } }, start, league);
     const bl = fitBlend(trainRows.filter(r => r.y !== 0.5));
     const homeRate = (() => { const tr = finished.filter(g => g.t < start); return tr.filter(g => g.hs! > g.as!).length / Math.max(1, tr.length); })();
-    const ab: Row[] = [], d: Row[] = [], elo: Row[] = [], fbs: Row[] = [];
+    const ab: Row[] = [], d: Row[] = [], elo: Row[] = [], fbs: Row[] = [], mix: Row[] = [];
     const rec = new Map<number, { w: number; g: number }>();
     run(games, p, ctx, pr => {
       if (pr.g.season !== S) return;
       const r = rowOf(pr);
       ab.push(r);
       if (isFbs(pr.g)) fbs.push(r);
+      if (isMix(pr.g)) mix.push(r);
       const x = featOf(pr);
       const pd = bl && x ? blendP(bl, x) : pr.p;
       d.push({ ...r, p: pd, mHat: bl && x ? marginFromP(pd) : r.mHat });
@@ -469,10 +474,11 @@ export async function buildReport(league: LeagueId = 1): Promise<Report> {
     run(games, pElo, ctx, pr => { if (pr.g.season === S) elo.push(rowOf(pr)); }, undefined, league);
     const mAB = metrics(ab), mD = metrics(d), mElo = metrics(elo);
     const homeS = ab.filter(r => r.y !== 0.5), homeHit = homeS.length ? Math.round((1000 * homeS.filter(r => r.y === 1).length) / homeS.length) / 10 : null;
-    const mFbs = league === 2 ? metrics(fbs) : null;
-    per.push({ season: S, params: p, ab: mAB, blend: bl ? mD : null, eloOnly: mElo, homeTeamHit: homeHit, ...(mFbs ? { fbsOnly: mFbs } : {}) });
-    all.ab.push(...ab); all.d.push(...d); all.elo.push(...elo); fbsAll.push(...fbs);
+    const mFbs = league === 2 ? metrics(fbs) : null, mMix = league === 2 ? metrics(mix) : null;
+    per.push({ season: S, params: p, ab: mAB, blend: bl ? mD : null, eloOnly: mElo, homeTeamHit: homeHit, ...(mFbs ? { fbsOnly: mFbs, fbsFcs: mMix } : {}) });
+    all.ab.push(...ab); all.d.push(...d); all.elo.push(...elo); fbsAll.push(...fbs); mixAll.push(...mix);
     if (mFbs) logger.info(`${MODEL} ${S} FBS vs FBS: hit ${(mFbs as any).hit}% LL ${(mFbs as any).logLoss} over ${(mFbs as any).games} games`);
+    if (mMix) logger.info(`${MODEL} ${S} FBS vs FCS: hit ${(mMix as any).hit}% LL ${(mMix as any).logLoss} over ${(mMix as any).games} games`);
     logger.info(`${MODEL} ${S}: hit ${(mAB as any).hit}% LL ${(mAB as any).logLoss} over ${(mAB as any).games} games (home ${homeHit}%, Elo ${(mElo as any).hit}%)${bl ? ` · with efficiency: hit ${(mD as any).hit}% LL ${(mD as any).logLoss}` : ''}`);
     await yieldLoop();
   }
@@ -481,7 +487,8 @@ export async function buildReport(league: LeagueId = 1): Promise<Report> {
   logger.info(`${MODEL} total: A+B LL ${llAB === null ? '–' : llAB.toFixed(4)}, with efficiency ${llD === null ? '–' : llD.toFixed(4)} → ${useD ? 'efficiency blend (D) kept' : 'A+B kept'}`);
   const r1 = (x: number) => Math.round(x * 10) / 10;
   const report: Report = {
-    model: MODEL, league, builtAt: new Date().toISOString(), seasons: per, ...(league === 2 ? { fbs: metrics(fbsAll) } : {}),
+    model: MODEL, league, builtAt: new Date().toISOString(), seasons: per,
+    ...(league === 2 ? { fbs: metrics(fbsAll), fbsFcs: metrics(mixAll), levels: Object.fromEntries((db.prepare(`SELECT COALESCE(level, 'unknown') AS l, COUNT(*) AS n FROM nfl_teams WHERE league = 2 GROUP BY l`).all() as any[]).map(r => [r.l, r.n])) } : {}),
     total: { ab: metrics(all.ab), blend: metrics(all.d), eloOnly: metrics(all.elo) },
     baselines: {
       homeTeam: base.home.n ? { hit: r1((100 * base.home.hit) / base.home.n), logLoss: Math.round((base.home.ll / Math.max(1, all.ab.length)) * 10000) / 10000 } : null,

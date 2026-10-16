@@ -4,8 +4,8 @@ import { API_URL } from '../../lib/socket'
 import { Card, Skeleton } from '../bb/parts'
 
 interface M { games: number; hit: number; logLoss: number; brier: number }
-interface Season { season: number; ab: M; blend: M | null; eloOnly: M; homeTeamHit: number; fbsOnly?: M }
-interface Report { model: string; builtAt: string; seasons: Season[]; total: { ab: M; blend: M; eloOnly: M }; baselines: { homeTeam: { hit: number; logLoss: number }; betterRecord: { hit: number } }; fbs?: M; blend?: { used: boolean } }
+interface Season { season: number; ab: M; blend: M | null; eloOnly: M; homeTeamHit: number; fbsOnly?: M; fbsFcs?: M }
+interface Report { model: string; builtAt: string; seasons: Season[]; total: { ab: M; blend: M; eloOnly: M }; baselines: { homeTeam: { hit: number; logLoss: number }; betterRecord: { hit: number } }; fbs?: M; fbsFcs?: M; levels?: Record<string, number>; blend?: { used: boolean } }
 
 /**
  * Admin only (fix144, like basketball's Past seasons): how nfl-v1 and ncaa-v1 did on seasons they never saw — each of
@@ -33,12 +33,14 @@ export default function NflPast() {
             <tbody>
               {r.seasons.map(s => row(String(s.season), s.blend || s.ab, s.homeTeamHit))}
               {r.seasons.some(s => s.fbsOnly) && r.seasons.map(s => s.fbsOnly ? row(`${s.season} FBS vs FBS`, s.fbsOnly) : null)}
+              {r.seasons.some(s => s.fbsFcs) && r.seasons.map(s => s.fbsFcs ? row(`${s.season} FBS vs FCS`, s.fbsFcs) : null)}
               {row('All test seasons', r.blend?.used ? r.total.blend : r.total.ab, r.baselines.homeTeam.hit)}
               {row('Elo only', r.total.eloOnly)}
               {r.fbs && row('FBS vs FBS, all', r.fbs)}
+              {r.fbsFcs && row('FBS vs FCS, all', r.fbsFcs)}
             </tbody>
           </table>
-          <p className="mt-2 text-[11px] text-faint">Baselines: home team {r.baselines.homeTeam.hit}% (LL {r.baselines.homeTeam.logLoss}), better record {r.baselines.betterRecord.hit}%. Efficiency blend {r.blend?.used ? 'kept' : 'not kept'}. Built {new Date(r.builtAt).toLocaleString()}.</p>
+          <p className="mt-2 text-[11px] text-faint">Baselines: home team {r.baselines.homeTeam.hit}% (LL {r.baselines.homeTeam.logLoss}), better record {r.baselines.betterRecord.hit}%. Efficiency blend {r.blend?.used ? 'kept' : 'not kept'}.{r.levels ? ` Teams: ${Object.entries(r.levels).map(([k, n]) => `${k} ${n}`).join(', ')}.` : ''} Built {new Date(r.builtAt).toLocaleString()}.</p>
         </div>
       )}
     </Card>

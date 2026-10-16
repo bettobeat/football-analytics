@@ -12,6 +12,7 @@ Same code (`nflModel.ts`, every function takes the league), own settings tuned o
 - **Rest / bye**, QB and efficiency: same as the NFL, only where box scores exist (last 3 seasons); the blend is kept only if it lowers the test log loss.
 - **Report**: per season all games and FBS vs FBS (`seasons[].fbsOnly`, `fbs` total), baselines (home team, better record, Elo only), calibration. `GET /api/admin/nfl-model?league=2` (`&rebuild=1`).
 - **Strong pick**: 75%+ (college has more mismatches).
+- **Levels (fix143)**: FBS / FCS / other from conference + division (`levelOf`), schedule fallback (`classifyCollegeTeams`); games with a Division II / III team are left out of the model and the site. Report per season: all games, FBS vs FBS, FBS vs FCS.
 - Test on a fake 40-team league (24 FBS / 16 FCS, 7 seasons, hidden strengths): hit 71%, LL 0.555 all games, 64.7% / 0.628 FBS vs FBS; home team baseline 64.7% / 0.653. Says only that the pipeline learns; the real numbers come from the server.
 
 

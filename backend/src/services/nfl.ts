@@ -25,15 +25,78 @@ export const leagueName = (l: LeagueId) => (l === 2 ? 'College football' : 'NFL'
 export const asLeague = (x: unknown): LeagueId => (String(x) === '2' || /^(college|ncaa)$/i.test(String(x)) ? 2 : 1);
 /** NCAA: seasons of games kept, seasons with box scores. */
 const NCAA_SEASONS = 10, NCAA_BOX_SEASONS = 3;
-/** FBS conferences (the rest of college football is FCS): a team's level comes from its conference. */
-const FBS_CONF = /(^|\b)(SEC|southeastern|big ten|big 12|big twelve|acc\b|atlantic coast|pac-?12|pac-?twelve|american athletic|aac\b|^american( conference)?$|mountain west|sun belt|mid-american|\bmac\b|conference usa|c-usa|fbs|independents?$)/i;
+/**
+ * College levels (fix143): FBS, FCS or 'other' (Division II / III, NAIA …), from the conference AND division the provider
+ * gives (either may hold the conference name or "FBS" / "FCS"). FBS: SEC, Big Ten, Big 12, ACC, Pac-12, American (AAC),
+ * Mountain West, Sun Belt, MAC, Conference USA, FBS Independents. FCS: Big Sky, CAA, Missouri Valley, Southland, SWAC,
+ * MEAC, OVC, Big South, Patriot, Ivy, Pioneer, NEC, SoCon, UAC, ASUN, WAC, FCS Independents. A plain "Independent" is
+ * unknown (decided from the schedule).
+ */
+const FBS_CONF = /\b(fbs|i-?a|sec|southeastern|big ten|big 10|big 12|big twelve|acc|atlantic coast|pac-?12|pac-?twelve|pacific-?12|american athletic|aac|american( conference)?|mountain west|mwc|sun belt|mid-american|mac|conference usa|c-?usa)\b/i;
+const FCS_CONF = /\b(fcs|i-?aa|big sky|caa|colonial|coastal athletic|missouri valley|mvfc|southland|swac|southwestern athletic|meac|mid-eastern|ohio valley|ovc|big south|patriot|ivy|pioneer|northeast|nec|southern conference|socon|united athletic|uac|western athletic|wac|asun|atlantic sun)\b/i;
+const OTHER_CONF = /division (ii|iii|2|3)|\bd-?(ii|iii|2|3)\b|\bnaia\b|\bjuco\b|gulf south|great lakes|lone star|\bpsac\b|mid-america intercollegiate|\bmiaa\b|\bgliac\b|\brmac\b|\bnsic\b|south atlantic|great american|\bciaa\b|\bsiac\b|mountain east|great northwest|\bnescac\b|centennial|liberty league|empire 8/i;
 /** College nicknames of two words ("Crimson Tide"): dropped whole to leave the school name (same list as frontend lib/nfl.ts). */
 const TWO_WORD = /\s(crimson tide|nittany lions|fighting irish|yellow jackets|golden gophers|blue devils|tar heels|red raiders|horned frogs|sun devils|golden bears|demon deacons|scarlet knights|mean green|golden hurricane|golden eagles|green wave|red wolves|black knights|thundering herd|golden flashes|blue raiders|fighting illini|rainbow warriors|wolf pack|golden panthers|black bears|blue hens|golden lions|fighting hawks|big green|big red|purple eagles|mountain hawks|delta devils|golden rams|red flash|red foxes|blue hose|golden griffins|fighting camels|river hawks)$/i;
 /** "Ohio State Buckeyes" → "Ohio State", "Alabama Crimson Tide" → "Alabama". */
 export const schoolName = (name: string) => { const m = name.match(TWO_WORD); if (m) return name.slice(0, m.index); const w = name.split(/\s+/); return w.length > 1 ? w.slice(0, -1).join(' ') : name; };
 /** The nickname part ("Crimson Tide", "Buckeyes"). */
 export const collegeNick = (name: string) => name.slice(schoolName(name).length).trim();
-export const levelOf = (conference: string | null) => (conference ? (FBS_CONF.test(conference) ? 'FBS' : 'FCS') : null);
+export type Level = 'FBS' | 'FCS' | 'other';
+export function levelOf(conference: string | null, division: string | null = null): Level | null {
+  const text = [conference, division].filter(Boolean).join(' · ');
+  if (!text) return null;
+  if (/\bfcs\b|\bi-?aa\b/i.test(text)) return 'FCS';
+  if (/\bfbs\b|\bi-?a\b/i.test(text)) return 'FBS';
+  if (OTHER_CONF.test(text)) return 'other';
+  if (/independent/i.test(text) && !FBS_CONF.test(text.replace(/independents?/i, '')) && !FCS_CONF.test(text.replace(/independents?/i, ''))) return null;
+  if (FCS_CONF.test(text)) return 'FCS';
+  if (FBS_CONF.test(text)) return 'FBS';
+  return null; // a name we don't know: decided from the schedule (classifyCollegeTeams)
+}
+/** Games of FBS + FCS teams only: college lists leave out games with a Division II / III / other team (fix143). */
+export const HIDE_OTHER = `AND home_id NOT IN (SELECT team_id FROM nfl_teams WHERE level = 'other') AND away_id NOT IN (SELECT team_id FROM nfl_teams WHERE level = 'other')`;
+
+/**
+ * Every college team's level (fix143): from its conference / division; teams still unknown take the level most of their
+ * opponents have (last 2 seasons, 60%+ of 3+ games; a few passes, so it spreads); a team with a conference we could not
+ * place and no clear schedule = 'other'. Logs the counts and the conference names it did not know.
+ */
+export function classifyCollegeTeams(): Record<string, number> {
+  const teams = db.prepare(`SELECT team_id, conference, division FROM nfl_teams WHERE league = 2`).all() as any[];
+  const level = new Map<number, Level | null>(teams.map(t => [t.team_id as number, levelOf(t.conference, t.division)]));
+  const unknownNames = new Set<string>();
+  for (const t of teams) if (!level.get(t.team_id) && (t.conference || t.division)) unknownNames.add([t.conference, t.division].filter(Boolean).join(' · '));
+  const last = (db.prepare(`SELECT MAX(season) AS s FROM nfl_games WHERE league = 2 AND status IN ('FT','AOT')`).get() as any)?.s;
+  if (last) {
+    const games = db.prepare(`SELECT home_id, away_id FROM nfl_games WHERE league = 2 AND season >= ? AND status IN ('FT','AOT') AND (stage IS NULL OR stage NOT LIKE 'Pre%')`).all(last - 1) as any[];
+    const opp = new Map<number, number[]>();
+    for (const g of games) { (opp.get(g.home_id) || opp.set(g.home_id, []).get(g.home_id)!).push(g.away_id); (opp.get(g.away_id) || opp.set(g.away_id, []).get(g.away_id)!).push(g.home_id); }
+    for (let pass = 0; pass < 4; pass++) {
+      let changed = 0;
+      for (const [id, list] of opp) {
+        if (level.get(id)) continue;
+        const known = list.map(o => level.get(o)).filter(Boolean) as Level[];
+        if (known.length < 3) continue;
+        for (const L of ['FBS', 'FCS', 'other'] as Level[]) if (known.filter(k => k === L).length / known.length >= 0.6) { level.set(id, L); changed++; break; }
+      }
+      if (!changed) break;
+    }
+  }
+  const upd = db.prepare(`UPDATE nfl_teams SET level = ? WHERE team_id = ?`);
+  const count: Record<string, number> = { FBS: 0, FCS: 0, other: 0, unknown: 0 };
+  db.exec('BEGIN');
+  try {
+    for (const t of teams) {
+      let L = level.get(t.team_id) ?? null;
+      if (!L && (t.conference || t.division)) L = 'other';
+      upd.run(L, t.team_id);
+      count[L || 'unknown']++;
+    }
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  if (teams.length) logger.info(`College levels: FBS ${count.FBS}, FCS ${count.FCS}, other ${count.other}, unknown ${count.unknown}${unknownNames.size ? ` · conferences not recognised: ${[...unknownNames].slice(0, 15).join(', ')}` : ''}`);
+  return count;
+}
 const MIN_GAP_MS = 400;
 
 db.exec(`
@@ -313,18 +376,23 @@ async function teamsAndStandings(league: LeagueId): Promise<number> {
         ON CONFLICT(team_id) DO UPDATE SET name = excluded.name, code = excluded.code, city = excluded.city, logo = COALESCE(excluded.logo, logo),
         coach = excluded.coach, stadium = excluded.stadium, updated_at = excluded.updated_at, league = excluded.league`)
         .run(id, t.name, t.code || null, t.city || null, t.logo || null, t.coach || null, t.stadium || null, at, league);
+      // fix143: a college team's conference straight from /teams when the provider gives one (standings may lack it)
+      const tc = league === 2 ? (t.conference?.name ?? t.conference ?? t.group?.name ?? null) : null;
+      if (tc && typeof tc === 'string') db.prepare(`UPDATE nfl_teams SET conference = COALESCE(conference, ?), division = COALESCE(division, ?) WHERE team_id = ?`).run(tc, typeof t.division === 'string' ? t.division : t.division?.name ?? null, id);
     }
     for (const r of rows) {
       const id = num(r?.team?.id);
       if (!id) continue;
       db.prepare(`INSERT OR REPLACE INTO nfl_standings (season, team_id, json, updated_at, league) VALUES (?, ?, ?, ?, ?)`).run(season, id, JSON.stringify(r), at, league);
-      const conf = confShort(r.conference);
+      const conf = confShort(typeof r.conference === 'object' && r.conference ? r.conference.name : r.conference);
+      const div = typeof r.division === 'object' && r.division ? r.division.name : r.division;
       db.prepare(`INSERT INTO nfl_teams (team_id, name, logo, conference, division, updated_at, league, level) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(team_id) DO UPDATE SET conference = excluded.conference, division = excluded.division, logo = COALESCE(logo, excluded.logo), league = excluded.league, level = excluded.level`)
-        .run(id, r.team?.name || String(id), r.team?.logo || null, conf, r.division || null, at, league, league === 2 ? levelOf(conf) : null);
+        ON CONFLICT(team_id) DO UPDATE SET conference = COALESCE(excluded.conference, conference), division = COALESCE(excluded.division, division), logo = COALESCE(logo, excluded.logo), league = excluded.league`)
+        .run(id, r.team?.name || String(id), r.team?.logo || null, conf, div || null, at, league, null);
     }
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
+  if (league === 2) classifyCollegeTeams(); // fix143: FBS / FCS / other for every college team
   return rows.length;
 }
 
@@ -397,6 +465,7 @@ let tickBusy = false;
 export function startNflScheduler() {
   if (started || !KEY()) return;
   started = true;
+  try { classifyCollegeTeams(); } catch (e: any) { logger.warn(`College levels: ${e.message}`); } // fix143: apply the rules to the teams we hold
   // every 30 min: games of the current season (+ backfill), box scores, then whatever is due (each job keeps its own clock)
   const tick = async () => {
     if (tickBusy) return;
