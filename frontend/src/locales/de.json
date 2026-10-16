@@ -1817,5 +1817,19 @@
  "College football standings": "College-Football-Tabellen",
  "{0} season · by conference, FBS first": "Saison {0} · nach Conference, FBS zuerst",
  "Conference games": "Conference-Spiele",
- "Conf": "Conf"
+ "Conf": "Conf",
+ "Upset watch: the coming games where our model gives the underdog the best chance. Part of Pro, together with unlimited predictions.": "Überraschungs-Radar: die kommenden Spiele, in denen unser Modell dem Außenseiter die besten Chancen gibt. Teil von Pro, zusammen mit unbegrenzten Prognosen.",
+ "Only {0} games so far, too few to judge.": "Bisher erst {0} Spiele, zu wenige für ein Urteil.",
+ "An upset watch is not a tip: at 30–40% the favourite still wins most of the time. It tells you which favourites are less safe than they look. Probabilities, not promises.": "Der Überraschungs-Radar ist kein Tipp: Bei 30–40 % gewinnt meist trotzdem der Favorit. Er zeigt, welche Favoriten weniger sicher sind, als sie aussehen. Wahrscheinlichkeiten, keine Versprechen.",
+ "Win chances, point spread, total points and the predicted score, with the reasons behind the pick.": "Siegchancen, Punktespanne, Gesamtpunkte und das erwartete Ergebnis, mit den Gründen hinter dem Tipp.",
+ "By confidence": "Nach Sicherheit",
+ "American football accuracy": "American-Football-Trefferquote",
+ "Every pick is saved before kick-off and checked after the final whistle. Nothing is removed. Strong picks: 70%+ in the NFL, 75%+ in college football.": "Jeder Tipp wird vor dem Anstoß gespeichert und nach dem Schlusspfiff überprüft. Nichts wird entfernt. Starke Tipps: 70 %+ in der NFL, 75 %+ im College Football.",
+ "Strong picks right": "Starke Tipps richtig",
+ "No games checked yet: every pick saved before kick-off counts as soon as the game is over.": "Noch keine Spiele überprüft: Jeder vor dem Anstoß gespeicherte Tipp zählt, sobald das Spiel vorbei ist.",
+ "picks saved before kick-off": "vor dem Anstoß gespeicherte Tipps",
+ "Bold = our pick. Each game is checked automatically after the final whistle.": "Fett = unser Tipp. Jedes Spiel wird nach dem Schlusspfiff automatisch überprüft.",
+ "Upsets": "Überraschungen",
+ "{0} is analysing this game": "{0} analysiert dieses Spiel",
+ "Make your own guess first, then see what {0} thinks — the percentages, why this pick, and the full breakdown.": "Tippe zuerst selbst, dann sieh, was {0} denkt — die Prozente, warum dieser Tipp und die ganze Aufschlüsselung."
 }

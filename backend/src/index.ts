@@ -84,8 +84,9 @@ import { tuneV3Full, tuneStatus, isTuning } from './services/v3Tuner';
 import { hiddenModels, v3MixBacktest, featureModelStatus, setConfig as setModelConfig, setMixLive, startFeatureModelScheduler } from './services/featureModel';
 import { runModelDaily, sendMorningReport, modelDailyLog, buildReport, startModelDailyScheduler, dailyRunning } from './services/modelDaily';
 import { nflProbe, startNflScheduler, nflCurrentSeason, asLeague, LEAGUES } from './services/nfl';
-import { withNflPrediction, nflTeamModel, nflTeamRecord, nflRecord, nflModelReport, retrain as nflRetrain, NFL_MODEL, NCAA_MODEL } from './services/nflModel';
-import { nflPublic, nflWeeks, nflWeekGames, nflGamesBetween, nflLiveGames, nflRecentResults, nflGame, nflStandings, nflTeam, nflPlayer, nflLeaders, nflSeasonsHeld, allowedSeason, leagueOfTeamId } from './services/nflSite';
+import { winnerUpsetReport } from './services/winnerUpsets';
+import { withNflPrediction, nflTeamModel, nflTeamRecord, nflRecord, nflAccuracy, nflModelReport, retrain as nflRetrain, NFL_MODEL, NCAA_MODEL } from './services/nflModel';
+import { nflPublic, nflWeeks, nflWeekGames, nflGamesBetween, nflLiveGames, nflRecentResults, nflGame, nflStandings, nflTeam, nflPlayer, nflLeaders, nflSeasonsHeld, allowedSeason, leagueOfTeamId, nflSearch } from './services/nflSite';
 import { askAssistant, assistantConfigured, messagesToday, assistantStats } from './services/assistant';
 import { normalizeName } from './services/history';
 import { markFresh, markFailed } from './services/freshness';
@@ -512,7 +513,7 @@ app.get('/api/admin/assistant', (_req, res) => res.json({ data: assistantStats()
 // Favorites (signed-in users; visitors keep them in the browser and they are merged here on sign-in)
 // Your picks + personal record (every signed-in account) — services/userPicks.ts
 const pickErr = (res: express.Response, e: any) => e instanceof PickError ? res.status(e.status).json({ error: e.message }) : sendError(res, e, 'Picks failed');
-app.get('/api/picks/game/:sport(fb|bb)/:id(\\d+)', (req, res) => {
+app.get('/api/picks/game/:sport(fb|bb|nfl)/:id(\\d+)', (req, res) => {
   res.set('Cache-Control', 'no-store');
   try { res.json({ data: { signedIn: !!req.user, ...gamePicks(req.user?.id ?? null, req.params.sport, parseInt(req.params.id, 10), req.access || 'anon') } }); }
   catch (e: any) { pickErr(res, e); }
@@ -1228,6 +1229,13 @@ app.post('/api/admin/users/:id(\\d+)/plan', jsonOnly, (req, res) => {
 });
 
 // ---------- Plans and match unlocks (services/billing.ts) ----------
+// fix144: the full prediction of a basketball / NFL game: paid plans, or a free pick spent on it (its reveal id)
+const fullFor = (req: express.Request, ridOf: (id: number) => number): boolean | ((id: number) => boolean) => {
+  if (isPaid(req.access || 'anon') || !req.user) return isPaid(req.access || 'anon');
+  const ids = unlockedIds(req.user.id);
+  return ids.size ? (id: number) => ids.has(ridOf(id)) : false;
+};
+const fullOne = (req: express.Request, rid: number) => isPaid(req.access || 'anon') || (!!req.user && unlockedIds(req.user.id).has(rid));
 
 // This month's unlocks for the signed-in user: { plan, unlimited, allowance, used, left, resetsAt, testMode }
 app.get('/api/unlocks', (req, res) => {
@@ -1235,7 +1243,8 @@ app.get('/api/unlocks', (req, res) => {
   res.json({ data: unlockStatus(req.user || null, req.access || 'anon') });
 });
 // Spend one unlock on a match. Body: { status } (finished matches are free and need no unlock)
-app.post('/api/unlocks/:id(\\d+)', jsonOnly, (req, res) => {
+// fix144: basketball (-id) and NFL (-(2e9 + id)) games use the same free picks
+app.post('/api/unlocks/:id(-?\\d+)', jsonOnly, (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Sign in required' });
   try {
     res.json({ data: unlockMatch(req.user, req.access || 'anon', parseInt(req.params.id, 10), String(req.body?.status || '')) });
@@ -1704,7 +1713,10 @@ app.get('/api/search', async (req, res) => {
     // basketball: teams, players (any order of first / last name), leagues and coming games — when the section is open to this visitor
     let basketball: any = null;
     if (bbPublic() || req.access === 'admin') { try { basketball = bbSearch(q); } catch { basketball = null; } }
-    res.json({ data: { teams, players, matches, competitions, basketball }, timestamp: new Date().toISOString() });
+    // fix144: NFL + college football teams, players and coming games, same shape
+    let americanFootball: any = null;
+    if (nflPublic() || req.access === 'admin') { try { americanFootball = nflSearch(q); } catch { americanFootball = null; } }
+    res.json({ data: { teams, players, matches, competitions, basketball, americanFootball }, timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Search failed');
   }
@@ -2098,7 +2110,8 @@ const nflAdmin = (req: express.Request) => req.access === 'admin';
 const nflFull = (req: express.Request) => isPaid(req.access || 'anon');
 /** fix142: ?league=1|2|college (default NFL) */
 const nflLg = (req: express.Request) => asLeague(req.query.league);
-const nflWith = <T extends { id: number; state: string }>(req: express.Request, games: T[]) => games.map(g => withNflPrediction(g as any, nflFull(req)) as unknown as T & { prediction: any });
+const nflRid = (id: number) => -(2e9 + id); // frontend lib/nfl.ts nflRid
+const nflWith = <T extends { id: number; state: string }>(req: express.Request, games: T[]) => { const f = fullFor(req, nflRid); return games.map(g => withNflPrediction(g as any, typeof f === 'function' ? f(g.id) : f) as unknown as T & { prediction: any }); };
 app.get('/api/nfl/config', (req, res) => {
   const league = nflLg(req);
   res.json({ data: { public: nflPublic(), open: nflPublic() || nflAdmin(req), league, season: nflCurrentSeason(league), seasons: nflSeasonsHeld(nflAdmin(req), league),
@@ -2140,7 +2153,7 @@ app.get('/api/nfl/game/:id(\\d+)', (req, res) => {
   try {
     const d = nflGame(parseInt(req.params.id, 10), nflAdmin(req));
     if (!d) return res.status(404).json({ error: 'Game not found' });
-    const game = withNflPrediction(d.game, nflFull(req));
+    const game = withNflPrediction(d.game, fullOne(req, nflRid(d.game.id)));
     res.json({ data: { ...d, game, prediction: game.prediction } });
   } catch (e) { sendError(res, e, 'Failed to load game'); }
 });
@@ -2173,6 +2186,26 @@ app.get('/api/nfl/player/:id(\\d+)', (req, res) => {
     if (!d) return res.status(404).json({ error: 'Player not found' });
     res.json({ data: d });
   } catch (e) { sendError(res, e, 'Failed to load player'); }
+});
+// fix144: Upset watch for every sport (Pro; model only) and the NFL accuracy page (admins, like basketball's for now)
+const proGate = (req: express.Request, res: express.Response) => {
+  const a = req.access || 'anon';
+  if (a === 'pro' || a === 'admin') return true;
+  res.status(a === 'anon' ? 401 : 402).json({ error: a === 'anon' ? 'Sign in required' : 'Pro required', premium: true, pro: true });
+  return false;
+};
+app.get('/api/nfl/upset-watch', (req, res) => {
+  if (!proGate(req, res)) return;
+  try { res.json({ data: winnerUpsetReport('american-football'), timestamp: new Date().toISOString() }); } catch (e) { sendError(res, e, 'Upset watch failed'); }
+});
+app.get('/api/nfl/accuracy', (req, res) => {
+  if (req.access !== 'admin') return res.status(404).json({ error: 'Not found' });
+  try { res.json({ data: nflAccuracy() }); } catch (e) { sendError(res, e, 'Failed to load the record'); }
+});
+// fix144: NFL past seasons (admins and the model permission; not under the open /api/nfl/): the walk-forward reports
+app.get('/api/nfl-past', (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: { nfl: nflModelReport(1), college: nflModelReport(2) } });
 });
 // fix141: home "Our record" — last 30 days, picks saved before kick-off only
 app.get('/api/nfl/record', (req, res) => {
@@ -2211,14 +2244,15 @@ app.get('/api/basketball/games', (req, res) => {
       const f = new Date(req.query.from), t = new Date(req.query.to);
       if (!isNaN(f.getTime()) && !isNaN(t.getTime()) && t > f && t.getTime() - f.getTime() <= 14 * day) { from = f; to = t; }
     }
-    res.json({ data: bbGames({ from: from.toISOString(), to: to.toISOString(), code, results, limit: 400 }, isPaid(req.access || 'anon')), timestamp: new Date().toISOString() });
+    res.json({ data: bbGames({ from: from.toISOString(), to: to.toISOString(), code, results, limit: 400 }, fullFor(req, id => -id)), timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Failed to load games');
   }
 });
 app.get('/api/basketball/game/:id(\\d+)', async (req, res) => {
   try {
-    const data = await bbGame(parseInt(req.params.id, 10), isPaid(req.access || 'anon'));
+    const gid = parseInt(req.params.id, 10);
+    const data = await bbGame(gid, fullOne(req, -gid));
     if (!data) return res.status(404).json({ error: 'Game not found' });
     res.json({ data, timestamp: new Date().toISOString() });
   } catch (error: any) {
@@ -2285,6 +2319,10 @@ app.get('/api/basketball/record', (req, res) => {
   } catch (error: any) {
     sendError(res, error, 'Failed to load record');
   }
+});
+app.get('/api/basketball/upset-watch', (req, res) => {
+  if (!proGate(req, res)) return;
+  try { res.json({ data: winnerUpsetReport('basketball'), timestamp: new Date().toISOString() }); } catch (e) { sendError(res, e, 'Upset watch failed'); }
 });
 // Admin: how the model did on past seasons it never saw (internal, like football's past seasons)
 app.get('/api/bb/backtest', (_req, res) => res.json({ data: bbBacktest(), timestamp: new Date().toISOString() }));

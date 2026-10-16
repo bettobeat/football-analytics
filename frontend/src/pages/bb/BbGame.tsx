@@ -10,7 +10,8 @@ import YourPicks from '../../components/YourPicks'
 import { RevealCover } from '../../components/Reveal'
 import { BB_STATUS, liveLabel, spreadText, bbTeamFav, bbLeagueFav, useBbConfig, type BbGame as Game } from '../../lib/bb'
 import { FavStar } from '../../lib/favorites'
-import { Card, TeamLogo, LockedNote, LiveChanceBox, rid, rstatus } from './parts'
+import { Card, TeamLogo, LiveChanceBox, rid, rstatus } from './parts'
+import UnlockPrompt, { GAME_RELOAD } from '../../components/UnlockPrompt'
 import type { Standings } from './BbLeague'
 import { StatsTab, RestTab, H2HTab, StandingsTab } from './GameTabs'
 import { MarketsCard, CompareCard, PlayersCard, ModelTable, type Markets, type ModelInfo, type GamePlayer } from './GameExtras'
@@ -82,7 +83,8 @@ export default function BbGame() {
         .catch(e => { if (!cancelled) setError(e?.response?.status === 404 ? t('Game not found') : t('Could not load the game')) })
     load()
     const iv = setInterval(load, 60000)
-    return () => { cancelled = true; clearInterval(iv) }
+    window.addEventListener(GAME_RELOAD, load) // fix144: a free pick opened this game
+    return () => { cancelled = true; clearInterval(iv); window.removeEventListener(GAME_RELOAD, load) }
   }, [id, access])
   useEffect(() => {
     if (d) document.title = t('{0} · SportLikely', { 0: `${d.game.home.name} vs ${d.game.away.name}` })
@@ -284,10 +286,10 @@ function PredictionSection({ d }: { d: Detail }) {
               </div>
             </div>
           )}
-          <LockedNote />
+          <UnlockPrompt rid={rid(g)} status={rstatus(g)} what={t('Win chances, point spread, total points and the predicted score, with the reasons behind the pick.')} />
         </div>
       ) : hidden || anim ? (
-        <RevealCover key={anim ? 'auto' : 'cover'} autoStart={anim} onReveal={() => { setAnim(false); reveal() }} />
+        <RevealCover key={anim ? 'auto' : 'cover'} autoStart={anim} model="bb-v3" onReveal={() => { setAnim(false); reveal() }} />
       ) : (
         <>
           <div className="grid grid-cols-3 gap-3">

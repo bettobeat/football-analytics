@@ -12,6 +12,7 @@ import ConsoleGate from './components/ConsoleGate'
 import SportSwitch from './components/SportSwitch'
 import { useBbConfig } from './lib/bb'
 import { useNflConfig, useNflLeague } from './lib/nfl'
+import { sportNav, PAST_OF } from './lib/sportNav'
 import { sportOfPath } from './lib/sports'
 import { socket } from './lib/socket'
 import { useTheme } from './lib/theme'
@@ -62,6 +63,8 @@ const Verify = page(() => import('./pages/Verify'))
 const Forgot = page(() => import('./pages/Forgot'))
 const Favorites = page(() => import('./pages/Favorites'))
 const MyPicks = page(() => import('./pages/MyPicks'))
+const NflAccuracy = page(() => import('./pages/nfl/NflAccuracy'))
+const NflPast = page(() => import('./pages/nfl/NflPast'))
 const Accessibility = page(() => import('./pages/Accessibility'))
 const Contact = page(() => import('./pages/Contact'))
 const Join = page(() => import('./pages/Join'))
@@ -255,7 +258,7 @@ function UserMenu() {
         {tt("Sign in")}</Link>
     )
   const badge = access === 'admin' ? 'Founder' : access === 'pro' ? 'Pro' : access === 'premium' ? 'Premium' : 'Free'
-  const bbPast = sportOfPath(loc.pathname).id === 'basketball'
+  const pastTo = PAST_OF[sportOfPath(loc.pathname).id] // fix144: each sport's past seasons
   const roleName = access === 'admin' ? 'Founder' : staff ? staff.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : ''
   const item = 'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-ink hover:bg-surface2'
   const icon = (d: string) => (
@@ -293,7 +296,7 @@ function UserMenu() {
                 <Link to="/admin" role="menuitem" className={item}>{icon('M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8')}Users</Link>
               )}
               {(access === 'admin' || can('model')) && (
-                <Link to={bbPast ? '/basketball/past' : '/past'} role="menuitem" className={item}>{icon('M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2')}Past seasons</Link>
+                <Link to={pastTo} role="menuitem" className={item}>{icon('M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2')}Past seasons</Link>
               )}
             </>
           )}
@@ -347,19 +350,6 @@ function VerifyBanner() {
 }
 
 /** Basketball menu (Oct 2026): Home · Games · Favorites · Accuracy · Past seasons (admin). */
-function BbNavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
-  const { access } = useAuth()
-  return (
-    <>
-      <NavLink to="/basketball" end className={cls}>{tt("Home")}</NavLink>
-      <NavLink to="/basketball/games" className={cls}>{tt("Games")}</NavLink>
-      <NavLink to="/basketball/predictions/today" className={cls}>{tt("Today")}</NavLink>
-      <NavLink to="/basketball/favorites" className={cls}>{tt("Favorites")}</NavLink>
-      {access === 'admin' && <NavLink to="/basketball/accuracy" className={cls}>{tt("Accuracy")}</NavLink>}
-      {access !== 'pro' && access !== 'admin' && <NavLink to="/premium" className={cls}>{access === 'premium' ? tt("Go Pro") : tt("Premium")}</NavLink>}
-    </>
-  )
-}
 
 /** The open sport's basketball section is live for this visitor (admins before launch, everyone after). */
 function useBbOpen() {
@@ -402,19 +392,6 @@ function FooterSocial() {
   )
 }
 
-/** NFL menu (fix137): Home · Games · Today · Favorites (no predictions yet, so no Premium link here). */
-function NflNavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
-  const { base } = useNflLeague() // fix142: the menu follows the league on screen (NFL | College)
-  return (
-    <>
-      <NavLink to={base} end className={cls}>{tt("Home")}</NavLink>
-      <NavLink to={`${base}/games`} className={cls}>{tt("Games")}</NavLink>
-      <NavLink to={`${base}/today`} className={cls}>{tt("Today")}</NavLink>
-      <NavLink to={`${base}/league`} className={cls}>{tt("Standings")}</NavLink>
-      <NavLink to="/american-football/favorites" className={cls}>{tt("Favorites")}</NavLink>
-    </>
-  )
-}
 
 /** The NFL section is live for this visitor (admins before launch, everyone once NFL_PUBLIC=1). */
 function useNflOpen() {
@@ -438,30 +415,16 @@ function DataLine() {
   return <p>{bb ? tt("Data: API-Basketball, balldontlie (NBA players and injuries).") : tt("Data: Football-Data.org, API-Football, football-data.co.uk, Transfermarkt (squad values).")}</p>
 }
 
+/** The menu of the sport on screen (fix144: one config for every sport, lib/sportNav.ts), then Premium / Go Pro. */
 function NavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
   const { access } = useAuth()
   const bb = useBbOpen()
   const nfl = useNflOpen()
-  if (nfl) return <NflNavLinks cls={cls} />
-  if (bb) return <BbNavLinks cls={cls} />
+  const { base } = useNflLeague()
+  const items = sportNav(nfl ? 'american-football' : bb ? 'basketball' : 'football', base).filter(i => !i.admin || access === 'admin')
   return (
     <>
-      <NavLink to="/" end className={cls}>
-        {tt("Home")}</NavLink>
-      <NavLink to="/matches" className={cls}>
-        {tt("Matches")}</NavLink>
-      <NavLink to="/predictions/today" className={cls}>
-        {tt("Today")}</NavLink>
-      <NavLink to="/favorites" className={cls}>
-        {tt("Favorites")}</NavLink>
-      <NavLink to="/draw-alerts" className={cls}>
-        {tt("Draw picks")}</NavLink>
-      <NavLink to="/upset-watch" className={cls}>
-        {tt("Upset watch")}</NavLink>
-      {access === 'admin' && (
-        <NavLink to="/accuracy" className={cls}>
-          {tt("Accuracy")}</NavLink>
-      )}
+      {items.map(i => <NavLink key={i.key} to={i.to} end={i.end} className={cls}>{tt(i.label)}</NavLink>)}
       {access !== 'pro' && access !== 'admin' && (
         <NavLink to="/premium" className={cls}>
           {access === 'premium' ? tt("Go Pro") : tt("Premium")}
@@ -483,7 +446,8 @@ const TAB_ICONS: Record<string, string> = {
   Games: 'M4 5h16v14H4zM4 10h16M9 5v14',
   Today: 'M7 3v3M17 3v3M4 8h16M5 5h14v15H5zM9 13h2v2H9z',
   Football: 'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18M12 7l3.5 2.5-1.3 4h-4.4l-1.3-4z',
-  Premium: 'M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z'
+  Premium: 'M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z',
+  Upsets: 'M12 3l9 16H3zM12 10v4M12 17h.01'
 }
 
 /** Phone: app-style tab bar at the bottom, with a search sheet. */
@@ -493,6 +457,8 @@ function BottomTabs() {
   const nflBaseNow = useNflLeague().base
   const { access } = useAuth()
   const admin = access === 'admin' // the Accuracy tab is admin-only for now (fix118)
+  // fix144: the phone tabs of the sport on screen come from the same config as the desktop menu
+  const tabs = sportNav(nfl ? 'american-football' : bb ? 'basketball' : 'football', nflBaseNow).filter(i => i.tab && (!i.admin || admin))
   const [searching, setSearching] = useState(false)
   const loc = useLocation()
   useEffect(() => setSearching(false), [loc.pathname])
@@ -520,32 +486,8 @@ function BottomTabs() {
           </div>
         </div>
       )}
-      <nav aria-label={tt("Tabs")} className={`xl:hidden fixed left-3 right-3 bottom-3 z-40 grid ${admin ? 'grid-cols-6' : 'grid-cols-5'} gap-1 p-1.5 rounded-3xl bg-surface/85 backdrop-blur-xl border border-line/80 shadow-lift sm:max-w-lg sm:mx-auto`}>
-        {nfl ? (
-          <>
-            {tab(nflBaseNow, 'Home', true)}
-            {tab(`${nflBaseNow}/games`, 'Games')}
-            {tab(`${nflBaseNow}/today`, 'Today')}
-            {tab('/american-football/favorites', 'Favorites')}
-            {admin && tab('/', 'Football', true)}
-          </>
-        ) : bb ? (
-          <>
-            {tab('/basketball', 'Home', true)}
-            {tab('/basketball/games', 'Games')}
-            {tab('/basketball/favorites', 'Favorites')}
-            {admin && tab('/basketball/accuracy', 'Accuracy')}
-            {tab('/', 'Football', true)}
-          </>
-        ) : (
-          <>
-            {tab('/', 'Home', true)}
-            {tab('/matches', 'Matches')}
-            {tab('/favorites', 'Favorites')}
-            {tab('/draw-alerts', 'Draws')}
-            {admin && tab('/accuracy', 'Accuracy')}
-          </>
-        )}
+      <nav aria-label={tt("Tabs")} className={`xl:hidden fixed left-3 right-3 bottom-3 z-40 grid ${tabs.length >= 5 ? 'grid-cols-6' : 'grid-cols-5'} gap-1 p-1.5 rounded-3xl bg-surface/85 backdrop-blur-xl border border-line/80 shadow-lift sm:max-w-lg sm:mx-auto`}>
+        {tabs.map(i => <span key={i.key} className="contents">{tab(i.to, i.tab!, !!i.end)}</span>)}
         <button onClick={() => setSearching(true)} className="h-14 flex flex-col items-center justify-center gap-1 rounded-2xl text-muted" aria-label={tt("Search")}>
           <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d={TAB_ICONS.Search} />
@@ -686,7 +628,7 @@ function Shell() {
             <Route
               path="/upset-watch"
               element={
-                <PremiumGate title="Upset watch" pro>
+                <PremiumGate title="Upset watch" pro text={tt("Upset watch: the coming games where our model gives the underdog the best chance. Part of Pro, together with unlimited predictions.")}>
                   <UpsetWatch />
                 </PremiumGate>
               }
@@ -775,6 +717,11 @@ function NflRoutes() {
       <Route path="team/:id" element={<NflTeam />} />
       <Route path="player/:id" element={<NflPlayer />} />
       <Route path="favorites" element={<NflFavorites />} />
+      {/* fix144: the same pages as football */}
+      <Route path="my-picks" element={<MyPicks initial="nfl" />} />
+      <Route path="upset-watch" element={<PremiumGate title="Upset watch" pro text={tt("Upset watch: the coming games where our model gives the underdog the best chance. Part of Pro, together with unlimited predictions.")}><UpsetWatch sport="american-football" /></PremiumGate>} />
+      <Route path="accuracy" element={<RecordGate home="/american-football"><NflAccuracy /></RecordGate>} />
+      <Route path="past" element={<ModelOnly><NflPast /></ModelOnly>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   )
@@ -796,6 +743,9 @@ function BbRoutes() {
       <Route path="team/:id" element={<BbTeam />} />
       <Route path="player/:id" element={<BbPlayer />} />
       <Route path="favorites" element={<BbFavorites />} />
+      {/* fix144: the same pages as football */}
+      <Route path="my-picks" element={<MyPicks initial="bb" />} />
+      <Route path="upset-watch" element={<PremiumGate title="Upset watch" pro text={tt("Upset watch: the coming games where our model gives the underdog the best chance. Part of Pro, together with unlimited predictions.")}><UpsetWatch sport="basketball" /></PremiumGate>} />
       <Route path="accuracy" element={<RecordGate home="/basketball"><BbAccuracy /></RecordGate>} />
       <Route path="past" element={<ModelOnly><BbPast /></ModelOnly>} />
       <Route path="*" element={<NotFound />} />

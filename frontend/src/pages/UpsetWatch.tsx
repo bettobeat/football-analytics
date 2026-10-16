@@ -9,7 +9,12 @@ import { OurPickBadge } from '../components/DcPick'
 /*
  * Upset watch (Pro): games of the coming 7 days where our model gives the underdog 30% or more (and the favourite
  * leads by 10+ points), and how those calls have gone. Model only, no bookmakers, no betting claims.
+ * fix144: the same page for basketball and American football (/basketball/upset-watch, /american-football/upset-watch):
+ * winner sports have no draw, so the draw bar and the draw numbers are left out.
  */
+export type UpsetSport = 'football' | 'basketball' | 'american-football'
+const API_OF: Record<UpsetSport, string> = { football: '/upset-watch', basketball: '/basketball/upset-watch', 'american-football': '/nfl/upset-watch' }
+const GAME_OF: Record<UpsetSport, (id: number) => string> = { football: id => `/match/${id}`, basketball: id => `/basketball/game/${id}`, 'american-football': id => `/american-football/game/${id}` }
 
 interface Watch {
   matchId: number; league: string; date: string; home: string; away: string
@@ -38,16 +43,17 @@ function Crest({ src, name, size = 'w-10 h-10' }: { src?: string | null; name: s
   )
 }
 
-function WatchCard({ w }: { w: Watch }) {
+function WatchCard({ w, sport }: { w: Watch; sport: UpsetSport }) {
+  const draws = sport === 'football'
   const und = w.underdog === 'H' ? w.home : w.away
   const fav = w.favourite === 'H' ? w.home : w.away
   const rows = [
     { k: 'H', label: w.home, v: w.home_p, bar: 'bg-home' },
     { k: 'D', label: tt("Draw"), v: w.draw_p, bar: 'bg-draw' },
     { k: 'A', label: w.away, v: w.away_p, bar: 'bg-away' }
-  ]
+  ].filter(r => draws || r.k !== 'D')
   return (
-    <Link to={`/match/${w.matchId}`} className="card card-hover p-4 sm:p-5 flex flex-col gap-4">
+    <Link to={GAME_OF[sport](w.matchId)} className="card card-hover p-4 sm:p-5 flex flex-col gap-4 min-w-0">
       <div className="flex items-center justify-between gap-3 text-xs">
         <span className="inline-flex items-center gap-2 min-w-0">
           <span className="px-2 py-0.5 rounded-full bg-loss/15 text-loss font-extrabold uppercase tracking-wider text-[10px] whitespace-nowrap">{tt("Upset watch")}</span>
@@ -83,14 +89,16 @@ function WatchCard({ w }: { w: Watch }) {
   )
 }
 
-export default function UpsetWatch() {
+export default function UpsetWatch({ sport = 'football' }: { sport?: UpsetSport }) {
   const [data, setData] = useState<Report | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const draws = sport === 'football'
 
   useEffect(() => {
     document.title = tt("Upset watch · SportLikely")
-    axios.get(`${API_URL}/upset-watch`).then(r => setData(r.data.data)).catch(e => setError(errorText(e)))
-  }, [])
+    setData(null); setError(null)
+    axios.get(`${API_URL}${API_OF[sport]}`).then(r => setData(r.data.data)).catch(e => setError(errorText(e)))
+  }, [sport])
 
   if (error) return <div className="max-w-5xl mx-auto px-4 py-10 text-loss">{error}</div>
   const rec = data?.record
@@ -105,14 +113,14 @@ export default function UpsetWatch() {
       </div>
 
       {!data ? (
-        <div className="grid gap-4 md:grid-cols-2">{[0, 1].map(i => <div key={i} className="card h-[230px] animate-pulse" />)}</div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">{[0, 1].map(i => <div key={i} className="card h-[230px] animate-pulse" />)}</div>
       ) : data.upcoming.length === 0 ? (
         <div className="card p-8 text-center space-y-2">
           <div className="font-display text-lg font-bold text-ink">{tt("No favourite at risk this week yet")}</div>
           <p className="text-sm text-muted max-w-md mx-auto">{tt("Games appear here once they are scheduled and our model has rated them.")}</p>
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">{data.upcoming.map(w => <WatchCard key={w.matchId} w={w} />)}</div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">{data.upcoming.map(w => <WatchCard key={w.matchId} w={w} sport={sport} />)}</div>
       )}
 
       {rec && rec.n > 0 && (
@@ -123,10 +131,10 @@ export default function UpsetWatch() {
           </div>
           {rec.n < 30 && (
             <p className="text-xs text-muted rounded-xl border border-line bg-surface2/40 px-3 py-2">
-              {tt("Only {0} games so far, too few to judge. On {1} games from past seasons, we said {2}% and the underdog won {3}%.", { 0: rec.n, 1: 635, 2: 30.9, 3: 28.7 })}
+              {draws ? tt("Only {0} games so far, too few to judge. On {1} games from past seasons, we said {2}% and the underdog won {3}%.", { 0: rec.n, 1: 635, 2: 30.9, 3: 28.7 }) : tt("Only {0} games so far, too few to judge.", { 0: rec.n })}
             </p>
           )}
-          <div className="grid grid-cols-3 gap-3">
+          <div className={`grid ${draws ? 'grid-cols-3' : 'grid-cols-2'} gap-3`}>
             <div className="rounded-xl bg-surface2/60 p-3 text-center">
               <div className="num text-2xl font-extrabold text-ink">{rec.n}</div>
               <div className="text-[11px] text-muted">{tt("games flagged")}</div>
@@ -135,10 +143,12 @@ export default function UpsetWatch() {
               <div className="num text-2xl font-extrabold text-loss">{rec.upsetRate}%</div>
               <div className="text-[11px] text-muted">{tt("underdog won (we said {0}%)", { 0: rec.said ?? '–' })}</div>
             </div>
-            <div className="rounded-xl bg-surface2/60 p-3 text-center">
-              <div className="num text-2xl font-extrabold text-draw">{rec.drawRate}%</div>
-              <div className="text-[11px] text-muted">{tt("draws (we said {0}%)", { 0: rec.saidDraw ?? '–' })}</div>
-            </div>
+            {draws && (
+              <div className="rounded-xl bg-surface2/60 p-3 text-center">
+                <div className="num text-2xl font-extrabold text-draw">{rec.drawRate}%</div>
+                <div className="text-[11px] text-muted">{tt("draws (we said {0}%)", { 0: rec.saidDraw ?? '–' })}</div>
+              </div>
+            )}
           </div>
           <ul className="space-y-2">
             {rec.bands.filter(b => b.n > 0).map(b => (
@@ -157,7 +167,7 @@ export default function UpsetWatch() {
             <ul className="divide-y divide-line/50 -mx-4 sm:-mx-5 border-t border-line/50">
               {rec.recent.map(r => (
                 <li key={r.matchId}>
-                  <Link to={`/match/${r.matchId}`} className="flex items-center gap-3 px-4 sm:px-5 py-2 hover:bg-surface2/50 text-sm">
+                  <Link to={GAME_OF[sport](r.matchId)} className="flex items-center gap-3 px-4 sm:px-5 py-2 hover:bg-surface2/50 text-sm">
                     <span className="w-14 text-[11px] text-faint shrink-0">{new Date(r.date).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short' })}</span>
                     <span className="flex-1 min-w-0 truncate">
                       <span className={r.underdog === 'H' ? 'font-bold text-ink' : 'text-muted'}>{r.home}</span>
@@ -177,7 +187,7 @@ export default function UpsetWatch() {
       )}
 
       <p className="text-xs text-faint max-w-2xl leading-relaxed">
-        {tt("An upset watch is not a tip: at 30–40% the favourite still wins or draws most of the time. It tells you which favourites are less safe than they look. Probabilities, not promises.")}
+        {draws ? tt("An upset watch is not a tip: at 30–40% the favourite still wins or draws most of the time. It tells you which favourites are less safe than they look. Probabilities, not promises.") : tt("An upset watch is not a tip: at 30–40% the favourite still wins most of the time. It tells you which favourites are less safe than they look. Probabilities, not promises.")}
       </p>
     </div>
   )

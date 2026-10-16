@@ -1817,5 +1817,19 @@
  "College football standings": "Classifiche del football universitario",
  "{0} season · by conference, FBS first": "Stagione {0} · per conference, prima la FBS",
  "Conference games": "Partite di conference",
- "Conf": "Conf"
+ "Conf": "Conf",
+ "Upset watch: the coming games where our model gives the underdog the best chance. Part of Pro, together with unlimited predictions.": "Radar delle sorprese: le prossime partite in cui il nostro modello dà più chance alla sfavorita. Parte di Pro, insieme a pronostici illimitati.",
+ "Only {0} games so far, too few to judge.": "Solo {0} partite finora, troppo poche per giudicare.",
+ "An upset watch is not a tip: at 30–40% the favourite still wins most of the time. It tells you which favourites are less safe than they look. Probabilities, not promises.": "Il radar delle sorprese non è un consiglio: al 30–40% la favorita vince comunque quasi sempre. Ti dice quali favorite sono meno sicure di quanto sembrano. Probabilità, non promesse.",
+ "Win chances, point spread, total points and the predicted score, with the reasons behind the pick.": "Probabilità di vittoria, spread, punti totali e il punteggio previsto, con i motivi del pronostico.",
+ "By confidence": "Per sicurezza",
+ "American football accuracy": "Precisione football americano",
+ "Every pick is saved before kick-off and checked after the final whistle. Nothing is removed. Strong picks: 70%+ in the NFL, 75%+ in college football.": "Ogni pronostico viene salvato prima del calcio d'inizio e verificato dopo il fischio finale. Non si toglie niente. Pronostici forti: 70%+ nella NFL, 75%+ nel football universitario.",
+ "Strong picks right": "Pronostici forti giusti",
+ "No games checked yet: every pick saved before kick-off counts as soon as the game is over.": "Nessuna partita verificata finora: ogni pronostico salvato prima del calcio d'inizio conta appena finisce la partita.",
+ "picks saved before kick-off": "pronostici salvati prima del calcio d'inizio",
+ "Bold = our pick. Each game is checked automatically after the final whistle.": "In grassetto = il nostro pronostico. Ogni partita viene verificata automaticamente dopo il fischio finale.",
+ "Upsets": "Sorprese",
+ "{0} is analysing this game": "{0} sta analizzando questa partita",
+ "Make your own guess first, then see what {0} thinks — the percentages, why this pick, and the full breakdown.": "Fai prima il tuo pronostico, poi guarda cosa pensa {0}: le percentuali, il perché della scelta e l'analisi completa."
 }

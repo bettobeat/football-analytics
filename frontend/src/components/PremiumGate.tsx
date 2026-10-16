@@ -4,7 +4,8 @@ import { useAuth } from '../lib/auth'
 import { t } from '../lib/i18n'
 
 /** Shows children to premium users and admins; everyone else gets a short explanation and a way in. */
-export default function PremiumGate({ title, children, pro = false }: { title: string; children: ReactNode; pro?: boolean }) {
+/** `text` (fix144): what the page holds; defaults to the draw-picks / record text. */
+export default function PremiumGate({ title, children, pro = false, text }: { title: string; children: ReactNode; pro?: boolean; text?: string }) {
   const { full, paid, user, loading } = useAuth()
   if (loading) return <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 text-sm text-faint">{t("Loading…")}</div>
   if (pro ? full : paid) return <>{children}</>
@@ -19,7 +20,7 @@ export default function PremiumGate({ title, children, pro = false }: { title: s
         </div>
         <h1 className="font-display text-2xl font-extrabold text-ink">{t("{0} is a {1} page", { 0: title, 1: pro ? t("Pro") : t("Premium") })}</h1>
         <p className="text-sm text-muted mt-2">
-          {pro ? t("Draw picks: the 2 games of the week most likely to end in a draw, by our model. They are part of Pro, together with unlimited predictions.") : t("Premium shows how every model has performed on real matches: hit rate, how sure we were, strong picks and every result.")}
+          {text ? text : pro ? t("Draw picks: the 2 games of the week most likely to end in a draw, by our model. They are part of Pro, together with unlimited predictions.") : t("Premium shows how every model has performed on real matches: hit rate, how sure we were, strong picks and every result.")}
         </p>
         <div className="mt-6 flex justify-center gap-2">
           <Link to="/premium" className="px-4 py-2 rounded-xl bg-accent text-bg text-sm font-semibold">

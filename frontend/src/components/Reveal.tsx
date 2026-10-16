@@ -29,7 +29,8 @@ const STEPS = [tt("Loading both squads"), tt("Reading form and strength"), tt("C
  * Big cover for the match page. Tap Reveal → a short "v3 is analysing" sequence (steps tick by, a bar fills,
  * a scan line sweeps), then the prediction appears and its numbers roll in to their values.
  */
-export function RevealCover({ onReveal, autoStart = false }: { onReveal: () => void; autoStart?: boolean }) {
+/** `model` (fix144): the sport's model name (basketball bb-v3, NFL nfl-v1 / ncaa-v1); football keeps "v3". */
+export function RevealCover({ onReveal, autoStart = false, model }: { onReveal: () => void; autoStart?: boolean; model?: string }) {
   // autoStart: the analysing sequence plays straight away (right after a match is unlocked)
   const [phase, setPhase] = useState<'idle' | 'loading'>(autoStart ? 'loading' : 'idle')
   const [step, setStep] = useState(0)
@@ -49,7 +50,7 @@ export function RevealCover({ onReveal, autoStart = false }: { onReveal: () => v
         <div aria-hidden className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-accent/15 to-transparent animate-[scan_1.1s_linear_infinite]" />
         <div className="relative flex flex-col items-center gap-4 text-center">
           <div className="flex items-center gap-2.5 text-accent font-display font-bold">
-            <Spinner size={18} /> {tt("v3 is analysing this match")}</div>
+            <Spinner size={18} /> {model ? tt("{0} is analysing this game", { 0: model }) : tt("v3 is analysing this match")}</div>
           <div className="w-full max-w-md h-2 rounded-full bg-surface2 overflow-hidden">
             <div className="h-full rounded-full bg-accent transition-[width] ease-out" style={{ width: fill ? '100%' : '4%', transitionDuration: '1700ms' }} />
           </div>
@@ -70,7 +71,7 @@ export function RevealCover({ onReveal, autoStart = false }: { onReveal: () => v
   return (
     <div className="rounded-2xl border border-dashed border-accent/40 bg-accent/[0.06] p-6 sm:p-8 text-center flex flex-col items-center gap-3">
       <div className="font-display text-lg font-bold text-ink">{tt("What's your call?")}</div>
-      <p className="text-sm text-muted max-w-sm">{tt("Make your own guess first, then see what v3 thinks — the percentages, why this pick, and the full breakdown.")}</p>
+      <p className="text-sm text-muted max-w-sm">{model ? tt("Make your own guess first, then see what {0} thinks — the percentages, why this pick, and the full breakdown.", { 0: model }) : tt("Make your own guess first, then see what v3 thinks — the percentages, why this pick, and the full breakdown.")}</p>
       <button type="button" onClick={stop(() => setPhase('loading'))} className="mt-1 h-12 px-6 inline-flex items-center gap-2 rounded-2xl bg-accent text-bg font-extrabold hover:brightness-105 active:scale-[0.98] transition">
         <Eye /> {tt("Reveal prediction")}</button>
       <button type="button" onClick={stop(() => setGuessFirst(false))} className="text-xs text-faint hover:text-ink underline underline-offset-4">

@@ -32,6 +32,8 @@ is model work, the matching note, in the same commit.
 - **List rows:** List rows in every sport use the fix127 block (commit 9b3f610): result cells with % (our pick highlighted) + 'Our pick · {words} · %' underneath. Phones too.
 - **Home page:** every sport uses `components/SportHome` with the football layout; new sports only add an adapter
   (`components/SportHome/<sport>.ts`: data + labels, no layout code).
+- **Feature parity:** every sport has the same pages, features and look as football; a new sport adds data, a model and an
+  adapter only. Anything added to one sport is added to all. Menus come from one per-sport config (`frontend/src/lib/sportNav.ts`).
 - **Live games:** Live games appear once — in the Live strip — and never again in the day lists, in every sport; live cards look the same in every sport (football is the reference).
 
 ## How to work here

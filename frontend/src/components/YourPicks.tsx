@@ -43,7 +43,7 @@ export function ResultBadge({ r }: { r: Result }) {
   return <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-surface2 text-muted">{tt('Waiting for the result')}</span>
 }
 
-export default function YourPicks({ sport, gameId, home, away }: { sport: 'fb' | 'bb'; gameId: number; home: string; away: string }) {
+export default function YourPicks({ sport, gameId, home, away }: { sport: 'fb' | 'bb' | 'nfl'; gameId: number; home: string; away: string }) {
   const loc = useLocation()
   const [d, setD] = useState<PickState | null>(null)
   const [busy, setBusy] = useState<string | null>(null)

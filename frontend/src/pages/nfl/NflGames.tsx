@@ -6,7 +6,8 @@ import { t } from '../../lib/i18n'
 import { useAuth } from '../../lib/auth'
 import { weekLabel, useNflLeague, type NflGame, type NflWeek } from '../../lib/nfl'
 import { Skeleton } from '../bb/parts'
-import { NflGamesByDay, WeekPicker, LeagueSwitch } from './parts'
+import { NflGamesByDay, WeekPicker, LeagueSwitch, NflLiveCard } from './parts'
+import { SectionTitle } from '../bb/parts'
 
 /**
  * NFL games (fix137): by week (1–18 + Playoffs) with a week picker, grouped by day. `today` = the visitor's own
@@ -65,7 +66,14 @@ export default function NflGames({ today = false }: { today?: boolean }) {
         )}
       </header>
       {!today && weeks.length > 0 && <WeekPicker weeks={weeks} value={week} onPick={pick} />}
-      {!games ? <Skeleton rows={8} /> : <NflGamesByDay games={games} empty={today ? (college ? t('No college football games today.') : t('No NFL games today.')) : t('No games this week.')} />}
+      {/* CLAUDE.md: live games appear once — in the Live strip — never again in the day lists (fix144) */}
+      {games && games.some(g => g.state === 'live') && (
+        <section>
+          <SectionTitle label={t('Live')} count={games.filter(g => g.state === 'live').length} />
+          <div className="flex gap-3 overflow-x-auto snap-x pb-1 -mx-4 px-4 sm:mx-0 sm:px-0">{games.filter(g => g.state === 'live').map(g => <NflLiveCard key={g.id} g={g} />)}</div>
+        </section>
+      )}
+      {!games ? <Skeleton rows={8} /> : games.length > 0 && games.every(g => g.state === 'live') ? null : <NflGamesByDay games={games.filter(g => g.state !== 'live')} empty={today ? (college ? t('No college football games today.') : t('No NFL games today.')) : t('No games this week.')} />}
     </div>
   )
 }

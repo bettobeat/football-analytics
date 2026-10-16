@@ -491,3 +491,21 @@ export function nflLeaders(season: number, top = 5, league: LeagueId = 1) {
 export function nflTeamsList(league?: LeagueId): (NflSide & { league: LeagueId })[] {
   return (db.prepare(`SELECT team_id AS id, name, logo, league FROM nfl_teams ${league ? 'WHERE league = ' + Number(league) : ''} ORDER BY name`).all() as any[]);
 }
+
+/** Search (fix144): teams, players and coming games of the NFL and college football (the basketball search's shape). */
+export function nflSearch(q: string) {
+  const term = q.replace(/[%_]/g, '').trim();
+  if (term.length < 2) return { teams: [], players: [], leagues: [], games: [] };
+  const like = `%${term}%`, start = `${term}%`;
+  const lname = (l: number) => (l === 2 ? 'College football' : 'NFL');
+  const teams = (db.prepare(`SELECT team_id AS id, name, logo, league FROM nfl_teams WHERE name LIKE ? ORDER BY (name LIKE ?) DESC, league, name LIMIT 8`).all(like, start) as any[])
+    .map(t => ({ id: t.id, name: t.name, logo: t.logo || null, league: lname(t.league) }));
+  const players = (db.prepare(`SELECT p.player_id AS id, p.name, p.position, t.name AS team, t.logo AS teamLogo, t.league FROM nfl_players p LEFT JOIN nfl_teams t ON t.team_id = p.team_id
+    WHERE p.name LIKE ? ORDER BY (p.name LIKE ?) DESC, p.name LIMIT 6`).all(like, start) as any[])
+    .map(p => ({ id: p.id, name: p.name, team: p.team || '', teamLogo: p.teamLogo || null, league: lname(p.league || 1), position: p.position || null }));
+  const games = (db.prepare(`SELECT game_id AS id, kickoff, status, league, home_name AS home, away_name AS away FROM nfl_games
+    WHERE (home_name LIKE ? OR away_name LIKE ?) AND kickoff >= ? AND kickoff < ? AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff LIMIT 6`)
+    .all(like, like, new Date(Date.now() - 5 * 3600000).toISOString(), new Date(Date.now() + 14 * 86400000).toISOString()) as any[])
+    .map(g => ({ id: g.id, kickoff: g.kickoff, status: g.status, league: lname(g.league), home: g.home, away: g.away }));
+  return { teams, players, leagues: [], games };
+}

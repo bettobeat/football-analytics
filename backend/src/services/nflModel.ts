@@ -640,6 +640,47 @@ export function nflRecord(days = 30, league: LeagueId = 1) {
   return { days, bands: winnerBands(rows.map(r => ({ p: Math.max(r.p_home, 1 - r.p_home), hit: (r.p_home >= 0.5) === (r.hs > r.as_) }))) };
 }
 
+/**
+ * NFL accuracy page (fix144, admins): every pick saved before kick-off and checked after the game, both leagues, in the
+ * basketball record's shape — total, per league (NFL / NCAA), confidence bands, the latest checked picks and the ones
+ * waiting. Strong = the league's own line (NFL 70%, college 75%). Ties (no winner) left out.
+ */
+export function nflAccuracy(days = 3650) {
+  const rows = db.prepare(`SELECT p.game_id, p.kickoff, p.p_home, g.league, g.home_name, g.away_name, g.home_logo, g.away_logo, g.home_pts AS hs, g.away_pts AS as_
+    FROM nfl_predictions p JOIN nfl_games g ON g.game_id = p.game_id
+    WHERE p.kickoff >= ? AND p.made_at <= p.kickoff AND g.status IN ('FT','AOT') AND g.home_pts IS NOT NULL AND g.home_pts != g.away_pts ORDER BY p.kickoff DESC`)
+    .all(new Date(Date.now() - days * 86400000).toISOString()) as any[];
+  const pct = (a: number, b: number) => (b ? Math.round((a / b) * 1000) / 10 : null);
+  const code = (l: number) => (l === 2 ? 'NCAA' : 'NFL');
+  const hit = (r: any) => (r.p_home >= 0.5) === (r.hs > r.as_);
+  const tot = { n: 0, hits: 0, strongN: 0, strongHits: 0 };
+  const by = new Map<string, typeof tot>();
+  for (const r of rows) {
+    const strong = Math.max(r.p_home, 1 - r.p_home) >= STRONG_OF[r.league === 2 ? 2 : 1];
+    const lg = by.get(code(r.league)) || (by.set(code(r.league), { n: 0, hits: 0, strongN: 0, strongHits: 0 }), by.get(code(r.league))!);
+    for (const b of [tot, lg]) { b.n++; if (hit(r)) b.hits++; if (strong) { b.strongN++; if (hit(r)) b.strongHits++; } }
+  }
+  const pending = (db.prepare(`SELECT p.game_id, p.kickoff, p.p_home, g.league, g.home_name, g.away_name, g.home_logo, g.away_logo, g.status, g.home_pts AS hs, g.away_pts AS as_
+    FROM nfl_predictions p JOIN nfl_games g ON g.game_id = p.game_id
+    WHERE (g.status IS NULL OR g.status NOT IN ('FT','AOT','CANC','PST')) AND p.kickoff BETWEEN ? AND ? ORDER BY p.kickoff LIMIT 60`)
+    .all(new Date(Date.now() - 5 * 3600000).toISOString(), new Date(Date.now() + 36 * 3600000).toISOString()) as any[]).map(r => ({
+      gameId: r.game_id, code: code(r.league), kickoff: r.kickoff, home: r.home_name, away: r.away_name, homeLogo: r.home_logo, awayLogo: r.away_logo,
+      status: r.status, live: !!r.status && r.status !== 'NS' && Date.parse(r.kickoff) <= Date.now(), score: r.hs != null ? [r.hs, r.as_] : null,
+      pick: r.p_home >= 0.5 ? 'H' : 'A', preseason: false
+    }));
+  return {
+    pending,
+    since: rows.length ? rows[rows.length - 1].kickoff : null,
+    total: { ...tot, hitRate: pct(tot.hits, tot.n), strongHitRate: pct(tot.strongHits, tot.strongN) },
+    bands: winnerBands(rows.map(r => ({ p: Math.max(r.p_home, 1 - r.p_home), hit: hit(r) }))),
+    leagues: [...by.entries()].map(([c, b]) => ({ code: c, ...b, hitRate: pct(b.hits, b.n), strongHitRate: pct(b.strongHits, b.strongN) })),
+    recent: rows.slice(0, 50).map(r => ({
+      gameId: r.game_id, code: code(r.league), kickoff: r.kickoff, home: r.home_name, away: r.away_name, homeLogo: r.home_logo, awayLogo: r.away_logo,
+      score: [r.hs, r.as_], pick: r.p_home >= 0.5 ? 'H' : 'A', pHome: r.p_home, hit: hit(r)
+    }))
+  };
+}
+
 export function nflTeamRecord(teamId: number, season: number) {
   const rows = db.prepare(`SELECT p.p_home, g.home_pts AS hs, g.away_pts AS as_ FROM nfl_predictions p JOIN nfl_games g ON g.game_id = p.game_id
     WHERE p.season = ? AND (g.home_id = ? OR g.away_id = ?) AND p.made_at <= p.kickoff AND g.status IN ('FT','AOT') AND g.home_pts IS NOT NULL AND g.home_pts != g.away_pts`).all(season, teamId, teamId) as any[];

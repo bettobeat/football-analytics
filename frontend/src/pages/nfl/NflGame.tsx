@@ -9,7 +9,9 @@ import { useReveal, justRevealed } from '../../lib/reveal'
 import { RevealCover } from '../../components/Reveal'
 import CountUp from '../../components/CountUp'
 import StickyBar from '../../components/StickyBar'
-import { Card, Skeleton, TeamLogo, LockedNote } from '../bb/parts'
+import { Card, Skeleton, TeamLogo } from '../bb/parts'
+import UnlockPrompt, { GAME_RELOAD } from '../../components/UnlockPrompt'
+import YourPicks from '../../components/YourPicks'
 import { StatBars, LeagueSwitch } from './parts'
 import { useNews, NewsRows, type NewsItem } from '../../components/NewsList'
 
@@ -38,7 +40,8 @@ export default function NflGame() {
     const load = () => axios.get(`${API_URL}/nfl/game/${id}`).then(r => setD(r.data.data)).catch(e => { if (e?.response?.status === 404) setMissing(true) })
     load()
     const iv = setInterval(() => { if (document.visibilityState === 'visible') load() }, 30 * 1000)
-    return () => clearInterval(iv)
+    window.addEventListener(GAME_RELOAD, load) // fix144: a free pick opened this game
+    return () => { clearInterval(iv); window.removeEventListener(GAME_RELOAD, load) }
   }, [id])
   // the same title search engines get (seo.ts): "Chiefs vs Bills · NFL Week 7 | SportLikely"
   // fix142: college titles use the school names ("Alabama vs Georgia · College football Week 7")
@@ -110,6 +113,7 @@ export default function NflGame() {
         {tab === 'players' && d.players && <Players g={g} data={d.players} />}
         {tab === 'injuries' && d.injuries && <Injuries g={g} data={d.injuries} />}
         {tab === 'prediction' && <PredictionSection g={g} />}
+        {tab === 'prediction' && <YourPicks sport="nfl" gameId={g.id} home={nick(g.home.name, g.league)} away={nick(g.away.name, g.league)} />}
       </div>
     </div>
   )
@@ -194,9 +198,9 @@ function PredictionSection({ g }: { g: Game }) {
         {!p ? (
           <p className="text-sm text-muted">{g.state === 'upcoming' ? t('Our prediction for this game is saved in the week of the game, before kick-off.') : t('No prediction for this game.')}</p>
         ) : p.locked ? (
-          <LockedNote />
+          <UnlockPrompt rid={nflRid(g)} status={nflRstatus(g)} what={t('Win chances, point spread, total points and the predicted score, with the reasons behind the pick.')} />
         ) : hidden ? (
-          <RevealCover onReveal={reveal} />
+          <RevealCover model={p.model || nflModelOf(g.league || 1)} onReveal={reveal} />
         ) : (() => {
           const pick = p.pick!, team = pick === 'H' ? g.home : g.away
           const topV = Math.max(p.pHome || 0, p.pAway || 0)

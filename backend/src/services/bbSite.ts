@@ -91,10 +91,11 @@ function shape(g: Row, full: boolean) {
 const SELECT = `SELECT * FROM bb_games`;
 
 /** Games from `from` to `to` (ISO), optionally one league; newest first for results, soonest first otherwise. */
-export function bbGames(opts: { from: string; to: string; code?: string; results?: boolean; limit?: number }, full: boolean) {
+/** `full`: true / false for every game, or per game (fix144: a free pick spent on one game opens that game). */
+export function bbGames(opts: { from: string; to: string; code?: string; results?: boolean; limit?: number }, full: boolean | ((gameId: number) => boolean)) {
   const rows = db.prepare(`${SELECT} WHERE kickoff BETWEEN ? AND ? ${opts.code ? 'AND code = ?' : ''}
     ORDER BY kickoff ${opts.results ? 'DESC' : 'ASC'} LIMIT ?`).all(...[opts.from, opts.to, ...(opts.code ? [opts.code] : []), opts.limit || 300]) as Row[];
-  return rows.map(r => shape(r, full));
+  return rows.map(r => shape(r, typeof full === 'function' ? full(r.game_id) : full));
 }
 
 /* ---------- game page ---------- */

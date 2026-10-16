@@ -1817,5 +1817,19 @@
  "College football standings": "Classificação do futebol americano universitário",
  "{0} season · by conference, FBS first": "Temporada {0} · por conferência, FBS primeiro",
  "Conference games": "Jogos de conferência",
- "Conf": "Conf"
+ "Conf": "Conf",
+ "Upset watch: the coming games where our model gives the underdog the best chance. Part of Pro, together with unlimited predictions.": "Radar de zebras: os próximos jogos em que nosso modelo dá mais chance ao azarão. Parte do Pro, junto com palpites ilimitados.",
+ "Only {0} games so far, too few to judge.": "Só {0} jogos até agora, poucos demais para avaliar.",
+ "An upset watch is not a tip: at 30–40% the favourite still wins most of the time. It tells you which favourites are less safe than they look. Probabilities, not promises.": "O radar de zebras não é uma dica: com 30–40% o favorito ainda vence na maioria das vezes. Ele mostra quais favoritos são menos seguros do que parecem. Probabilidades, não promessas.",
+ "Win chances, point spread, total points and the predicted score, with the reasons behind the pick.": "Chances de vitória, spread, total de pontos e o placar previsto, com os motivos do palpite.",
+ "By confidence": "Por confiança",
+ "American football accuracy": "Acerto no futebol americano",
+ "Every pick is saved before kick-off and checked after the final whistle. Nothing is removed. Strong picks: 70%+ in the NFL, 75%+ in college football.": "Cada palpite é salvo antes do início e conferido após o apito final. Nada é removido. Palpites fortes: 70%+ na NFL, 75%+ no futebol americano universitário.",
+ "Strong picks right": "Palpites fortes certos",
+ "No games checked yet: every pick saved before kick-off counts as soon as the game is over.": "Nenhum jogo conferido ainda: cada palpite salvo antes do início conta assim que o jogo termina.",
+ "picks saved before kick-off": "palpites salvos antes do início",
+ "Bold = our pick. Each game is checked automatically after the final whistle.": "Em negrito = nosso palpite. Cada jogo é conferido automaticamente após o apito final.",
+ "Upsets": "Zebras",
+ "{0} is analysing this game": "{0} está analisando este jogo",
+ "Make your own guess first, then see what {0} thinks — the percentages, why this pick, and the full breakdown.": "Faça primeiro o seu palpite e depois veja o que {0} acha — as porcentagens, o porquê da escolha e a análise completa."
 }

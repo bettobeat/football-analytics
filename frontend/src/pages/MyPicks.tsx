@@ -6,27 +6,35 @@ import { useAuth } from '../lib/auth'
 import { t as tt, LOCALE } from '../lib/i18n'
 import { marketLabel, optionsFor, ResultBadge } from '../components/YourPicks'
 
-/* Personal record (Oct 2026): the account's own picks, hit rate per pick type, and every pick with its result. */
+/* Personal record (Oct 2026): the account's own picks, hit rate per pick type, and every pick with its result.
+ * fix144: every sport (football, basketball, NFL + college); each sport's menu opens it filtered on that sport. */
 
 type Result = 'hit' | 'miss' | 'void' | 'pending'
-interface Row { sport: 'fb' | 'bb'; gameId: number; market: string; pick: string; line: number | null; kickoff: string; result: Result; home: string | null; away: string | null; league: string | null }
+type SportKey = 'fb' | 'bb' | 'nfl'
+interface Row { sport: SportKey; gameId: number; market: string; pick: string; line: number | null; kickoff: string; result: Result; home: string | null; away: string | null; league: string | null }
 interface Stat { picks: number; settled: number; hits: number; pending: number; void: number }
-interface Rec { total: { picks: number; settled: number; hits: number; pending: number }; streak: number; stats: Record<string, Stat>; list: Row[]; basketball: boolean }
+interface Tot { picks: number; settled: number; hits: number; pending: number }
+interface Rec { total: Tot; bySport?: Record<string, Tot>; streak: number; stats: Record<string, Stat>; list: Row[]; basketball: boolean; nfl?: boolean }
 
-const TYPES: { key: string; sport: 'fb' | 'bb'; market: string }[] = [
+const TYPES: { key: string; sport: SportKey; market: string }[] = [
   { key: 'fb:result', sport: 'fb', market: 'result' },
   { key: 'fb:ou25', sport: 'fb', market: 'ou25' },
   { key: 'fb:btts', sport: 'fb', market: 'btts' },
   { key: 'bb:win', sport: 'bb', market: 'win' },
-  { key: 'bb:total', sport: 'bb', market: 'total' }
+  { key: 'bb:total', sport: 'bb', market: 'total' },
+  { key: 'nfl:win', sport: 'nfl', market: 'win' }
 ]
+const SPORT_LABEL = (s: SportKey) => (s === 'fb' ? tt('Football') : s === 'bb' ? tt('Basketball') : tt('American football'))
+const GAME_HREF = (s: SportKey, id: number) => (s === 'fb' ? `/match/${id}` : s === 'bb' ? `/basketball/game/${id}` : `/american-football/game/${id}`)
+const GAMES_HREF: Record<SportKey, string> = { fb: '/matches', bb: '/basketball/games', nfl: '/american-football/games' }
 const pct = (s: { settled: number; hits: number }) => (s.settled ? Math.round((s.hits / s.settled) * 1000) / 10 : null)
 
-export default function MyPicks() {
+export default function MyPicks({ initial = 'all' }: { initial?: 'all' | SportKey }) {
   const { user, loading } = useAuth()
   const [d, setD] = useState<Rec | null>(null)
   const [err, setErr] = useState(false)
-  const [sport, setSport] = useState<'all' | 'fb' | 'bb'>('all')
+  const [sport, setSport] = useState<'all' | SportKey>(initial)
+  useEffect(() => setSport(initial), [initial])
 
   useEffect(() => {
     if (!user) return
@@ -41,14 +49,17 @@ export default function MyPicks() {
       <div className="max-w-xl mx-auto px-4 py-16 text-center space-y-4">
         <h1 className="font-display text-2xl font-bold text-ink">{tt('My picks')}</h1>
         <p className="text-muted">{tt('Pick the winner, goals and more yourself, and build your own record against the results.')}</p>
-        <Link to="/login?next=%2Fmy-picks" className="inline-block px-5 py-2.5 rounded-xl bg-accent text-bg font-semibold">{tt('Sign in to pick')}</Link>
+        <Link to={`/login?next=${encodeURIComponent(window.location.pathname)}`} className="inline-block px-5 py-2.5 rounded-xl bg-accent text-bg font-semibold">{tt('Sign in to pick')}</Link>
       </div>
     )
 
   const day = (iso: string) => new Date(iso).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short' })
-  const total = d?.total
+  // fix144: the record of the sport chosen (all sports together on "All")
+  const total = d ? (sport === 'all' ? d.total : d.bySport?.[sport] || { picks: 0, settled: 0, hits: 0, pending: 0 }) : undefined
   const overall = total ? pct(total) : null
-  const types = TYPES.filter(x => x.sport === 'fb' || d?.basketball).filter(x => sport === 'all' || x.sport === sport)
+  const shown = (x: SportKey) => x === 'fb' || (x === 'bb' ? !!d?.basketball : !!d?.nfl)
+  const sports = (['fb', 'bb', 'nfl'] as SportKey[]).filter(shown)
+  const types = TYPES.filter(x => shown(x.sport)).filter(x => sport === 'all' || x.sport === sport)
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
@@ -57,12 +68,12 @@ export default function MyPicks() {
           <h1 className="font-display text-2xl sm:text-3xl font-bold text-ink">{tt('My picks')}</h1>
           <p className="text-sm text-muted mt-1">{tt('Your own picks and how they turned out. Picks lock at kick-off.')}</p>
         </div>
-        {d?.basketball && (
-          <div className="inline-flex p-1 rounded-full bg-surface2 border border-line/60" role="tablist">
-            {(['all', 'fb', 'bb'] as const).map(s => (
+        {sports.length > 1 && (
+          <div className="inline-flex flex-wrap p-1 rounded-full bg-surface2 border border-line/60" role="tablist">
+            {(['all', ...sports] as const).map(s => (
               <button key={s} type="button" role="tab" aria-selected={sport === s} onClick={() => setSport(s)}
                 className={`px-3 py-1.5 rounded-full text-xs font-semibold ${sport === s ? 'bg-accent text-bg' : 'text-muted hover:text-ink'}`}>
-                {s === 'all' ? tt('All') : s === 'fb' ? tt('Football') : tt('Basketball')}
+                {s === 'all' ? tt('All') : SPORT_LABEL(s)}
               </button>
             ))}
           </div>
@@ -89,8 +100,10 @@ export default function MyPicks() {
                 const p = s ? pct(s) : null
                 return (
                   <div key={x.key} className="py-3 flex items-center gap-3">
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-faint w-16 shrink-0">{x.sport === 'fb' ? tt('Football') : tt('Basketball')}</span>
-                    <span className="text-sm font-semibold text-ink flex-1 min-w-0 truncate">{marketLabel(x.market)}</span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-[10px] font-bold uppercase tracking-wide text-faint truncate">{SPORT_LABEL(x.sport)}</span>
+                      <span className="block text-sm font-semibold text-ink truncate">{marketLabel(x.market)}</span>
+                    </span>
                     <div className="hidden sm:block w-40 h-2 rounded-full bg-surface2 overflow-hidden"><div className="h-full bg-accent" style={{ width: `${p ?? 0}%` }} /></div>
                     <span className="text-sm font-bold text-ink num w-14 text-right">{p !== null ? `${p}%` : '–'}</span>
                     <span className="text-[11px] text-faint num w-20 text-right">{s ? `${s.hits}/${s.settled}` : '0/0'}</span>
@@ -105,7 +118,7 @@ export default function MyPicks() {
             {list.length === 0 ? (
               <div className="text-sm text-faint space-y-2">
                 <p>{tt('No picks yet. Open any game and pick under "Your picks".')}</p>
-                <Link to="/matches" className="inline-block text-accent font-semibold hover:underline">{tt('See the matches')} →</Link>
+                <Link to={GAMES_HREF[sport === 'all' ? 'fb' : sport]} className="inline-block text-accent font-semibold hover:underline">{sport === 'all' || sport === 'fb' ? tt('See the matches') : tt('See the games')} →</Link>
               </div>
             ) : (
               <ul className="divide-y divide-line/50">
@@ -114,11 +127,11 @@ export default function MyPicks() {
                   return (
                     <li key={`${r.sport}-${r.gameId}-${r.market}`} className="py-3 flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1">
                       <span className="text-[11px] text-faint num w-14 shrink-0">{day(r.kickoff)}</span>
-                      <Link to={r.sport === 'fb' ? `/match/${r.gameId}` : `/basketball/game/${r.gameId}`} className="flex-1 min-w-0 text-sm text-ink hover:text-accent truncate">
+                      <Link to={GAME_HREF(r.sport, r.gameId)} className="flex-1 min-w-0 text-sm text-ink hover:text-accent truncate">
                         <span className="font-semibold">{r.home || '?'} – {r.away || '?'}</span>
                         {r.league && <span className="text-faint text-xs"> · {r.league}</span>}
                       </Link>
-                      <span className="text-xs text-muted shrink-0">{marketLabel(r.market)}: <b className="text-ink">{opt?.label || r.pick}</b></span>
+                      <span className="text-xs text-muted min-w-0 truncate w-full sm:w-auto sm:shrink-0 pl-[68px] sm:pl-0">{marketLabel(r.market)}: <b className="text-ink">{opt?.label || r.pick}</b></span>
                       <span className="shrink-0"><ResultBadge r={r.result} /></span>
                     </li>
                   )

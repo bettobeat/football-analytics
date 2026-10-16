@@ -152,7 +152,7 @@ export function NflLiveCard({ g }: { g: NflGame }) {
   return (
     <Link to={`/american-football/game/${g.id}`} className="card card-hover snap-start flex-shrink-0 w-[248px] p-3.5 block">
       <div className="flex items-center justify-between text-[10px] text-faint mb-1.5">
-        <span>NFL</span>
+        <span>{g.league === 2 ? t('College football') : 'NFL'}</span>
         <span className="inline-flex items-center gap-1 font-bold text-live tracking-wider"><span className="w-1.5 h-1.5 rounded-full bg-live animate-pulseDot" />{NFL_STATUS[g.status] || t('LIVE')}</span>
       </div>
       {(['H', 'A'] as const).map(s => {
