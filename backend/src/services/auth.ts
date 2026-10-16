@@ -16,7 +16,7 @@ import { roleByKey, ALL_PERMS, type Perm } from './roles';
 import { doubleChance } from '../utils/doubleChance';
 import { emailEnabled, sendVerificationCode, sendResetCode, sendEmailChangeCode, sendEmailChangedNotice } from './email';
 
-/** premium = $15 plan with a monthly allowance of match unlocks; pro = $30 plan, unlimited (see services/billing.ts) */
+/** premium = $8.99 plan with a monthly allowance of match unlocks; pro = $14.99 plan, unlimited (see services/billing.ts) */
 export type Plan = 'free' | 'premium' | 'pro';
 export type Access = 'anon' | 'free' | 'premium' | 'pro' | 'admin';
 
@@ -724,6 +724,9 @@ export function deleteAccount(userId: number, password: unknown, reason?: unknow
   try {
     if (tableExists('user_favorites')) db.prepare('DELETE FROM user_favorites WHERE user_id = ?').run(userId);
     if (tableExists('match_unlocks')) db.prepare('DELETE FROM match_unlocks WHERE user_id = ?').run(userId);
+    // fix147: pick packs go with the account
+    if (tableExists('user_credits')) db.prepare('DELETE FROM user_credits WHERE user_id = ?').run(userId);
+    if (tableExists('credit_events')) db.prepare('DELETE FROM credit_events WHERE user_id = ?').run(userId);
     if (tableExists('user_picks')) db.prepare('DELETE FROM user_picks WHERE user_id = ?').run(userId);
     if (tableExists('sport_waitlist')) db.prepare('DELETE FROM sport_waitlist WHERE user_id = ? OR email = ?').run(userId, u.email);
     if (tableExists('assistant_log')) db.prepare('DELETE FROM assistant_log WHERE user_id = ?').run(userId);
