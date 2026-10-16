@@ -101,6 +101,7 @@ export default function Admin() {
           <BbResultsCard />
           <LeaguesCard />
           <LeaguesCard sport="basketball" />
+          <AfUsageCard />
           <NflCard />
           <section className="card p-5 sm:p-6 mb-8">
             <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
@@ -484,6 +485,67 @@ function SiteErrorsCard() {
         <button type="button" onClick={() => setShowFixed(v => !v)} className="mt-3 text-xs text-muted hover:text-ink underline">
           {showFixed ? 'Hide fixed' : `Show fixed (${fixed})`}
         </button>
+      )}
+    </section>
+  )
+}
+
+/** API-Football today (fix140): quota used / limit, calls by schedulers vs page views, the page budget, top user-agents. */
+function AfUsageCard() {
+  const [d, setD] = useState<any>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const load = () => axios.get(`${API_URL}/admin/af-usage`).then(r => setD(r.data.data)).catch(e => setErr(errorText(e, 'API-Football usage failed')))
+  useEffect(() => { load(); const iv = setInterval(load, 60000); return () => clearInterval(iv) }, [])
+  const n = (x: number | null | undefined) => (x === null || x === undefined ? '–' : x.toLocaleString('en-GB'))
+  const q = d?.quota
+  const pct = q && q.used !== null && q.limitDay ? Math.min(100, (q.used / q.limitDay) * 100) : null
+  const total = d ? d.calls.scheduler + d.calls.pages + d.calls.admin : 0
+  return (
+    <section className="card p-5 sm:p-6 mb-8">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+        <h2 className="font-display text-lg font-bold text-ink">API-Football today</h2>
+        {d && <span className="text-xs text-faint">{d.day} (UTC){q?.blocked ? ' · daily limit reached' : ''}</span>}
+      </div>
+      {err && <p className="text-sm text-loss">{err}</p>}
+      {!d && !err && <p className="text-sm text-faint">Loading…</p>}
+      {d && (
+        <div className="space-y-3 text-sm">
+          <div>
+            <div className="flex items-baseline justify-between gap-2"><span className="text-muted">Used</span><span className="num text-ink font-semibold">{n(q?.used)} / {n(q?.limitDay)}</span></div>
+            <div className="mt-1 h-2 rounded-full bg-surface2 overflow-hidden"><div className={`h-full rounded-full ${pct !== null && pct > 85 ? 'bg-loss' : 'bg-accent'}`} style={{ width: `${pct ?? 0}%` }} /></div>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            {[['Schedulers', d.calls.scheduler], ['Page views', d.calls.pages], ['Admin', d.calls.admin]].map(([l, v]) => (
+              <div key={l as string} className="rounded-xl bg-surface2/50 border border-line/60 px-2 py-2">
+                <div className="text-[11px] text-faint">{l}</div>
+                <div className="num font-extrabold text-ink">{n(v as number)}</div>
+                <div className="text-[10px] text-faint">{total ? Math.round(((v as number) / total) * 100) : 0}%</div>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-muted">
+            Page budget: <b className="text-ink num">{n(d.pageBudget.thisHour)}</b> / {n(d.pageBudget.perHour)} this hour · <b className="text-ink num">{n(d.calls.pages)}</b> / {n(d.pageBudget.perDay)} today
+            {d.pageBudget.refused ? <> · <span className="text-loss">{n(d.pageBudget.refused)} page calls refused (stored copy shown)</span></> : null}
+            {' '}· split by source from fix140 on
+          </p>
+          {d.topAgents.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs min-w-[520px]">
+                <thead><tr className="text-faint text-left">{['User-agent', 'Requests', 'API calls', 'Blocked'].map(h => <th key={h} className="font-semibold py-1 pr-2">{h}</th>)}</tr></thead>
+                <tbody>
+                  {d.topAgents.map((a: any) => (
+                    <tr key={a.ua} className="border-t border-line/50">
+                      <td className="py-1 pr-2 text-muted max-w-[320px] truncate" title={a.ua}>{a.ua}</td>
+                      <td className="py-1 pr-2 num">{n(a.requests)}</td>
+                      <td className="py-1 pr-2 num">{n(a.afCalls)}</td>
+                      <td className={`py-1 pr-2 num ${a.blocked ? 'text-loss' : ''}`}>{n(a.blocked)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
     </section>
   )

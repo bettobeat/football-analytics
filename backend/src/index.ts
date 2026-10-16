@@ -90,7 +90,9 @@ import { askAssistant, assistantConfigured, messagesToday, assistantStats } from
 import { normalizeName } from './services/history';
 import { markFresh, markFailed } from './services/freshness';
 import { dataHealth, startDataHealthScheduler } from './services/dataHealth';
-import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures, afGet, afRemaining, xgCoverage } from './services/apiFootball';
+import { startApiFootballScheduler, afStatus, afTick, rebuildAfFeatures, afGet, afRemaining, xgCoverage, afQuota } from './services/apiFootball';
+import { afSource, uaKey, notePageRequest, noteBlocked, afUsageToday } from './services/afUsage';
+import { createHash, randomBytes } from 'node:crypto';
 import { leagueCoverage, pickForAdding } from './services/leagueCoverage';
 import { addExtraLeague, removeExtraLeague, setExtraTrial } from './services/leagueConfig';
 import { bbLeagueCoverage, bbPickForAdding } from './services/bbLeagueCoverage';
@@ -157,6 +159,16 @@ io.use((socket, next) => {
 // Middleware (CSP off: the site loads Google Fonts and club crests from other hosts)
 // Railway terminates TLS in front of us: trust the first proxy so req.ip / req.secure are real
 app.set('trust proxy', 1);
+// fix140: bad bots get nothing (before every other middleware). ShapBot alone (~17 pages a minute on /team + /player)
+// used up the API-Football quota on 16 Oct. Search engines (Googlebot, bingbot, Applebot, DuckDuckBot) stay allowed;
+// the same list is disallowed in robots.txt.
+const BAD_BOTS = /ShapBot|Bytespider|AhrefsBot|SemrushBot|MJ12bot|DotBot|PetalBot|DataForSeoBot/i;
+app.use((req, res, next) => {
+  const ua = req.get('user-agent') || '';
+  if (!BAD_BOTS.test(ua)) return next();
+  noteBlocked(uaKey(ua));
+  res.status(403).type('text/plain').send('Forbidden');
+});
 // referrerPolicy: helmet's default "no-referrer" breaks embedded YouTube players (error 153 — YouTube needs the site's origin)
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false, referrerPolicy: { policy: 'strict-origin-when-cross-origin' } }));
 app.use(cors({ origin: corsOrigin, credentials: true }));
@@ -250,6 +262,14 @@ app.use((req, _res, next) => {
 });
 
 app.use('/api', trackVisit); // visitor counts for the admin page (hashed IPs only)
+// fix140: every API-Football call made while answering this request counts as "page" (own small budget, afUsage.ts)
+// or "admin"; the user-agent is counted per day for the admin card (no IPs).
+app.use('/api', (req, _res, next) => {
+  const ua = uaKey(req.get('user-agent'));
+  const admin = req.access === 'admin';
+  if (!admin) notePageRequest(ua);
+  afSource.run({ kind: admin ? 'admin' : 'page', ua }, next);
+});
 
 // No bookmakers on the site (Oct 2026): odds, bookmaker names and market comparisons are internal data only.
 // For everyone except admins, every API response is cleaned of them before it leaves the server.
@@ -288,7 +308,10 @@ setInterval(() => {
   const now = Date.now();
   for (const [k, b] of buckets) if (b.reset < now) buckets.delete(k);
 }, 60000).unref();
-function rateLimit(name: string, max: number, windowMs: number, key: (req: express.Request) => string = req => req.ip || 'unknown') {
+// keys are salted hashes (salt new at every start), so not even the memory holds a visitor's IP (fix140)
+const RL_SALT = randomBytes(16).toString('hex');
+const ipKey = (req: express.Request) => createHash('sha256').update(RL_SALT + (req.ip || 'unknown')).digest('hex').slice(0, 20);
+function rateLimit(name: string, max: number, windowMs: number, key: (req: express.Request) => string = ipKey) {
   return (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (req.access === 'admin') return next();
     const k = `${name}:${key(req)}`;
@@ -305,7 +328,9 @@ function rateLimit(name: string, max: number, windowMs: number, key: (req: expre
 app.use('/api', rateLimit('api', 600, 60000)); // ~10 a second, far above a person browsing
 // team / player pages can cost API-Football calls the first time: 60 page opens per 10 minutes per visitor
 app.use(['/api/team-page', '/api/player-page'], rateLimit('pages', 60, 10 * 60000));
-app.use('/api/unlocks', (req, res, next) => (req.method === 'POST' ? rateLimit('unlock', 30, 60000, r => String(r.user?.id || r.ip))(req, res, next) : next()));
+// fix140: pages that can cost API-Football calls: at most 60 requests a minute per visitor
+app.use(['/api/team-page', '/api/player-page', '/api/search'], rateLimit('page-min', 60, 60000));
+app.use('/api/unlocks', (req, res, next) => (req.method === 'POST' ? rateLimit('unlock', 30, 60000, r => String(r.user?.id || ipKey(r)))(req, res, next) : next()));
 
 const OPEN_API = /^\/api\/(health$|auth\/|waitlist$|contact$|feedback$|client-error$|picks(\/|$)|testers\/|unsubscribe$|favorites(\/|$)|assistant(\/|$)|matches(\/|$)|leagues(\/|$)|teams\/|team-page\/|player-page\/|search$|news$|today$|guides(\/|$)|hub(\/|$)|basketball\/|nfl\/|public\/(summary|results|record|geo-source)$|unlocks(\/|$)|billing\/)/;
 const PREMIUM_GET_API = /^\/api\/(accuracy(\/recent|\/status)?|history\/status|clv|draw-alerts|upset-watch)$/; // past seasons and backtests are admin only (Oct 2026)
@@ -453,7 +478,7 @@ app.post('/api/auth/preferences', jsonOnly, (req, res) => {
 });
 
 // AI chat (signed-in users). Body: { messages: [{role, content}], matchId?, page? }
-app.use('/api/assistant', (req, res, next) => (req.method === 'POST' ? rateLimit('assistant', 20, 60000, r => String(r.user?.id || r.ip))(req, res, next) : next()));
+app.use('/api/assistant', (req, res, next) => (req.method === 'POST' ? rateLimit('assistant', 20, 60000, r => String(r.user?.id || ipKey(r)))(req, res, next) : next()));
 const ASSISTANT_DAILY_CAP = parseInt(process.env.ASSISTANT_DAILY_CAP || '300', 10);
 app.get('/api/assistant/status', (req, res) => {
   res.set('Cache-Control', 'no-store');
@@ -492,7 +517,7 @@ app.get('/api/picks/game/:sport(fb|bb)/:id(\\d+)', (req, res) => {
   try { res.json({ data: { signedIn: !!req.user, ...gamePicks(req.user?.id ?? null, req.params.sport, parseInt(req.params.id, 10), req.access || 'anon') } }); }
   catch (e: any) { pickErr(res, e); }
 });
-app.post('/api/picks', rateLimit('picks', 120, 60000, r => String(r.user?.id || r.ip)), jsonOnly, (req, res) => {
+app.post('/api/picks', rateLimit('picks', 120, 60000, r => String(r.user?.id || ipKey(r))), jsonOnly, (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Sign in to make your own picks.' });
   try {
     const b = req.body || {};
@@ -861,6 +886,12 @@ app.post('/api/admin/extra-leagues/:id(\\d+)/trial', jsonOnly, (req, res) => {
 // The same for basketball (bbLeagueConfig.ts / bbLeagueCoverage.ts): leagues start in testing, sync begins right away
 // NFL data check (fix136, admin only): plan, seasons + coverage, games we hold, sample stats / injuries / standings.
 // About 10 API calls; cached 10 minutes (?refresh=1 runs it again).
+// API-Football today (fix140, admin overview card): quota used / limit, calls by scheduler / page views / admin,
+// the page budget, and the busiest user-agents (no IPs).
+app.get('/api/admin/af-usage', (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: { quota: afQuota(), ...afUsageToday() } });
+});
 app.get('/api/admin/nfl-probe', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   try { res.json({ data: await nflProbe(req.query.refresh === '1') }); }
@@ -1521,6 +1552,7 @@ app.get('/api/team-page/:id(\\d+)', async (req, res) => {
     if (!afId) return res.status(404).json({ error: 'Team not found' });
     res.json({ data: await teamPage(afId, isPaid(req.access || 'anon')), timestamp: new Date().toISOString() });
   } catch (error: any) {
+    if (error?.code === 'PAGE_BUDGET') return res.json({ data: null, pending: true, message: 'More details soon' });
     sendError(res, error, 'Team page failed');
   }
 });
@@ -1535,6 +1567,7 @@ app.get('/api/player-page/find', async (req, res) => {
     if (!id) return res.status(404).json({ error: 'Player not found' });
     res.json({ data: { id }, timestamp: new Date().toISOString() });
   } catch (error: any) {
+    if (error?.code === 'PAGE_BUDGET') return res.json({ data: null, pending: true, message: 'More details soon' });
     sendError(res, error, 'Player lookup failed');
   }
 });
@@ -1542,6 +1575,7 @@ app.get('/api/player-page/:id(\\d+)', async (req, res) => {
   try {
     res.json({ data: await playerPage(parseInt(req.params.id, 10), isPaid(req.access || 'anon')), timestamp: new Date().toISOString() });
   } catch (error: any) {
+    if (error?.code === 'PAGE_BUDGET') return res.json({ data: null, pending: true, message: 'More details soon' });
     sendError(res, error, 'Player page failed');
   }
 });

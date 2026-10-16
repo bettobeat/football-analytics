@@ -112,7 +112,8 @@ export default function Team() {
     setError(null)
     axios
       .get(`${API_URL}/team-page/${id}`, { params: { c: sp.get('c') || undefined, n: sp.get('n') || undefined } })
-      .then(r => setData(r.data.data))
+      // fix140: over the page data budget and nothing stored yet
+      .then(r => (r.data.pending ? setError(t("More details soon. This page is being prepared — please check back a little later.")) : setData(r.data.data)))
       .catch(e => setError(
         e?.response?.status === 404 ? t("We couldn't find this team yet.")
           : /budget/i.test(e?.response?.data?.message || '') ? t("This team page isn't available right now — our data provider's daily limit has been reached. It comes back automatically after 03:00 (Israel time).")

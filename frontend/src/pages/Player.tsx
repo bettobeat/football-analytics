@@ -111,12 +111,12 @@ export default function Player() {
     if (id === 'find') {
       axios
         .get(`${API_URL}/player-page/find`, { params: Object.fromEntries(params.entries()) })
-        .then(r => !cancelled && nav(`/player/${r.data.data.id}`, { replace: true }))
+        .then(r => !cancelled && (r.data.pending ? setError(tt("More details soon. This page is being prepared — please check back a little later.")) : nav(`/player/${r.data.data.id}`, { replace: true })))
         .catch(() => !cancelled && setError(tt("We couldn't find {0}'s page yet.", { 0: params.get('name') || 'this player' })))
     } else {
       axios
         .get(`${API_URL}/player-page/${id}`)
-        .then(r => !cancelled && setData(r.data.data))
+        .then(r => !cancelled && (r.data.pending ? setError(tt("More details soon. This page is being prepared — please check back a little later.")) : setData(r.data.data)))
         .catch(e => !cancelled && setError(errorText(e)))
     }
     return () => {

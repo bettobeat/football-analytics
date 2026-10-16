@@ -1,3 +1,13 @@
+User-agent: ShapBot
+User-agent: Bytespider
+User-agent: AhrefsBot
+User-agent: SemrushBot
+User-agent: MJ12bot
+User-agent: DotBot
+User-agent: PetalBot
+User-agent: DataForSeoBot
+Disallow: /
+
 User-agent: *
 Allow: /
 Disallow: /admin

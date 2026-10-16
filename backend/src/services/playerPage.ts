@@ -12,6 +12,7 @@
 import { db } from '../db';
 import logger from '../utils/logger';
 import { afGet, afRemaining, afConfigured } from './apiFootball';
+import { pageBudgetLeft } from './afUsage';
 import { resolveAfTeamId } from './teamPage';
 
 const AF_OFFSET = 1_000_000_000;
@@ -522,7 +523,7 @@ export function warmPlayers(ids: number[]) {
   if (!warmTimer && warmQueue.size) {
     warmTimer = setInterval(async () => {
       if (!warmQueue.size) { clearInterval(warmTimer!); warmTimer = null; return; }
-      if (afRemaining() < 20000) return;
+      if (afRemaining() < 20000 || pageBudgetLeft() < 150) return; // fix140: visitors first, warm-ups give way
       for (const pid of [...warmQueue].slice(0, 3)) {
         warmQueue.delete(pid);
         try { await pageData(pid); } catch { /* skipped */ }

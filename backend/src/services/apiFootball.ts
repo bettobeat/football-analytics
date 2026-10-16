@@ -23,6 +23,7 @@ import { markFresh, markFailed } from './freshness';
 import { GROUPS, ALIASES, similarity, seasonCodes, AF_HISTORY_DIVS, storeAfHistory } from './history';
 import { onExtraLeague, extraCode } from './leagueConfig';
 import { playerValue } from './squadValues';
+import { beforeAfCall } from './afUsage';
 import { syncPlayerData } from './playerData';
 
 const BASE = 'https://v3.football.api-sports.io';
@@ -170,6 +171,8 @@ async function af(path: string, params: Record<string, string | number> = {}, re
   if (!KEY()) throw new Error('API_FOOTBALL_KEY is not set');
   // /status is free (does not count) — always allowed, so a plan upgrade can lift the block (see refreshQuota)
   if (Date.now() < blockedUntil && path !== '/status') throw new Error('API-Football daily request limit reached');
+  // fix140: a visitor's request has its own small budget (afUsage.ts); throws PageBudgetError when it is used up
+  if (path !== '/status') beforeAfCall();
   const wait = lastCall + MIN_GAP_MS - Date.now();
   if (wait > 0) await sleep(wait);
   lastCall = Date.now();
@@ -233,6 +236,8 @@ export const afBudgetLeft = () => budgetLeft();
 /** Raw requests left today (for the live side, which may use the backfill reserve). */
 export const afRemaining = () => (Date.now() < blockedUntil ? 0 : remainingDay === null ? Infinity : remainingDay);
 export const afConfigured = () => !!KEY();
+/** Today's quota as the provider reports it (admin card "API-Football today"). */
+export const afQuota = () => ({ limitDay, remainingDay, used: limitDay !== null && remainingDay !== null ? limitDay - remainingDay : null, blocked: Date.now() < blockedUntil });
 
 /* ------------------------------------------------------------------ */
 /* Sync                                                                 */

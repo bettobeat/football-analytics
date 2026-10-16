@@ -45,3 +45,11 @@
 Overview: visitors, site errors, backups, basketball results to check, **Football leagues** and **Basketball leagues**
 (coverage scan, add leagues, in-testing switch, remove), accounts tiles, data health, why people leave, contact messages,
 security log. Users tab: accounts list with roles/plans. Model tools are API-only (see football-model-v3.md).
+
+## API-Football quota and bots (fix140, 16 Oct 2026)
+- The quota ran out on 16 Oct ~10:30 UTC: ShapBot opened ~17 team / player pages a minute and each fresh page build costs
+  5–15 API-Football calls. Bad bots are now refused with 403 (`BAD_BOTS` in index.ts, same list in robots.txt). Add a bot
+  there when the admin card "API-Football today" shows a user-agent with many API calls.
+- Calls made while answering a visitor have their own budget (`AF_PAGE_PER_HOUR` 600, `AF_PAGE_PER_DAY` 8,000;
+  `services/afUsage.ts`). Over it pages show the stored copy or "More details soon"; schedulers keep the rest of the quota.
+- Per visitor: team page / player page / search 60 a minute (and team / player 60 per 10 min).
