@@ -13,6 +13,7 @@
 import logger from '../utils/logger';
 import { db } from '../db';
 import { yieldLoop } from './perf';
+import { winnerBands } from '../utils/winnerBands';
 import { injuryLoss } from './bbInjuries';
 import { onBbExtraLeague, onBbExtraTrial } from './bbLeagueConfig';
 
@@ -748,6 +749,8 @@ export function bbRecord(days = 3650, code?: string) {
     pending,
     since: list.length ? list[list.length - 1].kickoff : null,
     total: { ...tot, hitRate: pct(tot.hits, tot.n), strongHitRate: pct(tot.strongHits, tot.strongN) },
+    // fix141: home "Our record" bars — all picks and 60 / 70 / 80%+ sure (leagues in testing left out, like the total)
+    bands: winnerBands(list.filter(r => code || !BB_TRIAL.has(r.code)).map(r => ({ p: Math.max(r.p_home, 1 - r.p_home), hit: (r.p_home >= 0.5) === (r.hs > r.as_) }))),
     leagues: [...by.entries()].map(([c, b]) => ({ code: c, trial: BB_TRIAL.has(c), ...b, hitRate: pct(b.hits, b.n), strongHitRate: pct(b.strongHits, b.strongN) })),
     recent: list.slice(0, 50).map(r => ({
       gameId: r.game_id, code: r.code, kickoff: r.kickoff, home: r.home_name, away: r.away_name, homeLogo: r.home_logo, awayLogo: r.away_logo,

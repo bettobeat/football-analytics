@@ -1794,5 +1794,17 @@
  "{0} pts": "{0} pts",
  "{0} starts at quarterback for {1} instead of {2} ({3} points in our ratings).": "{0} é o quarterback titular de {1} em vez de {2} ({3} pontos nas nossas notas).",
  "{0}% right · strong picks {1}/{2}": "{0}% certas · palpites fortes {1}/{2}",
- "More details soon. This page is being prepared — please check back a little later.": "Mais detalhes em breve. Esta página está a ser preparada — volte a consultar um pouco mais tarde."
+ "More details soon. This page is being prepared — please check back a little later.": "Mais detalhes em breve. Esta página está a ser preparada — volte a consultar um pouco mais tarde.",
+ "No upsets on the radar this week.": "Nenhuma zebra à vista nesta semana.",
+ "The 2 games where our model gives the underdog the best chance. Part of Pro.": "Os 2 jogos em que nosso modelo dá mais chance ao azarão. Parte do Pro.",
+ "Unlock upset watch →": "Desbloquear o radar de zebras →",
+ "{0} prediction": "Palpite {0}",
+ "Loading the latest news…": "Carregando as últimas notícias…",
+ "Win chances, point spread, total points and the predicted score for every game, team analysis and the complete track record.": "Chances de vitória, spread, total de pontos e o placar previsto de cada jogo, análise dos times e o histórico completo.",
+ "Every game": "Todo jogo",
+ "Win chances, point spread and total points, with the reasons behind each pick.": "Chances de vitória, spread e total de pontos, com os motivos de cada palpite.",
+ "Every prediction is saved before tip-off and scored after the game.": "Cada palpite é salvo antes do início e avaliado depois do jogo.",
+ "Who wins every NFL game, with the chance of each side, the expected score and the reasons behind each pick. Every prediction is saved before kick-off and checked in public.": "Quem vence cada jogo da NFL, com a chance de cada lado, o placar esperado e os motivos de cada palpite. Cada palpite é salvo antes do início e conferido em público.",
+ "Winner · all picks": "Vencedor · todos os palpites",
+ "Winner · {0}%+ sure": "Vencedor · {0}%+ de certeza"
 }

@@ -1794,5 +1794,17 @@
  "{0} pts": "{0} Pkt.",
  "{0} starts at quarterback for {1} instead of {2} ({3} points in our ratings).": "{0} startet für {1} als Quarterback statt {2} ({3} Punkte in unseren Werten).",
  "{0}% right · strong picks {1}/{2}": "{0}% richtig · starke Tipps {1}/{2}",
- "More details soon. This page is being prepared — please check back a little later.": "Mehr Details folgen bald. Diese Seite wird gerade vorbereitet – schau bitte etwas später wieder vorbei."
+ "More details soon. This page is being prepared — please check back a little later.": "Mehr Details folgen bald. Diese Seite wird gerade vorbereitet – schau bitte etwas später wieder vorbei.",
+ "No upsets on the radar this week.": "Diese Woche keine Überraschung in Sicht.",
+ "The 2 games where our model gives the underdog the best chance. Part of Pro.": "Die 2 Spiele, in denen unser Modell dem Außenseiter die besten Chancen gibt. Teil von Pro.",
+ "Unlock upset watch →": "Überraschungs-Radar freischalten →",
+ "{0} prediction": "{0}-Prognose",
+ "Loading the latest news…": "Die neuesten News werden geladen…",
+ "Win chances, point spread, total points and the predicted score for every game, team analysis and the complete track record.": "Siegchancen, Punktespanne, Gesamtpunkte und das erwartete Ergebnis für jedes Spiel, Teamanalyse und die komplette Bilanz.",
+ "Every game": "Jedes Spiel",
+ "Win chances, point spread and total points, with the reasons behind each pick.": "Siegchancen, Punktespanne und Gesamtpunkte, mit den Gründen hinter jedem Tipp.",
+ "Every prediction is saved before tip-off and scored after the game.": "Jede Prognose wird vor dem Sprungball gespeichert und nach dem Spiel bewertet.",
+ "Who wins every NFL game, with the chance of each side, the expected score and the reasons behind each pick. Every prediction is saved before kick-off and checked in public.": "Wer jedes NFL-Spiel gewinnt, mit der Chance beider Teams, dem erwarteten Ergebnis und den Gründen hinter jedem Tipp. Jede Prognose wird vor dem Anstoß gespeichert und öffentlich überprüft.",
+ "Winner · all picks": "Sieger · alle Tipps",
+ "Winner · {0}%+ sure": "Sieger · zu {0}%+ sicher"
 }

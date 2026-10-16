@@ -84,7 +84,7 @@ import { tuneV3Full, tuneStatus, isTuning } from './services/v3Tuner';
 import { hiddenModels, v3MixBacktest, featureModelStatus, setConfig as setModelConfig, setMixLive, startFeatureModelScheduler } from './services/featureModel';
 import { runModelDaily, sendMorningReport, modelDailyLog, buildReport, startModelDailyScheduler, dailyRunning } from './services/modelDaily';
 import { nflProbe, startNflScheduler, nflCurrentSeason } from './services/nfl';
-import { withNflPrediction, nflTeamModel, nflTeamRecord, nflModelReport, retrain as nflRetrain, NFL_MODEL } from './services/nflModel';
+import { withNflPrediction, nflTeamModel, nflTeamRecord, nflRecord, nflModelReport, retrain as nflRetrain, NFL_MODEL } from './services/nflModel';
 import { nflPublic, nflWeeks, nflWeekGames, nflGamesBetween, nflLiveGames, nflRecentResults, nflGame, nflStandings, nflTeam, nflPlayer, nflLeaders, nflSeasonsHeld, allowedSeason } from './services/nflSite';
 import { askAssistant, assistantConfigured, messagesToday, assistantStats } from './services/assistant';
 import { normalizeName } from './services/history';
@@ -2159,6 +2159,11 @@ app.get('/api/nfl/player/:id(\\d+)', (req, res) => {
     if (!d) return res.status(404).json({ error: 'Player not found' });
     res.json({ data: d });
   } catch (e) { sendError(res, e, 'Failed to load player'); }
+});
+// fix141: home "Our record" — last 30 days, picks saved before kick-off only
+app.get('/api/nfl/record', (req, res) => {
+  try { res.json({ data: nflRecord(Math.min(365, Math.max(1, parseInt(String(req.query.days || '30'), 10) || 30))) }); }
+  catch (e) { sendError(res, e, 'Failed to load the record'); }
 });
 app.get('/api/nfl/leaders', (req, res) => {
   try {

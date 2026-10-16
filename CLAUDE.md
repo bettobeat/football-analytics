@@ -30,6 +30,8 @@ is model work, the matching note, in the same commit.
 - **`BILLING_TEST_MODE`** must be removed before real payments go live. Don't wire real payment webhooks without Yarin.
 - **Team analysis for every sport:** Every sport has team analysis on the team page (strengths & weaknesses by fixed rules, model rating tiles, 1–10 league scores, rank over time, our record on the team) — build it with the sport, not later.
 - **List rows:** List rows in every sport use the fix127 block (commit 9b3f610): result cells with % (our pick highlighted) + 'Our pick · {words} · %' underneath. Phones too.
+- **Home page:** every sport uses `components/SportHome` with the football layout; new sports only add an adapter
+  (`components/SportHome/<sport>.ts`: data + labels, no layout code).
 - **Live games:** Live games appear once — in the Live strip — and never again in the day lists, in every sport; live cards look the same in every sport (football is the reference).
 
 ## How to work here

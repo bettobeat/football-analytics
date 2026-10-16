@@ -20,6 +20,7 @@
  * of the next 9 days saved in nfl_predictions until kick-off (then frozen).
  */
 import { db } from '../db';
+import { winnerBands } from '../utils/winnerBands';
 import logger from '../utils/logger';
 import { yieldLoop } from './perf';
 import { teamBox, NflGame } from './nflSite';
@@ -559,6 +560,17 @@ export function withNflPrediction<T extends NflGame>(g: T, full: boolean): T & {
 }
 
 /** Our record on one team's games (saved before kick-off, finished): picks, right, strong picks right. */
+/**
+ * The NFL record (fix141, home "Our record"): predictions saved before kick-off of finished games in the last `days`
+ * (never a backtest), the share where the picked team won, all picks and by how sure we were. Ties don't count.
+ */
+export function nflRecord(days = 30) {
+  const rows = db.prepare(`SELECT p.p_home, g.home_pts AS hs, g.away_pts AS as_ FROM nfl_predictions p JOIN nfl_games g ON g.game_id = p.game_id
+    WHERE p.kickoff >= ? AND p.made_at <= p.kickoff AND g.status IN ('FT','AOT') AND g.home_pts IS NOT NULL AND g.home_pts != g.away_pts`)
+    .all(new Date(Date.now() - days * 86400000).toISOString()) as any[];
+  return { days, bands: winnerBands(rows.map(r => ({ p: Math.max(r.p_home, 1 - r.p_home), hit: (r.p_home >= 0.5) === (r.hs > r.as_) }))) };
+}
+
 export function nflTeamRecord(teamId: number, season: number) {
   const rows = db.prepare(`SELECT p.p_home, g.home_pts AS hs, g.away_pts AS as_ FROM nfl_predictions p JOIN nfl_games g ON g.game_id = p.game_id
     WHERE p.season = ? AND (g.home_id = ? OR g.away_id = ?) AND p.made_at <= p.kickoff AND g.status IN ('FT','AOT') AND g.home_pts IS NOT NULL AND g.home_pts != g.away_pts`).all(season, teamId, teamId) as any[];
