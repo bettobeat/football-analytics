@@ -16,8 +16,9 @@ export interface Sport {
 export const SPORTS: Sport[] = [
   { id: 'football', name: t('Football'), icon: '⚽', path: '/', live: true },
   { id: 'basketball', name: t('Basketball'), icon: '🏀', path: '/basketball', live: false },
-  { id: 'tennis', name: t('Tennis'), icon: '🎾', path: '/tennis', live: false },
-  { id: 'american-football', name: t('American football'), short: 'NFL', icon: '🏈', path: '/american-football', live: false }
+  { id: 'american-football', name: t('American football'), short: 'NFL', icon: '🏈', path: '/american-football', live: false },
+  // fix145: tennis last (coming soon)
+  { id: 'tennis', name: t('Tennis'), icon: '🎾', path: '/tennis', live: false }
 ]
 
 /** The sport a page belongs to (everything outside another sport's section is football). */

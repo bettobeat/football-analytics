@@ -170,9 +170,11 @@ function ModelOnly({ children }: { children: ReactNode }) {
   return access === 'admin' || can('model') ? <>{children}</> : <NotFound />
 }
 
+/** fix145: the logo opens the home of the sport on screen (the router's basename keeps /de, /es …). */
 function Logo() {
+  const home = sportOfPath(useLocation().pathname).path
   return (
-    <Link to="/" className="flex items-center gap-2.5 group shrink-0 whitespace-nowrap" aria-label={tt("SportLikely home")}>
+    <Link to={home} className="flex items-center gap-2.5 group shrink-0 whitespace-nowrap" aria-label={tt("SportLikely home")}>
       <LogoMark />
       <span className="hidden min-[380px]:inline-flex lg:hidden 2xl:inline-flex items-center" aria-hidden>
         <img src="/wordmark-dark.png" alt="" className="hidden dark:block h-[22px] w-auto" />
