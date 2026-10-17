@@ -22,6 +22,12 @@ export interface PlayerHeaderProps {
   aside?: ReactNode
 }
 
+/** Phones: a long single word ("Antetokounmpo") gets a smaller size so it fits instead of being clipped. */
+function nameSize(name: string) {
+  const longest = Math.max(0, ...name.split(/\s+/).map(w => w.length))
+  return longest >= 15 ? 'text-base' : longest >= 13 ? 'text-lg' : longest >= 11 ? 'text-xl' : longest >= 9 ? 'text-2xl' : 'text-3xl'
+}
+
 export default function PlayerHeader(p: PlayerHeaderProps) {
   return (
     <section className="card relative overflow-hidden p-5 sm:p-7">
@@ -38,7 +44,7 @@ export default function PlayerHeader(p: PlayerHeaderProps) {
         <div className="min-w-[160px] flex-1 space-y-2">
           {p.chips.length > 0 && <div className="flex flex-wrap items-center gap-2 text-xs text-faint">{p.chips.map((c, i) => <span key={i} className="contents">{c}</span>)}</div>}
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink break-words">{p.name}</h1>
+            <h1 className={`font-display ${nameSize(p.name)} sm:text-4xl font-extrabold tracking-tight text-ink min-w-0 max-w-full [overflow-wrap:anywhere]`}>{p.name}</h1>
             {p.star}
           </div>
           {p.team && (
