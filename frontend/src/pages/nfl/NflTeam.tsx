@@ -3,9 +3,9 @@ import { Link, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../../lib/socket'
 import { t } from '../../lib/i18n'
-import { FavStar } from '../../lib/favorites'
 import { record, nflTeamFav, setNflLeague, nflLeagueName, type NflGame, type StandRow, type NflLeague } from '../../lib/nfl'
-import { Card, Skeleton, TeamLogo, LockIcon } from '../bb/parts'
+import { Skeleton, LockIcon } from '../bb/parts'
+import TeamPage, { TCard as Card } from '../../components/sport/page/TeamPage'
 import { NflGameRow, LeagueSwitch } from './parts'
 import { useNews, NewsRows } from '../../components/NewsList'
 
@@ -52,74 +52,76 @@ export default function NflTeam() {
   if (missing) return <div className="max-w-2xl mx-auto px-4 py-16 text-center text-muted">{t('Team not found.')}</div>
   if (!d) return <div className="max-w-5xl mx-auto px-4 py-8"><Skeleton rows={8} /></div>
   const tm = d.team
+  // form: the last five results, latest last
+  const form = d.results.filter(g => g.score).slice(0, 5).reverse().map(g => {
+    const mine = g.home.id === tm.id ? g.score!.home : g.score!.away, theirs = g.home.id === tm.id ? g.score!.away : g.score!.home
+    return (mine > theirs ? 'W' : mine < theirs ? 'L' : 'T') as 'W' | 'L' | 'T'
+  })
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
-      <LeagueSwitch />
-      <header className="flex items-center gap-4">
-        <TeamLogo team={tm} size={72} />
-        <div className="min-w-0 space-y-1">
-          <div className="text-xs text-faint">{[tm.level, tm.conference, tm.division !== tm.conference ? tm.division : null].filter(Boolean).join(' · ') || nflLeagueName(tm.league || 1)}</div>
-          <h1 className="font-display text-2xl sm:text-4xl font-extrabold tracking-tight text-ink leading-tight">{tm.name}</h1>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
-            {d.standing && <span className="num font-bold text-ink">{record(d.standing)}</span>}
-            {d.standing && <span className="num">{t('PF {0} · PA {1}', { 0: d.standing.pf, 1: d.standing.pa })}</span>}
-            {tm.coach && <span>{t('Coach: {0}', { 0: tm.coach })}</span>}
-            <FavStar fav={nflTeamFav({ id: tm.id, name: tm.name, logo: tm.logo })} label />
-          </div>
-        </div>
-      </header>
-
-      {d.analysis && <TeamAnalysis a={d.analysis} d={d} />}
-
-      {d.schedule.length > 0 && (
-        <Card title={t('Next games')}><div className="-mx-5 sm:-mx-6 divide-y divide-line/50">{d.schedule.slice(0, 8).map(g => <NflGameRow key={g.id} g={g} showDay />)}</div></Card>
-      )}
-      <Card title={t('Results')}>
-        {d.results.length === 0 ? <p className="text-sm text-faint">{t('No games played yet this season.')}</p> : (
-          <div className="-mx-5 sm:-mx-6 divide-y divide-line/50">{d.results.map(g => <NflGameRow key={g.id} g={g} showDay />)}</div>
+    <TeamPage
+      top={<LeagueSwitch />}
+      logo={tm.logo}
+      kicker={[tm.level, tm.conference, tm.division !== tm.conference ? tm.division : null].filter(Boolean).join(' · ') || nflLeagueName(tm.league || 1)}
+      name={tm.name}
+      fav={nflTeamFav({ id: tm.id, name: tm.name, logo: tm.logo })}
+      facts={[
+        d.standing ? record(d.standing) : null,
+        d.standing ? t('PF {0} · PA {1}', { 0: d.standing.pf, 1: d.standing.pa }) : null,
+        tm.coach ? t('Coach: {0}', { 0: tm.coach }) : null,
+        tm.stadium || null
+      ].filter(Boolean)}
+      form={form}
+      left={<>
+        {d.analysis && <TeamAnalysis a={d.analysis} d={d} />}
+        {d.roster.length > 0 && (
+          <Card title={t('Roster')}>
+            <div className="space-y-5">
+              {d.roster.map(gr => (
+                <div key={gr.group}>
+                  <div className="label pb-1.5">{t(gr.group)}</div>
+                  <ul className="grid gap-x-4 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
+                    {gr.players.map(p => (
+                      <li key={p.id}>
+                        <Link to={`/american-football/player/${p.id}`} className="flex items-center gap-2 text-sm hover:text-accent">
+                          <span className="w-7 text-right num text-faint">{p.number ?? ''}</span>
+                          <span className="w-9 text-[11px] font-bold text-muted">{p.position || ''}</span>
+                          <span className="truncate text-ink">{p.name}</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </Card>
         )}
-      </Card>
-
-      <Card title={t('News')}>
-        {news === null ? <Skeleton rows={3} h="h-14" /> : news.length ? <div className="-mx-2"><NewsRows items={news} /></div> : <p className="text-sm text-faint">{t('No news about this team in the last month.')}</p>}
-      </Card>
-
-      {d.injuries.length > 0 && (
-        <Card title={t('Injuries')}>
-          <ul className="divide-y divide-line/50">
-            {d.injuries.map(i => (
-              <li key={i.id} className="py-1.5 text-sm flex items-baseline justify-between gap-2">
-                <Link to={`/american-football/player/${i.id}`} className="text-ink hover:text-accent truncate">{i.name}</Link>
-                <span className="text-xs text-faint truncate">{[i.status, i.description].filter(Boolean).join(' · ')}</span>
-              </li>
-            ))}
-          </ul>
+      </>}
+      right={<>
+        {d.injuries.length > 0 && (
+          <Card title={t('Injuries')}>
+            <ul className="divide-y divide-line/50">
+              {d.injuries.map(i => (
+                <li key={i.id} className="py-1.5 text-sm flex items-baseline justify-between gap-2">
+                  <Link to={`/american-football/player/${i.id}`} className="text-ink hover:text-accent truncate">{i.name}</Link>
+                  <span className="text-xs text-faint truncate">{[i.status, i.description].filter(Boolean).join(' · ')}</span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+        {d.schedule.length > 0 && (
+          <Card title={t('Next games')}><div className="-mx-5 sm:-mx-6 divide-y divide-line/50">{d.schedule.slice(0, 8).map(g => <NflGameRow key={g.id} g={g} showDay />)}</div></Card>
+        )}
+        <Card title={t('Latest results')}>
+          {d.results.length === 0 ? <p className="text-sm text-faint">{t('No games played yet this season.')}</p> : (
+            <div className="-mx-5 sm:-mx-6 divide-y divide-line/50">{d.results.map(g => <NflGameRow key={g.id} g={g} showDay />)}</div>
+          )}
         </Card>
-      )}
-
-      {d.roster.length > 0 && (
-        <Card title={t('Roster')}>
-          <div className="space-y-5">
-            {d.roster.map(gr => (
-              <div key={gr.group}>
-                <div className="label pb-1.5">{t(gr.group)}</div>
-                <ul className="grid gap-x-4 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
-                  {gr.players.map(p => (
-                    <li key={p.id}>
-                      <Link to={`/american-football/player/${p.id}`} className="flex items-center gap-2 text-sm hover:text-accent">
-                        <span className="w-7 text-right num text-faint">{p.number ?? ''}</span>
-                        <span className="w-9 text-[11px] font-bold text-muted">{p.position || ''}</span>
-                        <span className="truncate text-ink">{p.name}</span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
+        <Card title={t('{0} news', { 0: tm.name })}>
+          {news === null ? <Skeleton rows={3} h="h-14" /> : news.length ? <div className="-mx-2"><NewsRows items={news} /></div> : <p className="text-sm text-faint">{t('No news about this team in the last month.')}</p>}
         </Card>
-      )}
-    </div>
+      </>}
+    />
   )
 }
 

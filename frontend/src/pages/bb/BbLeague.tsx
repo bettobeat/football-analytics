@@ -5,8 +5,8 @@ import { API_URL } from '../../lib/socket'
 import { t } from '../../lib/i18n'
 import { hubFor } from '../../lib/hubs'
 import { useBbConfig, bbLeagueFav, type BbGame } from '../../lib/bb'
-import { FavStar } from '../../lib/favorites'
-import { Card, GameList, Skeleton, TeamLogo, LiveRow } from './parts'
+import { GameList, Skeleton, TeamLogo, LiveRow } from './parts'
+import LeaguePage, { LCard as Card } from '../../components/sport/page/LeaguePage'
 import { useNews, NewsRows } from '../../components/NewsList'
 
 export interface StandRow { position: number; team: { id: number; name: string; logo: string | null }; played: number; won: number; lost: number; pct: number | null; pointsFor: number | null; pointsAgainst: number | null }
@@ -80,6 +80,13 @@ export default function BbLeague() {
   const [results, setResults] = useState<BbGame[] | null>(null)
   const news = useNews({ sport: 'basketball', league: code.toUpperCase(), limit: 10 })
   const [leaders, setLeaders] = useState<Leaders | null>(null)
+  // our record in this league, last 12 months (the header tile, like football)
+  const [record, setRecord] = useState<{ hitRate: number; n: number } | null>(null)
+  useEffect(() => {
+    setRecord(null)
+    axios.get(API_URL + '/basketball/record', { params: { league: code.toUpperCase(), days: 365 } })
+      .then(r => { const x = r.data.data?.total; setRecord(x && x.n > 0 && x.hitRate !== null ? { hitRate: x.hitRate, n: x.n } : null) }).catch(() => undefined)
+  }, [code])
   useEffect(() => {
     setLeaders(null)
     if (code.toUpperCase() === 'NBA') axios.get(`${API_URL}/basketball/leaders`).then(r => setLeaders(r.data.data || null)).catch(() => undefined)
@@ -104,42 +111,40 @@ export default function BbLeague() {
   }, [code, live.length > 0])
   useEffect(() => { if (league) document.title = t('{0} · SportLikely', { 0: league.name }) }, [league])
 
+  const hub = hubFor('basketball', code)
+  // fix152d: football's league page (components/sport/page/LeaguePage): table + leaders left; live, next, news, results right
   return (
-    <div className="max-w-7xl 2xl:max-w-[1440px] mx-auto px-4 sm:px-6 py-6 space-y-6 pb-28 xl:pb-10">
-      <div className="flex items-center gap-3">
-        {league?.logo && <img src={league.logo} alt="" className="w-12 h-12 object-contain" />}
-        <div>
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="font-display text-2xl sm:text-3xl font-extrabold text-ink">{league?.name || code.toUpperCase()}</h1>
-            {league && <FavStar label fav={bbLeagueFav(league)} />}
-          </div>
-          {league && <p className="text-sm text-muted">{t(league.country)}{table?.season ? ` · ${table.season}` : ''}</p>}
-          {hubFor('basketball', code) && <Link to={`/predictions/${hubFor('basketball', code)!.slug}`} className="text-sm font-bold text-accent">{t("This week's predictions →")}</Link>}
-        </div>
-      </div>
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] items-start">
-        <Card title={t('Standings')}>
+    <LeaguePage
+      logo={league?.logo || null}
+      country={{ name: league ? t(league.country) : t('League') }}
+      name={league?.name || code.toUpperCase()}
+      sub={table?.season || null}
+      hub={hub ? { to: `/predictions/${hub.slug}`, label: t("This week's predictions →") } : null}
+      fav={league ? bbLeagueFav(league) : null}
+      record={record}
+      left={<>
+        <Card title={t('Table')}>
           {table === undefined ? <Skeleton rows={10} h="h-7" /> : table ? <StandingsTable data={table} /> : <p className="text-sm text-faint">{t('No table yet.')}</p>}
         </Card>
-        <div className="space-y-6 min-w-0">
-          {live.length > 0 && (
-            <Card title={t('Live now')} action={<span className="inline-flex items-center gap-1.5 text-xs font-bold text-live"><span className="w-1.5 h-1.5 rounded-full bg-live animate-pulseDot" />{t('{0} live', { 0: live.length })}</span>}>
-              <ul className="space-y-1">{live.map(g => <li key={g.id}><LiveRow g={g} /></li>)}</ul>
-            </Card>
-          )}
-          {leaders && leaders.lists.length > 0 && <LeadersCard data={leaders} />}
-          <Card title={t('Next games')}>
-            {!next ? <Skeleton rows={5} /> : <div className="max-h-[520px] overflow-y-auto overscroll-contain pr-1"><GameList games={next.filter(g => g.state !== 'live')} empty={t('No games in the next 10 days.')} /></div>}
+        {leaders && leaders.lists.length > 0 && <LeadersCard data={leaders} />}
+      </>}
+      right={<>
+        {live.length > 0 && (
+          <Card title={t('Live now')} action={<span className="inline-flex items-center gap-1.5 text-xs font-bold text-live"><span className="w-1.5 h-1.5 rounded-full bg-live animate-pulseDot" />{t('{0} live', { 0: live.length })}</span>}>
+            <ul className="space-y-1">{live.map(g => <li key={g.id}><LiveRow g={g} /></li>)}</ul>
           </Card>
-          <Card title={t('Latest results')}>
-            {!results ? <Skeleton rows={5} /> : <div className="max-h-[520px] overflow-y-auto overscroll-contain pr-1"><GameList games={results} empty={t('No results in the last three weeks.')} /></div>}
-          </Card>
-          <Card title={t('{0} news', { 0: league?.name || code.toUpperCase() })}>
-            {news === null ? <Skeleton rows={3} h="h-14" /> : news.length ? <div className="-mx-2 max-h-[520px] overflow-y-auto overscroll-contain"><NewsRows items={news} /></div> : <p className="text-sm text-faint">{t('No news about this league in the last two weeks.')}</p>}
-          </Card>
-        </div>
-      </div>
-    </div>
+        )}
+        <Card title={t('Next games')} action={<Link to="/basketball/games" className="text-xs font-bold text-accent">{t('All →')}</Link>}>
+          {!next ? <Skeleton rows={5} /> : <div className="max-h-[430px] overflow-y-auto overscroll-contain pr-1"><GameList games={next.filter(g => g.state !== 'live')} empty={t('No games in the next 10 days.')} /></div>}
+        </Card>
+        <Card title={t('{0} news', { 0: league?.name || code.toUpperCase() })}>
+          {news === null ? <Skeleton rows={3} h="h-14" /> : news.length ? <div className="-mx-2 max-h-[520px] overflow-y-auto overscroll-contain"><NewsRows items={news} /></div> : <p className="text-sm text-faint">{t('No news about this league in the last two weeks.')}</p>}
+        </Card>
+        <Card title={t('Latest results')}>
+          {!results ? <Skeleton rows={5} /> : <div className="max-h-[430px] overflow-y-auto overscroll-contain pr-1"><GameList games={results} empty={t('No results in the last three weeks.')} /></div>}
+        </Card>
+      </>}
+    />
   )
 }
 

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import LeaguePage, { LCard } from '../components/sport/page/LeaguePage'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
@@ -6,7 +7,6 @@ import { doubleChance, shortTeam, type Prediction } from '../lib/predict'
 import { DcBlock, DcLine } from '../components/DcPick'
 import { isCovered, revealMatch, useRevealState } from '../lib/reveal'
 import RecentResults from '../components/RecentResults'
-import { FavStar } from '../lib/favorites'
 import { t as tt, LOCALE } from '../lib/i18n'
 import { hubFor } from '../lib/hubs'
 
@@ -81,17 +81,7 @@ const playerHref = (s: Scorer, code: string) =>
     : `/player/find?${new URLSearchParams({ name: s.player.name, team: String(s.team.id), c: code, n: s.team.name }).toString()}`
 const teamLink = (t: Team, code: string) => `/team/${t.id}?${new URLSearchParams({ c: code, n: t.name }).toString()}`
 
-function Card({ title, action, children, className = '' }: { title: string; action?: ReactNode; children: ReactNode; className?: string }) {
-  return (
-    <section className={`card p-4 sm:p-5 ${className}`}>
-      <div className="flex items-center justify-between gap-3 mb-3">
-        <h2 className="font-display text-lg font-bold text-ink">{title}</h2>
-        {action}
-      </div>
-      {children}
-    </section>
-  )
-}
+const Card = LCard
 
 function Crest({ team, size = 20 }: { team: Team; size?: number }) {
   return team.crest ? (
@@ -216,43 +206,16 @@ function League() {
   const upcoming = (matches || []).filter(m => !LIVE.has(m.status) && !['FINISHED', 'AWARDED', 'CANCELLED'].includes(m.status)).slice(0, 12)
   const live = (matches || []).filter(m => LIVE.has(m.status))
 
+  const hub = code ? hubFor('football', code) : null
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
-      {/* ---------- header ---------- */}
-      <section className="card relative overflow-hidden p-5 sm:p-7">
-        <div className="pointer-events-none absolute inset-0 opacity-[0.12]" style={{ background: 'radial-gradient(600px 220px at 10% 0%, rgb(var(--accent)), transparent 70%)' }} />
-        <div className="relative flex flex-wrap items-center gap-5">
-          <span className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/90 grid place-items-center flex-shrink-0 p-2">
-            {comp?.emblem ? <img src={comp.emblem} alt="" className="w-full h-full object-contain" /> : <span className="text-2xl">🏆</span>}
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 text-xs text-faint">
-              {comp?.area?.flag && <img src={comp.area.flag} alt="" className="w-4 h-3 object-cover rounded-[2px]" />}
-              <span>{comp?.area?.name || tt("League")}</span>
-            </div>
-            <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink truncate">{comp?.name || code}</h1>
-            {code && hubFor('football', code) && (
-              <Link to={`/predictions/${hubFor('football', code)!.slug}`} className="mt-1 inline-block text-sm font-bold text-accent">{tt("This week's predictions →")}</Link>
-            )}
-            {comp?.name && code && (
-              <FavStar label className="mt-2" fav={{ kind: 'league', ref: code, code, name: comp.name, img: comp.emblem || null }} />
-            )}
-          </div>
-          {record && record.hitRate !== null && record.n > 0 && (
-            <div className="flex gap-3">
-              <div className="glass px-4 py-3 text-center">
-                <div className="text-[11px] text-faint">{tt("Our picks right")}</div>
-                <div className="font-display text-2xl font-extrabold text-accent num">{Math.round(record.hitRate)}%</div>
-                <div className="text-[10px] text-faint num">{record.n} {tt("games · 12 months")}</div>
-              </div>
-            </div>
-          )}
-        </div>
-      </section>
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] items-start">
-        {/* ---------- left: table + leaders ---------- */}
-        <div className="space-y-6 min-w-0">
+    <LeaguePage
+      logo={comp?.emblem || null}
+      country={{ flag: comp?.area?.flag || null, name: comp?.area?.name || tt("League") }}
+      name={comp?.name || code}
+      hub={hub ? { to: `/predictions/${hub.slug}`, label: tt("This week's predictions →") } : null}
+      fav={comp?.name && code ? { kind: 'league', ref: code, code, name: comp.name, img: comp.emblem || null } : null}
+      record={record && record.hitRate !== null && record.n > 0 ? { hitRate: record.hitRate, n: record.n } : null}
+      left={<>
           <Card title={tt("Table")}>
             {!tables ? (
               <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-7 rounded-lg bg-surface2/60 animate-pulse" />)}</div>
@@ -361,10 +324,8 @@ function League() {
               </ol>
             )}
           </Card>
-        </div>
-
-        {/* ---------- right: fixtures, results ---------- */}
-        <div className="space-y-6 min-w-0">
+      </>}
+      right={<>
           {live.length > 0 && (
             <Card title={tt("Live now")}>
               <ul className="space-y-1">
@@ -459,9 +420,8 @@ function League() {
           <section className="card p-3">
             <RecentResults code={code} limit={50} days={120} compact large listClass="max-h-[430px] overflow-y-auto overscroll-contain pr-1" />
           </section>
-        </div>
-      </div>
-    </div>
+      </>}
+    />
   )
 }
 

@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../../lib/socket'
 import { t, LOCALE } from '../../lib/i18n'
 import { Card, Skeleton, TeamLogo } from './parts'
+import PlayerHeader, { Chip } from '../../components/sport/page/PlayerHeader'
 
 interface Side { id: number; name: string; logo: string | null }
 interface SeasonRow { code: string; league: string; season: string; team: Side; gp: number; starts: number; min: number | null; pts: number | null; reb: number | null; ast: number | null; fgPct: number | null; tpPct: number | null; ftPct: number | null; tpm: number | null }
@@ -59,43 +60,45 @@ export default function BbPlayer() {
   const jersey = bio?.jersey || rb?.number || null
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6 pb-28 xl:pb-10">
-      {/* header */}
-      <div className="card relative overflow-hidden p-5 sm:p-8">
-        {d.player.team.logo && <img src={d.player.team.logo} alt="" aria-hidden className="pointer-events-none absolute -right-16 top-1/2 -translate-y-1/2 w-72 h-72 object-contain blur-3xl opacity-25" />}
-        <div className="relative flex flex-col lg:flex-row lg:items-center gap-5">
-          <div className="relative w-20 h-20 rounded-2xl bg-surface2 grid place-items-center shrink-0">
-            {jersey ? <span className="font-display text-3xl font-extrabold text-ink num">{jersey}</span> : <TeamLogo team={d.player.team} size={56} />}
-            {jersey && <span className="absolute -bottom-2 -right-2"><TeamLogo team={d.player.team} size={28} /></span>}
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 pb-28 xl:pb-10">
+      {/* header: football's player header (fix152d) */}
+      <PlayerHeader
+        name={d.player.name}
+        photo={null}
+        noPhoto={jersey ? <span className="font-display text-4xl font-extrabold text-ink num">{jersey}</span> : <TeamLogo team={d.player.team} size={56} />}
+        teamBadge={<TeamLogo team={d.player.team} size={28} />}
+        chips={[
+          (bio?.position || rb?.position) ? <Chip>{bio?.position || rb?.position}</Chip> : null,
+          jersey ? <span className="num">#{jersey}</span> : null,
+          nba?.injury ? <Chip tone="out">{nba.injury.status}</Chip> : nba ? <Chip tone="ok">{t('Available')}</Chip> : null
+        ].filter(Boolean)}
+        team={{ name: d.player.team.name, logo: <TeamLogo team={d.player.team} size={20} />, href: `/basketball/team/${d.player.team.id}` }}
+        facts={([
+          rb?.age ? [t('Age'), <span className="num">{rb.age}</span>] : null,
+          (!bio && rb?.country) ? [t('Nationality'), rb.country] : null,
+          [t('League'), <Link to={`/basketball/league/${d.player.league.code}`} className="hover:text-accent">{d.player.league.name}</Link>]
+        ] as ([string, ReactNode] | null)[]).filter((x): x is [string, ReactNode] => !!x)}
+        note={<>
+        {nba?.injury && (
+          <div className="mt-3 inline-flex items-start gap-2 rounded-xl bg-loss/10 border border-loss/25 px-3 py-2 text-sm max-w-xl">
+            <span className="mt-1.5 w-2 h-2 rounded-full bg-loss shrink-0" />
+            <span><b className="text-loss">{nba.injury.status}</b>{nba.injury.reported ? <span className="text-faint"> · {nba.injury.reported}</span> : null}{nba.injury.comment && <span className="block text-xs text-muted line-clamp-3 mt-0.5">{nba.injury.comment}</span>}</span>
           </div>
-          <div className="min-w-0 flex-1">
-            <h1 className="font-display text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-ink break-words">{d.player.name}</h1>
-            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
-              <Link to={`/basketball/team/${d.player.team.id}`} className="hover:text-ink font-semibold">{d.player.team.name}</Link>
-              <Link to={`/basketball/league/${d.player.league.code}`} className="hover:text-ink">{d.player.league.name}</Link>
-              {(bio?.position || rb?.position) && <span>{bio?.position || rb?.position}</span>}
-              {!bio && rb?.country && <span>{rb.country}</span>}
-              {rb?.age ? <span>{t('{0} years', { 0: rb.age })}</span> : null}
-            </div>
-            {nba?.injury && (
-              <div className="mt-3 inline-flex items-start gap-2 rounded-xl bg-loss/10 border border-loss/25 px-3 py-2 text-sm max-w-xl">
-                <span className="mt-1.5 w-2 h-2 rounded-full bg-loss shrink-0" />
-                <span><b className="text-loss">{nba.injury.status}</b>{nba.injury.reported ? <span className="text-faint"> · {nba.injury.reported}</span> : null}{nba.injury.comment && <span className="block text-xs text-muted line-clamp-3 mt-0.5">{nba.injury.comment}</span>}</span>
-              </div>
-            )}
+        )}
+        </>}
+        aside={<>
+        {(line || cur) && (
+          <div className="w-full lg:w-[340px] shrink-0">
+          <div className="mb-1 text-right text-[11px] text-faint">{t('Per game')} · {line?.label || (cur ? `${cur.code} ${cur.season}` : '')}</div>
+          <div className="grid grid-cols-3 gap-2">
+            <Big label={t('Points')} value={v(line?.pts ?? cur?.pts)} />
+            <Big label={t('Rebounds')} value={v(line?.reb ?? cur?.reb)} />
+            <Big label={t('Assists')} value={v(line?.ast ?? cur?.ast)} />
           </div>
-          {(line || cur) && (
-            <div className="w-full lg:w-[340px] shrink-0">
-            <div className="mb-1 text-right text-[11px] text-faint">{t('Per game')} · {line?.label || (cur ? `${cur.code} ${cur.season}` : '')}</div>
-            <div className="grid grid-cols-3 gap-2">
-              <Big label={t('Points')} value={v(line?.pts ?? cur?.pts)} />
-              <Big label={t('Rebounds')} value={v(line?.reb ?? cur?.reb)} />
-              <Big label={t('Assists')} value={v(line?.ast ?? cur?.ast)} />
-            </div>
-            </div>
-          )}
-        </div>
-      </div>
+          </div>
+        )}
+        </>}
+      />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] items-start">
         <div className="space-y-6 min-w-0">

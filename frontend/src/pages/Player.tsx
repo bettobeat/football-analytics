@@ -5,6 +5,7 @@ import { API_URL } from '../lib/socket'
 import { errorText } from '../lib/auth'
 import { FavStar } from '../lib/favorites'
 import { t as tt, LOCALE } from '../lib/i18n'
+import PlayerHeader, { Chip } from '../components/sport/page/PlayerHeader'
 
 /**
  * Player page: /player/<API-Football id>. /player/find?name=&team=&c=&n= looks a scorer up first (Football-Data ids).
@@ -160,62 +161,26 @@ export default function Player() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
       {/* ---------- header ---------- */}
-      <section className="card relative overflow-hidden p-5 sm:p-7">
-        <div className="pointer-events-none absolute inset-0 opacity-[0.12]" style={{ background: 'radial-gradient(600px 240px at 12% 0%, rgb(var(--accent)), transparent 70%)' }} />
-        <div className="relative flex flex-wrap items-center gap-5 sm:gap-7">
-          <div className="relative flex-shrink-0">
-            <div className="photo-duo w-24 h-24 sm:w-28 sm:h-28 rounded-3xl overflow-hidden ring-2 ring-line">
-              <img src={p.photo} alt={p.name} className="w-full h-full object-cover" />
-            </div>
-            {data.team && (
-              <span className="absolute -bottom-2 -right-2 w-10 h-10 rounded-full bg-white grid place-items-center ring-2 ring-surface shadow-card" title={data.team.name}>
-                <img src={data.team.logo} alt={data.team.name} className="w-7 h-7 object-contain" />
-              </span>
-            )}
-          </div>
-          <div className="min-w-0 flex-1 space-y-2">
-            <div className="flex flex-wrap items-center gap-2 text-xs text-faint">
-              {data.position && <span className="px-2 py-0.5 rounded-full bg-surface2/80 text-muted font-semibold">{data.position}</span>}
-              {data.number && <span className="num">#{data.number}</span>}
-              {data.status.out ? (
-                <span className="px-2 py-0.5 rounded-full bg-loss/15 text-loss font-bold">
-                  {tt("Out · {0}", { 0: data.status.type })}
-                  {data.status.until ? tt(" until {0}", { 0: fmt(data.status.until) }) : ''}
-                </span>
-              ) : (
-                <span className="px-2 py-0.5 rounded-full bg-win/15 text-win font-bold">{tt("Available")}</span>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">{p.name}</h1>
-              <FavStar
-                label
-                fav={{
-                  kind: 'player',
-                  ref: String(p.id),
-                  name: p.name,
-                  img: p.photo || null,
-                  teamName: data.team?.name || null,
-                  teamImg: data.team?.logo || null,
-                  teamIds: data.team ? [data.team.id] : []
-                }}
-              />
-            </div>
-            {data.team && (
-              <Link to={teamHref(data.team)} className="inline-flex items-center gap-2 text-sm font-semibold text-muted hover:text-ink">
-                <img src={data.team.logo} alt="" className="w-5 h-5 object-contain" />
-                {data.team.name}
-              </Link>
-            )}
-          </div>
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-            {p.age !== null && (<><dt className="text-faint">{tt("Age")}</dt><dd className="text-ink font-semibold num">{p.age}</dd></>)}
-            {p.nationality && (<><dt className="text-faint">{tt("Nationality")}</dt><dd className="text-ink font-semibold">{p.nationality}</dd></>)}
-            {p.height && (<><dt className="text-faint">{tt("Height")}</dt><dd className="text-ink font-semibold">{p.height}</dd></>)}
-            {p.birth?.date && (<><dt className="text-faint">{tt("Born")}</dt><dd className="text-ink font-semibold">{fmt(p.birth.date)}</dd></>)}
-          </dl>
-        </div>
-      </section>
+      <PlayerHeader
+        name={p.name}
+        photo={p.photo || null}
+        teamBadge={data.team ? <img src={data.team.logo} alt={data.team.name} title={data.team.name} className="w-7 h-7 object-contain" /> : undefined}
+        chips={[
+          data.position ? <Chip>{data.position}</Chip> : null,
+          data.number ? <span className="num">#{data.number}</span> : null,
+          data.status.out
+            ? <Chip tone="out">{tt("Out · {0}", { 0: data.status.type })}{data.status.until ? tt(" until {0}", { 0: fmt(data.status.until) }) : ''}</Chip>
+            : <Chip tone="ok">{tt("Available")}</Chip>
+        ].filter(Boolean)}
+        star={<FavStar label fav={{ kind: 'player', ref: String(p.id), name: p.name, img: p.photo || null, teamName: data.team?.name || null, teamImg: data.team?.logo || null, teamIds: data.team ? [data.team.id] : [] }} />}
+        team={data.team ? { name: data.team.name, logo: <img src={data.team.logo} alt="" className="w-5 h-5 object-contain" />, href: teamHref(data.team) } : null}
+        facts={([
+          p.age !== null ? [tt("Age"), <span className="num">{p.age}</span>] : null,
+          p.nationality ? [tt("Nationality"), p.nationality] : null,
+          p.height ? [tt("Height"), p.height] : null,
+          p.birth?.date ? [tt("Born"), fmt(p.birth.date)] : null
+        ] as ([string, ReactNode] | null)[]).filter((x): x is [string, ReactNode] => !!x)}
+      />
 
       {data.stale && <p className="text-xs text-faint">{tt("Showing the last saved copy; live data is paused for today.")}</p>}
 

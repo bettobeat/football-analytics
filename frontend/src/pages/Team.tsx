@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import TeamPage, { TCard } from '../components/sport/page/TeamPage'
+import { useEffect, useMemo, useState } from 'react'
 import { useNews, NewsRows } from '../components/NewsList'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../lib/socket'
 import { errorText, useAuth } from '../lib/auth'
 import { TeamAnalysisCard, TeamRecordCard, type Analysis } from '../components/TeamAnalysis'
-import { FavStar, nameKey } from '../lib/favorites'
+import { nameKey } from '../lib/favorites'
 import { t, LOCALE } from '../lib/i18n'
 
 interface Side { id: number; name: string; logo: string }
@@ -37,19 +38,7 @@ const FORM_BG = { W: 'bg-win', D: 'bg-draw', L: 'bg-loss' }
 const POS_LABEL: Record<string, string> = { Goalkeeper: t('Goalkeepers'), Defender: t('Defenders'), Midfielder: t('Midfielders'), Attacker: t('Forwards') }
 const DONE = new Set(['FT', 'AET', 'PEN'])
 
-function Card({ title, action, children, className = '' }: { title?: string; action?: ReactNode; children: ReactNode; className?: string }) {
-  return (
-    <section className={`card p-5 sm:p-6 ${className}`}>
-      {title && (
-        <div className="flex items-center justify-between gap-3 mb-4">
-          <h2 className="font-display text-base sm:text-lg font-bold text-ink">{title}</h2>
-          {action}
-        </div>
-      )}
-      {children}
-    </section>
-  )
-}
+const Card = TCard
 
 function Pro() {
   return <span className="text-[10px] font-extrabold text-bg bg-accent px-1.5 py-0.5 rounded-full">{t("PRO")}</span>
@@ -152,49 +141,27 @@ export default function Team() {
   })() : []
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-5">
-      {/* banner */}
-      <section className="relative overflow-hidden rounded-[28px] border border-line/70 p-6 sm:p-9 bg-[radial-gradient(640px_320px_at_90%_0%,rgb(var(--home)/0.25),transparent_65%),linear-gradient(150deg,#13203D,#0A0E16)] text-[#EEF1F6] flex flex-col sm:flex-row sm:items-center gap-6">
-        <img src={team.logo} alt="" className="w-20 h-20 sm:w-28 sm:h-28 object-contain drop-shadow-lg" />
-        <div className="flex-1 min-w-0 space-y-2">
-          <div className="text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#9AA3B2]">{team.national ? t("National team") : data.league ? `${data.league.name} · ${team.country}` : team.country}</div>
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="font-display text-3xl sm:text-5xl font-extrabold tracking-tight">{team.name}</h1>
-            <FavStar
-              label
-              tone="dark"
-              fav={{ kind: 'team', ref: nameKey(team.name), name: team.name, img: team.logo, ids: [...new Set([team.id, Number(id)].filter(n => Number.isFinite(n) && n > 0))] }}
-            />
-          </div>
-          <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-[#C9D0DB]">
-            {standing && <span>{t("#{0} in the table · {1} pts", { 0: standing.rank, 1: standing.points })}</span>}
-            {data.venue && <span>{data.venue.name}{data.venue.capacity ? ` · ${data.venue.capacity.toLocaleString(LOCALE)}` : ''}</span>}
-            {team.founded && <span>{t("Founded")}{' '}{team.founded}</span>}
-          </div>
-          {data.builtAt && (
-            <div className="text-[11px] text-[#9AA3B2]">
-              {(() => {
-                const m = Math.max(1, Math.round((Date.now() - new Date(data.builtAt!).getTime()) / 60000))
-                return `Updated ${m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`} ago`
-              })()}
-              {data.stale ? t(" · live data paused (daily data limit reached), refreshes after 03:00") : t(" · results and table refresh every 15 minutes")}
-            </div>
-          )}
-        </div>
-        {data.form.length > 0 && (
-          <div className="flex flex-col sm:items-end gap-2">
-            <span className="text-xs font-bold text-[#9AA3B2]">{t("Form, last")}{' '}{data.form.length}</span>
-            <div className="flex gap-1.5">
-              {[...data.form].reverse().map((r, i) => (
-                <span key={i} className={`w-8 h-8 rounded-lg grid place-items-center font-display text-xs font-extrabold text-[#07090D] ${FORM_BG[r]}`}>{r}</span>
-              ))}
-            </div>
-          </div>
-        )}
-      </section>
-
-      <div className="grid gap-5 lg:grid-cols-[1.55fr_1fr]">
-        <div className="space-y-5 min-w-0">
+    <TeamPage
+      logo={team.logo || null}
+      kicker={team.national ? t("National team") : data.league ? `${data.league.name} · ${team.country}` : team.country}
+      name={team.name}
+      fav={{ kind: 'team', ref: nameKey(team.name), name: team.name, img: team.logo, ids: [...new Set([team.id, Number(id)].filter(n => Number.isFinite(n) && n > 0))] }}
+      facts={[
+        standing ? t("#{0} in the table · {1} pts", { 0: standing.rank, 1: standing.points }) : null,
+        data.venue ? `${data.venue.name}${data.venue.capacity ? ` · ${data.venue.capacity.toLocaleString(LOCALE)}` : ''}` : null,
+        team.founded ? `${t("Founded")} ${team.founded}` : null
+      ].filter(Boolean)}
+      note={data.builtAt ? (
+        <>
+          {(() => {
+            const m = Math.max(1, Math.round((Date.now() - new Date(data.builtAt!).getTime()) / 60000))
+            return `Updated ${m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`} ago`
+          })()}
+          {data.stale ? t(" · live data paused (daily data limit reached), refreshes after 03:00") : t(" · results and table refresh every 15 minutes")}
+        </>
+      ) : undefined}
+      form={[...data.form].reverse() as ('W' | 'D' | 'L')[]}
+      left={<>
           {/* Team analysis: model's view, form & trends, strengths & weaknesses (paid); locked preview for free */}
           <TeamAnalysisCard a={data.analysis} full={full} />
 
@@ -261,9 +228,8 @@ export default function Team() {
               </div>
             )}
           </Card>
-        </div>
-
-        <div className="space-y-5 min-w-0">
+      </>}
+      right={<>
           {standing && (
             <Card title={t("Season in numbers")}>
               <div className="grid grid-cols-2 gap-3">
@@ -321,8 +287,7 @@ export default function Team() {
           <Card title={t("{0} news", { 0: team.name })}>
             {news === null ? <div className="h-24 rounded-xl bg-surface2/60 animate-pulse" /> : news.length ? <div className="-mx-2"><NewsRows items={news} showLeague /></div> : <p className="text-sm text-faint">{t("No news about this team in the last month.")}</p>}
           </Card>
-        </div>
-      </div>
-    </div>
+      </>}
+    />
   )
 }

@@ -1851,5 +1851,8 @@
  "Live team stats": "Estadísticas de equipo en directo",
  "Yards, downs, red zone and turnovers": "Yardas, downs, zona roja y pérdidas",
  "Player stats and the injury reports": "Estadísticas de jugadores y partes de lesiones",
- "Passing, rushing, receiving and defense": "Pase, carrera, recepción y defensa"
+ "Passing, rushing, receiving and defense": "Pase, carrera, recepción y defensa",
+ "{0} table →": "Clasificación de {0} →",
+ "USA · college": "EE. UU. · universitario",
+ "No games in the next two weeks.": "No hay partidos en las próximas dos semanas."
 }

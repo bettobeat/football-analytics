@@ -4,9 +4,9 @@ import axios from 'axios'
 import { API_URL } from '../../lib/socket'
 import { t, LOCALE } from '../../lib/i18n'
 import { useBbConfig, bbTeamFav, type BbGame } from '../../lib/bb'
-import { FavStar } from '../../lib/favorites'
 import { useNews, NewsRows } from '../../components/NewsList'
-import { Card, GameList, Skeleton, TeamLogo } from './parts'
+import { GameList, Skeleton } from './parts'
+import TeamPage, { TCard as Card } from '../../components/sport/page/TeamPage'
 import { BbTeamAnalysisCard, TeamRecordCard, type BbAnalysis } from '../../components/TeamAnalysis'
 
 interface Profile { games: number; fgPct: number | null; threePct: number | null; threeAttempts: number | null; ftPct: number | null; rebounds: number | null; assists: number | null; turnovers: number | null; steals: number | null; blocks: number | null }
@@ -54,107 +54,88 @@ export default function BbTeam() {
   const an = d.analysis
   const s = an?.splits
 
+  const form = (d.averages?.form || []).slice(0, 5).reverse()
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6 pb-28 xl:pb-10">
-      {/* header */}
-      <div className="card relative overflow-hidden p-5 sm:p-8">
-        {d.team.logo && <img src={d.team.logo} alt="" aria-hidden className="pointer-events-none absolute -right-16 top-1/2 -translate-y-1/2 w-72 h-72 object-contain blur-3xl opacity-25" />}
-        <div className="relative flex flex-col sm:flex-row sm:items-center gap-5">
-          <TeamLogo team={d.team} size={88} />
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">{d.team.name}</h1>
-              <FavStar label fav={bbTeamFav(d.team, d.team.league)} />
-            </div>
-            {league && <Link to={`/basketball/league/${league.code}`} className="text-sm text-muted hover:text-ink">{league.name}{an ? ` · ${an.season}` : ''}</Link>}
-          </div>
-          {s && s.games > 0 && (
-            <div className="grid grid-cols-3 gap-2 sm:w-[340px]">
-              <Big label={an!.previousSeason ? t('Last season') : t('Record')} value={`${s.won}–${s.lost}`} />
-              <Big label={t('Home')} value={`${s.homeWon}–${s.homeLost}`} />
-              <Big label={t('Away')} value={`${s.awayWon}–${s.awayLost}`} />
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* fix126: Team analysis, like football (strengths & weaknesses, model rating, 1–10 scores, rank over time) */}
-      <BbTeamAnalysisCard a={d.teamAnalysis} full={!!d.teamAnalysis && !d.teamAnalysis.locked} />
-
-      {an && (
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] items-start">
-          <div className="space-y-6 min-w-0">
-            {/* box-score profile against the league (ranks and notes are in the Team analysis card above) */}
-            <Card title={t('Compared with the league')}>
-              {an.profile.team && an.profile.league ? (
-                <ul className="space-y-3">
-                  {PROFILE_ROWS.map(r => {
-                    const v = an.profile.team![r.k], lg = an.profile.league![r.k]
-                    if (v === null || lg === null || v === undefined || lg === undefined) return null
-                    const diff = (v as number) - (lg as number)
-                    const good = r.lowerBetter ? diff < 0 : diff > 0
-                    const rel = Math.max(-1, Math.min(1, diff / (r.scale || 1)))
-                    return (
-                      <li key={r.k}>
-                        <div className="flex items-baseline justify-between text-sm">
-                          <span className="text-muted">{r.label}</span>
-                          <span><b className="num text-ink">{v}{r.pct ? '%' : ''}</b> <span className="text-[11px] text-faint">{t('league {0}', { 0: `${lg}${r.pct ? '%' : ''}` })}</span></span>
-                        </div>
-                        <div className="relative h-2 mt-1 rounded-full bg-surface2">
-                          <span className="absolute left-1/2 top-0 bottom-0 w-px bg-line" />
-                          <span className={`absolute top-0 bottom-0 rounded-full ${Math.abs(diff) < (r.scale || 1) * 0.15 ? 'bg-faint' : good ? 'bg-win' : 'bg-loss'}`}
-                            style={rel >= 0 ? { left: '50%', width: `${rel * 50}%` } : { right: '50%', width: `${-rel * 50}%` }} />
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ul>
-              ) : (
-                <p className="text-sm text-faint">{t('Shooting and other stats appear once box scores are in for this season.')}</p>
+    <TeamPage
+      logo={d.team.logo}
+      kicker={[league?.name, an?.season].filter(Boolean).join(' · ')}
+      name={d.team.name}
+      fav={bbTeamFav(d.team, d.team.league)}
+      facts={s && s.games > 0 ? [
+        `${an!.previousSeason ? t('Last season') : t('Record')} ${s.won}–${s.lost}`,
+        `${t('Home')} ${s.homeWon}–${s.homeLost}`,
+        `${t('Away')} ${s.awayWon}–${s.awayLost}`
+      ] : []}
+      note={league ? <Link to={`/basketball/league/${league.code}`} className="hover:text-white">{t('{0} table →', { 0: league.name })}</Link> : undefined}
+      form={form}
+      left={<>
+        {/* fix126: Team analysis, like football (strengths & weaknesses, model rating, 1–10 scores, rank over time) */}
+        <div id="analysis" className="scroll-mt-24"><BbTeamAnalysisCard a={d.teamAnalysis} full={!!d.teamAnalysis && !d.teamAnalysis.locked} /></div>
+        {an && (
+          <>
+              <Card title={t('Compared with the league')}>
+                {an.profile.team && an.profile.league ? (
+                  <ul className="space-y-3">
+                    {PROFILE_ROWS.map(r => {
+                      const v = an.profile.team![r.k], lg = an.profile.league![r.k]
+                      if (v === null || lg === null || v === undefined || lg === undefined) return null
+                      const diff = (v as number) - (lg as number)
+                      const good = r.lowerBetter ? diff < 0 : diff > 0
+                      const rel = Math.max(-1, Math.min(1, diff / (r.scale || 1)))
+                      return (
+                        <li key={r.k}>
+                          <div className="flex items-baseline justify-between text-sm">
+                            <span className="text-muted">{r.label}</span>
+                            <span><b className="num text-ink">{v}{r.pct ? '%' : ''}</b> <span className="text-[11px] text-faint">{t('league {0}', { 0: `${lg}${r.pct ? '%' : ''}` })}</span></span>
+                          </div>
+                          <div className="relative h-2 mt-1 rounded-full bg-surface2">
+                            <span className="absolute left-1/2 top-0 bottom-0 w-px bg-line" />
+                            <span className={`absolute top-0 bottom-0 rounded-full ${Math.abs(diff) < (r.scale || 1) * 0.15 ? 'bg-faint' : good ? 'bg-win' : 'bg-loss'}`}
+                              style={rel >= 0 ? { left: '50%', width: `${rel * 50}%` } : { right: '50%', width: `${-rel * 50}%` }} />
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-faint">{t('Shooting and other stats appear once box scores are in for this season.')}</p>
+                )}
+              </Card>
+              {an.last20.length > 0 && (
+                <Card title={t('Last {0} games', { 0: an.last20.length })} action={an.streak && an.streak.n >= 2 ? <span className={`text-xs font-bold ${an.streak.kind === 'W' ? 'text-win' : 'text-loss'}`}>{an.streak.kind === 'W' ? t('{0} wins in a row', { 0: an.streak.n }) : t('{0} losses in a row', { 0: an.streak.n })}</span> : undefined}>
+                  <MarginChart games={an.last20} />
+                  <p className="mt-2 text-[11px] text-faint">{t('Bars: points won or lost by. Green = win, red = loss. Tap a bar for the game.')}</p>
+                </Card>
               )}
-            </Card>
-
-            {/* form chart */}
-            {an.last20.length > 0 && (
-              <Card title={t('Last {0} games', { 0: an.last20.length })} action={an.streak && an.streak.n >= 2 ? <span className={`text-xs font-bold ${an.streak.kind === 'W' ? 'text-win' : 'text-loss'}`}>{an.streak.kind === 'W' ? t('{0} wins in a row', { 0: an.streak.n }) : t('{0} losses in a row', { 0: an.streak.n })}</span> : undefined}>
-                <MarginChart games={an.last20} />
-                <p className="mt-2 text-[11px] text-faint">{t('Bars: points won or lost by. Green = win, red = loss. Tap a bar for the game.')}</p>
-              </Card>
-            )}
-          </div>
-
-          <div className="space-y-6 min-w-0">
-            {/* splits */}
-            {s && s.games > 0 && (
-              <Card title={an.previousSeason ? t('Last season in numbers') : t('Season in numbers')}>
-                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                  <dt className="text-muted">{t('Home record')}</dt><dd className="text-right num text-ink">{s.homeWon}–{s.homeLost}{s.marginHome !== null ? ` (${s.marginHome > 0 ? '+' : ''}${s.marginHome})` : ''}</dd>
-                  <dt className="text-muted">{t('Away record')}</dt><dd className="text-right num text-ink">{s.awayWon}–{s.awayLost}{s.marginAway !== null ? ` (${s.marginAway > 0 ? '+' : ''}${s.marginAway})` : ''}</dd>
-                  <dt className="text-muted">{t('Back-to-backs (2nd night)')}</dt><dd className="text-right num text-ink">{s.b2bWon}–{s.b2bLost}</dd>
-                  <dt className="text-muted">{t('Close games (5 points or less)')}</dt><dd className="text-right num text-ink">{s.closeWon}–{s.closeLost}</dd>
-                  {d.averages && <><dt className="text-muted">{t('Points scored / allowed (last 10)')}</dt><dd className="text-right num text-ink">{d.averages.pointsFor} / {d.averages.pointsAgainst}</dd></>}
-                </dl>
-                <p className="mt-3 text-[11px] text-faint">{t('In brackets: average points won or lost by.')}</p>
-              </Card>
-            )}
-
-            {/* news */}
-            <Card title={t('{0} news', { 0: d.team.name })}>
-              {news === null ? <Skeleton rows={3} h="h-14" /> : news.length ? <div className="-mx-2"><NewsRows items={news} /></div> : <p className="text-sm text-faint">{t('No news about this team in the last month.')}</p>}
-            </Card>
-          </div>
-        </div>
-      )}
-
-      {d.squad && d.squad.length > 0 && <SquadCard players={d.squad} />}
-
-      {d.teamAnalysis && <TeamRecordCard rec={d.teamAnalysis.record} teamName={d.team.name} sport="basketball" />}
-
-      <div className="grid gap-6 lg:grid-cols-2 items-start">
-        <Card title={t('Next games')} className="min-w-0"><GameList games={d.next} empty={t('No games scheduled.')} /></Card>
-        <Card title={t('Latest results')} className="min-w-0"><GameList games={d.recent.filter(g => g.state === 'done')} empty={t('No results yet.')} /></Card>
-      </div>
-    </div>
+          </>
+        )}
+        {d.squad && d.squad.length > 0 && <SquadCard players={d.squad} />}
+      </>}
+      right={<>
+        {an && (
+          <>
+              {s && s.games > 0 && (
+                <Card title={an.previousSeason ? t('Last season in numbers') : t('Season in numbers')}>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                    <dt className="text-muted">{t('Home record')}</dt><dd className="text-right num text-ink">{s.homeWon}–{s.homeLost}{s.marginHome !== null ? ` (${s.marginHome > 0 ? '+' : ''}${s.marginHome})` : ''}</dd>
+                    <dt className="text-muted">{t('Away record')}</dt><dd className="text-right num text-ink">{s.awayWon}–{s.awayLost}{s.marginAway !== null ? ` (${s.marginAway > 0 ? '+' : ''}${s.marginAway})` : ''}</dd>
+                    <dt className="text-muted">{t('Back-to-backs (2nd night)')}</dt><dd className="text-right num text-ink">{s.b2bWon}–{s.b2bLost}</dd>
+                    <dt className="text-muted">{t('Close games (5 points or less)')}</dt><dd className="text-right num text-ink">{s.closeWon}–{s.closeLost}</dd>
+                    {d.averages && <><dt className="text-muted">{t('Points scored / allowed (last 10)')}</dt><dd className="text-right num text-ink">{d.averages.pointsFor} / {d.averages.pointsAgainst}</dd></>}
+                  </dl>
+                  <p className="mt-3 text-[11px] text-faint">{t('In brackets: average points won or lost by.')}</p>
+                </Card>
+              )}
+          </>
+        )}
+        {d.teamAnalysis && <TeamRecordCard rec={d.teamAnalysis.record} teamName={d.team.name} sport="basketball" />}
+        <Card title={t('Next games')}><GameList games={d.next} empty={t('No games scheduled.')} /></Card>
+        <Card title={t('Latest results')}><GameList games={d.recent.filter(g => g.state === 'done')} empty={t('No results yet.')} /></Card>
+        <Card title={t('{0} news', { 0: d.team.name })}>
+          {news === null ? <Skeleton rows={3} h="h-14" /> : news.length ? <div className="-mx-2"><NewsRows items={news} /></div> : <p className="text-sm text-faint">{t('No news about this team in the last month.')}</p>}
+        </Card>
+      </>}
+    />
   )
 }
 
@@ -169,15 +150,6 @@ const PROFILE_ROWS: { k: keyof Profile; label: string; pct?: boolean; lowerBette
   { k: 'steals', label: t('Steals'), scale: 2 },
   { k: 'blocks', label: t('Blocks'), scale: 2 }
 ]
-
-function Big({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl bg-surface2/60 border border-line/50 p-2.5 text-center">
-      <div className="num text-lg font-extrabold text-ink">{value}</div>
-      <div className="text-[10px] text-faint">{label}</div>
-    </div>
-  )
-}
 
 /** Win/loss margin per game as bars (oldest left). */
 function MarginChart({ games }: { games: Analysis['last20'] }) {

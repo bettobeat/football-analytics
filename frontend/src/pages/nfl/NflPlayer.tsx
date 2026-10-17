@@ -6,6 +6,7 @@ import { t, LOCALE } from '../../lib/i18n'
 import { setNflLeague, type NflGame } from '../../lib/nfl'
 import { LeagueSwitch } from './parts'
 import { Card, Skeleton, TeamLogo } from '../bb/parts'
+import PlayerHeader, { Chip } from '../../components/sport/page/PlayerHeader'
 
 interface Data {
   player: { id: number; name: string; position: string | null; group: string | null; number: number | null; age: number | null; height: string | null; weight: string | null; college: string | null; experience: number | null; image: string | null }
@@ -37,22 +38,21 @@ export default function NflPlayer() {
     p.height && [t('Height'), p.height], p.weight && [t('Weight'), p.weight], p.college && [t('College'), p.college], p.experience != null && [t('Seasons in the NFL'), String(p.experience)]
   ].filter(Boolean) as [string, string][]
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 pb-28 xl:pb-10">
       <LeagueSwitch />
-      <header className="flex items-center gap-4">
-        {p.image && !imgBroken ? <img src={p.image} alt="" width={80} height={80} onError={() => setImgBroken(true)} className="w-20 h-20 rounded-full object-cover bg-surface2" /> : <span className="w-20 h-20 rounded-full bg-surface2" />}
-        <div className="min-w-0 space-y-1">
-          <h1 className="font-display text-2xl sm:text-4xl font-extrabold tracking-tight text-ink leading-tight">{p.name}</h1>
-          {d.team && <Link to={`/american-football/team/${d.team.id}`} className="inline-flex items-center gap-2 text-sm text-muted hover:text-accent"><TeamLogo team={d.team} size={18} />{d.team.name}</Link>}
-        </div>
-      </header>
-      {bio.length > 0 && (
-        <Card>
-          <dl className="grid gap-x-6 gap-y-2 grid-cols-2 sm:grid-cols-4 text-sm">
-            {bio.map(([k, v]) => <div key={k}><dt className="text-xs text-faint">{k}</dt><dd className="text-ink font-semibold">{v}</dd></div>)}
-          </dl>
-        </Card>
-      )}
+      <PlayerHeader
+        name={p.name}
+        photo={p.image && !imgBroken ? p.image : null}
+        noPhoto={p.number != null ? <span className="font-display text-4xl font-extrabold text-ink num">{p.number}</span> : undefined}
+        teamBadge={d.team ? <TeamLogo team={d.team} size={28} /> : undefined}
+        chips={[
+          p.position ? <Chip>{p.position}</Chip> : null,
+          p.number != null ? <span className="num">#{p.number}</span> : null
+        ].filter(Boolean)}
+        team={d.team ? { name: d.team.name, logo: <TeamLogo team={d.team} size={20} />, href: `/american-football/team/${d.team.id}` } : null}
+        facts={bio.filter(([k]) => k !== t('Position') && k !== t('Number'))}
+      />
+      {p.image && !imgBroken && <img src={p.image} alt="" onError={() => setImgBroken(true)} className="hidden" />}
       <Card title={t('{0} season · {1} games', { 0: d.season, 1: d.games })}>
         {Object.keys(d.totals).length === 0 ? <p className="text-sm text-faint">{t('No game statistics yet this season.')}</p> : (
           <div className="space-y-4">

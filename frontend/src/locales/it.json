@@ -1851,5 +1851,8 @@
  "Live team stats": "Statistiche di squadra in diretta",
  "Yards, downs, red zone and turnovers": "Yard, down, red zone e palle perse",
  "Player stats and the injury reports": "Statistiche dei giocatori e bollettini infortuni",
- "Passing, rushing, receiving and defense": "Passaggi, corse, ricezioni e difesa"
+ "Passing, rushing, receiving and defense": "Passaggi, corse, ricezioni e difesa",
+ "{0} table →": "Classifica {0} →",
+ "USA · college": "USA · college",
+ "No games in the next two weeks.": "Nessuna partita nelle prossime due settimane."
 }
