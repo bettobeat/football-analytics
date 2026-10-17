@@ -16,7 +16,7 @@ db.exec(`
   )
 `);
 
-export type FavKind = 'league' | 'team' | 'player' | 'bb-league' | 'bb-team' | 'nfl-team' | 'nfl-league'; // bb- = basketball (Oct 2026), nfl- = NFL (fix137), nfl-league = NFL / college (fix152)
+export type FavKind = 'league' | 'team' | 'player' | 'bb-league' | 'bb-team' | 'bb-player' | 'nfl-team' | 'nfl-league' | 'nfl-player'; // bb- = basketball (Oct 2026), nfl- = NFL (fix137), nfl-league = NFL / college (fix152), bb-player / nfl-player (fix153)
 export interface Favorite {
   kind: FavKind;
   ref: string;
@@ -30,7 +30,7 @@ export interface Favorite {
   addedAt?: string;
 }
 
-const KINDS = new Set(['league', 'team', 'player', 'bb-league', 'bb-team', 'nfl-team', 'nfl-league']);
+const KINDS = new Set(['league', 'team', 'player', 'bb-league', 'bb-team', 'bb-player', 'nfl-team', 'nfl-league', 'nfl-player']);
 export const MAX_FAVORITES = 200;
 
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');

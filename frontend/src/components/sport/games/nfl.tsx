@@ -56,9 +56,9 @@ function useData(): GamesData {
       results: { rows: results ? results.map(toResult) : null, days: 30, link: null },
       favTeams: favs.teams.map(f => ({ key: f.ref, name: f.name, logo: f.img || null, to: `/american-football/team/${f.ref}` })),
       favLeagues: list.filter(f => f.kind === 'nfl-league').map(f => f.ref),
-      hasFavorites: favs.teams.length > 0
+      hasFavorites: favs.all.length > 0
     }
-  }, [games, results, error, league, favs.teams.length, list])
+  }, [games, results, error, league, favs.all.length, list])
 }
 
 /** The adapter of the league on screen (NFL | College): the title follows it. */

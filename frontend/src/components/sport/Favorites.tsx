@@ -27,7 +27,7 @@ export interface FavoritesAdapter {
   self: string
 }
 
-const TITLE: Record<string, string> = { team: t('Teams'), 'bb-team': t('Teams'), 'nfl-team': t('Teams'), player: t('Players'), league: t('Leagues'), 'bb-league': t('Leagues'), 'nfl-league': t('Leagues') }
+const TITLE: Record<string, string> = { team: t('Teams'), 'bb-team': t('Teams'), 'nfl-team': t('Teams'), player: t('Players'), 'bb-player': t('Players'), 'nfl-player': t('Players'), league: t('Leagues'), 'bb-league': t('Leagues'), 'nfl-league': t('Leagues') }
 const dayKey = (iso: string) => { const d = new Date(iso); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() }
 
 export default function Favorites({ a }: { a: FavoritesAdapter }) {
@@ -82,18 +82,18 @@ export default function Favorites({ a }: { a: FavoritesAdapter }) {
                   <span className="num text-xs text-faint">{items.length}</span>
                 </div>
                 {items.length === 0 ? (
-                  <p className="text-xs text-faint">{kind === 'player' ? t("Star a player on its page.") : /league/.test(kind) ? (a.browse.to === '/matches' ? t("Star a league on its page or in the Matches list.") : t("Star a league on its page or in the Games list.")) : t("Star a team on its page or on a game page.")}</p>
+                  <p className="text-xs text-faint">{/player/.test(kind) ? t("Star a player on its page.") : /league/.test(kind) ? (a.browse.to === '/matches' ? t("Star a league on its page or in the Matches list.") : t("Star a league on its page or in the Games list.")) : t("Star a team on its page or on a game page.")}</p>
                 ) : (
                   <ul className="space-y-1">
                     {items.map(f => {
                       const nx = nextOf(f)
                       return (
                         <li key={f.ref} className="group flex items-center gap-2.5 rounded-xl px-2 py-1.5 hover:bg-surface2/60">
-                          {f.img ? <img src={f.img} alt="" className={`w-8 h-8 flex-shrink-0 ${f.kind === 'player' ? 'rounded-full object-cover' : 'object-contain'}`} /> : <span className="w-8 h-8 rounded-full bg-surface2 flex-shrink-0" />}
+                          {f.img ? <img src={f.img} alt="" className={`w-8 h-8 flex-shrink-0 ${/player/.test(f.kind) ? 'rounded-full object-cover' : 'object-contain'}`} /> : <span className="w-8 h-8 rounded-full bg-surface2 flex-shrink-0" />}
                           <Link to={a.hrefOf(f)} className="min-w-0 flex-1">
                             <span className="block text-sm font-semibold text-ink truncate">{f.name}</span>
                             <span className="block text-[11px] text-faint truncate">
-                              {nx ? t("Next: {0} – {1}, {2}", { 0: nx.home.short, 1: nx.away.short, 2: new Date(nx.kickoff).toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric', month: 'short' }) }) : f.kind === 'player' && f.teamName ? f.teamName : d.loading ? '' : t("No game in the next 30 days")}
+                              {nx ? t("Next: {0} – {1}, {2}", { 0: nx.home.short, 1: nx.away.short, 2: new Date(nx.kickoff).toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric', month: 'short' }) }) : /player/.test(f.kind) && f.teamName ? f.teamName : d.loading ? '' : t("No game in the next 30 days")}
                             </span>
                           </Link>
                           <button type="button" onClick={() => remove(f.kind, f.ref)} className="w-7 h-7 grid place-items-center rounded-lg text-faint hover:text-loss hover:bg-loss/10 flex-shrink-0"

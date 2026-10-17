@@ -122,6 +122,8 @@ export function spreadText(g: BbGame) {
 /* ---------- favorites (basketball teams and leagues, in the same account list as football's) ---------- */
 
 export const bbTeamFav = (team: BbSide, league?: string): Favorite => ({ kind: 'bb-team', ref: String(team.id), name: team.name, img: team.logo, code: league || null, ids: [team.id] })
+/** fix153: a basketball player; their team's games count as favorites */
+export const bbPlayerFav = (p: { id: number; name: string }, team: BbSide | null): Favorite => ({ kind: 'bb-player', ref: String(p.id), name: p.name, img: null, teamName: team?.name || null, teamImg: team?.logo || null, teamIds: team ? [team.id] : [] })
 export const bbLeagueFav = (l: { code: string; name: string; logo: string | null }): Favorite => ({ kind: 'bb-league', ref: l.code, name: l.name, img: l.logo, code: l.code })
 
 /** Basketball favorites and why a game is one of them. */
@@ -129,9 +131,11 @@ export function useBbFavorites() {
   const { list } = useFavorites()
   const teams = list.filter(f => f.kind === 'bb-team')
   const leagues = list.filter(f => f.kind === 'bb-league')
+  const players = list.filter(f => f.kind === 'bb-player')
   const reasons = (g: BbGame) => [
     ...leagues.filter(f => f.ref === g.league.code),
-    ...teams.filter(f => f.ref === String(g.home.id) || f.ref === String(g.away.id))
+    ...teams.filter(f => f.ref === String(g.home.id) || f.ref === String(g.away.id)),
+    ...players.filter(f => (f.teamIds || []).some(id => id === g.home.id || id === g.away.id))
   ]
-  return { teams, leagues, all: [...teams, ...leagues], reasons }
+  return { teams, leagues, players, all: [...teams, ...leagues, ...players], reasons }
 }

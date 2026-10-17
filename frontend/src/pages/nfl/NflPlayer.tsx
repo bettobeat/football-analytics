@@ -3,7 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../../lib/socket'
 import { t, LOCALE } from '../../lib/i18n'
-import { setNflLeague, type NflGame } from '../../lib/nfl'
+import { setNflLeague, nflPlayerFav, type NflGame } from '../../lib/nfl'
+import { FavStar } from '../../lib/favorites'
 import { LeagueSwitch } from './parts'
 import { Card, Skeleton, TeamLogo } from '../bb/parts'
 import PlayerHeader, { Chip } from '../../components/sport/page/PlayerHeader'
@@ -45,6 +46,7 @@ export default function NflPlayer() {
         photo={p.image && !imgBroken ? p.image : null}
         noPhoto={p.number != null ? <span className="font-display text-4xl font-extrabold text-ink num">{p.number}</span> : undefined}
         teamBadge={d.team ? <TeamLogo team={d.team} size={28} /> : undefined}
+        star={<FavStar label fav={nflPlayerFav(p, d.team)} />}
         chips={[
           p.position ? <Chip>{p.position}</Chip> : null,
           p.number != null ? <span className="num">#{p.number}</span> : null

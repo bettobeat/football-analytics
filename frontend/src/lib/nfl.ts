@@ -100,11 +100,18 @@ export const record = (r: { w: number; l: number; t: number } | null | undefined
 
 export const nflTeamFav = (team: NflSide): Favorite => ({ kind: 'nfl-team', ref: String(team.id), name: team.name, img: team.logo, ids: [team.id] })
 
+/** fix153: an NFL / college player; their team's games count as favorites */
+export const nflPlayerFav = (p: { id: number; name: string; image?: string | null }, team: NflSide | null): Favorite => ({ kind: 'nfl-player', ref: String(p.id), name: p.name, img: p.image || null, teamName: team?.name || null, teamImg: team?.logo || null, teamIds: team ? [team.id] : [] })
+
 export function useNflFavorites() {
   const { list } = useFavorites()
   const teams = list.filter(f => f.kind === 'nfl-team')
-  const reasons = (g: NflGame) => teams.filter(f => f.ref === String(g.home.id) || f.ref === String(g.away.id))
-  return { teams, reasons }
+  const players = list.filter(f => f.kind === 'nfl-player')
+  const reasons = (g: NflGame) => [
+    ...teams.filter(f => f.ref === String(g.home.id) || f.ref === String(g.away.id)),
+    ...players.filter(f => (f.teamIds || []).some(id => id === g.home.id || id === g.away.id))
+  ]
+  return { teams, players, all: [...teams, ...players], reasons }
 }
 
 /* ---------- fix142: the league on screen (NFL | College) ---------- */

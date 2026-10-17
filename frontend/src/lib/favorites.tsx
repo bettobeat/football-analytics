@@ -10,8 +10,9 @@ import { t as tt } from './i18n'
  * (the browser list is merged into the account on sign-in, so favorites follow them to every device).
  */
 
-/** bb-league / bb-team: basketball (Oct 2026); ref = league code / API-Basketball team id */
-export type FavKind = 'league' | 'team' | 'player' | 'bb-league' | 'bb-team' | 'nfl-team' | 'nfl-league'
+/** bb-league / bb-team: basketball (Oct 2026); ref = league code / API-Basketball team id.
+ *  bb-player / nfl-player (fix153): ref = the provider's player id, teamName / teamIds = their team (games are matched per sport) */
+export type FavKind = 'league' | 'team' | 'player' | 'bb-league' | 'bb-team' | 'bb-player' | 'nfl-team' | 'nfl-league' | 'nfl-player'
 export interface Favorite {
   kind: FavKind
   /** league: competition code · team: name key (same club across data sources) · player: player id */
@@ -190,7 +191,7 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
         add(index.teamNames.get(nameKey(t.name)))
         if (t.shortName) add(index.teamNames.get(nameKey(t.shortName)))
       }
-      // favorite players: their club's games
+      // favorite players: their club's games (football only; bb-player / nfl-player match in useBbFavorites / useNflFavorites)
       for (const f of list) {
         if (f.kind !== 'player' || out.includes(f)) continue
         const k = nameKey(f.teamName)

@@ -5,6 +5,8 @@ import { API_URL } from '../../lib/socket'
 import { t, LOCALE } from '../../lib/i18n'
 import { Card, Skeleton, TeamLogo } from './parts'
 import PlayerHeader, { Chip } from '../../components/sport/page/PlayerHeader'
+import { FavStar } from '../../lib/favorites'
+import { bbPlayerFav } from '../../lib/bb'
 
 interface Side { id: number; name: string; logo: string | null }
 interface SeasonRow { code: string; league: string; season: string; team: Side; gp: number; starts: number; min: number | null; pts: number | null; reb: number | null; ast: number | null; fgPct: number | null; tpPct: number | null; ftPct: number | null; tpm: number | null }
@@ -67,6 +69,7 @@ export default function BbPlayer() {
         photo={null}
         noPhoto={jersey ? <span className="font-display text-4xl font-extrabold text-ink num">{jersey}</span> : <TeamLogo team={d.player.team} size={56} />}
         teamBadge={<TeamLogo team={d.player.team} size={28} />}
+        star={<FavStar label fav={bbPlayerFav(d.player, d.player.team)} />}
         chips={[
           (bio?.position || rb?.position) ? <Chip>{bio?.position || rb?.position}</Chip> : null,
           jersey ? <span className="num">#{jersey}</span> : null,

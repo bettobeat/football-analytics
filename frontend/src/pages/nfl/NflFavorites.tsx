@@ -6,10 +6,10 @@ import { useNflGames } from '../../components/sport/games/nfl'
 export default function NflFavorites() {
   return (
     <FavoritesPage a={{
-      games: useNflGames(), kinds: ['nfl-team', 'nfl-league'], self: '/american-football/favorites',
-      hrefOf: f => (f.kind === 'nfl-league' ? (f.ref === 'NCAA' ? '/american-football/college/league' : '/american-football/league') : `/american-football/team/${f.ref}`),
+      games: useNflGames(), kinds: ['nfl-team', 'nfl-player', 'nfl-league'], self: '/american-football/favorites',
+      hrefOf: f => (f.kind === 'nfl-league' ? (f.ref === 'NCAA' ? '/american-football/college/league' : '/american-football/league') : f.kind === 'nfl-player' ? `/american-football/player/${f.ref}` : `/american-football/team/${f.ref}`),
       browse: { to: '/american-football/games', label: t("Browse games") },
-      empty: t("Search above, open a team or league and tap the star. You can also star a league from the list on the Games page. Their games then appear here, are marked with a star everywhere, and come first on the Games page.")
+      empty: t("Search above, open a team, league or player and tap the star. You can also star a league from the list on the Games page. Their games then appear here, are marked with a star everywhere, and come first on the Games page.")
     }} />
   )
 }

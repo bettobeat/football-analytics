@@ -71,7 +71,7 @@ function useNflData(): SportHomeData {
   }, [week, d?.standings])
   const featuredIds = useMemo(() => new Set(featured.map(g => g.id)), [featured])
   const favs = useNflFavorites()
-  const favNext = useMemo(() => notStarted.filter(g => favs.reasons(g).length > 0).slice(0, 10), [notStarted, favs.teams.length])
+  const favNext = useMemo(() => notStarted.filter(g => favs.reasons(g).length > 0).slice(0, 10), [notStarted, favs.all.length])
   const soonest = useMemo(() => notStarted.filter(g => !featuredIds.has(g.id)).slice(0, 5), [notStarted, featuredIds])
   const next = useMemo(() => week.filter(g => !featuredIds.has(g.id) && !favNext.includes(g)), [week, featuredIds, favNext])
 
