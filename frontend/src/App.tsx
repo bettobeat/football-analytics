@@ -1,5 +1,5 @@
-import { Component, lazy, Suspense, useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react'
-import { BrowserRouter as Router, Routes, Route, Link, NavLink, Navigate, useLocation } from 'react-router-dom'
+import { Component, lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ComponentType, type ReactNode } from 'react'
+import { BrowserRouter as Router, Routes, Route, Link, NavLink, Navigate, matchPath, useLocation } from 'react-router-dom'
 import Home from './pages/Home'
 import SearchBox from './components/SearchBox'
 import PremiumGate from './components/PremiumGate'
@@ -418,22 +418,100 @@ function DataLine() {
 }
 
 /** The menu of the sport on screen (fix144: one config for every sport, lib/sportNav.ts), then Premium / Go Pro. */
-function NavLinks({ cls }: { cls: (a: { isActive: boolean }) => string }) {
+/** Desktop tabs (xl+). fix157: when the header row has no room for every tab (long languages, admin tabs, account
+ *  label), the search box narrows to 120 px first, then the last tabs move into a "More" menu, so the header never
+ *  makes the page wider than the window. Where everything fits it looks as before. */
+function HeaderNav({ cls }: { cls: (a: { isActive: boolean }) => string }) {
   const { access } = useAuth()
   const bb = useBbOpen()
   const nfl = useNflOpen()
   const { base } = useNflLeague()
-  const items = sportNav(nfl ? 'american-football' : bb ? 'basketball' : 'football', base).filter(i => !i.admin || access === 'admin')
-  return (
+  const loc = useLocation()
+  const items: { key: string; to: string; end: boolean; label: string }[] = sportNav(nfl ? 'american-football' : bb ? 'basketball' : 'football', base)
+    .filter(i => !i.admin || access === 'admin').map(i => ({ key: i.key, to: i.to, end: !!i.end, label: tt(i.label) }))
+  // Oct 2026: Past seasons, Users and CRM live in the account menu (top right), staff only
+  if (access !== 'pro' && access !== 'admin') items.push({ key: 'premium', to: '/premium', end: false, label: access === 'premium' ? tt("Go Pro") : tt("Premium") })
+  const names = items.map(i => i.label).join('|')
+  const nav = useRef<HTMLElement>(null)
+  const probe = useRef<HTMLDivElement>(null)
+  const box = useRef<HTMLDivElement>(null)
+  const [fit, setFit] = useState(items.length)
+  const [open, setOpen] = useState(false)
+  useEffect(() => setOpen(false), [loc.pathname, loc.search])
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [open])
+  useLayoutEffect(() => {
+    const el = nav.current, row = el?.parentElement, pr = probe.current
+    if (!el || !row || !pr) return
+    const calc = () => {
+      if (getComputedStyle(el).display === 'none') return
+      const rs = getComputedStyle(row)
+      const gap = parseFloat(rs.columnGap) || 0
+      // room for the tabs = row minus the other header parts (search at its 120 px minimum), the gaps and the pill's padding
+      let room = row.clientWidth - parseFloat(rs.paddingLeft) - parseFloat(rs.paddingRight) - 10
+      for (const c of Array.from(row.children) as HTMLElement[]) {
+        if (c === el || getComputedStyle(c).display === 'none') continue
+        room -= (c.dataset.grow ? 120 : c.getBoundingClientRect().width) + gap
+      }
+      const w = (Array.from(pr.children) as HTMLElement[]).map(c => c.getBoundingClientRect().width + 2)
+      const more = w.pop() ?? 0
+      let n = w.length
+      if (w.reduce((a, b) => a + b, 0) > room) {
+        let used = more
+        n = 0
+        while (n < w.length && used + w[n] <= room) used += w[n++]
+      }
+      setFit(n)
+    }
+    calc()
+    const ro = new ResizeObserver(calc)
+    ro.observe(row)
+    ro.observe(pr)
+    for (const c of Array.from(row.children)) if (c !== el) ro.observe(c)
+    return () => ro.disconnect()
+  }, [names])
+  const shown = items.slice(0, fit), rest = items.slice(fit)
+  const restActive = rest.some(i => matchPath({ path: i.to, end: i.end }, loc.pathname))
+  const moreLabel = (
     <>
-      {items.map(i => <NavLink key={i.key} to={i.to} end={i.end} className={cls}>{tt(i.label)}</NavLink>)}
-      {access !== 'pro' && access !== 'admin' && (
-        <NavLink to="/premium" className={cls}>
-          {access === 'premium' ? tt("Go Pro") : tt("Premium")}
-        </NavLink>
-      )}
-      {/* Oct 2026: Past seasons, Users and CRM live in the account menu (top right), staff only */}
+      {tt("More")}
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`inline ml-1 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden><path d="m6 9 6 6 6-6" /></svg>
     </>
+  )
+  return (
+    <nav ref={nav} className="relative hidden xl:flex min-w-0 items-center gap-0.5 p-1 rounded-full bg-surface2/60 border border-line/60">
+      {shown.map(i => <NavLink key={i.key} to={i.to} end={i.end} className={cls}>{i.label}</NavLink>)}
+      {rest.length > 0 && (
+        <div ref={box} className="relative">
+          <button type="button" onClick={() => setOpen(v => !v)} aria-haspopup="menu" aria-expanded={open} className={cls({ isActive: restActive })}>
+            {moreLabel}
+          </button>
+          {open && (
+            <div role="menu" className="absolute right-0 mt-2 w-52 z-[60] menu-panel p-1.5">
+              {rest.map(i => (
+                <NavLink key={i.key} to={i.to} end={i.end} role="menuitem"
+                  className={({ isActive }) => `block px-3 py-2 rounded-lg text-sm hover:bg-surface2 ${isActive ? 'text-ink font-bold' : 'text-ink'}`}>
+                  {i.label}
+                </NavLink>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {/* invisible copy of every tab + "More", used to measure what fits */}
+      <div aria-hidden className="absolute left-0 top-0 w-0 h-0 overflow-hidden invisible pointer-events-none">
+        <div ref={probe} className="flex w-max">
+          {items.map(i => <span key={i.key} className={cls({ isActive: true })}>{i.label}</span>)}
+          <span className={cls({ isActive: true })}>{moreLabel}</span>
+        </div>
+      </div>
+    </nav>
   )
 }
 
@@ -581,10 +659,8 @@ function Shell() {
           <div className="max-w-7xl 2xl:max-w-[1440px] mx-auto px-4 sm:px-6 h-16 sm:h-[72px] flex items-center gap-2 sm:gap-3">
             <SportSwitch />
             <Logo />
-            <nav className="hidden xl:flex shrink-0 items-center gap-0.5 p-1 rounded-full bg-surface2/60 border border-line/60">
-              <NavLinks cls={navCls} />
-            </nav>
-            <div className="hidden lg:block flex-1 min-w-[160px] max-w-lg ml-auto">
+            <HeaderNav cls={navCls} />
+            <div data-grow className="hidden lg:block flex-1 min-w-[120px] max-w-lg ml-auto">
               <SearchBox />
             </div>
             <div className="flex shrink-0 items-center gap-2 ml-auto lg:ml-0">
