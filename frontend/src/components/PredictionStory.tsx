@@ -157,10 +157,10 @@ export default function PredictionStory({ p, home, away, upcoming, friendly }: {
           const b = safestBet(p, home, away)
           return b ? (
             <div className="mt-2.5 inline-flex flex-wrap items-center gap-2 rounded-xl border border-win/30 bg-win/10 px-3 py-2 text-sm">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-win">{tt("Safest bet")}</span>
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-win">{tt("Most sure")}</span>
               <span className="font-semibold text-ink">{b.label}</span>
               <span className="num font-bold text-win">{b.p}%</span>
-              <span className="text-[11px] text-faint">{tt("the bet we are most sure about in this match")}</span>
+              <span className="text-[11px] text-faint">{tt("the pick we are most sure about in this match")}</span>
             </div>
           ) : null
         })()}

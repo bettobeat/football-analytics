@@ -95,8 +95,6 @@
  "One of the teams has played few games, so there is less to go on.": "Takımlardan biri az maç oynadı, bu yüzden elimizde daha az veri var.",
  "Nothing unusual: the teams, the form and the data all point the same way.": "Olağandışı bir şey yok: takımlar, form ve veriler aynı yönü gösteriyor.",
  "Why we think so": "Neden böyle düşünüyoruz",
- "Safest bet": "En güvenli bahis",
- "the bet we are most sure about in this match": "bu maçta en emin olduğumuz bahis",
  "On the other side:": "Öte yandan:",
  "Factor by factor": "Faktör faktör",
  "{0} ← → {1} · scores out of 10": "{0} ← → {1} · 10 üzerinden puanlar",
@@ -306,7 +304,6 @@
  "{0} of {1} right. The two results we rate highest (1X, X2 or 12).": "{1} tahminden {0} isabet. En yüksek olasılık verdiğimiz iki sonuç (1X, X2 veya 12).",
  "Over / under 1.5 goals": "1,5 gol üstü / altı",
  "Our safest pick of each match": "Her maçtaki en güvenli tahminimiz",
- "{0} of {1} right. For every match, the one bet we were most sure about.": "{1} tahminden {0} isabet. Her maç için en emin olduğumuz tek bahis.",
  "How sure we were, and how often we were right": "Ne kadar emindik ve ne sıklıkla haklı çıktık",
  "Every match result pick, grouped by the chance we gave it. When our numbers are honest, the games we call at 70% should come in about 7 times in 10.": "Her maç sonucu tahmini, verdiğimiz olasılığa göre gruplanmış. Rakamlarımız dürüstse, %70 dediğimiz maçlar 10'da yaklaşık 7 kez tutmalı.",
  "We said": "Biz dedik",
@@ -1856,5 +1853,8 @@
  "{0} table →": "{0} puan durumu →",
  "USA · college": "ABD · üniversite",
  "No games in the next two weeks.": "Önümüzdeki iki haftada maç yok.",
- "Live statistics usually appear a few minutes into the game. This page checks again every minute.": "Canlı istatistikler genellikle maçın ilk dakikalarından sonra gelir. Bu sayfa her dakika yeniden kontrol eder."
+ "Live statistics usually appear a few minutes into the game. This page checks again every minute.": "Canlı istatistikler genellikle maçın ilk dakikalarından sonra gelir. Bu sayfa her dakika yeniden kontrol eder.",
+ "Most sure": "En emin olduğumuz",
+ "the pick we are most sure about in this match": "bu maçta en emin olduğumuz tahmin",
+ "{0} of {1} right. For every match, the one pick we were most sure about.": "{1} tahminden {0} isabet. Her maç için en emin olduğumuz tek tahmin."
 }

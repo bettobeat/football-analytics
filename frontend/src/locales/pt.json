@@ -95,8 +95,6 @@
  "One of the teams has played few games, so there is less to go on.": "Um dos times jogou poucas partidas, então há menos dados.",
  "Nothing unusual: the teams, the form and the data all point the same way.": "Nada de incomum: os times, a fase e os dados apontam na mesma direção.",
  "Why we think so": "Por que achamos isso",
- "Safest bet": "Aposta mais segura",
- "the bet we are most sure about in this match": "a aposta em que temos mais certeza nesta partida",
  "On the other side:": "Do outro lado:",
  "Factor by factor": "Fator por fator",
  "{0} ← → {1} · scores out of 10": "{0} ← → {1} · notas de 0 a 10",
@@ -306,7 +304,6 @@
  "{0} of {1} right. The two results we rate highest (1X, X2 or 12).": "{0} de {1} certos. Os dois resultados que avaliamos mais alto (1X, X2 ou 12).",
  "Over / under 1.5 goals": "Mais / menos de 1,5 gols",
  "Our safest pick of each match": "Nosso palpite mais seguro de cada partida",
- "{0} of {1} right. For every match, the one bet we were most sure about.": "{0} de {1} certos. Em cada partida, a aposta em que tínhamos mais certeza.",
  "How sure we were, and how often we were right": "Quanta certeza tínhamos e quantas vezes acertamos",
  "Every match result pick, grouped by the chance we gave it. When our numbers are honest, the games we call at 70% should come in about 7 times in 10.": "Cada palpite de resultado, agrupado pela chance que demos. Se nossos números são honestos, os jogos que damos a 70% devem acertar cerca de 7 vezes em 10.",
  "We said": "Dissemos",
@@ -1856,5 +1853,8 @@
  "{0} table →": "Classificação da {0} →",
  "USA · college": "EUA · universitário",
  "No games in the next two weeks.": "Sem jogos nas próximas duas semanas.",
- "Live statistics usually appear a few minutes into the game. This page checks again every minute.": "As estatísticas ao vivo costumam aparecer alguns minutos após o início. Esta página volta a verificar a cada minuto."
+ "Live statistics usually appear a few minutes into the game. This page checks again every minute.": "As estatísticas ao vivo costumam aparecer alguns minutos após o início. Esta página volta a verificar a cada minuto.",
+ "Most sure": "A mais segura",
+ "the pick we are most sure about in this match": "o palpite em que temos mais certeza nesta partida",
+ "{0} of {1} right. For every match, the one pick we were most sure about.": "{0} de {1} certos. Em cada partida, o palpite em que tínhamos mais certeza."
 }

@@ -77,7 +77,7 @@ export const footballAccuracy: AccuracyAdapter = {
               <div className="num text-5xl font-extrabold text-ink mt-4">{pct(rec.safest?.hitRate)}</div>
               <div className="mt-3"><Bar v={rec.safest?.hitRate ?? null} cls="bg-draw" /></div>
               <p className="text-xs text-muted mt-4">
-                {rec.safest?.n ? t("{0} of {1} right. For every match, the one bet we were most sure about.", { 0: rec.safest.hits, 1: rec.safest.n }) : none}
+                {rec.safest?.n ? t("{0} of {1} right. For every match, the one pick we were most sure about.", { 0: rec.safest.hits, 1: rec.safest.n }) : none}
               </p>
               {rec.safest && rec.safest.byMarket.length > 0 && (
                 <p className="text-[11px] text-faint mt-2">{rec.safest.byMarket.map(b => `${b.market} ${b.n}× (${pct(b.hitRate)})`).join(' · ')}</p>
