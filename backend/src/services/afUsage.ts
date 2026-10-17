@@ -10,6 +10,7 @@
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { db } from '../db';
+import { every } from './perf';
 
 export type AfSource = { kind: 'page' | 'admin'; ua: string };
 export const afSource = new AsyncLocalStorage<AfSource>();
@@ -100,7 +101,7 @@ function flush() {
     db.exec('COMMIT');
   } catch { db.exec('ROLLBACK'); }
 }
-setInterval(flush, 60 * 1000).unref();
+every('AF usage flush', flush, 60 * 1000).unref();
 
 /** Admin overview card "API-Football today". */
 export function afUsageToday() {

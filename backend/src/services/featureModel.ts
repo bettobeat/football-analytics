@@ -17,7 +17,7 @@
  * stored (shadow) but the site keeps showing grid-v3. See modelDaily.ts for the daily champion / challenger job.
  */
 import logger from '../utils/logger';
-import { timed } from './perf';
+import { timed, every } from './perf';
 import { db } from '../db';
 import { groupForCompetition, fdNameFor } from './history';
 import { playerKey } from './squadValues';
@@ -316,7 +316,7 @@ export function startFeatureModelScheduler() {
   // (the 30-min cycle starts from that first run: 7, 37, 67 min … after boot, the basketball tick runs at 0:45, 30:45 …)
   setTimeout(() => {
     void refresh().then(() => ensureFeatureModel().catch(e => logger.warn(`feature model: ${e.message}`)));
-    setInterval(() => void refresh(), 30 * 60 * 1000);
+    every('feature state', () => void refresh(), 30 * 60 * 1000);
   }, 7 * 60 * 1000);
 }
 

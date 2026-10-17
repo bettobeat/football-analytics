@@ -17,6 +17,7 @@ import https from 'https';
 import net from 'net';
 import readline from 'readline';
 import logger from '../utils/logger';
+import { every } from './perf';
 
 const DATA_DIR = process.env.DATA_DIR || path.resolve(process.cwd(), 'data');
 const DIR = path.join(DATA_DIR, 'geo');
@@ -223,5 +224,5 @@ export function startGeo() {
     }
   };
   setTimeout(() => { run(); }, 30000).unref();
-  setInterval(() => { if (!v4s || Date.now() - lastRun > 24 * 3600000) run(); }, 3600000).unref();
+  every('geo', () => { if (!v4s || Date.now() - lastRun > 24 * 3600000) run(); }, 3600000).unref();
 }

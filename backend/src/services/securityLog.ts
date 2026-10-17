@@ -4,6 +4,7 @@
  * privacy policy). Visitor statistics never use this table.
  */
 import { db } from '../db';
+import { every } from './perf';
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS security_log (
@@ -37,6 +38,6 @@ export function securityLogFor(userId: number) {
   return db.prepare(`SELECT at, event, ip, ua FROM security_log WHERE user_id = ? ORDER BY id DESC LIMIT 200`).all(userId);
 }
 
-setInterval(() => {
+every('security log cleanup', () => {
   try { db.prepare(`DELETE FROM security_log WHERE at < ?`).run(new Date(Date.now() - 90 * 86400000).toISOString()); } catch { /* ignore */ }
 }, 6 * 3600000).unref();

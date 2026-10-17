@@ -13,7 +13,7 @@
  */
 import { db } from '../db';
 import logger from '../utils/logger';
-import { timed, yieldLoop } from './perf';
+import { timed, yieldLoop, every } from './perf';
 
 const BASE = 'https://v1.american-football.api-sports.io';
 const KEY = () => process.env.API_NFL_KEY || process.env.API_FOOTBALL_KEY || '';
@@ -213,6 +213,10 @@ for (const col of ['home_logo TEXT', 'away_logo TEXT', 'quarters TEXT', 'stats I
 for (const col of ['league INTEGER NOT NULL DEFAULT 1', 'level TEXT']) { try { db.exec(`ALTER TABLE nfl_teams ADD COLUMN ${col}`); } catch { /* already there */ } }
 try { db.exec(`ALTER TABLE nfl_standings ADD COLUMN league INTEGER NOT NULL DEFAULT 1`); } catch { /* already there */ }
 db.exec(`CREATE INDEX IF NOT EXISTS idx_nfl_games_league ON nfl_games(league, season, kickoff)`);
+// fix158: games still without a team name (the full name fill reads only these) and recent games by kick-off (live tick)
+const NONAME = "(home_name IS NULL OR home_name = '' OR away_name IS NULL OR away_name = '')";
+db.exec(`CREATE INDEX IF NOT EXISTS idx_nfl_games_noname ON nfl_games(league) WHERE ${NONAME}`);
+db.exec(`CREATE INDEX IF NOT EXISTS idx_nfl_games_kickoff ON nfl_games(kickoff)`);
 
 /* ---------- HTTP client (like apiFootball.ts: spacing, timeout, one retry, call count) ---------- */
 
@@ -286,7 +290,7 @@ function quartersOf(g: any): string | null {
   return h.some(x => x !== null) || a.some(x => x !== null) ? JSON.stringify([h, a]) : null;
 }
 
-function storeGames(list: any[], season?: number, league: LeagueId = 1) {
+export function storeGames(list: any[], season?: number, league: LeagueId = 1) {
   const at = new Date().toISOString();
   db.exec('BEGIN');
   try {
@@ -302,7 +306,29 @@ function storeGames(list: any[], season?: number, league: LeagueId = 1) {
     }
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
-  if (list.some(g => !g?.teams?.home?.name || !g?.teams?.away?.name)) fillMissingNames(false);
+  // fix158: only this batch's games without a name (the live tick used to rescan the whole table every 30 s)
+  const noName = list.filter(g => !g?.teams?.home?.name || !g?.teams?.away?.name).map(g => num(g?.game?.id)).filter((x): x is number => !!x);
+  if (noName.length) fillNamesOf(noName);
+}
+
+/** fix158: games whose team has no known name yet are retried at most every 30 min (not on every live tick). */
+const noNameTried = new Map<number, number>();
+function fillNamesOf(ids: number[]): number {
+  const now = Date.now();
+  const todo = ids.filter(id => now - (noNameTried.get(id) || 0) > 30 * 60 * 1000);
+  if (!todo.length) return 0;
+  const marks = todo.map(() => '?').join(',');
+  let n = 0;
+  for (const side of ['home', 'away']) {
+    n += Number(db.prepare(`UPDATE nfl_games SET ${side}_name = (SELECT name FROM nfl_teams t WHERE t.team_id = nfl_games.${side}_id AND t.name IS NOT NULL AND t.name != '')
+      WHERE game_id IN (${marks}) AND (${side}_name IS NULL OR ${side}_name = '') AND ${side}_id IS NOT NULL
+        AND EXISTS (SELECT 1 FROM nfl_teams t WHERE t.team_id = nfl_games.${side}_id AND t.name IS NOT NULL AND t.name != '')`).run(...todo).changes || 0);
+  }
+  // still without a name: remember, so the same game is not retried every 30 s
+  const still = new Set((db.prepare(`SELECT game_id FROM nfl_games WHERE game_id IN (${marks}) AND (home_name IS NULL OR home_name = '' OR away_name IS NULL OR away_name = '')`).all(...todo) as any[]).map(x => x.game_id));
+  for (const id of todo) if (still.has(id)) noNameTried.set(id, now); else noNameTried.delete(id);
+  if (noNameTried.size > 5000) noNameTried.clear();
+  return n;
 }
 
 /**
@@ -310,15 +336,16 @@ function storeGames(list: any[], season?: number, league: LeagueId = 1) {
  * nfl_teams by team id. Logs "college: n games had no team name, m filled" (at boot always, otherwise when it changed).
  */
 export function fillMissingNames(always = true): { missing: number; filled: number } {
-  const count = () => (db.prepare(`SELECT COUNT(*) AS n FROM nfl_games WHERE league = 2 AND (home_name IS NULL OR home_name = '' OR away_name IS NULL OR away_name = '')`).get() as any)?.n || 0;
+  // fix158: full-table version — boot, the 30-min sync and the 6-h standings only (the partial index keeps it quick)
+  const count = () => (db.prepare(`SELECT COUNT(*) AS n FROM nfl_games WHERE league = 2 AND ${NONAME}`).get() as any)?.n || 0;
   const before = count();
   if (!before && !always) return { missing: 0, filled: 0 };
   for (const side of ['home', 'away']) {
     db.prepare(`UPDATE nfl_games SET ${side}_name = (SELECT name FROM nfl_teams t WHERE t.team_id = nfl_games.${side}_id AND t.name IS NOT NULL AND t.name != '')
-      WHERE (${side}_name IS NULL OR ${side}_name = '') AND ${side}_id IS NOT NULL AND EXISTS (SELECT 1 FROM nfl_teams t WHERE t.team_id = nfl_games.${side}_id AND t.name IS NOT NULL AND t.name != '')`).run();
+      WHERE league = 2 AND ${NONAME} AND (${side}_name IS NULL OR ${side}_name = '') AND ${side}_id IS NOT NULL AND EXISTS (SELECT 1 FROM nfl_teams t WHERE t.team_id = nfl_games.${side}_id AND t.name IS NOT NULL AND t.name != '')`).run();
   }
   const after = count();
-  if (before || always) logger.info(`college: ${before} games had no team name, ${before - after} filled${after ? ` (${after} still shown as "TBD")` : ''}`);
+  if (always || before - after > 0) logger.info(`college: ${before} games had no team name, ${before - after} filled${after ? ` (${after} still shown as "TBD")` : ''}`);
   return { missing: before, filled: before - after };
 }
 
@@ -561,6 +588,7 @@ export function startNflScheduler() {
     tickBusy = true;
     try {
       const r = await timed('nfl games', () => nflSync());
+      await timed('nfl names', () => fillMissingNames(false)); // fix158: the full-table fill, every 30 min (never from the live tick)
       const synced = Object.entries(r.synced).map(([s, n]) => `${s}=${n}`).join(' ');
       if (synced) logger.info(`NFL games: ${synced}`);
       const box = await timed('nfl box scores', () => nflBoxScores());
@@ -576,7 +604,7 @@ export function startNflScheduler() {
     } finally { tickBusy = false; }
   };
   setTimeout(() => void tick(), 10 * 60 * 1000).unref(); // after the football and basketball start-up work
-  setInterval(() => void tick(), 30 * 60 * 1000).unref();
+  every('nfl sync', () => void tick(), 30 * 60 * 1000).unref();
   // live scores every 30 s while a game is on; box score right after full time
   // fix155: only the last 8 hours are looked at; a game that ended adds its result to the ratings (no replay) and the
   // coming predictions are re-saved asynchronously (yields between games), under their own label for /api/perf

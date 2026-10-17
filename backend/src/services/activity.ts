@@ -7,6 +7,7 @@
  */
 import { db } from '../db';
 import { userById } from './auth';
+import { every } from './perf';
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS staff_activity (
@@ -111,6 +112,6 @@ export function activityList(o: { staffId?: number | null; userId?: number | nul
   };
 }
 
-setInterval(() => {
+every('activity flush', () => {
   try { db.prepare('DELETE FROM staff_activity WHERE at < ?').run(new Date(Date.now() - 365 * 86400000).toISOString()); } catch { /* ignore */ }
 }, 12 * 3600000).unref();

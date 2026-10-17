@@ -2,7 +2,7 @@ import express from 'express';
 import { joinWaitlist, waitlistStats } from './services/waitlist';
 import { slimForList, clearPredictionCache } from './services/predCache';
 import { withLiveScore, liveBookStatus } from './services/liveScores';
-import { perfStatus, setJob, timed, yieldLoop } from './services/perf';
+import { perfStatus, setJob, timed, yieldLoop, every, track, routeLabel } from './services/perf';
 import cors from 'cors';
 import helmet from 'helmet';
 import { Server } from 'socket.io';
@@ -174,6 +174,13 @@ app.use((req, res, next) => {
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false, referrerPolicy: { policy: 'strict-origin-when-cross-origin' } }));
 app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json());
+// fix158: every API request in flight is a named job in /api/perf (a freeze inside a handler names its route)
+app.use('/api', (req, res, next) => {
+  const done = track(routeLabel(req.method, req.baseUrl + req.path));
+  res.on('finish', done);
+  res.on('close', done);
+  next();
+});
 // Shadow models (featureModel.ts): feat-v1 always, and v3-mix until it is live (then grid-v3) never reach visitors —
 // they are stored and compared in the admin views only
 app.set('json replacer', (key: string, value: any) =>
@@ -305,7 +312,7 @@ app.use('/api', (req, res, next) => {
 
 // Rate limits (per visitor; admins exempt). In memory: fine for one server.
 const buckets = new Map<string, { n: number; reset: number }>();
-setInterval(() => {
+every('rate-limit cleanup', () => {
   const now = Date.now();
   for (const [k, b] of buckets) if (b.reset < now) buckets.delete(k);
 }, 60000).unref();
@@ -721,7 +728,7 @@ const sessKey = (req: express.Request) => { const t = parseCookies(req.headers.c
 const sudoLeft = (req: express.Request) => Math.max(0, (sudo.get(sessKey(req)) || 0) - Date.now());
 const needSudo = (req: express.Request, res: express.Response, next: express.NextFunction) =>
   sudoLeft(req) > 0 ? next() : res.status(401).json({ error: 'Enter a code from your authenticator app to make team changes.', sudo: true });
-setInterval(() => { const now = Date.now(); for (const [k, v] of sudo) if (v < now) sudo.delete(k); }, 60000).unref();
+every('sudo cleanup', () => { const now = Date.now(); for (const [k, v] of sudo) if (v < now) sudo.delete(k); }, 60000).unref();
 app.get('/api/crm/team/sudo', need('team'), (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ data: { leftMs: sudoLeft(req) } }); });
 app.post('/api/crm/team/sudo', need('team'), rateLimit('team-sudo', 10, 15 * 60000, r => String(r.user?.id)), jsonOnly, (req, res) => {
   try {
@@ -2828,7 +2835,7 @@ app.set('io', io);
 const LIVE_POLL_MS = parseInt(process.env.LIVE_POLL_MS || '20000', 10);
 let livePolling = false;
 let liveTick = 0;
-setInterval(async () => {
+every('live poll', async () => {
   if (livePolling) return; // a slow poll (API waits) must not overlap the next one
   livePolling = true;
   try {
@@ -2946,7 +2953,7 @@ server.listen(PORT, () => {
       .then(r => { markFresh('results', r ? `${r.settled} settled, ${r.pending} pending` : undefined); return backfillAfOdds(); })
       .catch(err => { markFailed('results', err); logger.warn('Settle job failed', { message: err.message }); });
   setTimeout(settle, 60 * 1000);
-  setInterval(settle, parseInt(process.env.SETTLE_INTERVAL_MS || '600000', 10));
+  every('settle picks', settle, parseInt(process.env.SETTLE_INTERVAL_MS || '600000', 10));
   // Market odds: decide every 10 minutes which competitions deserve a fetch (budget-aware)
   const odds = () =>
     footballDataAPI
@@ -2955,7 +2962,7 @@ server.listen(PORT, () => {
       .then(() => markFresh('odds'))
       .catch(err => { markFailed('odds', err); logger.warn('Odds job failed', { message: err.message }); });
   setTimeout(odds, 90 * 1000);
-  setInterval(odds, parseInt(process.env.ODDS_TICK_MS || '600000', 10));
+  every('odds', odds, parseInt(process.env.ODDS_TICK_MS || '600000', 10));
   // Squad market values for model v3 (weekly; first attempt after the history sync has team names)
   startSquadValuesScheduler(() => { prepareModelV3(); rebuildAfFeatures(); });
   // Injuries / suspensions / confirmed lineups (API-Football) for model v3 rows #12 and #13
@@ -2975,7 +2982,7 @@ server.listen(PORT, () => {
     await warmMatchExtras([...fd, ...afUpcoming(3)], 48);
   };
   setTimeout(() => warmExtras().catch(() => undefined), 4 * 60 * 1000);
-  setInterval(() => warmExtras().catch(() => undefined), 2 * 3600 * 1000);
+  every('warm match extras', () => warmExtras().catch(() => undefined), 2 * 3600 * 1000);
   // National-team Elo from international results since 2014 (API-Football)
   startNationalEloScheduler();
   // European club Elo (UEFA cups + domestic results + squad values)

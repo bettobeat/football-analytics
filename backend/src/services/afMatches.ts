@@ -25,6 +25,7 @@ import { reportLive } from './liveScores';
 import { predictNational, isNationalTeam } from './nationalElo';
 import { predictClubEuro } from './clubElo';
 import { onExtraLeague } from './leagueConfig';
+import { every } from './perf';
 
 export const AF_OFFSET = 1_000_000_000;
 export const isAfMatchId = (id: number) => id >= AF_OFFSET;
@@ -92,7 +93,7 @@ async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Pr
   return data;
 }
 // drop expired entries so the cache can't grow without limit
-setInterval(() => {
+every('AF cache cleanup', () => {
   const now = Date.now();
   for (const [k, v] of cache) if (v.expires < now) cache.delete(k);
 }, 10 * 60 * 1000).unref();
@@ -494,7 +495,7 @@ export function startAfMatchesScheduler() {
   if (!afConfigured()) return;
   const refresh = () => refreshAfWindow().then(n => logger.info(`AF extra competitions: ${n} matches in window`)).catch(() => undefined);
   setTimeout(refresh, 30 * 1000);
-  setInterval(refresh, 30 * 60 * 1000);
+  every('AF matches', refresh, 30 * 60 * 1000);
 }
 
 /* ------------------------------------------------------------------ */

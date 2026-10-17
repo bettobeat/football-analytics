@@ -1,7 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { withLive } from './liveChance';
 import { cachedPredictions, clearPredictionCache, mainPrediction } from './predCache';
-import { timed, setJob, yieldLoop } from './perf';
+import { timed, setJob, yieldLoop, every } from './perf';
 import { freezePredictions } from './tracking';
 import logger from '../utils/logger';
 import { db } from '../db';
@@ -230,12 +230,12 @@ class FootballDataAPI {
       .then(() => this.prepareHistoryModel())
       .then(() => this.refreshWindow()) // re-run so v2 predictions get recorded right away
       .catch(() => {});
-    setInterval(() => this.refreshWindow().catch(() => {}), intervalMs);
+    every('FD window', () => this.refreshWindow().catch(() => {}), intervalMs);
     // Re-sync the current season's results and refit v2 every 6 hours
-    setInterval(() => this.prepareHistoryModel().catch(() => {}), 6 * 60 * 60 * 1000);
+    every('model v2 prepare', () => this.prepareHistoryModel().catch(() => {}), 6 * 60 * 60 * 1000);
     // Warm the usual-XI cache for the next two days of fixtures (slowly, in the background)
     setTimeout(() => this.prefetchUsualLineups().catch(() => {}), 6 * 60 * 1000);
-    setInterval(() => this.prefetchUsualLineups().catch(() => {}), 60 * 60 * 1000);
+    every('usual lineups', () => this.prefetchUsualLineups().catch(() => {}), 60 * 60 * 1000);
   }
 
   private prefetching = false;

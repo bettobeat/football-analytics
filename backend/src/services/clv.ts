@@ -18,6 +18,7 @@ import { db } from '../db';
 import logger from '../utils/logger';
 import { afGet, afRemaining, afConfigured, AF_LEAGUES } from './apiFootball';
 import { predictV3ByNames } from './gridModel';
+import { every } from './perf';
 
 type O = 'H' | 'D' | 'A';
 const OPEN_WINDOW_MS = 7 * 24 * 3600 * 1000; // open as soon as prices are published (the line moves toward v3 on draws → earliest price is best)
@@ -142,7 +143,7 @@ export async function clvProbe(fixtureId?: number) {
 
 export function startClvScheduler() {
   if (!afConfigured()) return;
-  setTimeout(() => { clvTick().catch(() => undefined); setInterval(() => { clvTick().catch(() => undefined); }, 10 * 60 * 1000); }, 5 * 60 * 1000);
+  setTimeout(() => { clvTick().catch(() => undefined); every('clv', () => { clvTick().catch(() => undefined); }, 10 * 60 * 1000); }, 5 * 60 * 1000);
 }
 
 /* ------------------------------------------------------------------ */

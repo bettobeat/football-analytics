@@ -14,6 +14,7 @@
 import crypto from 'crypto';
 import { db } from '../db';
 import logger from '../utils/logger';
+import { every } from './perf';
 
 // columns: users.totp_* and sessions.mfa are added in auth.ts (the tables are created there)
 db.exec(`CREATE TABLE IF NOT EXISTS app_secrets (name TEXT PRIMARY KEY, value TEXT NOT NULL)`);
@@ -215,7 +216,7 @@ export function redeemTicket(ticket: unknown, code: unknown): { userId: number; 
   tickets.delete(h);
   return { userId: t.userId, via };
 }
-setInterval(() => { const now = Date.now(); for (const [k, v] of tickets) if (v.exp < now) tickets.delete(k); }, 60000).unref();
+every('2fa cleanup', () => { const now = Date.now(); for (const [k, v] of tickets) if (v.exp < now) tickets.delete(k); }, 60000).unref();
 
 /** Mark the current session as having passed two-step (after setup), and sign out every other device. */
 export function securePastSessions(userId: number, keepTokenHash: string | null) {

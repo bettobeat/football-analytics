@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import type express from 'express';
 import { db } from '../db';
 import { countryOf, geoStatus } from './geo';
+import { every } from './perf';
 
 /**
  * Visitor counts for the admin page (Oct 2026): who is on the site now, and unique visitors per day / 7 / 30 days.
@@ -66,12 +67,12 @@ export function trackVisit(req: express.Request, _res: express.Response, next: e
   next();
 }
 
-setInterval(() => {
+every('visitors flush', () => {
   const now = Date.now();
   for (const [k, v] of online) if (v.at < now - ONLINE_MS) online.delete(k);
   for (const [k, t] of written) if (t < now - 2 * 86400000) written.delete(k);
 }, 60000).unref();
-setInterval(() => {
+every('visitors cleanup', () => {
   try { db.prepare("DELETE FROM visits WHERE day < date('now', '-90 days')").run(); } catch { /* ignore */ }
 }, 6 * 3600000).unref();
 

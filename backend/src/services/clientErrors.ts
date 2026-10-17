@@ -12,6 +12,7 @@ import crypto from 'crypto';
 import { db } from '../db';
 import logger from '../utils/logger';
 import { sendMail } from './email';
+import { every } from './perf';
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS client_errors (
@@ -107,6 +108,6 @@ export function resolveClientError(sig: string, resolved: boolean) {
   db.prepare('UPDATE client_errors SET resolved_at = ? WHERE sig = ?').run(resolved ? new Date().toISOString() : null, sig);
 }
 
-setInterval(() => {
+every('client errors cleanup', () => {
   try { db.prepare('DELETE FROM client_errors WHERE last_at < ?').run(new Date(Date.now() - 30 * 86400000).toISOString()); } catch { /* ignore */ }
 }, 12 * 3600000).unref();

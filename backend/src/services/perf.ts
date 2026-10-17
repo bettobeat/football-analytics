@@ -74,6 +74,33 @@ export async function timed<T>(label: string, fn: () => T | Promise<T>): Promise
 }
 export const setJob = (label: string | null) => { manual = label; };
 
+/**
+ * fix158: an API request in flight counts as a running job ("http GET /api/nfl/games"), so a freeze inside a request
+ * handler is named too. Ids in the path become ":id" (one label per route). Returns the "done" call.
+ */
+export function track(label: string): () => void {
+  active.set(label, (active.get(label) || 0) + 1);
+  const t0 = Date.now();
+  let ended = false;
+  return () => {
+    if (ended) return;
+    ended = true;
+    const ms = Date.now() - t0;
+    const j = jobs.get(label) || { runs: 0, lastMs: 0, maxMs: 0, totalMs: 0, lastAt: '', maxStallMs: 0 };
+    j.runs++; j.lastMs = ms; j.maxMs = Math.max(j.maxMs, ms); j.totalMs += ms; j.lastAt = new Date().toISOString();
+    jobs.set(label, j);
+    if (jobs.size > 400) for (const k of [...jobs.keys()].filter(k => k.startsWith('http ')).slice(0, 100)) jobs.delete(k);
+    const n = (active.get(label) || 1) - 1;
+    if (n > 0) active.set(label, n); else active.delete(label);
+  };
+}
+export const routeLabel = (method: string, path: string) => `http ${method} ${path.replace(/\/\d+(?=\/|$)/g, '/:id').slice(0, 80)}`;
+
+/** fix158: setInterval with a name — every repeating job runs inside timed(), so no freeze is unlabelled. */
+export function every(label: string, fn: () => unknown, ms: number): NodeJS.Timeout {
+  return setInterval(() => { timed(label, fn).catch(e => logger.warn(`${label}: ${e?.message || e}`)); }, ms);
+}
+
 export function perfStatus() {
   const since = Date.now() - 3600 * 1000;
   const recent = stalls.filter(s => new Date(s.at).getTime() >= since);

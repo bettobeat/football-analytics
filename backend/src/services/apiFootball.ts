@@ -16,7 +16,7 @@
  * history in, most recent first, always leaving a reserve.
  */
 import { clearPredictionCache } from './predCache';
-import { yieldLoop, timed } from './perf';
+import { yieldLoop, timed, every } from './perf';
 import { db } from '../db';
 import logger from '../utils/logger';
 import { markFresh, markFailed } from './freshness';
@@ -680,7 +680,7 @@ export function startApiFootballScheduler(onUpdated?: () => void) {
   try { rebuildAfFeatures(); } catch { /* tables may be empty */ }
   const tick = () => afTick().then(() => onUpdated?.()).catch(() => undefined);
   setTimeout(tick, 2 * 60 * 1000);
-  setInterval(tick, TICK_MS);
+  every('AF lineups/injuries', tick, TICK_MS);
 }
 
 /* ------------------------------------------------------------------ */

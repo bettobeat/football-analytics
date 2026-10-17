@@ -16,6 +16,7 @@ import { db } from '../db';
 import logger from '../utils/logger';
 import { GROUPS, ALIASES, similarity } from './history';
 import { clubValueAt, syncClubValueHistory, historyClubs, historyVersion } from './squadHistory';
+import { every } from './perf';
 
 const SOURCE_URL =
   process.env.SQUAD_VALUES_URL || 'https://pub-e682421888d945d684bcae8890b0ec20.r2.dev/data/players.csv.gz';
@@ -472,5 +473,5 @@ export function startSquadValuesScheduler(onSynced?: () => void) {
       })
       .catch(() => undefined);
   setTimeout(tick, 90_000);
-  setInterval(tick, 6 * 3600 * 1000);
+  every('squad values', tick, 6 * 3600 * 1000);
 }

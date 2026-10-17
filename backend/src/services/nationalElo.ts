@@ -14,6 +14,7 @@ import { afGet, afConfigured } from './apiFootball';
 import { Prediction } from './predictionModel';
 import { Meetings, commonSense, type H2H } from './h2hGuard';
 import { nationalValueFor } from './squadValues';
+import { every } from './perf';
 
 export const MODEL_ELO = 'elo-intl';
 const AF_OFFSET = 1_000_000_000;
@@ -647,7 +648,7 @@ export function startNationalEloScheduler() {
   try { buildNationalElo(); } catch { /* empty table on first boot */ }
   const run = () => syncNationalHistory().then(r => { if (r.requests) buildNationalElo(); }).catch(() => undefined);
   setTimeout(run, 3 * 60 * 1000);
-  setInterval(run, 12 * 3600 * 1000);
+  every('national elo', run, 12 * 3600 * 1000);
 }
 
 /** Team analysis for a national team: Elo and world rank among active national teams. */

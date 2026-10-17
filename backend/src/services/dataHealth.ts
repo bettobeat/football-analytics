@@ -22,6 +22,7 @@ import { afConfigured } from './apiFootball';
 import { feedState, bootedAt } from './freshness';
 import { emailEnabled, sendEmail, layout, section, esc, C, SITE } from './email';
 import { lastDataAudit } from './dataAudit';
+import { every } from './perf';
 
 type Level = 'ok' | 'warn' | 'fail';
 export interface Check { id: string; label: string; level: Level; detail: string; items?: string[] }
@@ -268,5 +269,5 @@ async function run() {
 
 export function startDataHealthScheduler() {
   setTimeout(run, 5 * MIN);
-  setInterval(run, 10 * MIN);
+  every('data health', run, 10 * MIN);
 }

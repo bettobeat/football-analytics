@@ -1,3 +1,4 @@
+import { every } from './perf';
 /**
  * One live score everywhere (Oct 2026). The match list used Football-Data.org's bulk live feed (every 60 s, often a goal
  * behind) while the match page used FD's single-match call, so the list could say 3-2 and the page 3-3. Every live
@@ -85,7 +86,7 @@ export function liveBookStatus() {
   return { matches: rows.length, disagreements: rows.filter(r => r.disagree).length, rows: rows.sort((a, b) => (b.disagree ? 1 : 0) - (a.disagree ? 1 : 0) || b.id - a.id) };
 }
 
-setInterval(() => {
+every('live scores cleanup', () => {
   const now = Date.now();
   for (const [id, e] of book) if (now - e.last > KEEP_MS) book.delete(id);
 }, 10 * 60 * 1000).unref();

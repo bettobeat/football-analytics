@@ -15,6 +15,7 @@ import logger from '../utils/logger';
 import { roleByKey, ALL_PERMS, type Perm } from './roles';
 import { doubleChance } from '../utils/doubleChance';
 import { emailEnabled, sendVerificationCode, sendResetCode, sendEmailChangeCode, sendEmailChangedNotice } from './email';
+import { every } from './perf';
 
 /** premium = $15 plan with a monthly allowance of match unlocks; pro = $30 plan, unlimited (see services/billing.ts) */
 export type Plan = 'free' | 'premium' | 'pro';
@@ -166,7 +167,7 @@ function over(key: string, max: number): boolean {
   const a = attempts.get(key);
   return !!a && a.reset >= Date.now() && a.n >= max;
 }
-setInterval(() => {
+every('auth cleanup', () => {
   const now = Date.now();
   for (const [k, a] of attempts) if (a.reset < now) attempts.delete(k);
 }, WINDOW_MS).unref();
@@ -556,7 +557,7 @@ export function userForToken(token: string | undefined): User | null {
 /** SHA-256 of a session token (sessions are stored by hash). */
 export const sessionHash = (token: string) => sha(token);
 
-setInterval(() => {
+every('auth sessions cleanup', () => {
   try {
     db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(new Date().toISOString());
   } catch {}
