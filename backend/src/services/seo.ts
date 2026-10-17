@@ -4,7 +4,7 @@ import { bbPublic } from './bbSite';
 import { FONT_HEAD } from './fonts';
 import { getPreview, firstSentence, matchTitle, previewDates, previewFacts } from './matchPreview';
 import { bbPreview } from './bbPreview';
-import { nflCurrentSeason, schoolName } from './nfl';
+import { nflCurrentSeason, schoolName, HIDE_OTHER } from './nfl';
 import { nflPublic, nflWeeks, nflWeekGames, nflGamesBetween, nflGame, nflStandings, nflTeam, nflPlayer, leagueOfTeamId, type NflGame } from './nflSite';
 import { listGuides, getGuide } from './guides';
 import { HUBS, hubBySlug, hubByOld, hubForCode, hubOpen, buildHub, hubDescription, hubRange } from './hubs';
@@ -148,16 +148,42 @@ export function bbLine(g: BbGameRow, lang: Lang): string {
 }
 /** Today's games grouped by league, with their one-line facts (the /predictions/today pages and their API). */
 const todayCache = new Map<string, { at: number; v: ReturnType<typeof buildToday> }>();
-export function todayGroups(sport: 'football' | 'basketball', lang: Lang, dayIso = new Date().toISOString().slice(0, 10)) {
-  const k = `${sport}:${lang}:${dayIso}`, c = todayCache.get(k);
+export type TodaySport = 'football' | 'basketball' | 'american-football';
+export function todayGroups(sport: TodaySport, lang: Lang, dayIso = new Date().toISOString().slice(0, 10), league: 1 | 2 = 1) {
+  const k = `${sport}:${league}:${lang}:${dayIso}`, c = todayCache.get(k);
   if (c && Date.now() - c.at < 10 * 60 * 1000) return c.v;
-  const v = buildToday(sport, lang, dayIso);
+  const v = buildToday(sport, lang, dayIso, league);
   if (todayCache.size > 200) todayCache.clear();
   todayCache.set(k, { at: Date.now(), v });
   return v;
 }
-function buildToday(sport: 'football' | 'basketball', lang: Lang, dayIso: string) {
+/** fix152b: one-line facts for an NFL / college game (today page): season records, form, last meeting. */
+function nflLine(g: any, lang: Lang): string {
+  const pk = pack(lang), bits: string[] = [];
+  const last = (id: number) => db.prepare(`SELECT home_id, home_pts, away_pts FROM nfl_games WHERE (home_id = ? OR away_id = ?) AND kickoff < ? AND status IN ('FT','AOT') AND home_pts IS NOT NULL ORDER BY kickoff DESC LIMIT 5`).all(id, id, g.kickoff) as any[];
+  const wl = (r: any, id: number) => { const f = r.home_id === id ? r.home_pts : r.away_pts, a = r.home_id === id ? r.away_pts : r.home_pts; return f > a ? 'W' : f < a ? 'L' : 'D'; };
+  const rec = (id: number) => { const rs = db.prepare(`SELECT home_id, home_pts, away_pts FROM nfl_games WHERE season = ? AND (home_id = ? OR away_id = ?) AND kickoff < ? AND status IN ('FT','AOT') AND home_pts IS NOT NULL`).all(g.season, id, id, g.kickoff) as any[]; const w = rs.filter(r => wl(r, id) === 'W').length; return { w, l: rs.length - w, n: rs.length }; };
+  const rh = rec(g.home_id), ra = rec(g.away_id);
+  if (rh.n >= 2 && ra.n >= 2) bits.push(`${pk.record} ${rh.w}-${rh.l} vs ${ra.w}-${ra.l}`);
+  const fh = last(g.home_id), fa = last(g.away_id);
+  if (fh.length >= 3 && fa.length >= 3) bits.push(`${pk.form} ${formLetters(fh.map(x => wl(x, g.home_id)) as any, lang)} vs ${formLetters(fa.map(x => wl(x, g.away_id)) as any, lang)}`);
+  const h2 = db.prepare(`SELECT home_id, home_pts, away_pts FROM nfl_games WHERE ((home_id = ? AND away_id = ?) OR (home_id = ? AND away_id = ?)) AND kickoff < ? AND status IN ('FT','AOT') AND home_pts IS NOT NULL ORDER BY kickoff DESC LIMIT 1`).get(g.home_id, g.away_id, g.away_id, g.home_id, g.kickoff) as any;
+  if (h2) bits.push(`${pk.lastMeeting} ${h2.home_id === g.home_id ? `${h2.home_pts}-${h2.away_pts}` : `${h2.away_pts}-${h2.home_pts}`}`);
+  return bits.join(' · ');
+}
+
+function buildToday(sport: TodaySport, lang: Lang, dayIso: string, league: 1 | 2 = 1) {
   const groups = new Map<string, { league: string; code: string | null; games: any[] }>();
+  if (sport === 'american-football') {
+    const name = league === 2 ? 'College football' : 'NFL', code = league === 2 ? 'NCAA' : 'NFL';
+    const rows = db.prepare(`SELECT game_id, season, kickoff, home_id, away_id, home_name, away_name, status, home_pts, away_pts FROM nfl_games WHERE league = ? ${HIDE_OTHER} AND kickoff >= ? AND kickoff <= ? AND (stage IS NULL OR stage NOT LIKE 'Pre%') AND (status IS NULL OR status NOT IN ('CANC','PST')) ORDER BY kickoff`)
+      .all(league, `${dayIso}T00:00:00.000Z`, `${dayIso}T23:59:59.999Z`) as any[];
+    for (const g of rows) {
+      if (!groups.has(code)) groups.set(code, { league: name, code, games: [] });
+      groups.get(code)!.games.push({ id: g.game_id, kickoff: g.kickoff, home: g.home_name || 'TBD', away: g.away_name || 'TBD', homeId: g.home_id, awayId: g.away_id, score: g.home_pts != null && (g.status === 'FT' || g.status === 'AOT') ? [g.home_pts, g.away_pts] : null, line: nflLine(g, lang) });
+    }
+    return { day: dayIso, groups: [...groups.values()] };
+  }
   if (sport === 'football') {
     for (const g of fbDay(dayIso)) {
       const k = g.code || g.comp || '?';

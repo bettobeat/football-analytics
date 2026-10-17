@@ -1761,11 +1761,13 @@ app.get('/api/guides/:slug', (req, res) => {
 // Today's games grouped by league with a one-line preview each (fix124: /predictions/today pages). Never the pick or a %.
 app.get('/api/today', (req, res) => {
   try {
-    const sport = req.query.sport === 'basketball' ? 'basketball' : 'football';
+    // fix152b: American football too (?sport=american-football&league=1|2|college), gated like the NFL pages
+    const sport = req.query.sport === 'basketball' ? 'basketball' : req.query.sport === 'american-football' ? 'american-football' : 'football';
     if (sport === 'basketball' && !(bbPublic() || req.access === 'admin')) return res.status(404).json({ error: 'Not found' });
+    if (sport === 'american-football' && !(nflPublic() || req.access === 'admin')) return res.status(404).json({ error: 'Not found' });
     const lang = (['es', 'pt', 'de', 'fr', 'it', 'tr'].includes(String(req.query.lang)) ? String(req.query.lang) : 'en') as any;
     const dayIso = typeof req.query.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.day) ? req.query.day : undefined;
-    res.set('Cache-Control', 'public, max-age=300').json({ data: todayGroups(sport, lang, dayIso) });
+    res.set('Cache-Control', sport === 'american-football' ? 'private, max-age=300' : 'public, max-age=300').json({ data: todayGroups(sport, lang, dayIso, asLeague(req.query.league)) });
   } catch (e: any) { sendError(res, e, 'Today failed'); }
 });
 
@@ -2211,7 +2213,7 @@ app.get('/api/nfl/upset-watch', (req, res) => {
 });
 app.get('/api/nfl/accuracy', (req, res) => {
   if (req.access !== 'admin') return res.status(404).json({ error: 'Not found' });
-  try { res.json({ data: nflAccuracy() }); } catch (e) { sendError(res, e, 'Failed to load the record'); }
+  try { res.json({ data: nflAccuracy(Math.min(3650, Math.max(1, parseInt(String(req.query.days || '3650'), 10) || 3650))) }); } catch (e) { sendError(res, e, 'Failed to load the record'); }
 });
 // fix144: NFL past seasons (admins and the model permission; not under the open /api/nfl/): the walk-forward reports
 app.get('/api/nfl-past', (_req, res) => {

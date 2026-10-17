@@ -1832,5 +1832,19 @@
  "Upsets": "Sürprizler",
  "{0} is analysing this game": "{0} bu maçı analiz ediyor",
  "Make your own guess first, then see what {0} thinks — the percentages, why this pick, and the full breakdown.": "Önce kendi tahminini yap, sonra {0} ne düşünüyor gör: yüzdeler, bu tahminin nedeni ve tüm ayrıntılar.",
- "Total pts": "Toplam sayı"
+ "Total pts": "Toplam sayı",
+ "Every chance we gave, for both teams of every game, grouped by the number we said. If our numbers are honest, the dots sit on the dashed line.": "Her maçta iki takım için verdiğimiz her ihtimal, söylediğimiz sayıya göre gruplandı. Sayılarımız dürüstse noktalar kesikli çizginin üzerinde durur.",
+ "Winner picks, by how sure we were": "Kazanan tahminleri, ne kadar emin olduğumuza göre",
+ "Under 20 games is too few to judge a league: pick a longer period for a fairer picture.": "20 maçtan az, bir ligi değerlendirmek için yetersiz: daha adil bir tablo için daha uzun bir dönem seç.",
+ "Our picks · winner": "Tahminlerimiz · kazanan",
+ "{0} of {1} right. Our pick is the team we rate more likely to win.": "{1} maçta {0} doğru. Tahminimiz, kazanma ihtimalini daha yüksek gördüğümüz takım.",
+ "Star a player on its page.": "Bir oyuncuyu kendi sayfasında yıldızla.",
+ "Our pick: the team we rate more likely to win, counted on every finished game. Predictions are probabilities, not promises.": "Tahminimiz: kazanma ihtimalini daha yüksek gördüğümüz takım, biten her maçta sayılır. Tahminler olasılıktır, söz değil.",
+ "Browse games": "Maçlara göz at",
+ "Search above, open a team or league and tap the star. You can also star a league from the list on the Games page. Their games then appear here, are marked with a star everywhere, and come first on the Games page.": "Yukarıda ara, bir takım ya da lig aç ve yıldıza dokun. Bir ligi Maçlar sayfasındaki listeden de yıldızlayabilirsin. Maçları burada görünür, her yerde yıldızla işaretlenir ve Maçlar sayfasında en üstte yer alır.",
+ "To switch it off, confirm your password and a code from your app (or a recovery code).": "Kapatmak için şifreni ve uygulamandan bir kodu (ya da bir kurtarma kodunu) onayla.",
+ "New recovery codes replace the old ones. Enter a code from your app to continue.": "Yeni kurtarma kodları eskilerin yerine geçer. Devam etmek için uygulamandan bir kod gir.",
+ "Get new codes": "Yeni kodlar al",
+ "On since {0}. Recovery codes left: {1}.": "{0} tarihinden beri açık. Kalan kurtarma kodu: {1}.",
+ "Back to home": "Ana sayfaya dön"
 }

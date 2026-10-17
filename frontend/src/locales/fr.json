@@ -1832,5 +1832,19 @@
  "Upsets": "Surprises",
  "{0} is analysing this game": "{0} analyse ce match",
  "Make your own guess first, then see what {0} thinks — the percentages, why this pick, and the full breakdown.": "Fais d'abord ton propre pronostic, puis découvre ce que pense {0} : les pourcentages, pourquoi ce choix et le détail complet.",
- "Total pts": "Total pts"
+ "Total pts": "Total pts",
+ "Every chance we gave, for both teams of every game, grouped by the number we said. If our numbers are honest, the dots sit on the dashed line.": "Chaque chance que nous avons donnée, pour les deux équipes de chaque match, regroupée selon le chiffre annoncé. Si nos chiffres sont honnêtes, les points sont sur la ligne pointillée.",
+ "Winner picks, by how sure we were": "Pronostics du vainqueur, selon notre confiance",
+ "Under 20 games is too few to judge a league: pick a longer period for a fairer picture.": "Moins de 20 matchs, c'est trop peu pour juger une ligue : choisissez une période plus longue pour une image plus juste.",
+ "Our picks · winner": "Nos pronostics · vainqueur",
+ "{0} of {1} right. Our pick is the team we rate more likely to win.": "{0} sur {1} justes. Notre pronostic est l'équipe que nous jugeons la plus susceptible de gagner.",
+ "Star a player on its page.": "Mettez une étoile à un joueur sur sa page.",
+ "Our pick: the team we rate more likely to win, counted on every finished game. Predictions are probabilities, not promises.": "Notre pronostic : l'équipe que nous jugeons la plus susceptible de gagner, compté sur chaque match terminé. Les prédictions sont des probabilités, pas des promesses.",
+ "Browse games": "Voir les matchs",
+ "Search above, open a team or league and tap the star. You can also star a league from the list on the Games page. Their games then appear here, are marked with a star everywhere, and come first on the Games page.": "Cherchez ci-dessus, ouvrez une équipe ou une ligue et touchez l'étoile. Vous pouvez aussi mettre une étoile à une ligue depuis la liste de la page Matchs. Leurs matchs apparaissent alors ici, marqués d'une étoile partout, et en premier sur la page Matchs.",
+ "To switch it off, confirm your password and a code from your app (or a recovery code).": "Pour la désactiver, confirmez votre mot de passe et un code de votre application (ou un code de récupération).",
+ "New recovery codes replace the old ones. Enter a code from your app to continue.": "Les nouveaux codes de récupération remplacent les anciens. Saisissez un code de votre application pour continuer.",
+ "Get new codes": "Obtenir de nouveaux codes",
+ "On since {0}. Recovery codes left: {1}.": "Active depuis le {0}. Codes de récupération restants : {1}.",
+ "Back to home": "Retour à l'accueil"
 }

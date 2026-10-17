@@ -111,6 +111,7 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
     if (userId.current === user.id) return
     userId.current = user.id
     let cancelled = false
+    let done = false
     ;(async () => {
       try {
         let merged = false
@@ -131,12 +132,15 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
         }
         apply(r.data.data || [])
         setSynced(true)
+        done = true
       } catch {
         /* offline: keep the browser list */
       }
     })()
     return () => {
       cancelled = true
+      // fix152b: the account check refreshed mid-load: let the next run load again instead of skipping this account
+      if (!done) userId.current = null
     }
   }, [user, loading])
 

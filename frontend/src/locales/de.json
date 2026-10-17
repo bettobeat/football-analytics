@@ -1832,5 +1832,19 @@
  "Upsets": "Überraschungen",
  "{0} is analysing this game": "{0} analysiert dieses Spiel",
  "Make your own guess first, then see what {0} thinks — the percentages, why this pick, and the full breakdown.": "Tippe zuerst selbst, dann sieh, was {0} denkt — die Prozente, warum dieser Tipp und die ganze Aufschlüsselung.",
- "Total pts": "Punkte ges."
+ "Total pts": "Punkte ges.",
+ "Every chance we gave, for both teams of every game, grouped by the number we said. If our numbers are honest, the dots sit on the dashed line.": "Jede Chance, die wir angegeben haben, für beide Teams jedes Spiels, gruppiert nach der genannten Zahl. Sind unsere Zahlen ehrlich, liegen die Punkte auf der gestrichelten Linie.",
+ "Winner picks, by how sure we were": "Sieger-Tipps, nach unserer Sicherheit",
+ "Under 20 games is too few to judge a league: pick a longer period for a fairer picture.": "Unter 20 Spielen ist zu wenig, um eine Liga zu beurteilen: Wähle einen längeren Zeitraum für ein faireres Bild.",
+ "Our picks · winner": "Unsere Tipps · Sieger",
+ "{0} of {1} right. Our pick is the team we rate more likely to win.": "{0} von {1} richtig. Unser Tipp ist das Team, das wir eher als Sieger sehen.",
+ "Star a player on its page.": "Markiere einen Spieler auf seiner Seite mit einem Stern.",
+ "Our pick: the team we rate more likely to win, counted on every finished game. Predictions are probabilities, not promises.": "Unser Tipp: das Team, das wir eher als Sieger sehen, gezählt bei jedem beendeten Spiel. Vorhersagen sind Wahrscheinlichkeiten, keine Versprechen.",
+ "Browse games": "Spiele ansehen",
+ "Search above, open a team or league and tap the star. You can also star a league from the list on the Games page. Their games then appear here, are marked with a star everywhere, and come first on the Games page.": "Suche oben, öffne ein Team oder eine Liga und tippe auf den Stern. Ligen kannst du auch in der Liste auf der Spiele-Seite markieren. Ihre Spiele erscheinen dann hier, sind überall mit einem Stern markiert und stehen auf der Spiele-Seite ganz oben.",
+ "To switch it off, confirm your password and a code from your app (or a recovery code).": "Zum Ausschalten bestätige dein Passwort und einen Code aus deiner App (oder einen Wiederherstellungscode).",
+ "New recovery codes replace the old ones. Enter a code from your app to continue.": "Neue Wiederherstellungscodes ersetzen die alten. Gib einen Code aus deiner App ein, um fortzufahren.",
+ "Get new codes": "Neue Codes erhalten",
+ "On since {0}. Recovery codes left: {1}.": "Aktiv seit {0}. Verbleibende Wiederherstellungscodes: {1}.",
+ "Back to home": "Zurück zur Startseite"
 }

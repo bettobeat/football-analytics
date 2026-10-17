@@ -1832,5 +1832,19 @@
  "Upsets": "Sorpresas",
  "{0} is analysing this game": "{0} está analizando este partido",
  "Make your own guess first, then see what {0} thinks — the percentages, why this pick, and the full breakdown.": "Haz primero tu propio pronóstico y luego mira qué piensa {0}: los porcentajes, por qué este pronóstico y el desglose completo.",
- "Total pts": "Puntos tot."
+ "Total pts": "Puntos tot.",
+ "Every chance we gave, for both teams of every game, grouped by the number we said. If our numbers are honest, the dots sit on the dashed line.": "Cada probabilidad que dimos, para los dos equipos de cada partido, agrupada por el número que dijimos. Si nuestros números son honestos, los puntos quedan sobre la línea discontinua.",
+ "Winner picks, by how sure we were": "Picks de ganador, según lo seguros que estábamos",
+ "Under 20 games is too few to judge a league: pick a longer period for a fairer picture.": "Menos de 20 partidos es muy poco para juzgar una liga: elige un periodo más largo para una imagen más justa.",
+ "Our picks · winner": "Nuestros picks · ganador",
+ "{0} of {1} right. Our pick is the team we rate more likely to win.": "{0} de {1} acertados. Nuestro pick es el equipo que vemos con más opciones de ganar.",
+ "Star a player on its page.": "Marca un jugador con la estrella en su página.",
+ "Our pick: the team we rate more likely to win, counted on every finished game. Predictions are probabilities, not promises.": "Nuestro pick: el equipo que vemos con más opciones de ganar, contado en cada partido terminado. Las predicciones son probabilidades, no promesas.",
+ "Browse games": "Ver partidos",
+ "Search above, open a team or league and tap the star. You can also star a league from the list on the Games page. Their games then appear here, are marked with a star everywhere, and come first on the Games page.": "Busca arriba, abre un equipo o una liga y toca la estrella. También puedes marcar una liga desde la lista de la página de Partidos. Sus partidos aparecerán aquí, marcados con una estrella en todas partes y primeros en la página de Partidos.",
+ "To switch it off, confirm your password and a code from your app (or a recovery code).": "Para desactivarlo, confirma tu contraseña y un código de tu app (o un código de recuperación).",
+ "New recovery codes replace the old ones. Enter a code from your app to continue.": "Los nuevos códigos de recuperación sustituyen a los anteriores. Introduce un código de tu app para continuar.",
+ "Get new codes": "Obtener códigos nuevos",
+ "On since {0}. Recovery codes left: {1}.": "Activo desde {0}. Códigos de recuperación restantes: {1}.",
+ "Back to home": "Volver al inicio"
 }

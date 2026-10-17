@@ -1832,5 +1832,19 @@
  "Upsets": "Sorprese",
  "{0} is analysing this game": "{0} sta analizzando questa partita",
  "Make your own guess first, then see what {0} thinks — the percentages, why this pick, and the full breakdown.": "Fai prima il tuo pronostico, poi guarda cosa pensa {0}: le percentuali, il perché della scelta e l'analisi completa.",
- "Total pts": "Punti tot."
+ "Total pts": "Punti tot.",
+ "Every chance we gave, for both teams of every game, grouped by the number we said. If our numbers are honest, the dots sit on the dashed line.": "Ogni probabilità che abbiamo dato, per entrambe le squadre di ogni partita, raggruppata per il numero indicato. Se i nostri numeri sono onesti, i punti stanno sulla linea tratteggiata.",
+ "Winner picks, by how sure we were": "Pronostici sul vincitore, per quanto eravamo sicuri",
+ "Under 20 games is too few to judge a league: pick a longer period for a fairer picture.": "Meno di 20 partite sono troppo poche per giudicare un campionato: scegli un periodo più lungo per un quadro più equo.",
+ "Our picks · winner": "I nostri pronostici · vincitore",
+ "{0} of {1} right. Our pick is the team we rate more likely to win.": "{0} su {1} giusti. Il nostro pronostico è la squadra che riteniamo più probabile vincitrice.",
+ "Star a player on its page.": "Aggiungi la stella a un giocatore dalla sua pagina.",
+ "Our pick: the team we rate more likely to win, counted on every finished game. Predictions are probabilities, not promises.": "Il nostro pronostico: la squadra che riteniamo più probabile vincitrice, contato su ogni partita finita. Le previsioni sono probabilità, non promesse.",
+ "Browse games": "Sfoglia le partite",
+ "Search above, open a team or league and tap the star. You can also star a league from the list on the Games page. Their games then appear here, are marked with a star everywhere, and come first on the Games page.": "Cerca qui sopra, apri una squadra o un campionato e tocca la stella. Puoi anche aggiungere un campionato dalla lista nella pagina Partite. Le loro partite appariranno qui, segnate con una stella ovunque e per prime nella pagina Partite.",
+ "To switch it off, confirm your password and a code from your app (or a recovery code).": "Per disattivarla, conferma la password e un codice dalla tua app (o un codice di recupero).",
+ "New recovery codes replace the old ones. Enter a code from your app to continue.": "I nuovi codici di recupero sostituiscono i vecchi. Inserisci un codice dalla tua app per continuare.",
+ "Get new codes": "Ottieni nuovi codici",
+ "On since {0}. Recovery codes left: {1}.": "Attiva dal {0}. Codici di recupero rimasti: {1}.",
+ "Back to home": "Torna alla home"
 }

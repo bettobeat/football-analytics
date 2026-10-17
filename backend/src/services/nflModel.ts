@@ -27,7 +27,7 @@
  * (its new settings are fixed at the old values: regression 1/3 to 1500, no FCS, no cap).
  */
 import { db } from '../db';
-import { winnerBands } from '../utils/winnerBands';
+import { winnerBands, winnerCalibration, winnerByConfidence } from '../utils/winnerBands';
 import logger from '../utils/logger';
 import { yieldLoop } from './perf';
 import { teamBox, NflGame } from './nflSite';
@@ -719,6 +719,9 @@ export function nflAccuracy(days = 3650) {
     since: rows.length ? rows[rows.length - 1].kickoff : null,
     total: { ...tot, hitRate: pct(tot.hits, tot.n), strongHitRate: pct(tot.strongHits, tot.strongN) },
     bands: winnerBands(rows.map(r => ({ p: Math.max(r.p_home, 1 - r.p_home), hit: hit(r) }))),
+    // fix152b: the shared Accuracy page (football's layout)
+    calibration: winnerCalibration(rows.map(r => ({ pHome: r.p_home, homeWon: r.hs > r.as_ }))),
+    byConfidence: winnerByConfidence(rows.map(r => ({ p: Math.max(r.p_home, 1 - r.p_home), hit: hit(r) }))),
     leagues: [...by.entries()].map(([c, b]) => ({ code: c, ...b, hitRate: pct(b.hits, b.n), strongHitRate: pct(b.strongHits, b.strongN) })),
     recent: rows.slice(0, 50).map(r => ({
       gameId: r.game_id, code: code(r.league), kickoff: r.kickoff, home: r.home_name || 'TBD', away: r.away_name || 'TBD', homeLogo: r.home_logo, awayLogo: r.away_logo,
