@@ -6,6 +6,7 @@ import { t, lang } from '../../lib/i18n'
 import { useAuth } from '../../lib/auth'
 import { useReveal } from '../../lib/reveal'
 import YourPicks from '../../components/YourPicks'
+import { newerWinnerLive } from '../../lib/liveState'
 import { BB_STATUS, liveLabel, spreadText, bbTeamFav, bbLeagueFav, useBbConfig, type BbGame as Game } from '../../lib/bb'
 import { FavStar } from '../../lib/favorites'
 import { Card, TeamLogo, LiveChanceBox, rid, rstatus } from './parts'
@@ -72,7 +73,7 @@ export default function BbGame() {
     setD(null); setError(null)
     const load = () =>
       axios.get(`${API_URL}/basketball/game/${id}`)
-        .then(r => { if (!cancelled) setD(r.data.data) })
+        .then(r => { if (!cancelled) setD(prev => (prev && prev.game.id === r.data.data?.game?.id ? { ...r.data.data, game: newerWinnerLive(prev.game, r.data.data.game) } : r.data.data)) }) // fix165: never backwards
         .catch(e => { if (!cancelled) setError(e?.response?.status === 404 ? t('Game not found') : t('Could not load the game')) })
     load()
     const iv = setInterval(load, 60000)

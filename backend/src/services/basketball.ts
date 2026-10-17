@@ -11,7 +11,7 @@
 import logger from '../utils/logger';
 import { db } from '../db';
 import { buildAll, recordBbPredictions, bumpBbInjuries } from './bbModel';
-import { timed, every } from './perf';
+import { timed, every, after } from './perf';
 import { refreshNbaInjuries, nbaInjuryStatus } from './bbInjuries';
 import { applyResultFixes, checkResults } from './bbResults';
 import { onBbExtraLeague } from './bbLeagueConfig';
@@ -371,7 +371,7 @@ export function startBasketballScheduler() {
       await timed('bb predictions', () => recordBbPredictions());
     } catch (e: any) { logger.warn(`Basketball model: ${e.message}`); }
   })(), 15 * 1000).unref();
-  setTimeout(() => void bbTick(), 45 * 1000).unref();
+  after('bb sync', () => bbTick(), 45 * 1000).unref();
   every('bb sync', () => void bbTick(), 30 * 60 * 1000).unref();
   setInterval(() => void timed('bb live', () => liveTick()), 60 * 1000).unref(); // fix155: named in /api/perf
   // NBA injury list every 15 minutes; the coming games' predictions are re-saved with it (until tip-off)
@@ -381,7 +381,7 @@ export function startBasketballScheduler() {
     if (n !== null) bumpBbInjuries(); // fix159: cached NBA predictions are recomputed with the new list
     if (n !== null) { try { await timed('bb predictions', () => recordBbPredictions(['NBA'])); } catch (e: any) { logger.warn(`Basketball predictions: ${e.message}`); } }
   };
-  setTimeout(() => void injuries(), 30 * 1000).unref();
+  after('bb injuries', () => injuries(), 30 * 1000).unref();
   every('bb injuries', () => void injuries(), 15 * 60 * 1000).unref();
 }
 

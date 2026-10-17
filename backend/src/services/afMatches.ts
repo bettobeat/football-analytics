@@ -25,7 +25,7 @@ import { reportLive } from './liveScores';
 import { predictNational, isNationalTeam } from './nationalElo';
 import { predictClubEuro } from './clubElo';
 import { onExtraLeague } from './leagueConfig';
-import { every } from './perf';
+import { every, after } from './perf';
 
 export const AF_OFFSET = 1_000_000_000;
 export const isAfMatchId = (id: number) => id >= AF_OFFSET;
@@ -494,7 +494,7 @@ export function afOverdue() {
 export function startAfMatchesScheduler() {
   if (!afConfigured()) return;
   const refresh = () => refreshAfWindow().then(n => logger.info(`AF extra competitions: ${n} matches in window`)).catch(() => undefined);
-  setTimeout(refresh, 30 * 1000);
+  after('AF matches', refresh, 30 * 1000);
   every('AF matches', refresh, 30 * 60 * 1000);
 }
 
@@ -871,6 +871,20 @@ export function fdTwinOf(kickoff: string, homeName: string, awayName: string): n
   }
   const hits = rows.filter(r => sameTeam(r.home_team, homeName) || sameTeam(r.away_team, awayName));
   return hits.length === 1 ? hits[0].match_id : null;
+}
+
+/**
+ * fix165: an API-Football match with the live state of the last live=all poll (status, minute, score, half-time),
+ * applied when a details response is sent, so the match page is never older than the live list. Unchanged when the
+ * fixture is not in the last poll (or the poll is over 3 min old); a finished match is never turned back to live.
+ */
+export function afLiveOverlay<T extends { id: number; status?: string; score?: any }>(match: T): T {
+  if (!match || match.id < AF_OFFSET || Date.now() - afLiveAt > 3 * 60 * 1000) return match;
+  const raw = afLiveRaw.get(match.id - AF_OFFSET);
+  if (!raw) return match;
+  const m: any = toFdMatch(raw);
+  if (match.status === 'FINISHED' && m.status !== 'FINISHED') return match;
+  return { ...match, status: m.status, minute: m.minute, injuryTime: m.injuryTime, score: { ...(match.score || {}), ...m.score } };
 }
 
 /** API-Football fixture id for a Football-Data.org match, or null. */

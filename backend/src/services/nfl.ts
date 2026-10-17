@@ -13,7 +13,7 @@
  */
 import { db } from '../db';
 import logger from '../utils/logger';
-import { timed, yieldLoop, every } from './perf';
+import { timed, yieldLoop, every, after } from './perf';
 
 const BASE = 'https://v1.american-football.api-sports.io';
 const KEY = () => process.env.API_NFL_KEY || process.env.API_FOOTBALL_KEY || '';
@@ -581,7 +581,7 @@ export function startNflScheduler() {
   if (started || !KEY()) return;
   started = true;
   // fix143 / fix146: levels for every college team; with none yet, sync teams + standings now and retrain ncaa-v1
-  setTimeout(() => { try { fillMissingNames(true); } catch (e: any) { logger.warn(`college names: ${e.message}`); } collegeLevelsOnBoot().catch(e => logger.warn(`College levels: ${e.message}`)); }, 20 * 1000);
+  after('nfl names / levels', () => { try { fillMissingNames(true); } catch (e: any) { logger.warn(`college names: ${e.message}`); } return collegeLevelsOnBoot().catch(e => logger.warn(`College levels: ${e.message}`)); }, 20 * 1000);
   // every 30 min: games of the current season (+ backfill), box scores, then whatever is due (each job keeps its own clock)
   const tick = async () => {
     if (tickBusy) return;
@@ -603,7 +603,7 @@ export function startNflScheduler() {
       logger.warn(`NFL sync: ${e.message}`);
     } finally { tickBusy = false; }
   };
-  setTimeout(() => void tick(), 10 * 60 * 1000).unref(); // after the football and basketball start-up work
+  after('nfl sync', () => tick(), 10 * 60 * 1000).unref(); // after the football and basketball start-up work
   every('nfl sync', () => void tick(), 30 * 60 * 1000).unref();
   // live scores every 30 s while a game is on; box score right after full time
   // fix155: only the last 8 hours are looked at; a game that ended adds its result to the ratings (no replay) and the

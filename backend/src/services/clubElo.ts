@@ -12,7 +12,7 @@ import { afGet, afConfigured } from './apiFootball';
 import { similarity, normalizeName } from './history';
 import { Meetings, commonSense, type H2H } from './h2hGuard';
 import { Prediction } from './predictionModel';
-import { every } from './perf';
+import { every, after } from './perf';
 
 export const MODEL_EURO = 'elo-euro';
 const AF_OFFSET = 1_000_000_000;
@@ -596,6 +596,6 @@ export function startClubEloScheduler() {
   if (!afConfigured()) return;
   try { buildClubElo(); } catch { /* tables may be empty on first boot */ }
   const run = () => syncEuropeanCups().then(() => buildClubElo()).catch(() => undefined);
-  setTimeout(run, 4 * 60 * 1000);
+  after('club elo', run, 4 * 60 * 1000);
   every('club elo', run, 12 * 3600 * 1000);
 }

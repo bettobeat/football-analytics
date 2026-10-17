@@ -17,7 +17,7 @@ import { findPlayer, playerPage, FD_TO_AF } from './playerPage';
 import { afRemaining } from './apiFootball';
 import { getAfScorers } from './afMatches';
 import { emailEnabled, sendEmail, layout, section, esc, C, SITE } from './email';
-import { every } from './perf';
+import { every, after } from './perf';
 
 db.exec(`CREATE TABLE IF NOT EXISTS data_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, json TEXT NOT NULL)`);
 
@@ -265,6 +265,6 @@ export function startDataAuditScheduler() {
     const window = now.getUTCHours() >= 4 && now.getUTCHours() < 11;
     if (due && (window || !last) && !running) runDataAudit().catch(e => logger.warn(`data check: ${e.message}`));
   };
-  setTimeout(tick, 10 * 60 * 1000); // not right at start-up
+  after('data audit', tick, 10 * 60 * 1000); // not right at start-up
   every('data audit', tick, 60 * 60 * 1000);
 }

@@ -8,6 +8,7 @@ import { NFL_STATUS, weekLabel, nick, nflTeamFav, nflRid, nflRstatus, setNflLeag
 import { Card, Skeleton, TeamLogo } from '../bb/parts'
 import { GAME_RELOAD } from '../../components/UnlockPrompt'
 import YourPicks from '../../components/YourPicks'
+import { newerWinnerLive } from '../../lib/liveState'
 import { StatBars, LeagueSwitch } from './parts'
 import GamePage, { useGameTab, GameNews, fmtGameDate, fmtGameTime, type GameTab } from '../../components/sport/game/GamePage'
 import WinnerPrediction, { type WhyRow } from '../../components/sport/game/WinnerPrediction'
@@ -37,7 +38,7 @@ export default function NflGame() {
   const [tab, pickTab] = useGameTab(TABS, { overview: 'h2h', injuries: 'players' })
   useEffect(() => {
     setD(null); setMissing(false)
-    const load = () => axios.get(`${API_URL}/nfl/game/${id}`).then(r => setD(r.data.data)).catch(e => { if (e?.response?.status === 404) setMissing(true) })
+    const load = () => axios.get(`${API_URL}/nfl/game/${id}`).then(r => setD(prev => (prev && prev.game.id === r.data.data?.game?.id ? { ...r.data.data, game: newerWinnerLive(prev.game, r.data.data.game) } : r.data.data))) // fix165: never backwards.catch(e => { if (e?.response?.status === 404) setMissing(true) })
     load()
     const iv = setInterval(() => { if (document.visibilityState === 'visible') load() }, 30 * 1000)
     window.addEventListener(GAME_RELOAD, load) // fix144: a free pick opened this game

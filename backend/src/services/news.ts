@@ -13,7 +13,7 @@
 import logger from '../utils/logger';
 import { schoolName, collegeNick } from './nfl';
 import { db } from '../db';
-import { every } from './perf';
+import { every, after } from './perf';
 
 type Sport = 'football' | 'basketball' | 'american-football';
 type Feed = { source: string; url: string; league?: string; sport?: Sport };
@@ -524,7 +524,7 @@ let started = false;
 export function startNewsScheduler() {
   if (started) return;
   started = true;
-  setTimeout(() => void refreshNow(), 20 * 1000).unref();
+  after('news', () => refreshNow(), 20 * 1000).unref();
   every('news', () => void refreshNow(), 15 * 60 * 1000).unref();
 }
 

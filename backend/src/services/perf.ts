@@ -96,6 +96,11 @@ export function track(label: string): () => void {
 }
 export const routeLabel = (method: string, path: string) => `http ${method} ${path.replace(/\/\d+(?=\/|$)/g, '/:id').slice(0, 80)}`;
 
+/** fix165: setTimeout with a name (start-up jobs), so no freeze is unlabelled. */
+export function after(label: string, fn: () => unknown, ms: number): NodeJS.Timeout {
+  return setTimeout(() => { timed(label, fn).catch(e => logger.warn(`${label}: ${e?.message || e}`)); }, ms);
+}
+
 /** fix158: setInterval with a name — every repeating job runs inside timed(), so no freeze is unlabelled. */
 export function every(label: string, fn: () => unknown, ms: number): NodeJS.Timeout {
   return setInterval(() => { timed(label, fn).catch(e => logger.warn(`${label}: ${e?.message || e}`)); }, ms);

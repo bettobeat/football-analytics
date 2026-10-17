@@ -14,6 +14,7 @@ import PredictionStory from '../components/PredictionStory'
 import { FavStar, nameKey as favKey } from '../lib/favorites'
 import { t as tt, LOCALE, lang } from '../lib/i18n'
 import GamePage, { HeroLogo, GameNews } from '../components/sport/game/GamePage'
+import { newerFootballLive, tickedMinute } from '../lib/liveState'
 import { footballTeamHref } from '../lib/teamLink'
 
 /* ---------- types (Football-Data.org v4 shapes, loosely) ---------- */
@@ -381,7 +382,9 @@ function MatchDetail() {
     return axios
       .get(`${API_URL}/matches/${matchId}/details`)
       .then(res => {
-        setDetails(res.data.data)
+        // fix165: a reload never takes the score / minute back (the socket push may be newer than the copy we got)
+        const next: Details = res.data.data
+        setDetails(prev => (prev && next?.match && prev.match.id === next.match.id ? { ...next, match: newerFootballLive(prev.match, next.match) } : next))
         setError(null)
       })
       .catch(err => setError(err.response?.data?.message || err.message))
@@ -423,7 +426,7 @@ function MatchDetail() {
       // Only take the live fields — the slim live payload has no lineups/stats/events
       setDetails(prev =>
         prev
-          ? withLiveChance({ ...prev, match: { ...prev.match, status: m.status, minute: m.minute, injuryTime: m.injuryTime, score: m.score } }, (m as Match & { prediction?: Prediction | null }).prediction?.live)
+          ? withLiveChance({ ...prev, match: newerFootballLive(prev.match, { ...prev.match, status: m.status, minute: m.minute, injuryTime: m.injuryTime, score: m.score }) }, (m as Match & { prediction?: Prediction | null }).prediction?.live)
           : prev
       )
     }
@@ -445,6 +448,17 @@ function MatchDetail() {
 
   // Which model the Prediction section shows (default: the one the backend prefers, v2 when available)
   const [modelId, setModelId] = useState<string | null>(null)
+
+  // fix165: between readings the minute ticks up once a minute while the ball is in play (lib/liveState)
+  const reading = useRef<{ key: string; at: number }>({ key: '', at: Date.now() })
+  const readingKey = details ? `${details.match.status}|${details.match.minute}|${details.match.injuryTime}` : ''
+  if (reading.current.key !== readingKey) reading.current = { key: readingKey, at: Date.now() }
+  const [, setClock] = useState(0)
+  useEffect(() => {
+    if (!isLive) return
+    const iv = setInterval(() => setClock(n => n + 1), 20 * 1000)
+    return () => clearInterval(iv)
+  }, [isLive])
 
   // Probable lineups are built server-side from recent matches; if they weren't ready in time
   // for the first response (API quota), try again a few times shortly after.
@@ -561,7 +575,7 @@ function MatchDetail() {
       </div>
     )
 
-  const m = details.match
+  const m = tickedMinute(details.match, reading.current.at)
   const home = m.homeTeam
   const away = m.awayTeam
   const live = LIVE.has(m.status)

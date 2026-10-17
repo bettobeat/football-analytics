@@ -25,6 +25,7 @@ import { Worker } from 'worker_threads';
 import { db } from '../db';
 import logger from '../utils/logger';
 import { sendMail } from './email';
+import { after } from './perf';
 
 const DATA_DIR = process.env.DATA_DIR || path.resolve(process.cwd(), 'data');
 export const BACKUP_DIR = path.join(DATA_DIR, 'backups');
@@ -301,7 +302,7 @@ export function startBackups() {
   if (process.env.BACKUP_OFF === '1') { logger.info('backups off (BACKUP_OFF=1)'); return; }
   const lastOk = db.prepare('SELECT at FROM backup_log WHERE ok = 1 ORDER BY id DESC LIMIT 1').get() as any;
   if (!lastOk || Date.now() - new Date(lastOk.at).getTime() > 26 * 3600000)
-    setTimeout(() => { runBackup('startup').catch(() => undefined); }, 10 * 60000).unref();
+    after('backup', () => runBackup('startup').catch(() => undefined), 10 * 60000).unref();
   const schedule = () => {
     const now = new Date();
     const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), HOUR, MINUTE));

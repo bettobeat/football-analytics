@@ -1,7 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { withLive } from './liveChance';
 import { cachedPredictions, clearPredictionCache, mainPrediction } from './predCache';
-import { timed, setJob, yieldLoop, every } from './perf';
+import { timed, setJob, yieldLoop, every, after } from './perf';
 import { freezePredictions } from './tracking';
 import logger from '../utils/logger';
 import { db } from '../db';
@@ -151,6 +151,8 @@ class FootballDataAPI {
   }
 
   private quotaLeft = Infinity;
+  /** fix165: the minute quota is used up right now (a call would wait in the queue) */
+  get quotaBusy(): boolean { return this.quotaLeft <= 0 && this.quotaResetAt > Date.now(); }
   private quotaResetAt = 0;
   private quotaWarned = false;
   private gate: Promise<void> = Promise.resolve();
@@ -234,7 +236,7 @@ class FootballDataAPI {
     // Re-sync the current season's results and refit v2 every 6 hours
     every('model v2 prepare', () => this.prepareHistoryModel().catch(() => {}), 6 * 60 * 60 * 1000);
     // Warm the usual-XI cache for the next two days of fixtures (slowly, in the background)
-    setTimeout(() => this.prefetchUsualLineups().catch(() => {}), 6 * 60 * 1000);
+    after('usual lineups', () => this.prefetchUsualLineups().catch(() => {}), 6 * 60 * 1000);
     every('usual lineups', () => this.prefetchUsualLineups().catch(() => {}), 60 * 60 * 1000);
   }
 

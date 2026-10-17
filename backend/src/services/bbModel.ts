@@ -301,45 +301,61 @@ function run(games: Game[], p: Params, onPred?: (g: Game, pr: Pred, L: League) =
 /* ---------- bb-v3 player talent (all leagues together: players move between our leagues) ---------- */
 const talentState = { rates: new Map<number, { m: number; g: number }>(), rosters: new Map<number, Map<number, number>[]>(), byGame: new Map<number, [number | null, number | null]>(), builtAt: 0 };
 const gsOf = (r: any) => (r.pts || 0) + 0.4 * (r.fgm || 0) - 0.7 * (r.fga || 0) - 0.4 * ((r.fta || 0) - (r.ftm || 0)) + 0.5 * (r.reb || 0) + 0.7 * (r.ast || 0);
-function playerRate(pid: number) {
-  const x = talentState.rates.get(pid);
+type TalentState = typeof talentState;
+function playerRate(pid: number, st: TalentState = talentState) {
+  const x = st.rates.get(pid);
   // shrunk toward 0 (8 Oct 2026 round 2): a player we have seen little of counts as little — proven production matters
   return x ? (x.g + V3.priorRate * V3.priorMin) / (x.m + V3.priorMin) : null;
 }
 /** A team's talent: minutes-weighted value of the players it used in its last `lastN` games (game score per 200 minutes). */
-export function teamTalent(teamId: number, lastN = 1) {
-  const h = talentState.rosters.get(teamId);
+export function teamTalent(teamId: number, lastN = 1, st: TalentState = talentState) {
+  const h = st.rosters.get(teamId);
   if (!h || !h.length) return null;
   const use = h.slice(-lastN);
   const mins = new Map<number, number>();
   for (const r of use) for (const [p, mi] of r) mins.set(p, (mins.get(p) || 0) + mi / use.length);
   let s = 0, m = 0;
-  for (const [p, mi] of mins) { const v = playerRate(p); if (v == null) continue; s += mi * v; m += mi; }
+  for (const [p, mi] of mins) { const v = playerRate(p, st); if (v == null) continue; s += mi * v; m += mi; }
   return m > 60 ? (200 * s) / m : null;
 }
-/** One pass over every finished game with a box score: pre-game talent of both teams, then the players' values update. */
-export function buildTalent() {
-  talentVer++; // fix159: cached predictions use the talent numbers
+/**
+ * One pass over every finished game with a box score: pre-game talent of both teams, then the players' values update.
+ * fix165: async — player lines read in pages of 20,000, a yield every 1,500 games; the new numbers are built apart and
+ * swapped in at the end (predictions use the previous build until then). Same pass, same results.
+ */
+export async function buildTalent(): Promise<void> {
   const games = db.prepare(`SELECT game_id, home_id, away_id FROM bb_games WHERE status IN ('FT','AOT') AND hs IS NOT NULL ORDER BY kickoff, game_id`).all() as any[];
-  const lines = db.prepare(`SELECT game_id, team_id, player_id, minutes, pts, fgm, fga, ftm, fta, reb, ast FROM bb_player_stats WHERE minutes > 0`).all() as any[];
+  await yieldLoop();
   const byGame = new Map<number, any[]>();
-  for (const r of lines) { if (!byGame.has(r.game_id)) byGame.set(r.game_id, []); byGame.get(r.game_id)!.push(r); }
-  talentState.rates = new Map(); talentState.rosters = new Map(); talentState.byGame = new Map();
-  for (const g of games) {
-    talentState.byGame.set(g.game_id, [teamTalent(g.home_id), teamTalent(g.away_id)]);
-    const ls = byGame.get(g.game_id);
-    if (!ls) continue;
-    const per = new Map<number, Map<number, number>>();
-    for (const r of ls) {
-      if (!per.has(r.team_id)) per.set(r.team_id, new Map());
-      per.get(r.team_id)!.set(r.player_id, r.minutes);
-      const x = talentState.rates.get(r.player_id) || { m: 0, g: 0 };
-      x.m = x.m * V3.decay + r.minutes; x.g = x.g * V3.decay + gsOf(r);
-      talentState.rates.set(r.player_id, x);
-    }
-    for (const [t, r] of per) { const h = talentState.rosters.get(t) || []; h.push(r); if (h.length > 5) h.shift(); talentState.rosters.set(t, h); }
+  let after = 0;
+  for (;;) {
+    const lines = db.prepare(`SELECT rowid AS rid, game_id, team_id, player_id, minutes, pts, fgm, fga, ftm, fta, reb, ast FROM bb_player_stats WHERE minutes > 0 AND rowid > ? ORDER BY rowid LIMIT 20000`).all(after) as any[];
+    if (!lines.length) break;
+    for (const r of lines) { if (!byGame.has(r.game_id)) byGame.set(r.game_id, []); byGame.get(r.game_id)!.push(r); }
+    after = lines[lines.length - 1].rid;
+    await yieldLoop();
   }
+  const st: TalentState = { rates: new Map(), rosters: new Map(), byGame: new Map(), builtAt: 0 };
+  let i = 0;
+  for (const g of games) {
+    st.byGame.set(g.game_id, [teamTalent(g.home_id, 1, st), teamTalent(g.away_id, 1, st)]);
+    const ls = byGame.get(g.game_id);
+    if (ls) {
+      const per = new Map<number, Map<number, number>>();
+      for (const r of ls) {
+        if (!per.has(r.team_id)) per.set(r.team_id, new Map());
+        per.get(r.team_id)!.set(r.player_id, r.minutes);
+        const x = st.rates.get(r.player_id) || { m: 0, g: 0 };
+        x.m = x.m * V3.decay + r.minutes; x.g = x.g * V3.decay + gsOf(r);
+        st.rates.set(r.player_id, x);
+      }
+      for (const [t, r] of per) { const h = st.rosters.get(t) || []; h.push(r); if (h.length > 5) h.shift(); st.rosters.set(t, h); }
+    }
+    if (++i % 1500 === 0) await yieldLoop();
+  }
+  talentState.rates = st.rates; talentState.rosters = st.rosters; talentState.byGame = st.byGame;
   talentState.builtAt = Date.now();
+  talentVer++; // fix159: cached predictions use the talent numbers
 }
 /** Probit shift from the talent gap (positive = favours the home team). */
 const talentShift = (th: number | null, ta: number | null) => (th != null && ta != null ? (V3.talent * (th - ta)) / 13 : 0);
@@ -358,7 +374,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS bb_model_params (code TEXT PRIMARY KEY, k RE
 const utcDay = () => new Date().toISOString().slice(0, 10);
 
 /** Choose k, r, b2b on the tuning season; test on the seasons after it; keep the final ratings for predictions. */
-export function buildLeague(code: string, opts: { retune?: boolean } = {}): LeagueModel | null {
+export async function buildLeague(code: string, opts: { retune?: boolean } = {}): Promise<LeagueModel | null> {
   const games = gamesOf(code);
   const seasons = [...new Set(games.filter(done).map(g => g.season))].sort();
   if (seasons.length < 2) return null;
@@ -376,6 +392,7 @@ export function buildLeague(code: string, opts: { retune?: boolean } = {}): Leag
       run(games, p, (g, pr) => { if (g.season === tuneSeason && !isPreseason(g)) addM(m, pr, g); });
       const ll = m.n ? m.logLoss / m.n : Infinity;
       if (!best || ll < best.ll) best = { p, ll };
+      await yieldLoop(); // fix165: the daily re-tune (60 fits) gives way to visitors between fits
     }
     params = best!.p;
     db.prepare(`INSERT OR REPLACE INTO bb_model_params (code, k, r, b2b, tune_season, tuned_day) VALUES (?, ?, ?, ?, ?, ?)`)
@@ -394,6 +411,7 @@ export function buildLeague(code: string, opts: { retune?: boolean } = {}): Leag
       c1++;
     }
   });
+  await yieldLoop();
   const poss = possessionsOf(code);
   const P2v: P2 = { ...P2_DEFAULT, ...(P2_LEAGUE[code] || {}) };
   const L2 = poss.size >= 200 ? runV2(games, P2v, poss, (g, pr, Lx) => {
@@ -404,6 +422,7 @@ export function buildLeague(code: string, opts: { retune?: boolean } = {}): Leag
       c2++;
     }
   }) : null;
+  await yieldLoop();
   const blend = (a: Pred, b: Pred | undefined, w: number): Pred => !b || !w ? a : {
     ...b, pHome: w * b.pHome + (1 - w) * a.pHome, margin: w * b.margin + (1 - w) * a.margin, total: w * b.total + (1 - w) * a.total,
     home: w * b.home + (1 - w) * a.home, away: w * b.away + (1 - w) * a.away
@@ -499,12 +518,12 @@ async function buildChanged(codes: string[], force: boolean): Promise<{ built: s
     if (force || leagueSig.get(c) !== sig || (m && Date.now() - Date.parse(m.builtAt) > MODEL_MAX_AGE_MS)) todo.push({ code: c, sig });
   }
   if (!todo.length) return { built: [], skipped: codes.length };
-  try { buildTalent(); } catch (e: any) { logger.warn(`bb-v3 talent: ${e.message}`); }
+  try { await buildTalent(); } catch (e: any) { logger.warn(`bb-v3 talent: ${e.message}`); }
   await yieldLoop();
   const built: string[] = [];
   for (const { code: c, sig } of todo) {
     try {
-      const m = buildLeague(c);
+      const m = await buildLeague(c);
       leagueSig.set(c, sig);
       if (m) {
         built.push(c);

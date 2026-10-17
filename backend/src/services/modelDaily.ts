@@ -30,7 +30,7 @@ import { v3WindowRun, liveVector, applyVector, isTuning } from './v3Tuner';
 import { clearPredictionCache } from './predCache';
 import { sendEmail, emailEnabled, SITE, esc } from './email';
 import { lastDataHealth } from './dataHealth';
-import { every } from './perf';
+import { every, after } from './perf';
 import {
   buildFeatures, fitFeatureModel, predictWith, storeFeatureModel, activateFeatureModel, activeFeatureModel, loadFeatureModel,
   fixtureByNames, getConfig, setConfig, mixWeight, mixMode, mixLive, setMixLive, scoreProbs, FEAT_MODEL, MIX_MODEL,
@@ -380,6 +380,6 @@ export function startModelDailyScheduler() {
     if (lp.hour >= 7 && lp.hour < 12 && !row?.report_sent_at && (!running || lp.hour >= 9))
       sendMorningReport().catch(e => logger.warn(`model report: ${e.message}`));
   };
-  setTimeout(tick, 3 * 60 * 1000);
+  after('model daily', tick, 3 * 60 * 1000);
   every('model daily', tick, 5 * 60 * 1000);
 }

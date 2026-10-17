@@ -3,7 +3,7 @@ import { joinWaitlist, waitlistStats } from './services/waitlist';
 import { slimForList, clearPredictionCache } from './services/predCache';
 import { withLiveScore, liveBookStatus } from './services/liveScores';
 import { runLinkCheck, lastLinkCheck, linkCheckTick } from './services/linkCheck';
-import { perfStatus, setJob, timed, yieldLoop, every, track, routeLabel } from './services/perf';
+import { perfStatus, setJob, timed, yieldLoop, every, track, routeLabel, after } from './services/perf';
 import cors from 'cors';
 import helmet from 'helmet';
 import { Server } from 'socket.io';
@@ -48,7 +48,7 @@ import { marketTest, drawTest, anchoredDrawTest } from './services/marketTest';
 import { clvTick, clvReport, startClvScheduler, clvProbe } from './services/clv';
 import {
   isAfMatchId, isAfCode, afUpcoming, afLive, afWithPredictions, getAfMatchDetails, getAfStandings, getAfScorers, getAfRecent,
-  afCompetitions, pollAfLive, syncFdLiveFromAf, startAfMatchesScheduler, afWindowStatus, refreshAfWindow, onAfWindow, isKnownAfFixture, afExtrasForFd, withAfOdds, backfillAfOdds,
+  afCompetitions, pollAfLive, syncFdLiveFromAf, startAfMatchesScheduler, afWindowStatus, refreshAfWindow, onAfWindow, isKnownAfFixture, afExtrasForFd, afLiveOverlay, withAfOdds, backfillAfOdds,
   warmMatchExtras, teamAverages, probableXI, lastMeetings, AF_OFFSET,
   afFixtureInfo, fixtureInjuriesRated, teamSchedule
 } from './services/afMatches';
@@ -1434,13 +1434,73 @@ async function buildMatchDetails(id: number): Promise<any> {
 // fix122: match details cached per match — 60 s while the game is on, 5 min otherwise. A stale copy is served at once
 // and refreshed in the background (stale-while-revalidate); only the first open of a match waits for the build.
 // The cached object is shared: per-visitor trimming (teaser / no bookmakers) copies it in res.json.
-const detailsCache = new Map<number, { at: number; ttl: number; data: any; refreshing: boolean }>();
-const detailsTtl = (d: any) => (['IN_PLAY', 'PAUSED', 'LIVE'].includes(String(d?.match?.status)) ? 60 * 1000 : 5 * 60 * 1000);
-async function refreshMatchDetails(id: number) {
-  const data = await buildMatchDetails(id);
-  detailsCache.set(id, { at: Date.now(), ttl: detailsTtl(data), data, refreshing: false });
+const detailsCache = new Map<number, { at: number; ttl: number; data: any; refreshing: boolean; startedAt: number }>();
+const LIVE_ST = new Set(['IN_PLAY', 'PAUSED', 'LIVE']);
+const detailsTtl = (d: any) => (LIVE_ST.has(String(d?.match?.status)) ? 60 * 1000 : 5 * 60 * 1000);
+
+/**
+ * fix165: the live state (status, minute, score, half-time) is applied when a response is SENT, from the same live
+ * book the live list uses (Football-Data.org matches) or the last API-Football live poll (API-Football matches), and the
+ * live win chance is recomputed from it. A cached copy can be a minute old; the score and minute it shows never are.
+ */
+function liveNow(id: number, data: any) {
+  const m0 = data?.match;
+  if (!m0) return data;
+  const m = isAfMatchId(id) ? afLiveOverlay(m0) : withLiveScore(m0);
+  if (m === m0) return data;
+  const out = { ...data, match: m };
+  if (data.prediction) {
+    const lv = withLive({ ...m, prediction: data.prediction, predictions: data.predictions });
+    out.prediction = lv.prediction;
+    out.predictions = lv.predictions;
+  }
+  return out;
+}
+
+/** fix165: while the Football-Data.org minute quota is used up, a live match refreshes from what API-Football gives us
+ *  (statistics, lineups) on top of the last copy — never waiting in FD's queue. */
+async function lightRefresh(prev: any) {
+  const x = await afExtrasForFd(prev.match);
+  const m = { ...prev.match, homeTeam: { ...prev.match.homeTeam }, awayTeam: { ...prev.match.awayTeam } };
+  if (x) {
+    for (const [side, t] of [['homeTeam', x.home], ['awayTeam', x.away]] as const) {
+      const cur = m[side];
+      if (t.statistics && Object.keys(t.statistics).length) cur.statistics = t.statistics; // live: always the fresh numbers
+      if (!(cur.lineup?.length) && t.lineup.length) { cur.lineup = t.lineup; cur.bench = t.bench; cur.formation = cur.formation || t.formation; cur.coach = cur.coach?.name ? cur.coach : t.coach; }
+    }
+    if (x.minute !== null) m.minute = x.minute;
+  }
+  return { ...prev, match: m };
+}
+
+const withTimeoutMs = <T,>(p: Promise<T>, ms: number) => Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(Object.assign(new Error('timed out'), { timeout: true })), ms))]);
+function storeDetails(id: number, data: any, startedAt: number) {
+  const cur = detailsCache.get(id);
+  if (cur && cur.at > startedAt) return; // a newer copy is already there (a late refresh never overwrites it)
+  detailsCache.set(id, { at: Date.now(), ttl: detailsTtl(data), data, refreshing: false, startedAt: 0 });
   if (detailsCache.size > 2000) { const oldest = [...detailsCache.entries()].sort((x, y) => x[1].at - y[1].at)[0]; if (oldest) detailsCache.delete(oldest[0]); }
+}
+async function refreshMatchDetails(id: number) {
+  const t0 = Date.now();
+  const data = await withTimeoutMs(buildMatchDetails(id), 25 * 1000);
+  storeDetails(id, data, t0);
   return data;
+}
+/** A background refresh of a cached copy: 25 s at most; one stuck for 2 min is reset and started again. */
+function startRefresh(id: number, hit: { at: number; data: any; refreshing: boolean; startedAt: number }) {
+  if (hit.refreshing && Date.now() - hit.startedAt < 2 * 60 * 1000) return;
+  if (hit.refreshing) logger.warn(`details refresh stuck id=${id} age=${Math.round((Date.now() - hit.at) / 1000)}s: started again`);
+  const t0 = Date.now();
+  hit.refreshing = true;
+  hit.startedAt = t0;
+  const live = LIVE_ST.has(String(hit.data?.match?.status));
+  const job = live && !isAfMatchId(id) && footballDataAPI.quotaBusy ? lightRefresh(hit.data) : buildMatchDetails(id);
+  withTimeoutMs(job, 25 * 1000)
+    .then(data => storeDetails(id, data, t0))
+    .catch(e => {
+      hit.refreshing = false;
+      logger.warn(`details refresh ${e?.timeout ? 'timed out' : 'failed'} id=${id} age=${Math.round((Date.now() - hit.at) / 1000)}s${e?.timeout ? '' : `: ${e?.message}`}`);
+    });
 }
 
 app.get('/api/matches/:id(\\d+)/details', async (req, res) => {
@@ -1449,17 +1509,34 @@ app.get('/api/matches/:id(\\d+)/details', async (req, res) => {
     if (isAfMatchId(id) && !isKnownAfFixture(id)) return res.status(404).json({ error: 'Match not found' });
     const hit = detailsCache.get(id);
     if (hit) {
-      if (Date.now() - hit.at > hit.ttl && !hit.refreshing) {
-        hit.refreshing = true;
-        refreshMatchDetails(id).catch(e => { hit.refreshing = false; logger.warn('Match details refresh failed', { id, message: e.message }); });
-      }
-      return res.json({ data: hit.data, timestamp: new Date(hit.at).toISOString(), cached: true });
+      if (Date.now() - hit.at > hit.ttl) startRefresh(id, hit);
+      return res.json({ data: liveNow(id, hit.data), timestamp: new Date(hit.at).toISOString(), cached: true });
     }
     const details = await refreshMatchDetails(id);
-    res.json({ data: details, timestamp: new Date().toISOString() });
+    res.json({ data: liveNow(id, details), timestamp: new Date().toISOString() });
   } catch (error: any) {
     sendError(res, error, 'Failed to fetch match details');
   }
+});
+
+/**
+ * fix165 — admin: every live match, the live list's score / minute against what /details sends (and the raw cached
+ * copy), with the cache age. Flags a score difference or a minute more than 1 apart.
+ */
+app.get('/api/admin/live-consistency', (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const now = Date.now();
+  const rows = lastLiveList.map((l: any) => {
+    const hit = detailsCache.get(l.id);
+    const sent = hit ? liveNow(l.id, hit.data)?.match : null;
+    const score = (m: any) => (m ? `${m.score?.fullTime?.home ?? '-'}-${m.score?.fullTime?.away ?? '-'}` : null);
+    const list = { status: l.status, minute: l.minute ?? null, score: score(l) };
+    const details = sent ? { status: sent.status, minute: sent.minute ?? null, score: score(sent) } : null;
+    const cached = hit ? { minute: hit.data?.match?.minute ?? null, score: score(hit.data?.match), ageSec: Math.round((now - hit.at) / 1000), refreshing: hit.refreshing } : null;
+    const off = !!details && (details.score !== list.score || (list.minute !== null && details.minute !== null && Math.abs(list.minute - details.minute) > 1));
+    return { id: l.id, match: `${l.homeTeam?.shortName || l.homeTeam?.name} – ${l.awayTeam?.shortName || l.awayTeam?.name}`, list, details, cached, off };
+  });
+  res.json({ data: { liveListAgeSec: lastLiveAt ? Math.round((now - lastLiveAt) / 1000) : null, live: rows.length, off: rows.filter(r => r.off).length, rows }, timestamp: new Date().toISOString() });
 });
 
 // Match page tabs, loaded when the tab opens (API-Football, cached; first view of a team can take a few seconds):
@@ -2464,7 +2541,7 @@ app.get('/api/admin/link-check', async (req, res) => {
   try { res.json({ data: req.query.run === '1' || !lastLinkCheck() ? await runLinkCheck() : lastLinkCheck(), timestamp: new Date().toISOString() }); } catch (e) { sendError(res, e, 'Link check failed'); }
 });
 every('link check', linkCheckTick, 3600 * 1000).unref();
-setTimeout(() => void linkCheckTick(), 10 * 60 * 1000).unref();
+after('link check', () => linkCheckTick(), 10 * 60 * 1000).unref();
 
 // Admin: event-loop stalls and how long the heavy jobs take (why the site feels slow)
 app.get('/api/perf', (_req, res) => {
@@ -2843,6 +2920,8 @@ app.set('io', io);
 // Football-Data.org match shows the fresher of the two readings (liveScores.ts) — the same score as the match page.
 const LIVE_POLL_MS = parseInt(process.env.LIVE_POLL_MS || '20000', 10);
 let livePolling = false;
+let lastLiveList: any[] = [];
+let lastLiveAt = 0;
 let liveTick = 0;
 every('live poll', async () => {
   if (livePolling) return; // a slow poll (API waits) must not overlap the next one
@@ -2853,7 +2932,7 @@ every('live poll', async () => {
     const fdRaw: any[] = await timed('football live', () => (fresh ? footballDataAPI.getLiveMatches(true) : footballDataAPI.liveSnapshot()));
     const afLiveNow = await timed('AF live', () => pollAfLive(fdRaw.length > 0));
     await timed('AF live', () => syncFdLiveFromAf(fdRaw));
-    const live = await timed('football live', () => {
+    const live: any[] = await timed('football live', () => {
       const fdLive = footballDataAPI.withPredictions(fdRaw.map(withLiveScore));
       recordPredictions(fdLive); // locks anything that has kicked off (Football-Data.org matches only)
       return [...fdLive, ...afWithPredictions(afLiveNow)].map(slimForList);
@@ -2868,6 +2947,7 @@ every('live poll', async () => {
         io.to(`match:${m.id}:teaser`).emit('match:live', teaseDeep({ m }).m);
       }
     });
+    lastLiveList = live; lastLiveAt = Date.now(); // fix165: /api/admin/live-consistency
     markFresh('live', `${live.length} live`);
   } catch (error: any) {
     logger.warn('Live poll failed', { message: error.message });
@@ -2926,6 +3006,7 @@ app.use((_req, res) => {
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
+  setJob('boot (scheduler start)'); setImmediate(() => setJob(null)); // fix165: the sync start-up work is named in /api/perf
   logger.info(`Server running on http://localhost:${PORT}`);
   logger.info(`WebSocket server ready (CORS: ${isDev ? 'any origin [dev]' : allowedOrigins.join(', ')})`);
   // Save/refresh predictions every time the fixture window is refreshed
@@ -2961,7 +3042,7 @@ server.listen(PORT, () => {
     )
       .then(r => { markFresh('results', r ? `${r.settled} settled, ${r.pending} pending` : undefined); return backfillAfOdds(); })
       .catch(err => { markFailed('results', err); logger.warn('Settle job failed', { message: err.message }); });
-  setTimeout(settle, 60 * 1000);
+  after('settle picks', settle, 60 * 1000);
   every('settle picks', settle, parseInt(process.env.SETTLE_INTERVAL_MS || '600000', 10));
   // Market odds: decide every 10 minutes which competitions deserve a fetch (budget-aware)
   const odds = () =>
@@ -2970,7 +3051,7 @@ server.listen(PORT, () => {
       .then(ms => oddsTick(ms))
       .then(() => markFresh('odds'))
       .catch(err => { markFailed('odds', err); logger.warn('Odds job failed', { message: err.message }); });
-  setTimeout(odds, 90 * 1000);
+  after('odds', odds, 90 * 1000);
   every('odds', odds, parseInt(process.env.ODDS_TICK_MS || '600000', 10));
   // Squad market values for model v3 (weekly; first attempt after the history sync has team names)
   startSquadValuesScheduler(() => { prepareModelV3(); rebuildAfFeatures(); });
@@ -2990,7 +3071,7 @@ server.listen(PORT, () => {
     const fd = await footballDataAPI.getUpcomingMatches(3).catch(() => [] as any[]);
     await warmMatchExtras([...fd, ...afUpcoming(3)], 48);
   };
-  setTimeout(() => warmExtras().catch(() => undefined), 4 * 60 * 1000);
+  after('warm match extras', () => warmExtras().catch(() => undefined), 4 * 60 * 1000);
   every('warm match extras', () => warmExtras().catch(() => undefined), 2 * 3600 * 1000);
   // National-team Elo from international results since 2014 (API-Football)
   startNationalEloScheduler();

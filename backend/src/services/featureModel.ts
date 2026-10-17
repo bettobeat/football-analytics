@@ -315,7 +315,7 @@ export function startFeatureModelScheduler() {
   // first run 7 min after boot: never on top of the basketball tick (45 s after boot, then every 30 min)
   // (the 30-min cycle starts from that first run: 7, 37, 67 min … after boot, the basketball tick runs at 0:45, 30:45 …)
   setTimeout(() => {
-    void refresh().then(() => ensureFeatureModel().catch(e => logger.warn(`feature model: ${e.message}`)));
+    void refresh().then(() => timed('feature model', () => ensureFeatureModel()).catch(e => logger.warn(`feature model: ${e.message}`)));
     every('feature state', () => void refresh(), 30 * 60 * 1000);
   }, 7 * 60 * 1000);
 }

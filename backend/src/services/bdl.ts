@@ -15,7 +15,7 @@
 import logger from '../utils/logger';
 import { db } from '../db';
 import { bdlGet, nbaKey } from './bbInjuries';
-import { every } from './perf';
+import { every, after } from './perf';
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS bdl_teams (
@@ -266,7 +266,7 @@ let started = false;
 export function startBdlScheduler() {
   if (started) return;
   started = true;
-  setTimeout(() => void bdlTick(), 60 * 1000).unref();
+  after('bdl', () => bdlTick(), 60 * 1000).unref();
   every('bdl', () => void bdlTick(), 10 * 60 * 1000).unref();
 }
 

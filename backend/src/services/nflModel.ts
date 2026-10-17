@@ -78,30 +78,72 @@ function collegeNeutral(stage: string | null, venue: string | null, stadium: str
  * scores, latest kick-off) is checked at most every 2 s, and the list is re-read when it changed or after 10 min.
  * Live score changes don't touch the signature (only finished games count), so a live tick never re-reads them.
  */
-const gamesCache = new Map<LeagueId, { sig: string; checked: number; loaded: number; games: G[] }>();
+const gamesCache = new Map<LeagueId, { sig: string; checked: number; loaded: number; games: G[]; maxUpd: string; index: Map<number, number> }>();
 function gamesSig(league: LeagueId): string {
   const r = db.prepare(`SELECT COUNT(*) AS n, SUM(CASE WHEN status IN ('FT','AOT') AND home_pts IS NOT NULL AND away_pts IS NOT NULL THEN 1 ELSE 0 END) AS d,
     SUM(CASE WHEN status IN ('FT','AOT') THEN COALESCE(home_pts, 0) * 1000 + COALESCE(away_pts, 0) ELSE 0 END) AS s, MAX(kickoff) AS k FROM nfl_games WHERE league = ?`).get(league) as any;
   return `${r?.n}|${r?.d}|${r?.s}|${r?.k}`;
 }
+const GAME_SQL = `SELECT game_id, season, week, stage, kickoff, home_id, away_id, home_name, away_name, status, home_pts, away_pts, venue, updated_at FROM nfl_games
+  WHERE league = ? ${HIDE_OTHER} AND kickoff IS NOT NULL AND home_id IS NOT NULL AND away_id IS NOT NULL AND (stage IS NULL OR stage NOT LIKE 'Pre%')`;
+function stadiums(league: LeagueId) {
+  return league === 2 ? new Map((db.prepare(`SELECT team_id, stadium FROM nfl_teams WHERE league = 2`).all() as any[]).map(r => [r.team_id, r.stadium as string | null])) : null;
+}
+function toG(r: any, stadium: Map<number, string | null> | null): G {
+  return {
+    id: r.game_id, season: r.season, kickoff: r.kickoff, t: Date.parse(r.kickoff), stage: r.stage, week: r.week, h: r.home_id, a: r.away_id, hn: r.home_name, an: r.away_name,
+    hs: r.home_pts, as: r.away_pts, done: ['FT', 'AOT'].includes(r.status) && Number.isFinite(r.home_pts) && Number.isFinite(r.away_pts), // fix149: both scores
+    neutral: stadium ? collegeNeutral(r.stage, r.venue, stadium.get(r.home_id) ?? null) : isNeutral(r.stage, r.week, r.venue)
+  };
+}
+const byTime = (x: G, y: G) => x.t - y.t || x.id - y.id;
+function keepGames(league: LeagueId, sig: string, list: G[], maxUpd: string, loaded = Date.now()) {
+  const games = list.sort(byTime);
+  gamesCache.set(league, { sig, checked: Date.now(), loaded, games, maxUpd, index: new Map(games.map((g, i) => [g.id, i])) });
+  return games;
+}
+/**
+ * fix156 / fix165: the games of a league, kept in memory. A cheap signature is checked at most every 2 s; when it
+ * changed (a game finished, a score was corrected, a game was added), only the rows updated since the last read are
+ * read and patched in. A full read happens at most every 6 h.
+ */
 function loadGames(league: LeagueId = 1): G[] {
   const c = gamesCache.get(league), now = Date.now();
   if (c && now - c.checked < 2000) return c.games;
   const sig = gamesSig(league);
-  if (c && c.sig === sig && now - c.loaded < 10 * 60 * 1000) { c.checked = now; return c.games; }
-  const games = readGames(league);
-  gamesCache.set(league, { sig, checked: now, loaded: now, games });
-  return games;
+  if (c && c.sig === sig) { c.checked = now; return c.games; }
+  if (c && now - c.loaded < 6 * 3600 * 1000) {
+    const st = stadiums(league);
+    const rows = db.prepare(`${GAME_SQL} AND updated_at > ?`).all(league, c.maxUpd) as any[];
+    const games = c.games.slice();
+    let maxUpd = c.maxUpd;
+    for (const row of rows) {
+      const g = toG(row, st);
+      const i = c.index.get(g.id);
+      if (i === undefined) games.push(g); else games[i] = g;
+      if (row.updated_at > maxUpd) maxUpd = row.updated_at;
+    }
+    return keepGames(league, sig, games, maxUpd, c.loaded);
+  }
+  const rows = db.prepare(GAME_SQL).all(league) as any[];
+  const st = stadiums(league);
+  return keepGames(league, sig, rows.map(x => toG(x, st)), rows.reduce((m, x) => (x.updated_at > m ? x.updated_at : m), ''));
 }
-function readGames(league: LeagueId = 1): G[] {
-  const stadium = league === 2 ? new Map((db.prepare(`SELECT team_id, stadium FROM nfl_teams WHERE league = 2`).all() as any[]).map(r => [r.team_id, r.stadium as string | null])) : null;
-  return (db.prepare(`SELECT game_id, season, week, stage, kickoff, home_id, away_id, home_name, away_name, status, home_pts, away_pts, venue FROM nfl_games
-      WHERE league = ? ${HIDE_OTHER} AND kickoff IS NOT NULL AND home_id IS NOT NULL AND away_id IS NOT NULL AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff, game_id`).all(league) as any[])
-    .map(r => ({
-      id: r.game_id, season: r.season, kickoff: r.kickoff, t: Date.parse(r.kickoff), stage: r.stage, week: r.week, h: r.home_id, a: r.away_id, hn: r.home_name, an: r.away_name,
-      hs: r.home_pts, as: r.away_pts, done: ['FT', 'AOT'].includes(r.status) && Number.isFinite(r.home_pts) && Number.isFinite(r.away_pts), // fix149: both scores
-      neutral: stadium ? collegeNeutral(r.stage, r.venue, stadium.get(r.home_id) ?? null) : isNeutral(r.stage, r.week, r.venue)
-    }));
+/** The same full read in pages of 3,000 games with a yield between them (the background build at boot). */
+async function loadGamesAsync(league: LeagueId): Promise<G[]> {
+  const c = gamesCache.get(league);
+  if (c) return loadGames(league);
+  const sig = gamesSig(league), st = stadiums(league);
+  const out: G[] = [];
+  let after = 0, maxUpd = '';
+  for (;;) {
+    const rows = db.prepare(`${GAME_SQL} AND game_id > ? ORDER BY game_id LIMIT 3000`).all(league, after) as any[];
+    if (!rows.length) break;
+    for (const x of rows) { out.push(toG(x, st)); if (x.updated_at > maxUpd) maxUpd = x.updated_at; }
+    after = rows[rows.length - 1].game_id;
+    await yieldLoop();
+  }
+  return keepGames(league, sig, out, maxUpd);
 }
 
 const numOf = (v: any): number | null => { if (v === null || v === undefined || v === '') return null; const n = Number(String(v).replace(/,/g, '')); return Number.isFinite(n) ? n : null; };
@@ -144,17 +186,27 @@ export function passersOf(json: string | null): Passer[] {
  * re-read when they change.
  */
 const ctxCache = new Map<LeagueId, { ctx: Ctx; pRow: number; tRow: number; teamsSig: string }>();
-function loadCtx(league: LeagueId = 1): Ctx {
+function loadCtx(league: LeagueId = 1): Ctx { ctxPass(league, -1); return ctxCache.get(league)!.ctx; }
+/** fix165: the first parse of every stored box score, 400 rows at a time with a yield between (the boot build). */
+async function loadCtxAsync(league: LeagueId): Promise<Ctx> {
+  while (ctxPass(league, 400) > 0) await yieldLoop();
+  return ctxCache.get(league)!.ctx;
+}
+/** One pass: parses up to `limit` new rows of each table (-1 = all); returns how many new rows it read. */
+function ctxPass(league: LeagueId, limit: number): number {
+  let fresh = 0;
   let c = ctxCache.get(league);
   if (!c) { c = { ctx: { qb: new Map(), box: new Map(), teams: new Map() }, pRow: 0, tRow: 0, teamsSig: '' }; ctxCache.set(league, c); }
   const { qb, box, teams } = c.ctx;
   // ">=": a replaced last row can get the same rowid back (re-reading one row is harmless)
-  for (const r of db.prepare(`SELECT s.rowid AS rid, s.game_id, s.team_id, s.json FROM nfl_player_stats s JOIN nfl_games g ON g.game_id = s.game_id WHERE g.league = ? AND s.rowid >= ? ORDER BY s.rowid`).all(league, c.pRow) as any[]) {
+  for (const r of db.prepare(`SELECT s.rowid AS rid, s.game_id, s.team_id, s.json FROM nfl_player_stats s JOIN nfl_games g ON g.game_id = s.game_id WHERE g.league = ? AND s.rowid >= ? ORDER BY s.rowid LIMIT ?`).all(league, c.pRow, limit) as any[]) {
+    if (r.rid > c.pRow) fresh++;
     c.pRow = Math.max(c.pRow, r.rid);
     const list = passersOf(r.json);
     if (list.length) qb.set(`${r.game_id}|${r.team_id}`, list);
   }
-  for (const r of db.prepare(`SELECT s.rowid AS rid, s.game_id, s.team_id, s.json FROM nfl_team_stats s JOIN nfl_games g ON g.game_id = s.game_id WHERE g.league = ? AND s.rowid >= ? ORDER BY s.rowid`).all(league, c.tRow) as any[]) {
+  for (const r of db.prepare(`SELECT s.rowid AS rid, s.game_id, s.team_id, s.json FROM nfl_team_stats s JOIN nfl_games g ON g.game_id = s.game_id WHERE g.league = ? AND s.rowid >= ? ORDER BY s.rowid LIMIT ?`).all(league, c.tRow, limit) as any[]) {
+    if (r.rid > c.tRow) fresh++;
     c.tRow = Math.max(c.tRow, r.rid);
     let s: any = null;
     try { s = JSON.parse(r.json); } catch { s = null; }
@@ -174,7 +226,7 @@ function loadCtx(league: LeagueId = 1): Ctx {
       for (const r of db.prepare(`SELECT team_id, conference, level FROM nfl_teams WHERE league = 2`).all() as any[]) teams.set(r.team_id, { conf: r.conference || null, fcs: r.level !== 'FBS', fbs: r.level === 'FBS', isFcs: r.level === 'FCS' });
     }
   }
-  return c.ctx;
+  return fresh;
 }
 
 /* ---------- the engine ---------- */
@@ -598,16 +650,6 @@ export async function retrain(league: LeagueId = 1): Promise<Report> {
   return report;
 }
 
-/** A full replay of the stored settings over every finished game (sync: first use only). */
-function buildLive(league: LeagueId): Live | null {
-  const games = loadGames(league);
-  const done = games.filter(g => g.done);
-  if (done.length < 50) return null;
-  const stored = readSync(`${KEY_OF[league]}|params`);
-  const params: Params = { ...DEFAULTS[league], ...(stored?.params || {}) };
-  const engine = run(games, params, loadCtx(league), undefined, undefined, league);
-  return liveOf(games, params, stored, engine);
-}
 function liveOf(games: G[], params: Params, stored: any, engine: Engine): Live {
   const done = games.filter(g => g.done);
   return { params, blend: stored?.blend || null, trained: stored?.trained || [], builtAt: new Date().toISOString(), finishedCount: done.length, engine, games,
@@ -619,11 +661,11 @@ export async function rebuildLive(league: LeagueId): Promise<void> {
   if (replaying.has(league)) return;
   replaying.add(league);
   try {
-    const games = loadGames(league);
+    const games = await loadGamesAsync(league);
     if (games.filter(g => g.done).length < 50) return;
     const stored = readSync(`${KEY_OF[league]}|params`);
     const params: Params = { ...DEFAULTS[league], ...(stored?.params || {}) };
-    const E = new Engine(params, loadCtx(league), league);
+    const E = new Engine(params, await loadCtxAsync(league), league); // fix165: paged, with yields
     let i = 0;
     for (const g of games) {
       if (!g.done) continue;
@@ -647,7 +689,7 @@ function current(league: LeagueId = 1): Live | null {
   }
   if (live) {
     const fresh = games.filter(g => g.done && !live.applied.has(g.id)).sort((x, y) => x.t - y.t || x.id - y.id);
-    if (fresh.length <= 60) {
+    {
       if (fresh.length) loadCtx(league); // the new box scores (same maps the engine reads)
       for (const g of fresh) {
         live.engine.update(live.engine.pre(g));
@@ -662,9 +704,9 @@ function current(league: LeagueId = 1): Live | null {
       return live;
     }
   }
-  const L = buildLive(league);
-  if (L) lives.set(league, L);
-  return L;
+  // fix165: not built yet (boot): the background build runs (with yields); this request goes without
+  void rebuildLive(league).catch(e => logger.warn(`${MODEL_OF[league]} replay: ${e.message}`));
+  return null;
 }
 const leagueOfGame = (gameId: number): LeagueId => ((db.prepare(`SELECT league FROM nfl_games WHERE game_id = ?`).get(gameId) as any)?.league === 2 ? 2 : 1);
 const leagueOfTeam = (teamId: number): LeagueId => ((db.prepare(`SELECT league FROM nfl_teams WHERE team_id = ?`).get(teamId) as any)?.league === 2 ? 2 : 1);
