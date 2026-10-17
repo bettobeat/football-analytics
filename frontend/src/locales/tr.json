@@ -1846,5 +1846,10 @@
  "New recovery codes replace the old ones. Enter a code from your app to continue.": "Yeni kurtarma kodları eskilerin yerine geçer. Devam etmek için uygulamandan bir kod gir.",
  "Get new codes": "Yeni kodlar al",
  "On since {0}. Recovery codes left: {1}.": "{0} tarihinden beri açık. Kalan kurtarma kodu: {1}.",
- "Back to home": "Ana sayfaya dön"
+ "Back to home": "Ana sayfaya dön",
+ "Who wins": "Kim kazanır",
+ "Live team stats": "Canlı takım istatistikleri",
+ "Yards, downs, red zone and turnovers": "Yardlar, downlar, kırmızı bölge ve top kayıpları",
+ "Player stats and the injury reports": "Oyuncu istatistikleri ve sakatlık raporları",
+ "Passing, rushing, receiving and defense": "Pas, koşu, top yakalama ve savunma"
 }

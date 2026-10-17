@@ -1,19 +1,16 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../../lib/socket'
 import { t, LOCALE } from '../../lib/i18n'
 import { FavStar } from '../../lib/favorites'
-import { NFL_STATUS, weekLabel, timeOf, nick, nflTeamFav, nflRid, nflRstatus, setNflLeague, nflBase, nflLeagueName, nflModelOf, nflStrongAt, type NflGame as Game, type NflSide, type NflPred } from '../../lib/nfl'
-import { useReveal, justRevealed } from '../../lib/reveal'
-import { RevealCover } from '../../components/Reveal'
-import CountUp from '../../components/CountUp'
-import StickyBar from '../../components/StickyBar'
+import { NFL_STATUS, weekLabel, nick, nflTeamFav, nflRid, nflRstatus, setNflLeague, nflBase, nflLeagueName, nflModelOf, nflStrongAt, type NflGame as Game, type NflSide, type NflPred } from '../../lib/nfl'
 import { Card, Skeleton, TeamLogo } from '../bb/parts'
-import UnlockPrompt, { GAME_RELOAD } from '../../components/UnlockPrompt'
+import { GAME_RELOAD } from '../../components/UnlockPrompt'
 import YourPicks from '../../components/YourPicks'
 import { StatBars, LeagueSwitch } from './parts'
-import { useNews, NewsRows, type NewsItem } from '../../components/NewsList'
+import GamePage, { useGameTab, GameNews, fmtGameDate, fmtGameTime, type GameTab } from '../../components/sport/game/GamePage'
+import WinnerPrediction, { type WhyRow } from '../../components/sport/game/WinnerPrediction'
 
 type Box = {
   firstDowns: number | null; plays: number | null; yards: number | null; yardsPerPlay: number | null; passYards: number | null; rushYards: number | null; rushAttempts: number | null
@@ -27,14 +24,17 @@ interface Data {
   game: Game; form: { home: FormRow[]; away: FormRow[] }; h2h: Game[]; teamStats: { home: Box | null; away: Box | null } | null
   players: { home: Groups; away: Groups } | null; injuries: { home: Injury[]; away: Injury[] } | null; prediction: NflPred | null
 }
-type Tab = 'overview' | 'stats' | 'players' | 'injuries' | 'prediction'
+const TABS = ['prediction', 'stats', 'players', 'h2h']
 
-/** NFL game page (fix137): hero, then Overview · Team stats · Players · Injuries · Prediction (nfl-v1 since fix139). */
+/**
+ * NFL + college game page: the shared game page (football's match page, fix152c) — Prediction · Statistics ·
+ * Players & injuries · H2H, the score by quarter under the hero.
+ */
 export default function NflGame() {
   const { id } = useParams()
   const [d, setD] = useState<Data | null>(null)
   const [missing, setMissing] = useState(false)
-  const [tab, setTab] = useState<Tab>(() => (window.location.hash === '#prediction' ? 'prediction' : 'overview'))
+  const [tab, pickTab] = useGameTab(TABS, { overview: 'h2h', injuries: 'players' })
   useEffect(() => {
     setD(null); setMissing(false)
     const load = () => axios.get(`${API_URL}/nfl/game/${id}`).then(r => setD(r.data.data)).catch(e => { if (e?.response?.status === 404) setMissing(true) })
@@ -55,97 +55,149 @@ export default function NflGame() {
   if (missing) return <div className="max-w-2xl mx-auto px-4 py-16 text-center text-muted">{t('Game not found.')}</div>
   if (!d) return <div className="max-w-5xl mx-auto px-4 py-8"><Skeleton rows={6} h="h-16" /></div>
   const g = d.game
-  const tabs: { id: Tab; label: string }[] = [
-    { id: 'overview', label: t('Overview') },
-    ...(d.teamStats ? [{ id: 'stats' as Tab, label: t('Team stats') }] : []),
-    ...(d.players ? [{ id: 'players' as Tab, label: t('Players') }] : []),
-    ...(d.injuries ? [{ id: 'injuries' as Tab, label: t('Injuries') }] : []),
-    { id: 'prediction', label: t('Prediction') }
+  const lg = g.league || 1
+  const p = g.prediction || null
+  const live = g.state === 'live', done = g.state === 'done'
+  const q = g.quarters
+  const ot = q && (q.home[4] != null || q.away[4] != null)
+  const showQ = !!g.score && g.state !== 'upcoming' && q && q.home.some(x => x !== null)
+  const side = (team: NflSide) => ({
+    name: team.name, logo: <TeamLogo team={team} size={72} />, href: `/american-football/team/${team.id}`,
+    title: t('{0}: team page', { 0: team.name }), linkLabel: t('Team page →'), star: <FavStar fav={nflTeamFav(team)} size="sm" />
+  })
+  const hasPlayers = !!(d.players || d.injuries)
+
+  const tabs: GameTab[] = [
+    {
+      id: 'prediction', label: t('Prediction'), hint: '',
+      render: () => (
+        <>
+          <WinnerPrediction
+            rid={nflRid(g)} status={nflRstatus(g)} p={p} home={g.home} away={g.away} upcoming={g.state === 'upcoming'} model={nflModelOf(lg)}
+            saved={t('Saved before kick-off')} updated={t('Updated until kick-off')} strongAt={nflStrongAt(lg)}
+            stats={[
+              { label: t('Expected margin'), value: typeof p?.margin === 'number' ? t('{0} by {1}', { 0: nick((p.margin >= 0 ? g.home : g.away).name, g.league), 1: Math.abs(p.margin).toFixed(1) }) : '–' },
+              { label: t('Predicted score'), value: typeof p?.homePts === 'number' ? `${Math.round(p.homePts)}–${Math.round(p.awayPts!)}` : '–' },
+              { label: t('Total points'), value: typeof p?.total === 'number' ? p.total.toFixed(1) : '–' }
+            ]}
+            why={p ? whyRows(g, p) : []}
+            noPrediction={g.state === 'upcoming' ? t('Our prediction for this game is saved in the week of the game, before kick-off.') : t('No prediction for this game.')}
+          />
+          <YourPicks sport="nfl" gameId={g.id} home={nick(g.home.name, g.league)} away={nick(g.away.name, g.league)} />
+          <GameNews home={{ sport: 'american-football', teamId: g.home.id }} away={{ sport: 'american-football', teamId: g.away.id }} />
+        </>
+      )
+    },
+    ...(d.teamStats ? [{ id: 'stats', label: t('Statistics'), short: t('Stats'), hint: live ? t('Live team stats') : t('Yards, downs, red zone and turnovers'), live, render: () => <TeamStats g={g} home={d.teamStats!.home} away={d.teamStats!.away} /> }] : []),
+    ...(hasPlayers ? [{
+      id: 'players', label: d.injuries ? t('Players & injuries') : t('Players'), short: t('Players'), hint: d.injuries ? t('Player stats and the injury reports') : t('Passing, rushing, receiving and defense'),
+      render: () => (
+        <>
+          {d.injuries && <Injuries g={g} data={d.injuries} />}
+          {d.players && <Players g={g} data={d.players} />}
+        </>
+      )
+    }] : []),
+    { id: 'h2h', label: t('H2H'), hint: t('Last meetings and recent form'), render: () => <H2HForm d={d} /> }
   ]
-  const side = (team: NflSide, s: 'H' | 'A') => (
-    <div className="flex flex-col items-center gap-2 text-center min-w-0">
-      <Link to={`/american-football/team/${team.id}`} className="flex flex-col items-center gap-2 min-w-0 group">
-        <TeamLogo team={team} size={64} />
-        <span className="font-display font-bold text-ink text-base sm:text-xl leading-tight group-hover:text-accent">{team.name}</span>
-      </Link>
-      <span className="flex items-center gap-1 text-[11px] text-faint">{s === 'H' ? t('Home') : t('Away')} <FavStar fav={nflTeamFav(team)} size="sm" /></span>
-    </div>
-  )
-  return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Link to={`${nflBase(g.league || 1)}/games`} className="text-sm text-muted hover:text-ink">← {t('All games')}</Link>
-        <LeagueSwitch />
-      </div>
-      <h1 className="sr-only">{g.home.name} vs {g.away.name} · {nflLeagueName(g.league || 1)} {weekLabel(g.weekKey, g.league)}</h1>
-      <div className="card mt-3 p-4 sm:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-faint mb-4">
-          <span>{nflLeagueName(g.league || 1)} · {weekLabel(g.weekKey, g.league)} · {g.season}</span>
-          <span>{new Date(g.kickoff).toLocaleDateString(LOCALE, { weekday: 'long', day: 'numeric', month: 'long' })}</span>
-        </div>
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-          {side(g.home, 'H')}
-          <div className="text-center">
-            {g.score ? (
-              <div className={`font-display text-3xl sm:text-5xl font-extrabold num ${g.state === 'live' ? 'text-live' : 'text-ink'}`}>{g.score.home}–{g.score.away}</div>
-            ) : (
-              <div className="font-display text-2xl sm:text-4xl font-extrabold text-ink num">{timeOf(g.kickoff)}</div>
-            )}
-            <div className={`mt-1 text-xs font-bold ${g.state === 'live' ? 'text-live' : 'text-faint'}`}>{NFL_STATUS[g.status] || (g.state === 'upcoming' ? t('Kick-off') : g.status)}</div>
-          </div>
-          {side(g.away, 'A')}
-        </div>
-        {g.venue && <p className="mt-4 text-center text-xs text-faint">{t('Venue')} <span className="text-muted">{g.venue}</span></p>}
-      </div>
 
-      <StickyBar className="top-16 sm:top-[72px] -mx-4 sm:mx-0 mt-6 px-4 sm:px-0 py-2">
-        <nav className="flex gap-1 p-1 rounded-full bg-surface2/60 border border-line/60 overflow-x-auto no-scrollbar" aria-label={t('Game sections')}>
-          {tabs.map(x => (
-            <button key={x.id} type="button" onClick={() => setTab(x.id)} aria-current={tab === x.id ? 'page' : undefined}
-              className={`flex-1 min-w-max px-3 sm:px-4 py-2 rounded-full text-[13px] sm:text-sm font-semibold transition-colors ${tab === x.id ? 'bg-accent text-bg shadow' : 'text-muted hover:text-ink'}`}>{x.label}</button>
+  return (
+    <GamePage
+      back={{ to: `${nflBase(lg)}/games`, label: t('All games') }}
+      top={<LeagueSwitch />}
+      srTitle={`${g.home.name} vs ${g.away.name} · ${nflLeagueName(lg)} ${weekLabel(g.weekKey, g.league)}`}
+      league={{ name: nflLeagueName(lg), href: `${nflBase(lg)}/league`, bits: [weekLabel(g.weekKey, g.league)] }}
+      date={fmtGameDate(g.kickoff)}
+      home={side(g.home)}
+      away={side(g.away)}
+      score={g.score && g.state !== 'upcoming' ? g.score : null}
+      time={fmtGameTime(g.kickoff)}
+      status={{
+        kind: live ? 'live' : done ? 'done' : g.state === 'off' ? 'halted' : 'upcoming',
+        text: NFL_STATUS[g.status] || (g.state === 'upcoming' ? t('KICK-OFF') : g.status)
+      }}
+      pickVar={p && !p.locked && p.pick ? (p.pick === 'H' ? '--home' : '--away') : null}
+      footer={(showQ || g.venue) ? (
+        <>
+          {showQ && (
+            <div className="overflow-x-auto">
+              <table className="mx-auto text-xs num">
+                <thead><tr className="text-faint"><th className="px-3 text-left font-semibold" />{['Q1', 'Q2', 'Q3', 'Q4', ...(ot ? ['OT'] : [])].map(x => <th key={x} className="px-3 font-semibold">{t(x)}</th>)}<th className="px-3 font-semibold">{t('Total')}</th></tr></thead>
+                <tbody>
+                  {(['home', 'away'] as const).map(s => (
+                    <tr key={s}>
+                      <td className="px-3 py-0.5 text-muted font-semibold font-sans text-left">{nick(g[s].name, g.league)}</td>
+                      {q![s].slice(0, ot ? 5 : 4).map((v, i) => <td key={i} className="px-3 text-center text-ink">{v ?? '–'}</td>)}
+                      <td className="px-3 text-center text-ink font-bold">{g.score ? g.score[s] : '–'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {g.venue && <p className={`text-center text-xs text-faint ${showQ ? 'mt-3' : ''}`}>{t('Venue')} <span className="text-muted">{g.venue}</span></p>}
+        </>
+      ) : undefined}
+      tabs={tabs}
+      tab={tab}
+      onTab={pickTab}
+    />
+  )
+}
+
+/** H2H tab (football's order: the meetings, then each team's form). */
+function H2HForm({ d }: { d: Data }) {
+  const g = d.game
+  return (
+    <>
+      <Card title={d.h2h.length ? t('Last {0} meetings', { 0: d.h2h.length }) : t('Head-to-head')}>
+        {d.h2h.length === 0 ? <p className="text-sm text-faint">{t('No meetings in our records.')}</p> : (
+          <ul className="divide-y divide-line/50">
+            {d.h2h.map(m => (
+              <li key={m.id}>
+                <Link to={`/american-football/game/${m.id}`} className="flex items-center gap-3 py-1.5 text-sm hover:text-accent min-w-0">
+                  <span className="w-20 shrink-0 text-xs text-faint">{new Date(m.kickoff).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                  <span className="flex-1 truncate text-ink">{m.home.name} – {m.away.name}</span>
+                  <span className="num font-bold text-ink">{m.score ? `${m.score.home}–${m.score.away}` : '–'}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+      <Card title={t('Form')} action={<span className="text-xs text-faint">{t('Last results')}</span>}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+          {(['home', 'away'] as const).map(s => (
+            <div key={s} className="min-w-0">
+              <div className="flex items-center gap-2 mb-3"><TeamLogo team={g[s]} size={22} /><span className="font-display font-bold text-ink truncate">{g[s].name}</span></div>
+              {d.form[s].length === 0 ? <p className="text-sm text-faint">{t('No games yet.')}</p> : (
+                <ul className="space-y-1.5">
+                  {d.form[s].map(f => (
+                    <li key={f.id}>
+                      <Link to={`/american-football/game/${f.id}`} className="flex items-center gap-2 text-sm hover:text-accent min-w-0">
+                        <span className={`w-5 h-5 shrink-0 rounded grid place-items-center text-[10px] font-extrabold ${f.result === 'W' ? 'bg-win/15 text-win' : f.result === 'L' ? 'bg-loss/15 text-loss' : 'bg-draw/15 text-draw'}`}>{f.result}</span>
+                        <span className="text-faint text-xs w-6 shrink-0">{f.home ? t('vs') : '@'}</span>
+                        <TeamLogo team={f.opponent} size={16} />
+                        <span className="flex-1 truncate text-ink">{f.opponent.name}</span>
+                        <span className="num font-semibold text-ink">{f.for}–{f.against}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           ))}
-        </nav>
-      </StickyBar>
-
-      <div className="mt-4 space-y-5">
-        {tab === 'overview' && <Overview d={d} />}
-        {tab === 'stats' && d.teamStats && <TeamStats g={g} home={d.teamStats.home} away={d.teamStats.away} />}
-        {tab === 'players' && d.players && <Players g={g} data={d.players} />}
-        {tab === 'injuries' && d.injuries && <Injuries g={g} data={d.injuries} />}
-        {tab === 'prediction' && <PredictionSection g={g} />}
-        {tab === 'prediction' && <YourPicks sport="nfl" gameId={g.id} home={nick(g.home.name, g.league)} away={nick(g.away.name, g.league)} />}
-      </div>
-    </div>
+        </div>
+      </Card>
+    </>
   )
 }
-
-function Tile({ k, label, v, active, roll, delay = 0, text }: { k: 'H' | 'A' | 'T'; label: string; v?: number; active: boolean; roll: boolean; delay?: number; text?: string }) {
-  const color = k === 'H' ? 'text-home' : k === 'A' ? 'text-away' : 'text-ink'
-  const border = k === 'H' ? 'border-home/50 bg-home/10' : 'border-away/50 bg-away/10'
-  return (
-    <div className={`rounded-xl border p-3 sm:p-4 text-center ${active ? border : 'border-line/70 bg-surface2/40'} ${roll && active ? 'animate-pop' : ''}`}>
-      <div className="text-[11px] text-faint mb-1 truncate">
-        {k !== 'T' && <span className={`font-bold mr-1 ${active ? color : ''}`}>{k === 'H' ? '1' : '2'}</span>}
-        {label}
-      </div>
-      <div className={`num text-2xl sm:text-3xl font-extrabold ${active ? color : k === 'T' ? 'text-ink' : 'text-ink/70'}`}>
-        {text !== undefined ? text : <CountUp value={v || 0} decimals={1} suffix="%" animate={roll} delay={delay} />}
-      </div>
-    </div>
-  )
-}
-const Stat = ({ label, value }: { label: string; value: string }) => (
-  <div className="rounded-xl bg-surface2/50 border border-line/60 px-3 py-2.5 text-center">
-    <div className="text-[11px] text-faint leading-tight">{label}</div>
-    <div className="num text-base sm:text-lg font-extrabold text-ink">{value}</div>
-  </div>
-)
 
 /** "Why we think so" (fix139): the model's own inputs in plain words — Elo gap, home field, rest, quarterbacks, efficiency. */
-function whyRows(g: Game, p: NflPred): { tone: 'H' | 'A' | 'N'; text: string }[] {
+function whyRows(g: Game, p: NflPred): WhyRow[] {
   const w = p.why
   if (!w) return []
-  const out: { tone: 'H' | 'A' | 'N'; text: string }[] = []
+  const out: WhyRow[] = []
   const name = (s: 'H' | 'A') => nick((s === 'H' ? g.home : g.away).name, g.league)
   const pts = (elo: number) => (Math.abs(elo) / 25).toFixed(1)
   const gap = Math.abs(w.eloGap), up: 'H' | 'A' = w.eloGap >= 0 ? 'H' : 'A'
@@ -178,162 +230,11 @@ function whyRows(g: Game, p: NflPred): { tone: 'H' | 'A' | 'N'; text: string }[]
   return out
 }
 
-/** Prediction (fix139): 1 · total · 2 tiles, the pick and how strong it is, expected margin, score and total, and why. */
-function PredictionSection({ g }: { g: Game }) {
-  const p = g.prediction || null
-  const open = !!p && !p.locked && typeof p.pHome === 'number'
-  const { hidden, reveal } = useReveal(nflRid(g), nflRstatus(g), open)
-  const roll = justRevealed(nflRid(g))
-  const scrolled = useRef(false)
-  useEffect(() => {
-    if (scrolled.current) return
-    scrolled.current = true
-    if (window.location.hash === '#prediction') requestAnimationFrame(() => document.getElementById('prediction')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
-  }, [])
-  const strongAt = nflStrongAt(g.league || 1)
-  const note = p ? [p.model || nflModelOf(g.league || 1), g.state === 'upcoming' ? t('Updated until kick-off') : t('Saved before kick-off')].join(' · ') : undefined
-  return (
-    <div id="prediction" className="scroll-mt-32">
-      <Card title={t('Prediction')} action={note ? <span className="text-xs text-faint">{note}</span> : undefined}>
-        {!p ? (
-          <p className="text-sm text-muted">{g.state === 'upcoming' ? t('Our prediction for this game is saved in the week of the game, before kick-off.') : t('No prediction for this game.')}</p>
-        ) : p.locked ? (
-          <UnlockPrompt rid={nflRid(g)} status={nflRstatus(g)} what={t('Win chances, point spread, total points and the predicted score, with the reasons behind the pick.')} />
-        ) : hidden ? (
-          <RevealCover model={p.model || nflModelOf(g.league || 1)} onReveal={reveal} />
-        ) : (() => {
-          const pick = p.pick!, team = pick === 'H' ? g.home : g.away
-          const topV = Math.max(p.pHome || 0, p.pAway || 0)
-          const rows = whyRows(g, p)
-          return (
-            <>
-              <div className="grid grid-cols-3 gap-3">
-                <Tile k="H" label={g.home.name} v={p.pHome} active={pick === 'H'} roll={roll} />
-                <Tile k="T" label={t('Total points')} text={typeof p.total === 'number' ? p.total.toFixed(1) : '–'} active={false} roll={roll} />
-                <Tile k="A" label={g.away.name} v={p.pAway} active={pick === 'A'} roll={roll} delay={240} />
-              </div>
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-                <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${topV >= strongAt ? 'bg-accent/15 text-accent border-accent/40' : 'bg-surface2 text-ink border-line'}`}>
-                  {topV >= strongAt + 10 ? t('Very strong pick') : topV >= strongAt ? t('Strong pick') : topV >= 55 ? t('Pick') : t('Close game')}
-                </span>
-                <span className="text-muted">{t('Our pick')} · <span className="text-ink font-semibold">{team.name}</span> · <span className="num text-accent font-extrabold">{Math.round(topV)}%</span></span>
-                {typeof p.hit === 'boolean' && <span className={`ml-auto rounded-full px-3 py-1 text-xs font-bold ${p.hit ? 'bg-win/15 text-win' : 'bg-loss/15 text-loss'}`}>{p.hit ? t('Right') : t('Wrong')}</span>}
-              </div>
-              <div className="flex h-2.5 gap-[3px] mt-4">
-                <div className={`rounded-full bg-home ${pick === 'H' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.pHome}% - 2px)` }} />
-                <div className={`rounded-full bg-away ${pick === 'A' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.pAway}% - 2px)` }} />
-              </div>
-              {g.state !== 'upcoming' && (
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
-                  <span className="px-2.5 py-1 rounded-full bg-surface2 border border-line font-semibold text-ink">{t('Saved before kick-off')}</span>
-                  <span>{t('This is exactly what we predicted before the game — it is never recalculated after the result.')}</span>
-                </div>
-              )}
-              <div className="mt-5 grid grid-cols-3 gap-2">
-                <Stat label={t('Expected margin')} value={typeof p.margin === 'number' ? t('{0} by {1}', { 0: nick((p.margin >= 0 ? g.home : g.away).name, g.league), 1: Math.abs(p.margin).toFixed(1) }) : '–'} />
-                <Stat label={t('Predicted score')} value={typeof p.homePts === 'number' ? `${Math.round(p.homePts)}–${Math.round(p.awayPts!)}` : '–'} />
-                <Stat label={t('Total points')} value={typeof p.total === 'number' ? p.total.toFixed(1) : '–'} />
-              </div>
-              {rows.length > 0 && (
-                <div className="mt-5 rounded-2xl border border-line/60 bg-surface2/30 p-4">
-                  <div className="text-sm font-bold text-ink mb-2">{t('Why we think so')}</div>
-                  <ul className="space-y-2">
-                    {rows.map((r, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-muted leading-relaxed">
-                        <span className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${r.tone === 'H' ? 'bg-home' : r.tone === 'A' ? 'bg-away' : 'bg-faint'}`} aria-hidden />
-                        <span>{r.text}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              <p className="mt-4 text-xs text-faint">{t('Probabilities, not promises. 18+.')}</p>
-            </>
-          )
-        })()}
-      </Card>
-    </div>
-  )
-}
-
-function Overview({ d }: { d: Data }) {
-  const g = d.game
-  // fix138: stories about either team, newest first
-  const hn = useNews({ sport: 'american-football', teamId: g.home.id, limit: 6 })
-  const an = useNews({ sport: 'american-football', teamId: g.away.id, limit: 6 })
-  const news: NewsItem[] | null = hn && an ? [...new Map([...hn, ...an].map(n => [n.link, n])).values()].sort((a, b) => (b.published || '').localeCompare(a.published || '')).slice(0, 8) : null
-  const q = g.quarters
-  const ot = q && (q.home[4] != null || q.away[4] != null)
-  return (
-    <>
-      {q && (
-        <Card title={t('Score by quarter')}>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead><tr className="text-[10px] uppercase text-faint"><th className="text-left py-1">{t('Team')}</th>{['1', '2', '3', '4', ...(ot ? ['OT'] : [])].map(h => <th key={h} className="text-right py-1 px-2 num">{h}</th>)}<th className="text-right py-1 px-2">{t('Total')}</th></tr></thead>
-              <tbody>
-                {(['home', 'away'] as const).map(s => (
-                  <tr key={s} className="border-t border-line/50">
-                    <td className="py-1.5"><span className="flex items-center gap-2"><TeamLogo team={g[s]} size={16} /><span className="truncate">{g[s].name}</span></span></td>
-                    {q[s].slice(0, ot ? 5 : 4).map((v, i) => <td key={i} className="text-right py-1.5 px-2 num text-muted">{v ?? '–'}</td>)}
-                    <td className="text-right py-1.5 px-2 num font-bold text-ink">{g.score ? g.score[s] : '–'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
-      <div className="grid gap-5 md:grid-cols-2">
-        {(['home', 'away'] as const).map(s => (
-          <Card key={s} title={t('{0}: last 5 games', { 0: g[s].name })}>
-            {d.form[s].length === 0 ? <p className="text-sm text-faint">{t('No games yet.')}</p> : (
-              <ul className="space-y-1.5">
-                {d.form[s].map(f => (
-                  <li key={f.id}>
-                    <Link to={`/american-football/game/${f.id}`} className="flex items-center gap-2 text-sm hover:text-accent">
-                      <span className={`w-5 h-5 rounded grid place-items-center text-[10px] font-extrabold ${f.result === 'W' ? 'bg-win/15 text-win' : f.result === 'L' ? 'bg-loss/15 text-loss' : 'bg-draw/15 text-draw'}`}>{f.result}</span>
-                      <span className="text-faint text-xs w-6">{f.home ? t('vs') : '@'}</span>
-                      <TeamLogo team={f.opponent} size={16} />
-                      <span className="flex-1 truncate text-ink">{f.opponent.name}</span>
-                      <span className="num font-semibold text-ink">{f.for}–{f.against}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-        ))}
-      </div>
-      {news && news.length > 0 && (
-        <Card title={t('News about both teams')}>
-          <div className="-mx-2"><NewsRows items={news} /></div>
-        </Card>
-      )}
-      <Card title={t('Head-to-head: last 10 meetings')}>
-        {d.h2h.length === 0 ? <p className="text-sm text-faint">{t('No meetings in our records.')}</p> : (
-          <ul className="divide-y divide-line/50">
-            {d.h2h.map(m => (
-              <li key={m.id}>
-                <Link to={`/american-football/game/${m.id}`} className="flex items-center gap-3 py-1.5 text-sm hover:text-accent">
-                  <span className="w-20 text-xs text-faint">{new Date(m.kickoff).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                  <span className="flex-1 truncate text-ink">{m.home.name} – {m.away.name}</span>
-                  <span className="num font-bold text-ink">{m.score ? `${m.score.home}–${m.score.away}` : '–'}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
-    </>
-  )
-}
-
 function TeamStats({ g, home, away }: { g: Game; home: Box | null; away: Box | null }) {
   const v = (b: Box | null, k: keyof Box) => (b && typeof b[k] === 'number' ? (b[k] as number) : null)
   const pct = (p: [number, number] | null | undefined) => (p && p[1] ? (100 * p[0]) / p[1] : null)
   return (
-    <Card title={t('Team stats')}>
+    <Card title={t('Statistics')}>
       <div className="flex items-center justify-between text-xs font-bold mb-1">
         <span className="flex items-center gap-1.5 text-home"><TeamLogo team={g.home} size={16} />{g.home.name}</span>
         <span className="flex items-center gap-1.5 text-away">{g.away.name}<TeamLogo team={g.away} size={16} /></span>
@@ -390,24 +291,27 @@ function Players({ g, data }: { g: Game; data: { home: Groups; away: Groups } })
 
 function Injuries({ g, data }: { g: Game; data: { home: Injury[]; away: Injury[] } }) {
   return (
-    <div className="grid gap-5 md:grid-cols-2">
-      {(['home', 'away'] as const).map(s => (
-        <Card key={s} title={g[s].name}>
-          {data[s].length === 0 ? <p className="text-sm text-faint">{t('No injuries reported.')}</p> : (
-            <ul className="divide-y divide-line/50">
-              {data[s].map(i => (
-                <li key={i.id} className="py-1.5 text-sm">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <Link to={`/american-football/player/${i.id}`} className="text-ink hover:text-accent truncate">{i.name}</Link>
-                    <span className={`text-xs font-bold ${/out|ir|reserve/i.test(i.status || '') ? 'text-loss' : 'text-draw'}`}>{i.status || '–'}</span>
-                  </div>
-                  {i.description && <div className="text-xs text-faint">{i.description}</div>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      ))}
-    </div>
+    <Card title={t('Injuries')}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+        {(['home', 'away'] as const).map(s => (
+          <div key={s} className="min-w-0">
+            <div className="flex items-center gap-2 mb-3"><TeamLogo team={g[s]} size={22} /><span className="font-display font-bold text-ink truncate">{g[s].name}</span></div>
+            {data[s].length === 0 ? <p className="text-sm text-faint">{t('No injuries reported.')}</p> : (
+              <ul className="divide-y divide-line/50">
+                {data[s].map(i => (
+                  <li key={i.id} className="py-1.5 text-sm">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <Link to={`/american-football/player/${i.id}`} className="text-ink hover:text-accent truncate">{i.name}</Link>
+                      <span className={`text-xs font-bold ${/out|ir|reserve/i.test(i.status || '') ? 'text-loss' : 'text-draw'}`}>{i.status || '–'}</span>
+                    </div>
+                    {i.description && <div className="text-xs text-faint">{i.description}</div>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ))}
+      </div>
+    </Card>
   )
 }

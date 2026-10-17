@@ -13,7 +13,7 @@ import { RevealCover } from '../components/Reveal'
 import PredictionStory from '../components/PredictionStory'
 import { FavStar, nameKey as favKey } from '../lib/favorites'
 import { t as tt, LOCALE, lang } from '../lib/i18n'
-import StickyBar from '../components/StickyBar'
+import GamePage, { HeroLogo, GameNews } from '../components/sport/game/GamePage'
 
 /* ---------- types (Football-Data.org v4 shapes, loosely) ---------- */
 
@@ -629,122 +629,9 @@ function MatchDetail() {
     m.stage && m.stage !== 'REGULAR_SEASON' ? m.stage.replace(/_/g, ' ').toLowerCase().replace(/\b([a-z])/g, c => c.toUpperCase()).replace(/ - /g, ' · ') : null,
     m.group ? m.group.replace(/_/g, ' ') : null
   ].filter((x): x is string => !!x)
-  return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
-      {tabTitle && <h1 className="sr-only">{tabTitle}{m.competition?.name ? ` · ${m.competition.name}` : ''} {tt("prediction")}</h1>}
-      <Link to="/matches" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink transition-colors">
-        <span aria-hidden>←</span> {tt("All matches")}</Link>
-
-      {/* ---------- Hero ---------- */}
-      <div className={`mt-4 card relative overflow-hidden p-4 sm:p-8 ${live ? 'shadow-glow border-live/40' : ''}`}>
-        {pick && (
-          <div
-            className="pointer-events-none absolute inset-0 opacity-[0.10]"
-            style={{ background: `radial-gradient(700px 260px at 50% 120%, rgb(var(${pickVar})), transparent 70%)` }}
-          />
-        )}
-        {/* competition · round · date — centred and stacked on phones, one line on wider screens */}
-        <div className="relative mb-5 sm:mb-6 flex flex-col items-center gap-1 text-center sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:text-left text-sm text-muted">
-          <div className="min-w-0 max-w-full flex flex-col items-center gap-0.5 sm:flex-row sm:items-center sm:gap-2">
-            <Link to={`/league/${m.competition.code}`} className="inline-flex items-center gap-2 max-w-full min-w-0 hover:text-ink">
-              {m.competition.emblem && <img src={m.competition.emblem} alt="" className="w-5 h-5 object-contain shrink-0" />}
-              <span className="font-semibold text-ink/90 hover:underline truncate">{m.competition.name}</span>
-            </Link>
-            {roundBits.length > 0 && (
-              <span className="text-xs sm:text-sm text-faint sm:whitespace-nowrap"><span className="hidden sm:inline">· </span>{roundBits.join(' · ')}</span>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs sm:text-sm">
-            {m.competition.trial && (
-              <span
-                className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-draw/15 text-draw"
-                title={tt("We added this league recently. Its predictions are being tested and don’t count in our public record yet.")}
-              >
-                {tt("New league · in testing")}
-              </span>
-            )}
-            <span className="text-faint whitespace-nowrap">{fmtDate(m.utcDate)}</span>
-          </div>
-        </div>
-
-        <div className="relative grid grid-cols-[1fr_auto_1fr] items-start sm:items-center gap-2 sm:gap-8">
-          <TeamHero team={home} align="right" code={m.competition?.code} />
-          <div className="text-center min-w-[96px] sm:min-w-[170px] self-center">
-            {showScore ? (
-              <div className="num text-5xl sm:text-6xl font-extrabold text-ink tracking-tight">
-                {ft.home ?? 0}
-                <span className="text-faint mx-2 font-light">:</span>
-                {ft.away ?? 0}
-              </div>
-            ) : (
-              <div className="num text-4xl sm:text-5xl font-extrabold text-ink tracking-tight">{fmtTime(m.utcDate)}</div>
-            )}
-            {showScore && ht && ht.home !== null && (done || m.status === 'PAUSED' || (m.minute ?? 0) > 45) && (
-              <div className="num text-xs text-faint mt-1">{tt("HT")}{' '}{ht.home}–{ht.away}</div>
-            )}
-            <div
-              className={`mt-3 inline-flex items-center gap-1.5 text-[11px] font-bold tracking-wider px-3 py-1 rounded-full border ${
-                live ? 'bg-live/10 text-live border-live/30' : halted ? 'bg-loss/10 text-loss border-loss/30' : done ? 'bg-surface2 text-muted border-line' : 'bg-accent/10 text-accent border-accent/30'
-              }`}
-            >
-              {live && <span className="w-1.5 h-1.5 rounded-full bg-live animate-pulseDot" />}
-              {live ? statusLabel(m).toUpperCase() : halted ? tt(statusLabel(m)).toUpperCase() : done ? tt("FULL-TIME") : tt("KICK-OFF")}
-            </div>
-            {halted && (
-              <p className="mt-2 max-w-[260px] mx-auto text-[11px] text-muted">
-                {m.status === 'CANCELLED'
-                  ? tt("This match was abandoned or cancelled. It does not count in our record.")
-                  : m.status === 'SUSPENDED'
-                    ? tt("This match was suspended. It does not count in our record unless it is completed later.")
-                    : tt("This match was postponed. Our prediction stays until the new date.")}
-              </p>
-            )}
-          </div>
-          <TeamHero team={away} align="left" code={m.competition?.code} />
-        </div>
-
-        {(m.venue || referee || m.attendance) && (
-          <div className="relative mt-6 pt-4 border-t border-line/60 flex flex-wrap gap-x-6 gap-y-1 justify-center text-xs text-faint">
-            {m.venue && (
-              <span>
-                {tt("Venue")}{' '}<span className="text-muted">{m.venue}</span> <span className="text-faint">({home.shortName || home.name})</span>
-              </span>
-            )}
-            {referee && <span>{tt("Referee")}{' '}<span className="text-muted">{referee.name}</span></span>}
-            {m.attendance && <span>{tt("Attendance")}{' '}<span className="num text-muted">{m.attendance.toLocaleString()}</span></span>}
-          </div>
-        )}
-      </div>
-
-      {lang === 'en' && details?.preview?.text && <MatchPreview text={details.preview.text} />}
-      <p className="mt-3 text-xs text-muted">
-        <Link to="/guides/win-percentages" className="hover:text-ink">{tt("New here? How to read our numbers")} <span aria-hidden className="text-accent">→</span></Link>
-      </p>
-
-      {details.partial && <p className="mt-4 text-xs text-faint animate-pulse">{error ? `${tt("Could not load match:")} ${error}` : tt("Loading match…")}</p>}
-      {/* ---------- Tabs ---------- */}
-      <StickyBar className="top-16 sm:top-[72px] -mx-4 sm:mx-0 mt-6 px-4 sm:px-0 py-2">
-        <nav className="flex gap-1 p-1 rounded-full bg-surface2/60 border border-line/60 overflow-x-auto no-scrollbar" aria-label={tt("Match sections")}>
-          {tabs.map(t => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => pickTab(t.id)}
-              aria-current={tab === t.id ? 'page' : undefined}
-              className={`flex-1 min-w-max inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-4 py-2 rounded-full text-[13px] sm:text-sm font-semibold transition-colors ${
-                tab === t.id ? 'bg-accent text-bg shadow' : 'text-muted hover:text-ink'
-              }`}
-            >
-              {t.short ? (<><span className="sm:hidden">{t.short}</span><span className="hidden sm:inline">{t.label}</span></>) : t.label}
-              {t.live && <span className={`w-1.5 h-1.5 rounded-full animate-pulseDot ${tab === t.id ? 'bg-bg' : 'bg-live'}`} />}
-            </button>
-          ))}
-        </nav>
-      </StickyBar>
-
-      <div className="mt-4 space-y-6 min-w-0">
-        {tab === 'prediction' && (
-          <>
+  const RENDER: Record<TabId, () => ReactNode> = {
+    prediction: () => (
+      <>
               {/* Prediction */}
               <Section
                 id="prediction-card"
@@ -893,27 +780,18 @@ function MatchDetail() {
               </Section>
 
               <YourPicks sport="fb" gameId={m.id} home={home.shortName || home.name} away={away.shortName || away.name} />
+              <GameNews home={{ team: home.name, short: home.shortName }} away={{ team: away.name, short: away.shortName }} />
 
               {(live || done) && p && !p.locked && !hidden && !unlockAnim && (
                 <Section title={live ? tt("Live win probability") : tt("How the game swung")} note={tt("From our pre-match prediction, updated with the score, time and red cards")}>
                   <WinProbability p={p} m={m} />
                 </Section>
               )}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {tabs.filter(t => t.id !== 'prediction').map(t => (
-                <button key={t.id} type="button" onClick={() => pickTab(t.id)} className="card p-4 text-left hover:border-accent/50 transition-colors">
-                  <div className="font-display font-bold text-ink">{t.label} <span aria-hidden className="text-accent">→</span></div>
-                  <div className="text-xs text-muted mt-1">{t.hint}</div>
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-
-        {tab === 'highlights' && done && <Highlights matchId={matchId} />}
-
-        {tab === 'stats' && (
-          <>
+      </>
+    ),
+    highlights: () => <Highlights matchId={matchId} />,
+    stats: () => (
+      <>
               {live && (
                 <Section title={tt("Live stats")} note={m.minute ? tt("{0}'{1} · updates every minute", { 0: m.minute, 1: m.injuryTime ? `+${m.injuryTime}` : '' }) : tt("updates every minute")}>
                   {statKeys.length > 0 && homeStats && awayStats ? (
@@ -968,11 +846,10 @@ function MatchDetail() {
                 <div className="rounded-2xl border border-line/60 bg-surface2/30 p-6 text-sm text-faint">{tt("No recent games found for these teams.")}</div>
               )}
             </section>
-          </>
-        )}
-
-        {tab === 'h2h' && (
-          <>
+      </>
+    ),
+    h2h: () => (
+      <>
             {(() => {
               // the copy inside the match details can come without totals (some competitions): only used when complete
               const early = details.head2head?.aggregates && Array.isArray(details.head2head.matches) ? details.head2head : null
@@ -993,11 +870,10 @@ function MatchDetail() {
                 <TeamPanel team={away} side="A" row={details.standings.away} recent={details.form.away} />
               </div>
             </Section>
-          </>
-        )}
-
-        {tab === 'lineups' && (
-          <>
+      </>
+    ),
+    lineups: () => (
+      <>
               {/* Lineups */}
               {hasLineups ? (
                 <Section title={live ? tt("Live pitch") : done ? tt("Lineups and match events") : tt("Official lineups")} note={[home.formation, away.formation].filter(Boolean).join(' vs ') || undefined}>
@@ -1050,10 +926,9 @@ function MatchDetail() {
                   )}
                 </Section>
               )}
-          </>
-        )}
-
-        {tab === 'rest' && (
+      </>
+    ),
+    rest: () => (
           xRest === undefined ? (
             <p className="text-sm text-muted text-center py-10">{tt("Loading schedule…")}</p>
           ) : xRest ? (
@@ -1069,9 +944,8 @@ function MatchDetail() {
           ) : (
             <p className="text-sm text-faint text-center py-10">{tt("No schedule data for this match.")}</p>
           )
-        )}
-
-        {tab === 'table' && (
+    ),
+    table: () => (
           tables === null ? (
             <p className="text-sm text-muted text-center py-10">{tt("Loading table…")}</p>
           ) : tableShow.length ? (
@@ -1079,9 +953,69 @@ function MatchDetail() {
           ) : (
             <p className="text-sm text-faint text-center py-10">{tt("There is no league table for this competition.")}</p>
           )
-        )}
-      </div>
-    </div>
+    )
+  }
+  const side = (team: Team) => ({
+    name: team.shortName || team.name,
+    logo: <HeroLogo src={team.crest} />,
+    href: `/team/${team.id}?${new URLSearchParams({ ...(m.competition?.code ? { c: m.competition.code } : {}), n: team.name }).toString()}`,
+    title: tt("{0}: team page", { 0: team.name }),
+    linkLabel: tt("Team page →"),
+    sub: team.coach?.name || null,
+    star: <FavStar size="sm" fav={{ kind: 'team', ref: favKey(team.name), name: team.shortName || team.name, img: team.crest || null, ids: [team.id] }} />
+  })
+
+  return (
+    <GamePage
+      back={{ to: '/matches', label: tt("All matches") }}
+      srTitle={tabTitle ? `${tabTitle}${m.competition?.name ? ` · ${m.competition.name}` : ''} ${tt("prediction")}` : undefined}
+      league={{
+        name: m.competition.name, href: `/league/${m.competition.code}`, logo: m.competition.emblem || null, bits: roundBits,
+        star: m.competition.code ? <FavStar size="sm" fav={{ kind: 'league', ref: m.competition.code, code: m.competition.code, name: m.competition.name, img: m.competition.emblem || null }} /> : undefined,
+        badges: m.competition.trial ? (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-draw/15 text-draw"
+            title={tt("We added this league recently. Its predictions are being tested and don’t count in our public record yet.")}>
+            {tt("New league · in testing")}
+          </span>
+        ) : undefined
+      }}
+      date={fmtDate(m.utcDate)}
+      home={side(home)}
+      away={side(away)}
+      score={showScore ? { home: ft.home ?? 0, away: ft.away ?? 0 } : null}
+      time={fmtTime(m.utcDate)}
+      scoreSub={showScore && ht && ht.home !== null && (done || m.status === 'PAUSED' || (m.minute ?? 0) > 45) ? (
+        <div className="num text-xs text-faint mt-1">{tt("HT")}{' '}{ht.home}–{ht.away}</div>
+      ) : undefined}
+      status={{ kind: live ? 'live' : halted ? 'halted' : done ? 'done' : 'upcoming', text: live ? statusLabel(m) : halted ? tt(statusLabel(m)) : done ? tt("FULL-TIME") : tt("KICK-OFF") }}
+      statusNote={halted ? (
+        <p className="mt-2 max-w-[260px] mx-auto text-[11px] text-muted">
+          {m.status === 'CANCELLED'
+            ? tt("This match was abandoned or cancelled. It does not count in our record.")
+            : m.status === 'SUSPENDED'
+              ? tt("This match was suspended. It does not count in our record unless it is completed later.")
+              : tt("This match was postponed. Our prediction stays until the new date.")}
+        </p>
+      ) : undefined}
+      pickVar={pick ? pickVar : null}
+      footer={(m.venue || referee || m.attendance) ? (
+        <div className="flex flex-wrap gap-x-6 gap-y-1 justify-center text-xs text-faint">
+          {m.venue && <span>{tt("Venue")}{' '}<span className="text-muted">{m.venue}</span> <span className="text-faint">({home.shortName || home.name})</span></span>}
+          {referee && <span>{tt("Referee")}{' '}<span className="text-muted">{referee.name}</span></span>}
+          {m.attendance && <span>{tt("Attendance")}{' '}<span className="num text-muted">{m.attendance.toLocaleString()}</span></span>}
+        </div>
+      ) : undefined}
+      afterHero={<>
+        {lang === 'en' && details?.preview?.text && <MatchPreview text={details.preview.text} />}
+        <p className="mt-3 text-xs text-muted">
+          <Link to="/guides/win-percentages" className="hover:text-ink">{tt("New here? How to read our numbers")} <span aria-hidden className="text-accent">→</span></Link>
+        </p>
+        {details.partial && <p className="mt-4 text-xs text-faint animate-pulse">{error ? `${tt("Could not load match:")} ${error}` : tt("Loading match…")}</p>}
+      </>}
+      tabs={tabs.map(x => ({ ...x, render: RENDER[x.id] }))}
+      tab={tab}
+      onTab={id => pickTab(id as TabId)}
+    />
   )
 }
 
@@ -1241,30 +1175,6 @@ function Section({ title, note, id, children }: { title: string; note?: string; 
       </div>
       {children}
     </section>
-  )
-}
-
-function TeamHero({ team, align, code }: { team: Team; align: 'left' | 'right'; code?: string }) {
-  return (
-    <Link
-      to={`/team/${team.id}?${new URLSearchParams({ ...(code ? { c: code } : {}), n: team.name }).toString()}`}
-      title={tt("{0}: team page", { 0: team.name })}
-      className={`flex flex-col items-center text-center gap-2 sm:gap-4 min-w-0 hover:opacity-90 ${align === 'right' ? 'sm:flex-row-reverse sm:text-right' : 'sm:flex-row sm:text-left'}`}
-    >
-      {team.crest ? (
-        <img src={team.crest} alt="" className="w-14 h-14 sm:w-[72px] sm:h-[72px] object-contain flex-shrink-0 drop-shadow" />
-      ) : (
-        <span className="w-14 h-14 sm:w-[72px] sm:h-[72px] rounded-full bg-surface2 flex-shrink-0" />
-      )}
-      <div className="min-w-0 w-full sm:w-auto">
-        <div className="font-sans font-extrabold text-[15px] sm:font-display sm:text-2xl text-ink leading-tight break-words sm:truncate">{team.shortName || team.name}</div>
-        {team.coach?.name && <div className="hidden sm:block text-xs text-faint mt-0.5 truncate">{team.coach.name}</div>}
-        <div className={`flex items-center justify-center gap-1 mt-1 sm:mt-0.5 ${align === 'right' ? 'sm:justify-end' : 'sm:justify-start'}`}>
-          <span className="text-[11px] text-accent font-semibold whitespace-nowrap">{tt("Team page →")}</span>
-          <FavStar size="sm" fav={{ kind: 'team', ref: favKey(team.name), name: team.shortName || team.name, img: team.crest || null, ids: [team.id] }} />
-        </div>
-      </div>
-    </Link>
   )
 }
 

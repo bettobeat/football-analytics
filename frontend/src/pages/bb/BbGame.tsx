@@ -1,21 +1,20 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Link, useLocation, useParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL } from '../../lib/socket'
-import { t, LOCALE, lang } from '../../lib/i18n'
+import { t, lang } from '../../lib/i18n'
 import { useAuth } from '../../lib/auth'
-import { useReveal, justRevealed, guessFirstOn, hideMatch } from '../../lib/reveal'
-import CountUp from '../../components/CountUp'
+import { useReveal } from '../../lib/reveal'
 import YourPicks from '../../components/YourPicks'
-import { RevealCover } from '../../components/Reveal'
 import { BB_STATUS, liveLabel, spreadText, bbTeamFav, bbLeagueFav, useBbConfig, type BbGame as Game } from '../../lib/bb'
 import { FavStar } from '../../lib/favorites'
 import { Card, TeamLogo, LiveChanceBox, rid, rstatus } from './parts'
-import UnlockPrompt, { GAME_RELOAD } from '../../components/UnlockPrompt'
+import { GAME_RELOAD } from '../../components/UnlockPrompt'
 import type { Standings } from './BbLeague'
 import { StatsTab, RestTab, H2HTab, StandingsTab } from './GameTabs'
 import { MarketsCard, CompareCard, PlayersCard, ModelTable, type Markets, type ModelInfo, type GamePlayer } from './GameExtras'
-import StickyBar from '../../components/StickyBar'
+import GamePage, { useGameTab, GameNews, fmtGameDate, fmtGameTime, type GameTab } from '../../components/sport/game/GamePage'
+import WinnerPrediction, { type WhyRow } from '../../components/sport/game/WinnerPrediction'
 
 export interface Avg {
   games: number; won: number; lost: number; pointsFor: number; pointsAgainst: number
@@ -56,23 +55,17 @@ interface PreviewSide {
   profile: { team: Profile | null; league: Profile | null }
 }
 interface Injury { name: string; status: string; weight: number; comment: string | null; minutes: number | null; playerId: number | null }
-type Tab = 'prediction' | 'stats' | 'players' | 'rest' | 'h2h' | 'table' | 'box'
 
-/** A game page — laid out like football's match page: hero, tabs, prediction first. */
+const TABS = ['prediction', 'box', 'stats', 'players', 'rest', 'h2h', 'table']
+
+/** A basketball game: the shared game page (football's match page, fix152c) with basketball's data and tabs. */
 export default function BbGame() {
   const { id = '' } = useParams()
   const { access } = useAuth()
+  const cfg = useBbConfig()
   const [d, setD] = useState<Detail | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [tab, setTab] = useState<Tab>(() => {
-    const raw = typeof window !== 'undefined' ? window.location.hash.slice(1) : ''
-    const h = (raw === 'injuries' ? 'players' : raw) as Tab
-    return TABS.includes(h) ? h : 'prediction'
-  })
-  const pickTab = (x: Tab) => {
-    setTab(x)
-    try { history.replaceState(null, '', x === 'prediction' ? window.location.pathname + window.location.search : `#${x}`) } catch { /* ignore */ }
-  }
+  const [tab, pickTab] = useGameTab(TABS, { injuries: 'players' })
 
   useEffect(() => {
     let cancelled = false
@@ -94,313 +87,152 @@ export default function BbGame() {
   if (!d) return <div className="max-w-5xl mx-auto px-4 py-16 text-center text-muted">{t('Loading game…')}</div>
 
   const g = d.game
+  const p = g.prediction
   const live = g.state === 'live', done = g.state === 'done'
   const showScore = !!g.score && g.state !== 'upcoming'
-  const pick = g.prediction?.pick || null
-  const pickVar = pick === 'H' ? '--home' : '--away'
-  const tabs: { id: Tab; label: string; short?: string; hint: string; live?: boolean }[] = [
-    { id: 'prediction', label: t('Prediction'), hint: '' },
-    ...(d.box ? [{ id: 'box' as Tab, label: t('Box score'), short: t('Box'), hint: live ? t('Live player stats') : t('Every player: points, shooting, rebounds, assists'), live }] : []),
-    { id: 'stats', label: t('Statistics'), short: t('Stats'), hint: t('Averages from the last 10 games') },
-    { id: 'players' as Tab, label: d.injuries ? t('Players & injuries') : t('Players'), short: t('Players'), hint: d.injuries ? t('Key players and the NBA injury reports') : t('Each team’s key players this season') },
-    { id: 'rest', label: t('Schedule & rest'), short: t('Rest'), hint: t('Back-to-backs, rest days and the next game') },
-    { id: 'h2h', label: t('H2H'), hint: t('Last meetings and recent form') },
-    ...(d.standings ? [{ id: 'table' as Tab, label: t('Standings'), short: t('Table'), hint: t('{0} table', { 0: g.league.name }) }] : [])
-  ]
+  const pick = p?.pick || null
   const q = g.quarters
   const showQ = showScore && q && q.home.some(x => x !== null)
+  const side = (team: Game['home']) => ({
+    name: team.name, logo: <TeamLogo team={team} size={72} />, href: `/basketball/team/${team.id}#analysis`,
+    title: t('{0}: team page', { 0: team.name }), linkLabel: t('Team page →'), star: <FavStar size="sm" fav={bbTeamFav(team, g.league.code)} />
+  })
 
-  return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 pb-28 xl:pb-10">
-      <Link to="/basketball/games" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink transition-colors"><span aria-hidden>←</span> {t('All games')}</Link>
-
-      {/* ---------- hero ---------- */}
-      <div className={`mt-4 card relative overflow-hidden p-4 sm:p-8 ${live ? 'shadow-glow border-live/40' : ''}`}>
-        {pick && <div className="pointer-events-none absolute inset-0 opacity-[0.10]" style={{ background: `radial-gradient(700px 260px at 50% 120%, rgb(var(${pickVar})), transparent 70%)` }} />}
-        <div className="relative flex flex-wrap items-center justify-between gap-2 text-sm text-muted mb-6">
-          <div className="flex items-center gap-2">
-            <Link to={`/basketball/league/${g.league.code}`} className="font-medium text-ink/90 hover:underline">{g.league.name}</Link>
-            <LeagueStar code={g.league.code} name={g.league.name} />
-            {g.round && <span className="text-faint">· {g.round}</span>}
-            {g.preseason && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-draw/15 text-draw">{t('Pre-season')}</span>}
-            {g.league.trial && <span title={t("We added this league recently. Its predictions are being tested and don’t count in our public record yet.")} className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-accent/15 text-accent">{t("New league · in testing")}</span>}
-          </div>
-          <div className="text-faint">{new Date(g.kickoff).toLocaleString(LOCALE, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
-        </div>
-
-        <div className="relative grid grid-cols-[1fr_auto_1fr] items-start sm:items-center gap-2 sm:gap-8">
-          <TeamHero team={g.home} align="right" league={g.league.code} />
-          <div className="text-center min-w-[96px] sm:min-w-[170px] self-center">
-            {showScore ? (
-              <div className="num text-5xl sm:text-6xl font-extrabold text-ink tracking-tight">{g.score!.home}<span className="text-faint mx-2 font-light">:</span>{g.score!.away}</div>
-            ) : (
-              <div className="num text-4xl sm:text-5xl font-extrabold text-ink tracking-tight">{new Date(g.kickoff).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' })}</div>
-            )}
-            <div className={`mt-3 inline-flex items-center gap-1.5 text-[11px] font-bold tracking-wider px-3 py-1 rounded-full border ${live ? 'bg-live/10 text-live border-live/30' : done ? 'bg-surface2 text-muted border-line' : 'bg-accent/10 text-accent border-accent/30'}`}>
-              {live && <span className="w-1.5 h-1.5 rounded-full bg-live animate-pulseDot" />}
-              {live ? liveLabel(g).toUpperCase() : done ? (BB_STATUS[g.status] || t('Final')).toUpperCase() : g.state === 'off' ? (BB_STATUS[g.status] || g.status).toUpperCase() : t('TIP-OFF')}
-            </div>
-          </div>
-          <TeamHero team={g.away} align="left" league={g.league.code} />
-        </div>
-
-        {showQ && (
-          <div className="relative mt-6 pt-4 border-t border-line/60 overflow-x-auto">
-            <table className="mx-auto text-xs num">
-              <thead><tr className="text-faint"><th className="px-3 text-left font-semibold" />{['Q1', 'Q2', 'Q3', 'Q4', 'OT'].map((x, i) => (i < 4 || q!.home[4] !== null) && <th key={x} className="px-3 font-semibold">{t(x)}</th>)}<th className="px-3 font-semibold">{t('Total')}</th></tr></thead>
-              <tbody>
-                {(['home', 'away'] as const).map(s => (
-                  <tr key={s}>
-                    <td className="px-3 py-0.5 text-muted font-semibold font-sans text-left">{(s === 'home' ? g.home : g.away).name}</td>
-                    {q![s].map((v, i) => (i < 4 || q!.home[4] !== null) && <td key={i} className="px-3 text-center text-ink">{v ?? '–'}</td>)}
-                    <td className="px-3 text-center text-ink font-bold">{s === 'home' ? g.score!.home : g.score!.away}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {live && <LiveChanceBox g={g} />}
-      {g.corrected && done && <p className="mt-2 text-center text-[11px] text-faint">{t('Final score corrected by us: our data provider had it wrong.')}</p>}
-      {access === 'admin' && done && <ResultAdmin game={g} onDone={() => axios.get(`${API_URL}/basketball/game/${id}`).then(r => setD(r.data.data)).catch(() => undefined)} />}
-
-      {/* ---------- tabs ---------- */}
-      <StickyBar className="top-16 sm:top-[72px] -mx-4 sm:mx-0 mt-6 px-4 sm:px-0 py-2">
-        <nav className="flex gap-1 p-1 rounded-full bg-surface2/60 border border-line/60 overflow-x-auto no-scrollbar" aria-label={t('Game sections')}>
-          {tabs.map(x => (
-            <button key={x.id} type="button" onClick={() => pickTab(x.id)} aria-current={tab === x.id ? 'page' : undefined}
-              className={`flex-1 min-w-max inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-4 py-2 rounded-full text-[13px] sm:text-sm font-semibold transition-colors ${tab === x.id ? 'bg-accent text-bg shadow' : 'text-muted hover:text-ink'}`}>
-              {x.short ? (<><span className="sm:hidden">{x.short}</span><span className="hidden sm:inline">{x.label}</span></>) : x.label}
-              {x.live && <span className={`w-1.5 h-1.5 rounded-full animate-pulseDot ${tab === x.id ? 'bg-bg' : 'bg-live'}`} />}
-            </button>
-          ))}
-        </nav>
-      </StickyBar>
-
-      <div className="mt-4 space-y-6 min-w-0">
-        {tab === 'prediction' && (
-          <>
-            <div id="prediction" className="scroll-mt-32"><PredictionSection d={d} /></div>
-            {lang === 'en' && d.writeup && <GamePreview text={d.writeup} />}
-            <YourPicks sport="bb" gameId={g.id} home={g.home.name} away={g.away.name} />
-            <MarketsGate d={d} />
-            {d.preview && <CompareCard g={g} home={d.preview.home} away={d.preview.away} table={d.standings ? d.standings.groups.flatMap(x => x.rows) : null} form={d.stats.home && d.stats.away ? { home: d.stats.home.form, away: d.stats.away.form } : null} />}
-            {d.players && <PlayersCard g={g} home={d.players.home} away={d.players.away} limit={4} title={t('Players to watch')} />}
-            <AnalysisCard d={d} />
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {tabs.filter(x => x.id !== 'prediction').map(x => (
-                <button key={x.id} type="button" onClick={() => pickTab(x.id)} className="card p-4 text-left hover:border-accent/50 transition-colors">
-                  <div className="font-display font-bold text-ink">{x.label} <span aria-hidden className="text-accent">→</span></div>
-                  <div className="text-xs text-muted mt-1">{x.hint}</div>
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-        {tab === 'box' && d.box && <BoxTab d={d} />}
-        {tab === 'stats' && <StatsTab g={g} home={d.stats.home} away={d.stats.away} />}
-        {tab === 'players' && (
-          <>
-            {d.injuries && <InjuriesCard d={d} />}
-            {d.players && <PlayersCard g={g} home={d.players.home} away={d.players.away} limit={10} title={t('Key players')} />}
-          </>
-        )}
-        {tab === 'rest' && <RestTab g={g} home={d.schedule.home} away={d.schedule.away} />}
-        {tab === 'h2h' && <H2HTab g={g} list={d.h2h} />}
-        {tab === 'table' && d.standings && <StandingsTab g={g} data={d.standings} />}
-      </div>
-    </div>
-  )
-}
-
-const TABS: Tab[] = ['prediction', 'box', 'stats', 'players', 'rest', 'h2h', 'table']
-
-function LeagueStar({ code, name }: { code: string; name: string }) {
-  const cfg = useBbConfig()
-  const logo = cfg?.leagues.find(l => l.code === code)?.logo || null
-  return <FavStar size="sm" fav={bbLeagueFav({ code, name, logo })} />
-}
-
-function TeamHero({ team, align, league }: { team: Game['home']; align: 'left' | 'right'; league: string }) {
-  return (
-    <Link to={`/basketball/team/${team.id}#analysis`} className={`flex flex-col items-center text-center gap-2 sm:gap-4 min-w-0 hover:opacity-90 ${align === 'right' ? 'sm:flex-row-reverse sm:text-right' : 'sm:flex-row sm:text-left'}`}>
-      <TeamLogo team={team} size={72} />
-      <div className="min-w-0 w-full sm:w-auto">
-        <div className="font-sans font-extrabold text-[15px] sm:font-display sm:text-2xl text-ink leading-tight break-words sm:truncate">{team.name}</div>
-        <div className={`flex items-center justify-center gap-1 mt-1 sm:mt-0.5 ${align === 'right' ? 'sm:justify-end' : 'sm:justify-start'}`}>
-          <span className="text-[11px] text-accent font-semibold whitespace-nowrap">{t('Team analysis →')}</span>
-          <FavStar size="sm" fav={bbTeamFav(team, league)} />
-        </div>
-      </div>
-    </Link>
-  )
-}
-
-function Tile({ k, label, v, active, roll, delay = 0, text }: { k: 'H' | 'A' | 'T'; label: string; v?: number; active: boolean; roll: boolean; delay?: number; text?: string }) {
-  const color = k === 'H' ? 'text-home' : k === 'A' ? 'text-away' : 'text-ink'
-  const border = k === 'H' ? 'border-home/50 bg-home/10' : 'border-away/50 bg-away/10'
-  return (
-    <div className={`rounded-xl border p-3 sm:p-4 text-center ${active ? border : 'border-line/70 bg-surface2/40'} ${roll && active ? 'animate-pop' : ''}`}>
-      <div className="text-[11px] text-faint mb-1 truncate">
-        {k !== 'T' && <span className={`font-bold mr-1 ${active ? color : ''}`}>{k === 'H' ? '1' : '2'}</span>}
-        {label}
-      </div>
-      <div className={`num text-2xl sm:text-3xl font-extrabold ${active ? color : k === 'T' ? 'text-ink' : 'text-ink/70'}`}>
-        {text !== undefined ? text : <CountUp value={v || 0} decimals={1} suffix="%" animate={roll} delay={delay} />}
-      </div>
-    </div>
-  )
-}
-
-/** Prediction: who wins (1 · total · 2), how strong the pick is, the spread, total and predicted score, and why. */
-function PredictionSection({ d }: { d: Detail }) {
-  const g = d.game
-  const p = g.prediction
-  const { hidden, reveal } = useReveal(rid(g), rstatus(g), !!p && !p.locked)
-  const [anim, setAnim] = useState(false)
-  const roll = justRevealed(rid(g))
-  // fix130: opened from a phone list's "See prediction": scroll here and play the reveal of a "guess first" cover
-  const location = useLocation()
-  const done = useRef(false)
-  useEffect(() => {
-    if (done.current) return
-    done.current = true
-    if (window.location.hash === '#prediction') requestAnimationFrame(() => document.getElementById('prediction')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
-    if ((location.state as any)?.reveal && hidden) setAnim(true)
-  }, [])
-  const note = p ? [p.model || 'bb-v1', g.state === 'upcoming' ? t('Updated until tip-off') : t('Saved before tip-off')].join(' · ') : undefined
-  return (
-    <Card title={t('Prediction')} action={note ? <span className="text-xs text-faint">{note}</span> : undefined}>
-      {!p ? (
-        <p className="text-sm text-faint">{t('No prediction for this game.')}</p>
-      ) : p.locked ? (
-        <div className="space-y-4">
-          {p.pick && (
-            <div className="flex items-center gap-3">
-              <TeamLogo team={p.pick === 'H' ? g.home : g.away} size={40} />
-              <div>
-                <div className="text-xs text-faint">{t('Our pick')}</div>
-                <div className={`font-display text-xl font-extrabold ${p.pick === 'H' ? 'text-home' : 'text-away'}`}>{t('{0} to win', { 0: (p.pick === 'H' ? g.home : g.away).name })}</div>
-              </div>
-            </div>
-          )}
-          <UnlockPrompt rid={rid(g)} status={rstatus(g)} what={t('Win chances, point spread, total points and the predicted score, with the reasons behind the pick.')} />
-        </div>
-      ) : hidden || anim ? (
-        <RevealCover key={anim ? 'auto' : 'cover'} autoStart={anim} model="bb-v3" onReveal={() => { setAnim(false); reveal() }} />
-      ) : (
+  const tabs: GameTab[] = [
+    {
+      id: 'prediction', label: t('Prediction'), hint: '',
+      render: () => (
         <>
-          <div className="grid grid-cols-3 gap-3">
-            <Tile k="H" label={g.home.name} v={p.pHome} active={p.pick === 'H'} roll={roll} />
-            <Tile k="T" label={t('Total points')} text={p.total !== undefined ? p.total.toFixed(1) : '–'} active={false} roll={roll} />
-            <Tile k="A" label={g.away.name} v={p.pAway} active={p.pick === 'A'} roll={roll} delay={240} />
-          </div>
-          {(() => {
-            const topV = Math.max(p.pHome || 0, p.pAway || 0)
-            const team = p.pick === 'H' ? g.home : g.away
-            return (
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-                <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${topV >= 70 ? 'bg-accent/15 text-accent border-accent/40' : topV >= 60 ? 'bg-accent/15 text-accent border-accent/40' : 'bg-surface2 text-ink border-line'}`}>
-                  {topV >= 80 ? t('Very strong pick') : topV >= 70 ? t('Strong pick') : topV >= 55 ? t('Pick') : t('Close game')}
-                </span>
-                <span className="text-muted">{team.name} <span className="num text-ink font-semibold">{Math.round(topV)}%</span></span>
-                {p.hit !== null && <span className={`ml-auto rounded-full px-3 py-1 text-xs font-bold ${p.hit ? 'bg-win/15 text-win' : 'bg-loss/15 text-loss'}`}>{p.hit ? t('Right') : t('Wrong')}</span>}
-                {g.resultCheck && <span title={t('The final score from our data provider looks wrong. This game doesn’t count in our record until it is checked.')} className="ml-auto rounded-full px-3 py-1 text-xs font-bold bg-draw/15 text-draw">{t('Result being checked')}</span>}
-              </div>
-            )
-          })()}
-          <div className="flex h-2.5 gap-[3px] mt-4">
-            <div className={`rounded-full bg-home ${p.pick === 'H' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.pHome}% - 2px)` }} />
-            <div className={`rounded-full bg-away ${p.pick === 'A' ? '' : 'opacity-35'}`} style={{ width: `calc(${p.pAway}% - 2px)` }} />
-          </div>
-
-          {g.state !== 'upcoming' && (
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
-              <span className="px-2.5 py-1 rounded-full bg-surface2 border border-line font-semibold text-ink">{t('Saved before tip-off')}</span>
-              <span>{t('This is exactly what we predicted before the game — it is never recalculated after the result.')}</span>
-            </div>
-          )}
-
-          {/* points */}
-          <div className="mt-5 grid grid-cols-3 gap-2">
-            <Stat label={t('Point spread')} value={spreadText(g) || '–'} />
-            <Stat label={t('Predicted score')} value={p.score ? `${p.score.home}–${p.score.away}` : '–'} />
-            <Stat label={t('Total points')} value={p.total !== undefined ? p.total.toFixed(1) : '–'} />
-          </div>
-
-          {/* why */}
-          {d.why.length > 0 && (
-            <div className="mt-5 rounded-2xl border border-line/60 bg-surface2/30 p-4">
-              <div className="text-sm font-bold text-ink mb-2">{t('Why we think so')}</div>
-              <ul className="space-y-2">
-                {d.why.map((w, i) => {
-                  const team = w.side === 'H' ? g.home : g.away
-                  const other = w.side === 'H' ? g.away : g.home
-                  const pv = d.preview
-                  const mine = pv ? (w.side === 'H' ? pv.home : pv.away) : null
-                  const theirs = pv ? (w.side === 'H' ? pv.away : pv.home) : null
-                  const pts = Math.abs(w.points).toFixed(1)
-                  let text: string
-                  let tone: 'H' | 'A' | 'N' = w.side
-                  if (w.kind === 'strength') {
-                    text = mine?.ranks && theirs?.ranks
-                      ? t('{0} are the stronger team: about {1} points per game better in our ratings (overall rank {2} against {3}, out of {4}).', { 0: team.name, 1: pts, 2: mine.ranks.overall, 3: theirs.ranks.overall, 4: mine.ranks.of })
-                      : t('{0} are the stronger team: about {1} points per game better in our ratings.', { 0: team.name, 1: pts })
-                  } else if (w.kind === 'attack') {
-                    const dr = theirs?.ranks?.defence
-                    text = w.points > 0
-                      ? (dr ? t('{0} should score about {1} points more than an average team against {2}’s defence (rank {3}).', { 0: team.name, 1: pts, 2: other.name, 3: dr }) : t('{0} should score about {1} points more than an average team against {2}’s defence.', { 0: team.name, 1: pts, 2: other.name }))
-                      : (dr ? t('{0}’s defence (rank {1}) should hold {2} to about {3} points below an average team.', { 0: other.name, 1: dr, 2: team.name, 3: pts }) : t('{0}’s defence should hold {1} to about {2} points below an average team.', { 0: other.name, 1: team.name, 2: pts }))
-                    tone = w.points > 0 ? w.side : (w.side === 'H' ? 'A' : 'H')
-                  } else if (w.kind === 'home') {
-                    const sp = mine?.splits
-                    text = sp && sp.homeWon + sp.homeLost > 0 && !mine?.previousSeason
-                      ? t('Home court is worth about {0} points to {1} (home record this season: {2}–{3}).', { 0: pts, 1: team.name, 2: sp.homeWon, 3: sp.homeLost })
-                      : t('Home court is worth about {0} points to {1}.', { 0: pts, 1: team.name })
-                  } else if (w.kind === 'b2b') {
-                    text = t('{0} played last night (second game of a back-to-back), which costs about {1} points.', { 0: other.name, 1: pts })
-                  } else if (w.kind === 'b2bBoth') {
-                    text = t('Both teams played last night, so tiredness evens out.')
-                    tone = 'N'
-                  } else if (w.kind === 'talent') {
-                    text = t('{0} have more talent on the floor right now (the players they used in their latest games): about {1} points.', { 0: team.name, 1: pts })
-                  } else {
-                    text = t('Injuries hurt {0} more: they are missing about {1} points of production.', { 0: other.name, 1: pts })
-                  }
-                  const sub = w.kind === 'attack'
-                  return (
-                    <li key={i} className={`flex items-start gap-3 text-sm ${sub ? 'pl-5' : ''}`}>
-                      <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${tone === 'H' ? 'bg-home' : tone === 'A' ? 'bg-away' : 'bg-faint'} ${sub ? 'opacity-60' : ''}`} />
-                      <span className={`flex-1 leading-snug ${sub ? 'text-muted' : 'text-ink'}`}>{text}</span>
-                      {w.points !== 0 && w.kind !== 'b2bBoth' && (
-                        <span className={`num text-xs font-bold whitespace-nowrap ${tone === 'H' ? 'text-home' : tone === 'A' ? 'text-away' : 'text-muted'}`}>
-                          {tone === 'N' ? '' : '+'}{pts} {t('pts')}
-                        </span>
-                      )}
-                    </li>
-                  )
-                })}
-              </ul>
-              {d.model ? (
-                <details className="mt-3">
-                  <summary className="cursor-pointer text-xs text-muted hover:text-ink select-none">{t('How this was calculated')}</summary>
-                  <ModelTable g={g} model={d.model} ratings={d.ratings} />
-                </details>
-              ) : null}
-            </div>
-          )}
-
-          {guessFirstOn() && g.state === 'upcoming' && (
-            <div className="mt-2 text-right">
-              <button type="button" onClick={() => hideMatch(rid(g))} className="text-xs text-faint hover:text-ink underline underline-offset-4">{t('Hide prediction again')}</button>
-            </div>
-          )}
+          <WinnerPrediction
+            rid={rid(g)} status={rstatus(g)} p={p} home={g.home} away={g.away} upcoming={g.state === 'upcoming'} model="bb-v3"
+            saved={t('Saved before tip-off')} updated={t('Updated until tip-off')} strongAt={70} showLockedPick
+            stats={[
+              { label: t('Point spread'), value: spreadText(g) || '–' },
+              { label: t('Predicted score'), value: p?.score ? `${p.score.home}–${p.score.away}` : '–' },
+              { label: t('Total points'), value: typeof p?.total === 'number' ? p.total.toFixed(1) : '–' }
+            ]}
+            why={bbWhy(d)}
+            howCalc={d.model ? <ModelTable g={g} model={d.model} ratings={d.ratings} /> : undefined}
+            badges={g.resultCheck ? <span title={t('The final score from our data provider looks wrong. This game doesn’t count in our record until it is checked.')} className="ml-auto rounded-full px-3 py-1 text-xs font-bold bg-draw/15 text-draw">{t('Result being checked')}</span> : undefined}
+            noPrediction={t('No prediction for this game.')}
+          />
+          {lang === 'en' && d.writeup && <GamePreview text={d.writeup} />}
+          <YourPicks sport="bb" gameId={g.id} home={g.home.name} away={g.away.name} />
+          <MarketsGate d={d} />
+          {d.preview && <CompareCard g={g} home={d.preview.home} away={d.preview.away} table={d.standings ? d.standings.groups.flatMap(x => x.rows) : null} form={d.stats.home && d.stats.away ? { home: d.stats.home.form, away: d.stats.away.form } : null} />}
+          {d.players && <PlayersCard g={g} home={d.players.home} away={d.players.away} limit={4} title={t('Players to watch')} />}
+          <AnalysisCard d={d} />
+          <GameNews home={{ sport: 'basketball', teamId: g.home.id }} away={{ sport: 'basketball', teamId: g.away.id }} />
         </>
-      )}
-    </Card>
+      )
+    },
+    ...(d.box ? [{ id: 'box', label: t('Box score'), short: t('Box'), hint: live ? t('Live player stats') : t('Every player: points, shooting, rebounds, assists'), live, render: () => <BoxTab d={d} /> }] : []),
+    { id: 'stats', label: t('Statistics'), short: t('Stats'), hint: t('Averages from the last 10 games'), render: () => <StatsTab g={g} home={d.stats.home} away={d.stats.away} /> },
+    {
+      id: 'players', label: d.injuries ? t('Players & injuries') : t('Players'), short: t('Players'), hint: d.injuries ? t('Key players and the NBA injury reports') : t('Each team’s key players this season'),
+      render: () => (
+        <>
+          {d.injuries && <InjuriesCard d={d} />}
+          {d.players && <PlayersCard g={g} home={d.players.home} away={d.players.away} limit={10} title={t('Key players')} />}
+        </>
+      )
+    },
+    { id: 'rest', label: t('Schedule & rest'), short: t('Rest'), hint: t('Back-to-backs, rest days and the next game'), render: () => <RestTab g={g} home={d.schedule.home} away={d.schedule.away} /> },
+    { id: 'h2h', label: t('H2H'), hint: t('Last meetings and recent form'), render: () => <H2HTab g={g} list={d.h2h} /> },
+    ...(d.standings ? [{ id: 'table', label: t('Standings'), short: t('Table'), hint: t('{0} table', { 0: g.league.name }), render: () => <StandingsTab g={g} data={d.standings!} /> }] : [])
+  ]
+
+  return (
+    <GamePage
+      back={{ to: '/basketball/games', label: t('All games') }}
+      srTitle={`${g.home.name} vs ${g.away.name} · ${g.league.name} ${t('prediction')}`}
+      league={{
+        name: g.league.name, href: `/basketball/league/${g.league.code}`, logo: cfg?.leagues.find(l => l.code === g.league.code)?.logo || null,
+        star: <FavStar size="sm" fav={bbLeagueFav({ code: g.league.code, name: g.league.name, logo: cfg?.leagues.find(l => l.code === g.league.code)?.logo || null })} />,
+        bits: [g.round].filter((x): x is string => !!x),
+        badges: <>
+          {g.preseason && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-draw/15 text-draw">{t('Pre-season')}</span>}
+          {g.league.trial && <span title={t("We added this league recently. Its predictions are being tested and don’t count in our public record yet.")} className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-draw/15 text-draw">{t("New league · in testing")}</span>}
+        </>
+      }}
+      date={fmtGameDate(g.kickoff)}
+      home={side(g.home)}
+      away={side(g.away)}
+      score={showScore ? g.score : null}
+      time={fmtGameTime(g.kickoff)}
+      status={{
+        kind: live ? 'live' : done ? 'done' : g.state === 'off' ? 'halted' : 'upcoming',
+        text: live ? liveLabel(g) : done ? (BB_STATUS[g.status] || t('Final')) : g.state === 'off' ? (BB_STATUS[g.status] || g.status) : t('TIP-OFF')
+      }}
+      pickVar={pick === 'H' ? '--home' : pick === 'A' ? '--away' : null}
+      footer={showQ ? (
+        <div className="overflow-x-auto">
+          <table className="mx-auto text-xs num">
+            <thead><tr className="text-faint"><th className="px-3 text-left font-semibold" />{['Q1', 'Q2', 'Q3', 'Q4', 'OT'].map((x, i) => (i < 4 || q!.home[4] !== null) && <th key={x} className="px-3 font-semibold">{t(x)}</th>)}<th className="px-3 font-semibold">{t('Total')}</th></tr></thead>
+            <tbody>
+              {(['home', 'away'] as const).map(s => (
+                <tr key={s}>
+                  <td className="px-3 py-0.5 text-muted font-semibold font-sans text-left">{(s === 'home' ? g.home : g.away).name}</td>
+                  {q![s].map((v, i) => (i < 4 || q!.home[4] !== null) && <td key={i} className="px-3 text-center text-ink">{v ?? '–'}</td>)}
+                  <td className="px-3 text-center text-ink font-bold">{s === 'home' ? g.score!.home : g.score!.away}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : undefined}
+      afterHero={<>
+        {live && <LiveChanceBox g={g} />}
+        {g.corrected && done && <p className="mt-2 text-center text-[11px] text-faint">{t('Final score corrected by us: our data provider had it wrong.')}</p>}
+        {access === 'admin' && done && <ResultAdmin game={g} onDone={() => axios.get(`${API_URL}/basketball/game/${id}`).then(r => setD(r.data.data)).catch(() => undefined)} />}
+      </>}
+      tabs={tabs}
+      tab={tab}
+      onTab={pickTab}
+    />
   )
+}
+
+/** "Why we think so": the model's own reasons in plain words (ratings, home court, back-to-backs, talent, injuries). */
+function bbWhy(d: Detail): WhyRow[] {
+  const g = d.game
+  return d.why.map(w => {
+    const team = w.side === 'H' ? g.home : g.away
+    const other = w.side === 'H' ? g.away : g.home
+    const pv = d.preview
+    const mine = pv ? (w.side === 'H' ? pv.home : pv.away) : null
+    const theirs = pv ? (w.side === 'H' ? pv.away : pv.home) : null
+    const pts = Math.abs(w.points).toFixed(1)
+    let text: string
+    let tone: 'H' | 'A' | 'N' = w.side
+    if (w.kind === 'strength') {
+      text = mine?.ranks && theirs?.ranks
+        ? t('{0} are the stronger team: about {1} points per game better in our ratings (overall rank {2} against {3}, out of {4}).', { 0: team.name, 1: pts, 2: mine.ranks.overall, 3: theirs.ranks.overall, 4: mine.ranks.of })
+        : t('{0} are the stronger team: about {1} points per game better in our ratings.', { 0: team.name, 1: pts })
+    } else if (w.kind === 'attack') {
+      const dr = theirs?.ranks?.defence
+      text = w.points > 0
+        ? (dr ? t('{0} should score about {1} points more than an average team against {2}’s defence (rank {3}).', { 0: team.name, 1: pts, 2: other.name, 3: dr }) : t('{0} should score about {1} points more than an average team against {2}’s defence.', { 0: team.name, 1: pts, 2: other.name }))
+        : (dr ? t('{0}’s defence (rank {1}) should hold {2} to about {3} points below an average team.', { 0: other.name, 1: dr, 2: team.name, 3: pts }) : t('{0}’s defence should hold {1} to about {2} points below an average team.', { 0: other.name, 1: team.name, 2: pts }))
+      tone = w.points > 0 ? w.side : (w.side === 'H' ? 'A' : 'H')
+    } else if (w.kind === 'home') {
+      const sp = mine?.splits
+      text = sp && sp.homeWon + sp.homeLost > 0 && !mine?.previousSeason
+        ? t('Home court is worth about {0} points to {1} (home record this season: {2}–{3}).', { 0: pts, 1: team.name, 2: sp.homeWon, 3: sp.homeLost })
+        : t('Home court is worth about {0} points to {1}.', { 0: pts, 1: team.name })
+    } else if (w.kind === 'b2b') {
+      text = t('{0} played last night (second game of a back-to-back), which costs about {1} points.', { 0: other.name, 1: pts })
+    } else if (w.kind === 'b2bBoth') {
+      text = t('Both teams played last night, so tiredness evens out.')
+      tone = 'N'
+    } else if (w.kind === 'talent') {
+      text = t('{0} have more talent on the floor right now (the players they used in their latest games): about {1} points.', { 0: team.name, 1: pts })
+    } else {
+      text = t('Injuries hurt {0} more: they are missing about {1} points of production.', { 0: other.name, 1: pts })
+    }
+    const shown = w.points !== 0 && w.kind !== 'b2bBoth'
+    return { tone, text, sub: w.kind === 'attack', points: shown ? `${tone === 'N' ? '' : '+'}${pts} ${t('pts')}` : null }
+  })
 }
 
 /**
@@ -540,15 +372,6 @@ function InjuriesCard({ d }: { d: Detail }) {
       </div>
       <p className="mt-4 text-[11px] text-faint">{t('Our prediction takes off the points a team is expected to lose without its injured regulars (by minutes and production; doubtful and questionable players count partly).')}</p>
     </Card>
-  )
-}
-
-function Stat({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="rounded-xl bg-surface2/60 border border-line/50 p-3 text-center">
-      <div className="num text-sm sm:text-base font-bold text-ink truncate">{value}</div>
-      <div className="text-[10px] text-faint mt-0.5">{label}</div>
-    </div>
   )
 }
 

@@ -1846,5 +1846,10 @@
  "New recovery codes replace the old ones. Enter a code from your app to continue.": "I nuovi codici di recupero sostituiscono i vecchi. Inserisci un codice dalla tua app per continuare.",
  "Get new codes": "Ottieni nuovi codici",
  "On since {0}. Recovery codes left: {1}.": "Attiva dal {0}. Codici di recupero rimasti: {1}.",
- "Back to home": "Torna alla home"
+ "Back to home": "Torna alla home",
+ "Who wins": "Chi vince",
+ "Live team stats": "Statistiche di squadra in diretta",
+ "Yards, downs, red zone and turnovers": "Yard, down, red zone e palle perse",
+ "Player stats and the injury reports": "Statistiche dei giocatori e bollettini infortuni",
+ "Passing, rushing, receiving and defense": "Passaggi, corse, ricezioni e difesa"
 }
