@@ -246,17 +246,3 @@ export function StatBars({ label, home, away, fmt = (v: number) => String(v), lo
     </div>
   )
 }
-
-/** Week picker: Week 1 … 18 · Playoffs, scrollable on phones. */
-export function WeekPicker({ weeks, value, onPick }: { weeks: { key: string; label: string }[]; value: string | null; onPick: (k: string) => void }) {
-  return (
-    <div className="flex gap-1 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 pb-1">
-      {weeks.map(w => (
-        <button key={w.key} type="button" onClick={() => onPick(w.key)} aria-current={value === w.key ? 'true' : undefined}
-          className={`flex-shrink-0 h-9 px-3 rounded-full text-sm font-semibold border transition-colors ${value === w.key ? 'bg-accent text-bg border-accent' : 'border-line/80 text-muted hover:text-ink'}`}>
-          {w.key === 'post' ? t('Playoffs') : <span className="num">{w.key === value ? t('Week {0}', { 0: w.key }) : w.key}</span>}
-        </button>
-      ))}
-    </div>
-  )
-}

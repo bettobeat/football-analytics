@@ -17,13 +17,26 @@ const STRONG = 70
 const hasPct = (g: BbGame) => !!g.prediction && !g.prediction.locked && typeof g.prediction.pHome === 'number'
 const top = (g: BbGame) => Math.max(g.prediction!.pHome!, g.prediction!.pAway!)
 
-function toGame(g: BbGame): HGame {
+export function toGame(g: BbGame): HGame {
   const team = (s: BbGame['home']) => ({ id: s.id, name: s.name, short: bbShort(s.name, g.league.code), logo: s.logo, href: `/basketball/team/${s.id}` })
   return {
     id: g.id, href: `/basketball/game/${g.id}`, reveal: { id: rid(g), status: rstatus(g) }, kickoff: g.kickoff,
     competition: { name: g.league.name }, home: team(g.home), away: team(g.away),
     live: g.state === 'live' ? { label: liveLabel(g, true), score: [g.score?.home ?? 0, g.score?.away ?? 0] } : null,
     pred: winnerPred(g.prediction, bbShort(g.home.name, g.league.code), bbShort(g.away.name, g.league.code), STRONG)
+  }
+}
+
+/** A finished game as "Latest results" shows it (fix152a: shared with the Games page). */
+export function toResult(g: BbGame): HResult {
+  const pick = g.prediction?.pick || null
+  const won = (s: 'H' | 'A') => !!g.score && (s === 'H' ? g.score.home > g.score.away : g.score.away > g.score.home)
+  return {
+    id: g.id, href: `/basketball/game/${g.id}`, competition: g.league.name, date: g.kickoff,
+    home: { name: g.home.name, logo: g.home.logo, score: g.score?.home ?? '', won: won('H') },
+    away: { name: g.away.name, logo: g.away.logo, score: g.score?.away ?? '', won: won('A') },
+    pick: pick ? { words: pick === 'H' ? g.home.name : g.away.name, pct: null, strong: false } : null,
+    hit: g.prediction?.hit ?? null
   }
 }
 
@@ -69,17 +82,7 @@ function useBasketballData(): SportHomeData {
     .sort((a, b) => bbRank(a.league.code) - bbRank(b.league.code) || a.kickoff.localeCompare(b.kickoff)).slice(0, 12)
     .sort((a, b) => a.kickoff.localeCompare(b.kickoff)), [notStarted, featuredIds, favNext])
 
-  const resultRows: HResult[] | null = results ? results.slice(0, 40).map(g => {
-    const pick = g.prediction?.pick || null
-    const won = (s: 'H' | 'A') => !!g.score && (s === 'H' ? g.score.home > g.score.away : g.score.away > g.score.home)
-    return {
-      id: g.id, href: `/basketball/game/${g.id}`, competition: g.league.name, date: g.kickoff,
-      home: { name: g.home.name, logo: g.home.logo, score: g.score?.home ?? '', won: won('H') },
-      away: { name: g.away.name, logo: g.away.logo, score: g.score?.away ?? '', won: won('A') },
-      pick: pick ? { words: pick === 'H' ? g.home.name : g.away.name, pct: null, strong: false } : null,
-      hit: g.prediction?.hit ?? null
-    }
-  }) : null
+  const resultRows: HResult[] | null = results ? results.slice(0, 40).map(toResult) : null
 
   return {
     loaded, full, news,

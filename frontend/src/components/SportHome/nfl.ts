@@ -15,7 +15,7 @@ const primetime = (g: NflGame) => new Date(g.kickoff).getUTCHours() < 4
 const lgOf = (g: NflGame): NflLeague => g.league || 1
 const compOf = (g: NflGame) => `${nflLeagueName(lgOf(g))} · ${weekLabel(g.weekKey, lgOf(g))}`
 
-function toGame(g: NflGame): HGame {
+export function toGame(g: NflGame): HGame {
   const lg = lgOf(g)
   const team = (s: NflGame['home']) => ({ id: s.id, name: s.name, short: nick(s.name, lg), logo: s.logo, href: `/american-football/team/${s.id}` })
   return {
@@ -27,6 +27,21 @@ function toGame(g: NflGame): HGame {
 }
 
 interface Home { season: number | null; live: NflGame[]; games: NflGame[]; upcoming: NflGame[]; results: NflGame[]; standings: Standings | null }
+
+/** A finished game as "Latest results" shows it (fix152a: shared with the Games page). */
+export function toResult(g: NflGame): HResult {
+    const p = g.prediction
+    const pick = p && !p.locked && p.pick ? p.pick : p?.pick || null
+    const lg = lgOf(g)
+    const won = (s: 'H' | 'A') => !!g.score && (s === 'H' ? g.score.home > g.score.away : g.score.away > g.score.home)
+    return {
+      id: g.id, href: `/american-football/game/${g.id}`, competition: compOf(g), date: g.kickoff,
+      home: { name: g.home.name, logo: g.home.logo, score: g.score?.home ?? '', won: won('H') },
+      away: { name: g.away.name, logo: g.away.logo, score: g.score?.away ?? '', won: won('A') },
+      pick: pick ? { words: nick(pick === 'H' ? g.home.name : g.away.name, lg), pct: null, strong: false } : null,
+      hit: p?.hit ?? null
+    }
+}
 
 function useNflData(): SportHomeData {
   const { access } = useAuth()
@@ -60,19 +75,7 @@ function useNflData(): SportHomeData {
   const soonest = useMemo(() => notStarted.filter(g => !featuredIds.has(g.id)).slice(0, 5), [notStarted, featuredIds])
   const next = useMemo(() => week.filter(g => !featuredIds.has(g.id) && !favNext.includes(g)), [week, featuredIds, favNext])
 
-  const resultRows: HResult[] | null = d ? d.results.map(g => {
-    const p = g.prediction
-    const pick = p && !p.locked && p.pick ? p.pick : p?.pick || null
-    const lg = lgOf(g)
-    const won = (s: 'H' | 'A') => !!g.score && (s === 'H' ? g.score.home > g.score.away : g.score.away > g.score.home)
-    return {
-      id: g.id, href: `/american-football/game/${g.id}`, competition: compOf(g), date: g.kickoff,
-      home: { name: g.home.name, logo: g.home.logo, score: g.score?.home ?? '', won: won('H') },
-      away: { name: g.away.name, logo: g.away.logo, score: g.score?.away ?? '', won: won('A') },
-      pick: pick ? { words: nick(pick === 'H' ? g.home.name : g.away.name, lg), pct: null, strong: false } : null,
-      hit: p?.hit ?? null
-    }
-  }) : null
+  const resultRows: HResult[] | null = d ? d.results.map(toResult) : null
 
   return {
     loaded, full, news,

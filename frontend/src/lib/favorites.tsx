@@ -11,7 +11,7 @@ import { t as tt } from './i18n'
  */
 
 /** bb-league / bb-team: basketball (Oct 2026); ref = league code / API-Basketball team id */
-export type FavKind = 'league' | 'team' | 'player' | 'bb-league' | 'bb-team' | 'nfl-team'
+export type FavKind = 'league' | 'team' | 'player' | 'bb-league' | 'bb-team' | 'nfl-team' | 'nfl-league'
 export interface Favorite {
   kind: FavKind
   /** league: competition code · team: name key (same club across data sources) · player: player id */
@@ -230,7 +230,7 @@ export function FavStar({ fav, size = 'md', label = false, tone, className = '' 
       <svg viewBox="0 0 24 24" className={px} fill={on ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={1.8} aria-hidden>
         <path strokeLinejoin="round" d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5z" />
       </svg>
-      {label && (on ? tt('Favorite') : fav.kind === 'league' || fav.kind === 'bb-league' ? tt('Add league to favorites') : fav.kind === 'team' || fav.kind === 'bb-team' || fav.kind === 'nfl-team' ? tt('Add team to favorites') : tt('Add player to favorites'))}
+      {label && (on ? tt('Favorite') : fav.kind === 'league' || fav.kind === 'bb-league' || fav.kind === 'nfl-league' ? tt('Add league to favorites') : fav.kind === 'team' || fav.kind === 'bb-team' || fav.kind === 'nfl-team' ? tt('Add team to favorites') : tt('Add player to favorites'))}
     </button>
   )
 }

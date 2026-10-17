@@ -1831,5 +1831,6 @@
  "Bold = our pick. Each game is checked automatically after the final whistle.": "Kalın = tahminimiz. Her maç son düdükten sonra otomatik olarak kontrol edilir.",
  "Upsets": "Sürprizler",
  "{0} is analysing this game": "{0} bu maçı analiz ediyor",
- "Make your own guess first, then see what {0} thinks — the percentages, why this pick, and the full breakdown.": "Önce kendi tahminini yap, sonra {0} ne düşünüyor gör: yüzdeler, bu tahminin nedeni ve tüm ayrıntılar."
+ "Make your own guess first, then see what {0} thinks — the percentages, why this pick, and the full breakdown.": "Önce kendi tahminini yap, sonra {0} ne düşünüyor gör: yüzdeler, bu tahminin nedeni ve tüm ayrıntılar.",
+ "Total pts": "Toplam sayı"
 }

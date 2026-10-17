@@ -11,7 +11,7 @@ import type { SportAdapter, SportHomeData, HGame, HNews, HRecordRow, HResult, HS
 /** Football's adapter for components/SportHome (fix141): the data and labels of the football home. */
 
 interface Team { id: number; name: string; shortName?: string; tla?: string; crest?: string }
-interface Match {
+export interface Match {
   id: number; utcDate: string; status: string; minute?: number | string | null
   competition: { code: string; name: string; emblem?: string; rank?: number }
   homeTeam: Team; awayTeam: Team
@@ -29,7 +29,7 @@ interface Alert { matchId: number; league: string; date: string; home: string; a
 const LIVE = new Set(['IN_PLAY', 'PAUSED', 'LIVE'])
 const MAIN = ['v3-mix', 'grid-v3', 'elo-intl', 'elo-euro']
 const tn = (t: Team) => t.shortName || t.name
-function mainPred(m: Match): Prediction | null { return m.predictions?.find(p => MAIN.includes(p.model)) || m.prediction || null }
+export function mainPred(m: Match): Prediction | null { return m.predictions?.find(p => MAIN.includes(p.model)) || m.prediction || null }
 const hasPct = (p: Prediction | null): p is Prediction => !!p && !p.locked && typeof p.home === 'number'
 const topPct = (p: Prediction) => Math.max(p.home, p.draw, p.away)
 const MAJOR = /champions league|world cup|euro(pean championship)?\b|nations league|copa am[eé]rica|europa league|conference league/i
@@ -60,7 +60,7 @@ function dcSure(dc: Summary['doubleChance']): { min: number; pct: number; n: num
   return null
 }
 
-function toGame(m: Match): HGame {
+export function toGame(m: Match): HGame {
   const p = mainPred(m)
   const live = LIVE.has(m.status)
   // football shows the short club name everywhere ("Inter", not "FC Internazionale Milano")
@@ -86,6 +86,18 @@ function toGame(m: Match): HGame {
     home: team(m.homeTeam), away: team(m.awayTeam),
     live: live ? { label: m.minute ? `${m.minute}'` : tt('Live'), score: [m.score?.fullTime?.home ?? 0, m.score?.fullTime?.away ?? 0] } : null,
     pred
+  }
+}
+
+/** A row of /public/results as "Latest results" shows it (fix152a: shared with the Matches page). */
+export function toResult(r: any): HResult {
+  const [hg, ag] = String(r.score || '').split(/[–-]/).map((x: string) => x.trim())
+  return {
+    id: r.matchId, href: `/match/${r.matchId}`, competition: r.competition || '', date: r.date,
+    home: { name: r.home, logo: r.homeCrest || null, score: hg, won: r.outcome === 'H' },
+    away: { name: r.away, logo: r.awayCrest || null, score: ag, won: r.outcome === 'A' },
+    pick: r.dc ? { words: dcLabel(r.dc.pick, r.home, r.away), tag: r.dc.pick, pct: r.dc.p ?? null, strong: false } : null,
+    hit: r.dc ? r.dc.hit : (r.hit ?? null)
   }
 }
 
@@ -177,16 +189,7 @@ function useFootballData(): SportHomeData {
     main: { label: tt('Draw chance'), value: `${Math.round(x.ourDraw)}%` },
     extra: x.dc ? { label: tt('Our pick'), value: `${x.dc.k} · ${Math.round(x.dc.p)}%` } : null
   }))
-  const resultRows: HResult[] | null = results ? results.map((r: any) => {
-    const [hg, ag] = String(r.score || '').split(/[–-]/).map((x: string) => x.trim())
-    return {
-      id: r.matchId, href: `/match/${r.matchId}`, competition: r.competition || '', date: r.date,
-      home: { name: r.home, logo: r.homeCrest || null, score: hg, won: r.outcome === 'H' },
-      away: { name: r.away, logo: r.awayCrest || null, score: ag, won: r.outcome === 'A' },
-      pick: r.dc ? { words: dcLabel(r.dc.pick, r.home, r.away), tag: r.dc.pick, pct: r.dc.p ?? null, strong: false } : null,
-      hit: r.dc ? r.dc.hit : (r.hit ?? null)
-    }
-  }) : null
+  const resultRows: HResult[] | null = results ? results.map(toResult) : null
 
   return {
     loaded,

@@ -2148,7 +2148,7 @@ app.get('/api/nfl/games', (req, res) => {
     // a day on the visitor's clock (Today page)
     if (typeof req.query.from === 'string' && typeof req.query.to === 'string') {
       const f = new Date(req.query.from), t = new Date(req.query.to);
-      if (isNaN(f.getTime()) || isNaN(t.getTime()) || t <= f || t.getTime() - f.getTime() > 8 * 86400000) return res.status(400).json({ error: 'Bad range' });
+      if (isNaN(f.getTime()) || isNaN(t.getTime()) || t <= f || t.getTime() - f.getTime() > 31 * 86400000) return res.status(400).json({ error: 'Bad range' }); // fix152a: up to 30 days (Games page)
       return res.json({ data: { games: nflWith(req, nflGamesBetween(f.toISOString(), t.toISOString(), nflLg(req))) } });
     }
     const league = nflLg(req);

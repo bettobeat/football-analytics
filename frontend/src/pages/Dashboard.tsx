@@ -1,19 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useReveal, justRevealed } from '../lib/reveal'
 import CountUp from '../components/CountUp'
-import { fame } from '../lib/fame'
 import RecentResults from '../components/RecentResults'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import axios from 'axios'
-import { API_URL, socket } from '../lib/socket'
+import { API_URL } from '../lib/socket'
 import { pickOfPrediction, doubleChance, dcLabel, shortTeam, type Prediction } from '../lib/predict'
 import { DcBlock } from '../components/DcPick'
 import { useFavorites } from '../lib/favorites'
-import LeagueSidebar, { MobileLeagueBar, LeagueBar } from '../components/LeagueSidebar'
-import { footballCountry, leagueShortName } from '../lib/leagueCountry'
 import { t as tt, LOCALE } from '../lib/i18n'
 import { useAuth } from '../lib/auth'
 import { useStuck, stuckBg } from '../lib/useStuck'
+import Games from '../components/sport/Games'
+import { footballGames } from '../components/sport/games/football'
 
 export interface Team {
   id: number
@@ -32,9 +31,6 @@ export interface Competition {
   rank?: number // 0 = core leagues, 1 = European cups, 2 = more leagues, 3 = national teams
   trial?: boolean // new league, predictions still being tested (not in the public record yet)
 }
-
-/** Pinned in the league menu until the visitor stars leagues of their own. */
-const DEFAULT_PINNED = ['PL', 'PD', 'BL1', 'SA', 'FL1', 'CL']
 
 export interface APIMatch {
   id: number
@@ -57,7 +53,6 @@ type Pick = 'H' | 'D' | 'A'
 
 export const LIVE = new Set(['IN_PLAY', 'PAUSED'])
 export const ENDED = new Set(['FINISHED', 'AWARDED', 'CANCELLED'])
-const DAY_OPTIONS = [3, 7, 14, 30]
 const PICK_COLOR: Record<Pick, string> = { H: 'text-home', D: 'text-draw', A: 'text-away' }
 
 export function dayKey(iso: string) {
@@ -90,316 +85,9 @@ function LockIcon() {
   )
 }
 
+/** fix152a: the Matches page is the shared one (components/sport/Games) with football's adapter. */
 function Dashboard() {
-  const [matches, setMatches] = useState<APIMatch[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  // opened on one league (search, shared link): show its whole month, so the list is never empty between rounds
-  const [days, setDays] = useState(() => (new URLSearchParams(window.location.search).get('league') ? 30 : 7))
-  const [params, setParams] = useSearchParams()
-  const [league, setLeagueState] = useState<string>(params.get('league') || 'ALL')
-  // the league is kept in the address (?league=PL), so search results and shared links open the right league
-  const setLeague = (code: string) => {
-    setLeagueState(code)
-    setParams(code === 'ALL' ? {} : { league: code }, { replace: true })
-  }
-  useEffect(() => {
-    const fromUrl = params.get('league') || 'ALL'
-    if (fromUrl !== league) {
-      setLeagueState(fromUrl)
-      if (fromUrl !== 'ALL') setDays(30)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params])
-
-  useEffect(() => {
-    let cancelled = false
-    const load = (initial: boolean) => {
-      if (initial) setLoading(true)
-      axios
-        .get(`${API_URL}/matches/upcoming`, { params: { days: 30 } })
-        .then(res => {
-          if (cancelled) return
-          setMatches(res.data.data || [])
-          setError(null)
-        })
-        .catch(err => {
-          if (!cancelled && initial) setError(err.response?.data?.message || err.message)
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false)
-        })
-    }
-    load(true)
-    const timer = setInterval(() => load(false), 5 * 60 * 1000)
-    return () => {
-      cancelled = true
-      clearInterval(timer)
-    }
-  }, [])
-
-  useEffect(() => {
-    const onLive = (payload: { data: APIMatch[] }) => {
-      const live = new Map(payload.data.map(m => [m.id, m]))
-      if (live.size === 0) return
-      // the live feed carries the pick only for $15 Premium: keep a prediction this user already unlocked
-      setMatches(prev =>
-        prev.map(m => {
-          const n = live.get(m.id)
-          if (!n) return m
-          return n.prediction?.locked && m.prediction && !m.prediction.locked ? { ...n, prediction: m.prediction } : n
-        })
-      )
-    }
-    socket.on('matches:live', onLive)
-    return () => {
-      socket.off('matches:live', onLive)
-    }
-  }, [])
-
-  const competitions = useMemo(() => {
-    const map = new Map<string, Competition>()
-    matches.forEach(m => map.set(m.competition.code, m.competition))
-    return Array.from(map.values())
-      .map(c => ({ ...c, rank: c.rank ?? (c.code === 'CL' ? 1 : 0) }))
-      .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0) || a.name.localeCompare(b.name))
-  }, [matches])
-
-  const { list: favList, reasons } = useFavorites()
-  const favMode = league === 'FAV'
-  const visible = useMemo(() => {
-    const cutoff = Date.now() + days * 86400000
-    return matches.filter(
-      m => new Date(m.utcDate).getTime() <= cutoff && (league === 'ALL' || (favMode ? reasons(m).length > 0 : m.competition.code === league))
-    )
-  }, [matches, league, days, favMode, reasons])
-  // favorites first: their next games on top of the full list
-  const favUpcoming = useMemo(
-    () =>
-      league !== 'ALL'
-        ? []
-        : matches
-            .filter(m => !LIVE.has(m.status) && !ENDED.has(m.status) && new Date(m.utcDate).getTime() <= Date.now() + days * 86400000 && reasons(m).length > 0)
-            .sort((a, b) => a.utcDate.localeCompare(b.utcDate))
-            .slice(0, 8),
-    [matches, league, days, reasons]
-  )
-  const favCount = useMemo(() => matches.filter(m => reasons(m).length > 0).length, [matches, reasons])
-
-  // Live box: on a league page, that league's live games only; other leagues' games only when it has none (Yarin, 10 Oct)
-  const liveAll = matches.filter(m => LIVE.has(m.status))
-  const liveOwn = league === 'ALL' || favMode ? [] : liveAll.filter(m => m.competition.code === league)
-  const live = liveOwn.length ? liveOwn : liveAll
-  const liveOther = league !== 'ALL' && !favMode && !liveOwn.length && liveAll.length > 0
-  // finished / cancelled games leave the list (they are in Latest results); live ones have their own row
-  const upcoming = visible.filter(m => !LIVE.has(m.status) && !ENDED.has(m.status))
-
-  // Spotlight: the three biggest games of the coming days — big clubs first, then model strength
-  const spotlight = useMemo(() => {
-    if (favMode) return []
-    const soon = Date.now() + 4 * 86400000
-    return upcoming
-      .filter(m => new Date(m.utcDate).getTime() <= soon)
-      .map(m => {
-        const fh = fame(m.homeTeam)
-        const fa = fame(m.awayTeam)
-        // the biggest club decides, the opponent adds a little; model strength only breaks ties
-        const f = Math.max(fh, fa) + 0.4 * Math.min(fh, fa)
-        const s = m.prediction?.factors ? (m.prediction.factors.homeAttack + m.prediction.factors.awayAttack) / 20 : 0
-        return { m, s: f + s }
-      })
-      .sort((a, b) => b.s - a.s)
-      .slice(0, 3)
-      .map(x => x.m)
-  }, [upcoming, favMode])
-  const spotlightIds = useMemo(() => new Set(spotlight.map(m => m.id)), [spotlight])
-
-  // Day lists never repeat a Spotlight match
-  const grouped = useMemo(() => {
-    const groups = new Map<number, APIMatch[]>()
-    upcoming
-      .filter(m => !spotlightIds.has(m.id))
-      .forEach(m => {
-        const k = dayKey(m.utcDate)
-        groups.set(k, [...(groups.get(k) || []), m])
-      })
-    return Array.from(groups.entries()).sort((a, b) => a[0] - b[0])
-  }, [upcoming, spotlightIds])
-
-  const side = {
-    leagues: competitions.map(c => ({
-      code: c.code, name: c.name, short: leagueShortName(c.name), logo: c.emblem || null, country: footballCountry(c),
-      count: matches.filter(m => m.competition.code === c.code).length,
-      fav: { kind: 'league' as const, ref: c.code, code: c.code, name: c.name, img: c.emblem || null }
-    })),
-    selected: league,
-    onSelect: setLeague,
-    pinned: (() => {
-      const mine = favList.filter(f => f.kind === 'league').map(f => f.code || f.ref).filter(c => competitions.some(x => x.code === c))
-      return mine.length ? mine : DEFAULT_PINNED.filter(c => competitions.some(x => x.code === c))
-    })(),
-    teams: favList.filter(f => f.kind === 'team').map(f => ({ key: f.ref, name: f.name, logo: f.img || null, to: f.ids?.[0] ? `/team/${f.ids[0]}?${new URLSearchParams({ n: f.name }).toString()}` : '/favorites' })),
-    total: matches.length,
-    favCount: favList.length ? favCount : null,
-    addTeamTo: '/favorites'
-  }
-
-  return (
-    <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 py-6 lg:py-8 ${league === 'ALL' ? '2xl:max-w-[1760px]' : ''}`}>
-      <div className={`grid grid-cols-1 gap-6 lg:gap-8 items-start ${league === 'ALL' ? 'lg:grid-cols-[250px_1fr] 2xl:grid-cols-[250px_1fr_340px]' : favMode ? 'lg:grid-cols-[250px_1fr]' : 'lg:grid-cols-[250px_1fr] xl:grid-cols-[250px_1fr_320px]'}`}>
-        {/* ---------- Sidebar ---------- */}
-        <aside className="hidden lg:flex lg:sticky lg:top-20 flex-col gap-6 lg:max-h-[calc(100vh-6.5rem)]">
-          {/* Live */}
-          <section className="card p-4 shrink-0">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="font-display font-bold text-ink flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full ${live.length ? 'bg-live animate-pulseDot' : 'bg-faint'}`} />
-                {tt("Live")}</h2>
-              <span className="num text-xs text-faint">{live.length}</span>
-            </div>
-            {live.length === 0 ? (
-              <p className="text-xs text-faint">{tt("No matches in play right now.")}</p>
-            ) : liveOther ? (
-              <>
-                <p className="text-[11px] text-faint mb-2">{tt("Nothing in play in this league. Live elsewhere:")}</p>
-                <ul className="space-y-1 max-h-60 overflow-y-auto">
-                  {live.map(m => (
-                    <li key={m.id}>
-                      <LiveRow match={m} />
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : (
-              <ul className="space-y-1 max-h-60 overflow-y-auto">
-                {live.map(m => (
-                  <li key={m.id}>
-                    <LiveRow match={m} />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          {/* Leagues: pinned, my teams, international, countries (Flashscore style) */}
-          <LeagueSidebar {...side} />
-
-          {/* Latest results (medium screens; wide screens get the full column on the right) */}
-          {league === 'ALL' && (
-            <section className="card p-3 hidden lg:block 2xl:hidden shrink-0">
-              <RecentResults limit={6} compact />
-            </section>
-          )}
-        </aside>
-
-        {/* ---------- Main ---------- */}
-        <div className="min-w-0">
-          <MobileLeagueBar side={side} liveCount={live.length} live={live.map(m => <LiveRow key={m.id} match={m} />)} />
-          <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
-            <div>
-              <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-ink">
-                {league === 'ALL' ? tt("Matches") : favMode ? tt("My favorites") : competitions.find(c => c.code === league)?.name || tt("Matches")}
-              </h1>
-              <p className="mt-1 text-sm text-muted">
-                {tt("{0} fixtures in the next {1} days", { 0: upcoming.length, 1: days })}{league !== 'ALL' && !favMode && (
-                  <Link to={`/league/${league}`} className="ml-3 font-bold text-accent">
-                    {tt("League page →")}</Link>
-                )}
-              </p>
-            </div>
-            <div className="seg">
-              {DAY_OPTIONS.map(d => (
-                <button key={d} onClick={() => setDays(d)} className={`seg-btn ${days === d ? 'seg-btn-active' : ''}`}>
-                  {d}d
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {loading && (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="card h-44 animate-pulse bg-surface2/60" />
-              ))}
-            </div>
-          )}
-
-          {error && <div className="card p-5 border-loss/40 text-loss">{tt("Failed to load matches:")}{' '}{error}</div>}
-
-          {!loading && !error && upcoming.length === 0 && (
-            favMode && !favList.length ? (
-              <div className="card p-10 text-center space-y-3">
-                <p className="text-ink font-semibold">{tt("You have no favorites yet.")}</p>
-                <p className="text-sm text-muted max-w-md mx-auto">
-                  {tt("Tap the star next to a league here, or on any team, league or player page. Their games then show up in this list.")}</p>
-                <Link to="/favorites" className="inline-block text-sm font-bold text-accent">{tt("Manage favorites →")}</Link>
-              </div>
-            ) : (
-              <div className="card p-12 text-center text-muted">{favMode ? tt("None of your favorites play in this period.") : tt("No matches for this selection.")}</div>
-            )
-          )}
-
-          {/* Your favorites: pinned on top of the full list */}
-          {!loading && favUpcoming.length > 0 && (
-            <section className="mb-8">
-              <SectionTitle label={tt("Your favorites")} sub={tt("their next games")} />
-              <div className="card overflow-hidden border-accent/25 divide-y divide-line/50">
-                {favUpcoming.map(m => (
-                  <MatchRow key={m.id} match={m} showComp showDay />
-                ))}
-              </div>
-              <button type="button" onClick={() => setLeague('FAV')} className="mt-2 text-xs font-bold text-accent">
-                {tt("Show only my favorites →")}</button>
-            </section>
-          )}
-
-          {/* Spotlight: the biggest games, same compact rows */}
-          {!loading && spotlight.length > 0 && (
-            <section className="mb-8">
-              <SectionTitle label={tt("Spotlight")} sub={tt("the biggest games of the coming days")} />
-              <div className="card overflow-hidden border-accent/25 divide-y divide-line/50">
-                {spotlight.map(m => (
-                  <MatchRow key={m.id} match={m} showComp showDay />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* By day, then by competition: one thin row per game */}
-          {!loading &&
-            grouped.map(([ts, dayMatches]) => (
-              <section key={ts} className="mb-6">
-                <SectionTitle label={dayLabel(ts)} count={dayMatches.length} sticky />
-                <div className="space-y-2">
-                  {byCompetition(dayMatches).map(([comp, list]) => (
-                    <div key={comp.code} className="card overflow-hidden">
-                      <LeagueBar country={footballCountry(comp)} name={leagueShortName(comp.name)} logo={comp.emblem} to={`/league/${comp.code}`} count={list.length} />
-                      <div className="divide-y divide-line/40">
-                        {list.map(m => (
-                          <MatchRow key={m.id} match={m} />
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ))}
-        </div>
-
-        {/* ---------- League panel ---------- */}
-        {league !== 'ALL' && !favMode && <LeaguePanel code={league} />}
-
-        {/* ---------- Latest results (wide screens) ---------- */}
-        {league === 'ALL' && (
-          <aside className="hidden 2xl:block 2xl:sticky 2xl:top-20">
-            <section className="card p-3 max-h-[calc(100vh-6.5rem)] overflow-y-auto">
-              <RecentResults limit={40} />
-            </section>
-          </aside>
-        )}
-      </div>
-    </div>
-  )
+  return <Games a={footballGames} />
 }
 
 /* ---------- league panel: table, scorers, assists ---------- */
@@ -424,7 +112,7 @@ interface Scorer {
   playedMatches?: number | null
 }
 
-function LeaguePanel({ code }: { code: string }) {
+export function LeaguePanel({ code }: { code: string }) {
   const [tables, setTables] = useState<{ type: string; group?: string | null; table: StandingRow[] }[]>([])
   const [scorers, setScorers] = useState<Scorer[]>([])
   const [tab, setTab] = useState<'table' | 'scorers' | 'assists' | 'results'>('table')
@@ -571,27 +259,6 @@ export function SectionTitle({
       {count !== undefined && <span className="num text-xs text-faint">{count} {tt("matches")}</span>}
       {sub && <span className="text-xs text-faint">{sub}</span>}
     </div>
-  )
-}
-
-function LiveRow({ match }: { match: APIMatch }) {
-  const ft = match.score?.fullTime
-  return (
-    <Link to={`/match/${match.id}`} state={{ match: match }} className="block rounded-xl px-2 py-2 hover:bg-surface2 transition-colors">
-      <div className="flex items-center justify-between text-[10px] text-faint mb-1">
-        <span className="truncate">{match.competition.name}</span>
-        <span className="font-bold text-live tracking-wider">{match.status === 'PAUSED' ? tt("HT") : tt("LIVE")}</span>
-      </div>
-      {[match.homeTeam, match.awayTeam].map((t, i) => (
-        <div key={t.id} className="flex items-center justify-between gap-2 py-0.5">
-          <span className="flex items-center gap-2 min-w-0">
-            <Crest team={t} size={18} />
-            <span className="text-sm font-medium text-ink truncate">{t.shortName || t.name}</span>
-          </span>
-          <span className="num text-sm font-bold text-ink">{i === 0 ? ft?.home ?? 0 : ft?.away ?? 0}</span>
-        </div>
-      ))}
-    </Link>
   )
 }
 
