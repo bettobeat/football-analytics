@@ -782,10 +782,12 @@ async function withStatsAndLineups(raw: any) {
   const ko = new Date(raw.fixture?.date).getTime();
   const started = !['TBD', 'NS', 'PST', 'CANC'].includes(st);
   const live = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE'].includes(st);
+  // fix162: the provider fills statistics a few minutes into a game; until 3 h after kick-off nothing is kept for 30 min
+  const recent = Number.isFinite(ko) && Date.now() - ko < 3 * 3600 * 1000;
   const out = { ...raw };
   if (started && !(raw.statistics && raw.statistics.length)) {
     try {
-      const j = await cached(`stats:${fid}`, live ? 45 * 1000 : 30 * 60 * 1000, () => afGet('/fixtures/statistics', { fixture: fid }));
+      const j = await cached(`stats:${fid}`, live || recent ? 45 * 1000 : 30 * 60 * 1000, () => afGet('/fixtures/statistics', { fixture: fid }));
       if (j?.response?.length) out.statistics = j.response;
     } catch (e: any) {
       logger.warn(`AF statistics ${fid}: ${e.message}`);
@@ -840,6 +842,9 @@ export async function getAfMatchDetails(matchId: number) {
 
 const FD_TO_AF_LEAGUE: Record<string, number> = { CL: 2 };
 const fdToAf = new Map<number, number | null>(); // FD match id → AF fixture id (null = not found)
+/** fix162: when a "not found" was stored (it is retried after 20 min); home/away swapped at API-Football */
+const fdToAfMissAt = new Map<number, number>();
+const fdToAfSwap = new Set<number>();
 
 function nameKey(s: string) {
   return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ')
@@ -870,7 +875,11 @@ export function fdTwinOf(kickoff: string, homeName: string, awayName: string): n
 
 /** API-Football fixture id for a Football-Data.org match, or null. */
 async function afFixtureForFd(match: any): Promise<number | null> {
-  if (fdToAf.has(match.id)) return fdToAf.get(match.id)!;
+  if (fdToAf.has(match.id)) {
+    const v = fdToAf.get(match.id)!;
+    if (v !== null || Date.now() - (fdToAfMissAt.get(match.id) || 0) < 20 * 60 * 1000) return v;
+    fdToAf.delete(match.id); // fix162: try again
+  }
   const day = String(match.utcDate || '').slice(0, 10);
   if (!day) return null;
   const d = new Date(day + 'T00:00:00Z').getTime();
@@ -889,6 +898,8 @@ async function afFixtureForFd(match: any): Promise<number | null> {
       if (r) found = r.fixture_id;
     }
   }
+  // fix162: a fixture from our table must be this game (teams + kick-off), else look it up again below
+  if (found && !(await sameGame(found, match))) { logger.warn(`AF fixture ${found} is not FD ${match.id} (${match.homeTeam?.name} – ${match.awayTeam?.name}): looking again`); found = null; }
   // cups (Champions League): that day's fixtures of the competition, matched by team names
   const leagueId = FD_TO_AF_LEAGUE[match.competition?.code];
   if (!found && leagueId) {
@@ -913,18 +924,53 @@ async function afFixtureForFd(match: any): Promise<number | null> {
       const j = await cached(`alldate:${day}`, 3 * 3600 * 1000, () => afGet('/fixtures', { date: day }));
       const ko = new Date(match.utcDate).getTime();
       const hits = (j.response || []).filter((x: any) =>
-        Math.abs(new Date(x.fixture?.date).getTime() - ko) <= 20 * 60000 &&
+        Math.abs(new Date(x.fixture?.date).getTime() - ko) <= 2 * 3600 * 1000 && // fix162: ±2 h (moved kick-offs)
         (sameTeam(x.teams?.home?.name, match.homeTeam?.name) || sameTeam(x.teams?.home?.name, match.homeTeam?.shortName || '')) &&
         (sameTeam(x.teams?.away?.name, match.awayTeam?.name) || sameTeam(x.teams?.away?.name, match.awayTeam?.shortName || ''))
       );
       if (hits.length === 1) found = hits[0].fixture.id;
+      // fix162: home and away swapped at API-Football (rare, neutral or moved games): same names the other way round
+      if (!found) {
+        const sw = (j.response || []).filter((x: any) =>
+          Math.abs(new Date(x.fixture?.date).getTime() - ko) <= 2 * 3600 * 1000 &&
+          (sameTeam(x.teams?.home?.name, match.awayTeam?.name) || sameTeam(x.teams?.home?.name, match.awayTeam?.shortName || '')) &&
+          (sameTeam(x.teams?.away?.name, match.homeTeam?.name) || sameTeam(x.teams?.away?.name, match.homeTeam?.shortName || ''))
+        );
+        if (sw.length === 1) { found = sw[0].fixture.id; fdToAfSwap.add(match.id); }
+      }
     } catch (e: any) {
       logger.warn(`AF date lookup for FD ${match.id}: ${e.message}`);
       return null;
     }
   }
   fdToAf.set(match.id, found);
+  if (found === null) { fdToAfMissAt.set(match.id, Date.now()); logger.info(`AF fixture for FD ${match.id} (${match.competition?.code} ${match.homeTeam?.name} – ${match.awayTeam?.name}, ${match.utcDate}): not found`); }
   return found;
+}
+
+/** fix162: the API-Football fixture is this FD game: both teams (either way round) and kick-off within 2 h. */
+async function sameGame(fid: number, match: any): Promise<boolean> {
+  try {
+    const x = await cached(`fixture:${fid}`, 60 * 1000, async () => (await afGet('/fixtures', { id: fid })).response?.[0] || null);
+    if (!x) return false;
+    const near = Math.abs(new Date(x.fixture?.date).getTime() - new Date(match.utcDate).getTime()) <= 2 * 3600 * 1000;
+    const is = (a: string, t: any) => sameTeam(a, t?.name) || sameTeam(a, t?.shortName || '');
+    const straight = is(x.teams?.home?.name, match.homeTeam) && is(x.teams?.away?.name, match.awayTeam);
+    const swapped = is(x.teams?.home?.name, match.awayTeam) && is(x.teams?.away?.name, match.homeTeam);
+    if (swapped && !straight) fdToAfSwap.add(match.id);
+    return near && (straight || swapped);
+  } catch { return true; } // the API failed: keep the table's answer
+}
+
+/** fix162: one log line per live match: which AF fixture we read and how many statistics it had. */
+const liveStatsLogged = new Map<number, number>();
+function logLiveStats(match: any, fid: number, raw: any, n: number) {
+  const prev = liveStatsLogged.get(match.id);
+  // once, and once more when the statistics first arrive
+  if (prev !== undefined && (prev > 0 || n === 0)) return;
+  liveStatsLogged.set(match.id, n);
+  if (liveStatsLogged.size > 500) liveStatsLogged.clear();
+  logger.info(`live stats: FD ${match.id} (${match.homeTeam?.name} – ${match.awayTeam?.name}) -> AF ${fid} (${raw?.teams?.home?.name} – ${raw?.teams?.away?.name}, ${raw?.fixture?.status?.short} ${raw?.fixture?.status?.elapsed ?? ''}'${fdToAfSwap.has(match.id) ? ', home/away swapped' : ''}), ${n} stats`);
 }
 
 /**
@@ -938,6 +984,7 @@ export async function syncFdLiveFromAf(fdMatches: any[]) {
     try {
       const fid = await afFixtureForFd(m);
       if (!fid) continue;
+      if (fdToAfSwap.has(m.id)) continue; // fix162: home/away the other way round at API-Football
       const raw = afLiveRaw.get(fid);
       if (raw) { reportLive(m.id, 'af', toFdMatch(raw), afLiveAt); continue; }
       if (afRemaining() < 200) continue;
@@ -967,10 +1014,12 @@ export async function afExtrasForFd(match: any): Promise<{ home: any; away: any;
     return j.response?.[0] || null;
   });
   if (!raw) return null;
-  reportLive(match.id, 'af', toFdMatch(raw)); // one live score everywhere (liveScores.ts)
+  const swapped = fdToAfSwap.has(match.id);
+  if (!swapped) reportLive(match.id, 'af', toFdMatch(raw)); // one live score everywhere (liveScores.ts); a swapped fixture's score would be the wrong way round
   const m = toFdMatchFull(await withStatsAndLineups(raw));
   const pick = (t: any) => ({ statistics: t.statistics || null, formation: t.formation || null, lineup: t.lineup || [], bench: t.bench || [], coach: t.coach || null });
-  return { home: pick(m.homeTeam), away: pick(m.awayTeam), minute: m.minute ?? null };
+  if (live) logLiveStats(match, fid, raw, Object.keys(m.homeTeam?.statistics || {}).length);
+  return swapped ? { home: pick(m.awayTeam), away: pick(m.homeTeam), minute: m.minute ?? null } : { home: pick(m.homeTeam), away: pick(m.awayTeam), minute: m.minute ?? null };
 }
 
 

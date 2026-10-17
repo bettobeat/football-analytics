@@ -796,6 +796,9 @@ function MatchDetail() {
                 <Section title={tt("Live stats")} note={m.minute ? tt("{0}'{1} · updates every minute", { 0: m.minute, 1: m.injuryTime ? `+${m.injuryTime}` : '' }) : tt("updates every minute")}>
                   {statKeys.length > 0 && homeStats && awayStats ? (
                     <StatsPanel home={home} away={away} hs={homeStats} as={awayStats} keys={statKeys} />
+                  ) : (m.minute ?? 0) < 20 ? (
+                    // fix162: the provider fills statistics a few minutes into the game; "doesn't publish" only after 20'
+                    <p className="text-sm text-muted">{tt("Live statistics usually appear a few minutes into the game. This page checks again every minute.")}</p>
                   ) : (
                     <p className="text-sm text-muted">
                       {tt("Our data provider doesn’t publish live statistics for this match (common for friendlies and some smaller competitions). Score, cards, goals and substitutions still update live.")}</p>
