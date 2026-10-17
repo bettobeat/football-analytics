@@ -14,7 +14,8 @@ export interface HPick { words: string; tag?: string | null; pct: number | null;
 
 export type HPred =
   | { kind: 'full'; cells: HCell[]; pick: HPick | null }
-  | { kind: 'locked'; pick?: HPick | null }
+  /** heads = the cells a locked row draws blurred (fix160: football 1 · X · 2, winner sports 1 · 2) */
+  | { kind: 'locked'; pick?: HPick | null; heads?: string[] }
   | { kind: 'none' }
 
 export interface HGame {

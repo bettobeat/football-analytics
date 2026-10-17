@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { t as tt, LOCALE } from '../../lib/i18n'
 import { useReveal, justRevealed } from '../../lib/reveal'
+import { useAuth } from '../../lib/auth'
 import CountUp from '../CountUp'
 import { DcHelp } from '../DcPick'
 import { Crest, Lock } from '../SportHome/parts'
@@ -42,10 +43,44 @@ export function PredBlock({ pred, roll = false }: { pred: Extract<HPred, { kind:
   )
 }
 
+/**
+ * fix160: the same block with the numbers hidden — covered by "guess first" (the real cells blurred, an eye control
+ * under them) or locked for the plan (placeholder cells, a lock and the pick in words when it is free to see).
+ * Never a bare button: every row of every sport keeps the fix127 shape.
+ */
+function HiddenBlock({ heads, onReveal, pick }: { heads: string[]; onReveal?: () => void; pick?: string | null }) {
+  return (
+    <span className="inline-flex flex-col items-end gap-1">
+      <span className="flex items-center gap-1" aria-hidden>
+        {heads.map(h => (
+          <span key={h} className="w-9 h-7 rounded-md grid place-items-center leading-none border border-transparent bg-surface2/40 text-faint">
+            <span className="text-[8px] font-bold">{h}</span>
+            <span className="num text-[11px] font-bold blur-[3px] select-none">00</span>
+          </span>
+        ))}
+      </span>
+      {onReveal ? (
+        <button type="button" onClick={e => { e.preventDefault(); e.stopPropagation(); onReveal() }}
+          className="inline-flex items-center gap-1 text-[10px] leading-none font-bold text-accent hover:underline whitespace-nowrap">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>
+          {tt("Reveal")}
+        </button>
+      ) : (
+        <span className="flex items-center gap-1 text-[10px] leading-none whitespace-nowrap text-faint">
+          <Lock />
+          {pick ? <><span>{tt("Our pick")}</span><span aria-hidden>·</span><span className="font-bold text-ink">{pick}</span></> : <span>{tt("Locked")}</span>}
+        </span>
+      )}
+    </span>
+  )
+}
+
 export default function GameRow({ g, showComp = false, showDay = false }: { g: SGame; showComp?: boolean; showDay?: boolean }) {
   const isLive = g.state === 'live', done = g.state === 'done'
   const p = g.pred
-  const { hidden: covered, reveal } = useReveal(g.reveal?.id, g.reveal?.status, p.kind === 'full' && !!g.reveal)
+  const { access } = useAuth()
+  // fix160: admins always see the numbers in lists; members with "guess first" get the blurred block + Reveal
+  const { hidden: covered, reveal } = useReveal(g.reveal?.id, g.reveal?.status, p.kind === 'full' && !!g.reveal && access !== 'admin')
   const roll = g.reveal ? justRevealed(g.reveal.id) : false
   const full = p.kind === 'full' && !covered ? p : null
   const onSide = (k: 'H' | 'A') => !!full?.cells.find(c => c.key === k)?.on
@@ -102,12 +137,8 @@ export default function GameRow({ g, showComp = false, showDay = false }: { g: S
       </div>
 
       <div className="flex-shrink-0 flex items-center justify-end gap-1.5 min-w-[84px] sm:min-w-[150px]">
-        {covered ? (
-          <button type="button" onClick={e => { e.preventDefault(); e.stopPropagation(); reveal() }}
-            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[11px] font-bold bg-accent/10 text-accent border border-accent/30 hover:bg-accent/15">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>
-            {tt("Reveal")}
-          </button>
+        {covered && p.kind === 'full' ? (
+          <HiddenBlock heads={p.cells.map(c => c.head)} onReveal={reveal} />
         ) : full ? (
           <span className="flex items-center gap-1">
             <PredBlock pred={full} roll={roll} />
@@ -126,7 +157,7 @@ export default function GameRow({ g, showComp = false, showDay = false }: { g: S
             )}
           </span>
         ) : p.kind === 'locked' ? (
-          <span className="inline-flex items-center gap-1.5 text-xs text-faint"><Lock /> {p.pick ? <span className="font-semibold text-ink/85 whitespace-nowrap">{p.pick.words}</span> : tt("Locked")}</span>
+          <HiddenBlock heads={p.heads || ['1', '2']} pick={p.pick?.words || null} />
         ) : (
           <span className="text-xs text-faint">–</span>
         )}

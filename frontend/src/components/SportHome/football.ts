@@ -79,7 +79,7 @@ export function toGame(m: Match): HGame {
       ],
       pick: dc ? { words: dcLabel(dc.code, shortTeam(m.homeTeam), shortTeam(m.awayTeam)), pct: dc.pct, strong: dc.strong, help: true } : null
     }
-  } else if (p) pred = { kind: 'locked' }
+  } else if (p) pred = { kind: 'locked', heads: ['1', 'X', '2'] } // fix160: drawn blurred, like the open block
   return {
     id: m.id, href: `/match/${m.id}`, linkState: { match: m }, reveal: { id: m.id, status: m.status }, kickoff: m.utcDate,
     competition: { name: m.competition.name, emblem: m.competition.emblem || null },

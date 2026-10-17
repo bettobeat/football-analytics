@@ -177,6 +177,8 @@ export default function Games({ a }: { a: GamesAdapter }) {
               </div>
             </section>
           ))}
+          {/* fix160: phones and tablets get Latest results under the games (the side column is desktop only) */}
+          {!panel && !d.loading && <section className="lg:hidden mt-8"><ResultsCard r={d.results} /></section>}
         </div>
 
         {panel}

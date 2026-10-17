@@ -9,7 +9,8 @@ import type { HCell, HPick, HPred, HRecordRow, HSpecialItem } from './types'
 /** Two cells (1 · 2) with the picked side highlighted, and "Our pick · {team} · %". `strongAt` = the sport's strong %. */
 export function winnerPred(p: { locked?: boolean; pHome?: number | null; pAway?: number | null; pick?: 'H' | 'A' | null } | null | undefined, home: string, away: string, strongAt: number): HPred {
   if (!p) return { kind: 'none' }
-  if (p.locked || typeof p.pHome !== 'number') return { kind: 'locked' }
+  // fix160: a locked row still draws the 1 · 2 block (blurred); the pick in words when the server gives it (basketball)
+  if (p.locked || typeof p.pHome !== 'number') return { kind: 'locked', heads: ['1', '2'], pick: p.pick ? { words: p.pick === 'H' ? home : away, pct: null, strong: false } : null }
   const pAway = typeof p.pAway === 'number' ? p.pAway : 100 - p.pHome
   const pick = p.pick || (p.pHome >= pAway ? 'H' : 'A')
   const pct = Math.round(pick === 'H' ? p.pHome : pAway)
