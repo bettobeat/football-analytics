@@ -9,7 +9,7 @@ import { bbTeamAnalysis, bbTeamAnalysisTeaser } from './bbTeamAnalysis';
 import { BB_LEAGUES, bbGet } from './basketball';
 import { bbExtraFlag } from './bbLeagueConfig';
 import { fillOvertime, openCheck, resultFix } from './bbResults';
-import { predictGame, teamRating, isPreseason, leagueRatings, BB_MODEL, leagueModelInfo, normCdf, normInv, BB_TRIAL, teamTalent, V3 } from './bbModel';
+import { predictGameCached, teamRating, isPreseason, leagueRatings, BB_MODEL, leagueModelInfo, normCdf, normInv, BB_TRIAL, teamTalent, V3 } from './bbModel';
 import { nbaInjuries } from './bbInjuries';
 import { bbSquad, nbaBoxExtras } from './bbPlayers';
 import { personKey } from './bdl';
@@ -34,6 +34,12 @@ type Row = any;
 
 /** One game in list / page shape. `full` = percentages and numbers; otherwise nothing about the prediction (fix123). */
 function shape(g: Row, full: boolean) {
+  return present(core(g), full);
+}
+
+/** fix159: the part of a game that is the same for every visitor (cached by the lists for 30 s). */
+type Core = ReturnType<typeof core>;
+function core(g: Row) {
   const status = g.status || 'NS';
   const state = DONE.includes(status) ? 'done' : LIVE.includes(status) ? 'live' : OFF.includes(status) ? 'off' : 'upcoming';
   // finished games: the prediction saved before tip-off; otherwise the latest one
@@ -43,7 +49,7 @@ function shape(g: Row, full: boolean) {
     pred = { pHome: saved.p_home, margin: saved.margin, total: saved.total, home: saved.home_pts, away: saved.away_pts, savedAt: saved.made_at };
   }
   if (state === 'upcoming') {
-    const p = predictGame(g);
+    const p = predictGameCached(g); // fix159: cached, filled by the bb tick
     if (p) pred = { pHome: p.pHome, margin: p.margin, total: p.total, home: p.home, away: p.away, savedAt: saved?.made_at || null, b2bHome: p.b2bHome, b2bAway: p.b2bAway, restHome: p.restHome, restAway: p.restAway, injHome: p.injHome || 0, injAway: p.injAway || 0 };
   }
   const pick = pred ? (pred.pHome >= 0.5 ? 'H' : 'A') : null;
@@ -51,6 +57,15 @@ function shape(g: Row, full: boolean) {
   const q = fillOvertime((() => { try { return JSON.parse(g.quarters || 'null'); } catch { return null; } })(), g.hs, g.as_);
   const check = state === 'done' ? openCheck(g.game_id) : null;
   const fixed = state === 'done' ? resultFix(g.game_id) : null;
+  // live win chance + projected final score while the game is on (services/bbLive.ts), from the tip-off prediction
+  const live = state === 'live' && pred ? bbLiveFor({ ...g, quarters: q }, { pHome: pred.pHome, home: pred.home, away: pred.away }) : null;
+  return { g, status, state, pred, pick, q, check, fixed, live };
+}
+
+/** fix159: a cached core as one visitor sees it (`full` = the prediction's numbers). */
+function present(c: Core, full: boolean) {
+  const { g, status, state, pred, pick, q, check, fixed } = c;
+  const r1 = (x: number) => Math.round(x * 10) / 10;
   const showAll = full || state === 'done';
   return {
     id: g.game_id,
@@ -80,8 +95,7 @@ function shape(g: Row, full: boolean) {
         spread: r1(pred.margin), total: r1(pred.total), score: { home: Math.round(pred.home), away: Math.round(pred.away) },
         restHome: pred.restHome ?? null, restAway: pred.restAway ?? null, b2bHome: !!pred.b2bHome, b2bAway: !!pred.b2bAway,
         injHome: pred.injHome || 0, injAway: pred.injAway || 0,
-        // live win chance + projected final score while the game is on (services/bbLive.ts), from the tip-off prediction
-        live: state === 'live' ? bbLiveFor({ ...g, quarters: q }, { pHome: pred.pHome, home: pred.home, away: pred.away }) : null
+        live: c.live
       } : {}),
       hit: state === 'done' && g.hs !== null && !check ? (pick === 'H') === (g.hs > g.as_) : null
     } : null
@@ -92,10 +106,33 @@ const SELECT = `SELECT * FROM bb_games`;
 
 /** Games from `from` to `to` (ISO), optionally one league; newest first for results, soonest first otherwise. */
 /** `full`: true / false for every game, or per game (fix144: a free pick spent on one game opens that game). */
+/*
+ * fix159: game lists are cached for 30 s per range (the same for every visitor); what depends on the visitor (the
+ * prediction's numbers) is applied last. Games that are live, or should have started, are re-read on every request so
+ * live scores stay current.
+ */
+const listCache = new Map<string, { at: number; cores: Core[] }>();
+const LIST_TTL = 30 * 1000;
 export function bbGames(opts: { from: string; to: string; code?: string; results?: boolean; limit?: number }, full: boolean | ((gameId: number) => boolean)) {
-  const rows = db.prepare(`${SELECT} WHERE kickoff BETWEEN ? AND ? ${opts.code ? 'AND code = ?' : ''}
-    ORDER BY kickoff ${opts.results ? 'DESC' : 'ASC'} LIMIT ?`).all(...[opts.from, opts.to, ...(opts.code ? [opts.code] : []), opts.limit || 300]) as Row[];
-  return rows.map(r => shape(r, typeof full === 'function' ? full(r.game_id) : full));
+  const key = `${opts.from}|${opts.to}|${opts.code || ''}|${opts.results ? 1 : 0}|${opts.limit || 300}`;
+  let c = listCache.get(key);
+  if (!c || Date.now() - c.at > LIST_TTL) {
+    const rows = db.prepare(`${SELECT} WHERE kickoff BETWEEN ? AND ? ${opts.code ? 'AND code = ?' : ''}
+      ORDER BY kickoff ${opts.results ? 'DESC' : 'ASC'} LIMIT ?`).all(...[opts.from, opts.to, ...(opts.code ? [opts.code] : []), opts.limit || 300]) as Row[];
+    c = { at: Date.now(), cores: rows.map(core) };
+    listCache.set(key, c);
+    for (const [k, v] of listCache) if (Date.now() - v.at > LIST_TTL) listCache.delete(k);
+    if (listCache.size > 200) listCache.delete(listCache.keys().next().value as string);
+  } else {
+    // live merge: re-read the games that are on (or due to start) — a handful, by primary key
+    const now = new Date().toISOString();
+    const idx = c.cores.map((x, i) => (x.state === 'live' || (x.state === 'upcoming' && x.g.kickoff <= now) ? i : -1)).filter(i => i >= 0);
+    if (idx.length) {
+      const fresh = new Map((db.prepare(`${SELECT} WHERE game_id IN (${idx.map(() => '?').join(',')})`).all(...idx.map(i => c!.cores[i].g.game_id)) as Row[]).map(r => [r.game_id, r]));
+      for (const i of idx) { const r = fresh.get(c.cores[i].g.game_id); if (r && r.updated_at !== c.cores[i].g.updated_at) c.cores[i] = core(r); }
+    }
+  }
+  return c.cores.map(x => present(x, typeof full === 'function' ? full(x.g.game_id) : full));
 }
 
 /* ---------- game page ---------- */
@@ -274,7 +311,7 @@ export async function bbGame(id: number, full: boolean) {
   const g: Row = db.prepare(`${SELECT} WHERE game_id = ?`).get(id);
   if (!g) return null;
   const game = shape(g, full);
-  const pr = game.state === 'upcoming' ? predictGame(g) : null;
+  const pr = game.state === 'upcoming' ? predictGameCached(g) : null;
   const h2h = db.prepare(`${SELECT} WHERE ((home_id = ? AND away_id = ?) OR (home_id = ? AND away_id = ?)) AND status IN ('FT','AOT') AND kickoff < ? ORDER BY kickoff DESC LIMIT 10`)
     .all(g.home_id, g.away_id, g.away_id, g.home_id, g.kickoff) as Row[];
   // box score (finished or live games)

@@ -831,7 +831,10 @@ export function nflTeamRecord(teamId: number, season: number) {
 
 /** Team page model tiles (fix139): Elo and its rank, the starting QB and his value, points for / against ratings. */
 export function nflTeamModel(teamId: number) {
-  const L = current(leagueOfTeam(teamId));
+  const league = leagueOfTeam(teamId);
+  // fix159: a team page never runs the first full replay itself (seconds); it starts the yielding one and shows no tiles
+  if (!lives.has(league)) { void rebuildLive(league).catch(e => logger.warn(`${MODEL_OF[league]} replay: ${e.message}`)); return null; }
+  const L = current(league);
   if (!L) return null;
   const E = L.engine;
   const season = Math.max(...L.games.filter(g => g.done).map(g => g.season));

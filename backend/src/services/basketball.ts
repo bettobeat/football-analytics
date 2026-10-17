@@ -10,7 +10,7 @@
  */
 import logger from '../utils/logger';
 import { db } from '../db';
-import { buildAll, recordBbPredictions } from './bbModel';
+import { buildAll, recordBbPredictions, bumpBbInjuries } from './bbModel';
 import { timed, every } from './perf';
 import { refreshNbaInjuries, nbaInjuryStatus } from './bbInjuries';
 import { applyResultFixes, checkResults } from './bbResults';
@@ -70,6 +70,9 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_bb_games_code_kickoff ON bb_games(code, kickoff);
+  -- fix159: a team's previous game (rest days) in one index step instead of a table scan
+  CREATE INDEX IF NOT EXISTS idx_bb_games_home_kickoff ON bb_games(home_id, kickoff);
+  CREATE INDEX IF NOT EXISTS idx_bb_games_away_kickoff ON bb_games(away_id, kickoff);
   CREATE TABLE IF NOT EXISTS bb_sync (key TEXT PRIMARY KEY, done_at TEXT NOT NULL, info TEXT);
   CREATE TABLE IF NOT EXISTS bb_team_stats (
     game_id INTEGER NOT NULL, team_id INTEGER NOT NULL,
@@ -375,6 +378,7 @@ export function startBasketballScheduler() {
   const injuries = async () => {
     const n = await refreshNbaInjuries();
     // NBA only: the injury list touches NBA games, re-saving all 18 leagues every 15 min cost ~1.6 s (fix122)
+    if (n !== null) bumpBbInjuries(); // fix159: cached NBA predictions are recomputed with the new list
     if (n !== null) { try { await timed('bb predictions', () => recordBbPredictions(['NBA'])); } catch (e: any) { logger.warn(`Basketball predictions: ${e.message}`); } }
   };
   setTimeout(() => void injuries(), 30 * 1000).unref();

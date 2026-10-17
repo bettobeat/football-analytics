@@ -202,9 +202,9 @@ class FootballDataAPI {
         if (this.onWindowRefreshed) {
           try {
             const withP: any[] = [];
-            for (let i = 0; i < matches.length; i += 40) {
+            for (let i = 0; i < matches.length; i += 25) { // fix159: 25 = the per-turn recompute budget (predCache.ts)
               setJob('predict main-league window');
-              withP.push(...this.withPredictions(matches.slice(i, i + 40)));
+              withP.push(...this.withPredictions(matches.slice(i, i + 25)));
               setJob(null);
               await yieldLoop();
             }

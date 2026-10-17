@@ -319,6 +319,7 @@ export function teamTalent(teamId: number, lastN = 1) {
 }
 /** One pass over every finished game with a box score: pre-game talent of both teams, then the players' values update. */
 export function buildTalent() {
+  talentVer++; // fix159: cached predictions use the talent numbers
   const games = db.prepare(`SELECT game_id, home_id, away_id FROM bb_games WHERE status IN ('FT','AOT') AND hs IS NOT NULL ORDER BY kickoff, game_id`).all() as any[];
   const lines = db.prepare(`SELECT game_id, team_id, player_id, minutes, pts, fgm, fga, ftm, fta, reb, ast FROM bb_player_stats WHERE minutes > 0`).all() as any[];
   const byGame = new Map<number, any[]>();
@@ -437,6 +438,7 @@ export function buildLeague(code: string, opts: { retune?: boolean } = {}): Leag
     builtAt: new Date().toISOString()
   };
   models.set(code, model);
+  modelStamp.set(code, (modelStamp.get(code) || 0) + 1); // fix159: cached predictions of this league are out of date
   wfByCode.set(code, wf);
   return model;
 }
@@ -517,25 +519,59 @@ async function buildChanged(codes: string[], force: boolean): Promise<{ built: s
 }
 
 /** Prediction for an upcoming (or live) game from the latest ratings; rest from the schedule before it. */
-export function predictGame(g: Game): Pred | null {
+/*
+ * fix159: predictions are cached per game. A list of 400 games used to recompute every upcoming one on every request
+ * (~2 s of blocked event loop per /api/basketball/games while games were live). The cache key holds everything a
+ * prediction depends on: the league's model build, kick-off, status, both teams' previous games (rest), the player
+ * talent build and (NBA) the injury list version — so a game is recomputed only when one of them changed. The bb tick
+ * fills it (recordBbPredictions); requests only read it.
+ */
+const modelStamp = new Map<string, number>();
+let talentVer = 0, injuryVer = 0;
+/** The NBA injury list changed (bbInjuries refresh): NBA predictions are recomputed on next use. */
+export const bumpBbInjuries = () => { injuryVer++; };
+const predCache = new Map<number, { key: string; pred: Pred | null }>();
+let prevStmt: { home: any; away: any } | null = null;
+/** Kick-off (ms) of a team's previous game on the schedule before this one (it may not be in the finished list yet). */
+function prevKickoff(teamId: number, g: Game): number | undefined {
+  prevStmt ||= {
+    home: db.prepare(`SELECT kickoff FROM bb_games WHERE home_id = ? AND kickoff < ? AND game_id != ? ORDER BY kickoff DESC LIMIT 1`),
+    away: db.prepare(`SELECT kickoff FROM bb_games WHERE away_id = ? AND kickoff < ? AND game_id != ? ORDER BY kickoff DESC LIMIT 1`)
+  };
+  const before = new Date(new Date(g.kickoff).getTime() - 3 * 3600 * 1000).toISOString();
+  const h: any = prevStmt.home.get(teamId, before, g.game_id), a: any = prevStmt.away.get(teamId, before, g.game_id);
+  const k = h?.kickoff && (!a?.kickoff || h.kickoff > a.kickoff) ? h.kickoff : a?.kickoff;
+  return k ? new Date(k).getTime() : undefined;
+}
+
+/** predictGame through the cache (same result; recomputed only when an input changed). */
+export function predictGameCached(g: Game): Pred | null {
+  if (!models.has(g.code)) return null;
+  const ph = prevKickoff(g.home_id, g), pa = prevKickoff(g.away_id, g);
+  const key = `${modelStamp.get(g.code) || 0}|${talentVer}|${g.code === 'NBA' ? injuryVer : 0}|${g.kickoff}|${g.status || ''}|${g.home_id}|${g.away_id}|${ph || 0}|${pa || 0}`;
+  const c = predCache.get(g.game_id);
+  if (c && c.key === key) return c.pred;
+  const pred = predictGame(g, ph, pa);
+  predCache.set(g.game_id, { key, pred });
+  if (predCache.size > 20000) predCache.delete(predCache.keys().next().value as number);
+  return pred;
+}
+
+export function predictGame(g: Game, phIn?: number, paIn?: number): Pred | null {
   const m = models.get(g.code);
   if (!m) return null;
   const L = m.L;
-  // rest: the team's previous game on the schedule (it may not be in the finished list yet)
-  const prev = (id: number) => {
-    const r: any = db.prepare(`SELECT MAX(kickoff) AS k FROM bb_games WHERE (home_id = ? OR away_id = ?) AND kickoff < ? AND game_id != ?`)
-      .get(id, id, new Date(new Date(g.kickoff).getTime() - 3 * 3600 * 1000).toISOString(), g.game_id);
-    return r?.k ? new Date(r.k).getTime() : undefined;
-  };
-  const saved = new Map(L.lastPlayed);
-  const ph = prev(g.home_id), pa = prev(g.away_id);
+  // rest: the team's previous game on the schedule
+  const ph = phIn !== undefined ? phIn : prevKickoff(g.home_id, g), pa = paIn !== undefined ? paIn : prevKickoff(g.away_id, g);
+  // only these two entries change for the prediction (fix159: no copy of the whole map)
+  const oldH = L.lastPlayed.get(g.home_id), oldA = L.lastPlayed.get(g.away_id);
   if (ph) L.lastPlayed.set(g.home_id, ph); else L.lastPlayed.delete(g.home_id);
   if (pa) L.lastPlayed.set(g.away_id, pa); else L.lastPlayed.delete(g.away_id);
   // predicting must not change the stored ratings (a new season shrinks them only for this prediction)
   const keep = [g.home_id, g.away_id].map(id => [id, L.teams.get(id) ? { ...L.teams.get(id)! } : null] as const);
   const pr = L.predict(g);
   for (const [id, t] of keep) { if (t) L.teams.set(id, t); else L.teams.delete(id); }
-  L.lastPlayed = saved;
+  for (const [id, old] of [[g.home_id, oldH], [g.away_id, oldA]] as [number, number | undefined][]) { if (old !== undefined) L.lastPlayed.set(id, old); else L.lastPlayed.delete(id); }
   const v3 = (x: Pred, sigma: number): Pred => {
     const th = teamTalent(g.home_id, g.code === 'NBA' ? 5 : 1), ta = teamTalent(g.away_id, g.code === 'NBA' ? 5 : 1);
     const shift = talentShift(th, ta);
@@ -692,7 +728,7 @@ export function recordBbPredictions(codes?: string[]) {
   db.exec('BEGIN');
   try {
     for (const g of rows) {
-      const pr = predictGame(g);
+      const pr = predictGameCached(g); // fix159: also fills the cache the game lists read
       if (!pr) continue;
       up.run(g.game_id, g.code, g.kickoff, BB_MODEL, pr.pHome, pr.margin, pr.total, pr.home, pr.away, now.toISOString());
       n++;

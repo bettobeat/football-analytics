@@ -8,14 +8,30 @@ import { mixLive } from './featureModel';
 const TTL_MS = 2 * 60 * 1000;
 const cache = new Map<string, { at: number; value: any }>();
 
+/*
+ * fix159: when the 2 minutes run out for a whole list at once, one request used to recompute every match (seconds of
+ * blocked event loop). Now at most RECOMPUTE_PER_TURN expired matches are recomputed per event-loop turn; the others
+ * keep their last value until a later request (or the model rebuild, which clears the cache). New matches are always
+ * computed.
+ */
+const RECOMPUTE_PER_TURN = 25;
+let turnBudget = RECOMPUTE_PER_TURN, resetQueued = false;
+function takeBudget(): boolean {
+  if (!resetQueued) { resetQueued = true; setImmediate(() => { turnBudget = RECOMPUTE_PER_TURN; resetQueued = false; }); }
+  if (turnBudget <= 0) return false;
+  turnBudget--;
+  return true;
+}
+
 export function cachedPredictions<T>(match: any, compute: () => T): T {
   const key = `${match?.id}|${match?.status}|${match?.utcDate}|${match?.homeTeam?.id}|${match?.awayTeam?.id}`;
   const hit = cache.get(key);
   const now = Date.now();
   if (hit && now - hit.at < TTL_MS) return hit.value as T;
+  if (hit && !takeBudget()) return hit.value as T; // stale for a little longer
   const value = compute();
   cache.set(key, { at: now, value });
-  if (cache.size > 5000) for (const [k, v] of cache) if (now - v.at >= TTL_MS) cache.delete(k);
+  if (cache.size > 5000) for (const [k, v] of cache) if (now - v.at >= 4 * TTL_MS) cache.delete(k);
   return value;
 }
 export const clearPredictionCache = () => cache.clear();

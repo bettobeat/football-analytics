@@ -2252,7 +2252,7 @@ app.get('/api/basketball/config', (req, res) => {
 });
 app.get('/api/basketball/games', (req, res) => {
   try {
-    const now = Date.now();
+    const now = Math.floor(Date.now() / 30000) * 30000; // fix159: 30-s steps, so the list cache (bbSite) is reused
     const day = 86400000;
     const code = typeof req.query.league === 'string' && /^[A-Z]{2,4}$/.test(req.query.league) ? req.query.league : undefined;
     const results = req.query.results === '1';

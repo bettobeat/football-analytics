@@ -21,6 +21,7 @@ import crypto from 'crypto';
 import os from 'os';
 import { pipeline } from 'stream/promises';
 import { once } from 'events';
+import { Worker } from 'worker_threads';
 import { db } from '../db';
 import logger from '../utils/logger';
 import { sendMail } from './email';
@@ -179,6 +180,30 @@ export function diskStatus() {
 }
 const GB = (n: number) => `${(n / 1e9).toFixed(2)} GB`;
 
+/*
+ * fix159: VACUUM INTO of the ~1 GB database took 5.5 s on the main thread (17 Oct 02:40:05 UTC, "Event loop blocked
+ * 5562 ms"). It now runs in a worker thread on its own read-only connection; WAL mode gives it a consistent snapshot
+ * while the site keeps writing.
+ */
+function vacuumInto(src: string, dst: string): Promise<void> {
+  const code = `
+    const { workerData, parentPort } = require('worker_threads');
+    const { DatabaseSync } = require('node:sqlite');
+    const db = new DatabaseSync(workerData.src, { readOnly: true });
+    try {
+      db.exec('PRAGMA busy_timeout = 15000');
+      db.exec("VACUUM INTO '" + workerData.dst.replace(/'/g, "''") + "'");
+    } finally { db.close(); }
+    parentPort.postMessage('ok');`;
+  return new Promise((resolve, reject) => {
+    const w = new Worker(code, { eval: true, workerData: { src, dst } });
+    let done = false;
+    w.once('message', () => { done = true; resolve(); });
+    w.once('error', e => { done = true; reject(e); });
+    w.once('exit', c => { if (!done) reject(new Error(`backup worker stopped (${c})`)); });
+  });
+}
+
 async function doBackup(trigger: string) {
   const t0 = Date.now();
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
@@ -199,12 +224,12 @@ async function doBackup(trigger: string) {
   let dbBytes = 0, gzBytes = 0, remote: string | null = null, local = false;
   try {
     if (!work) throw new Error(`Not enough disk space for a copy: the database is ${GB(d.dbBytes)}, the volume has ${d.volume ? GB(d.volume.free) : '?'} free, the temp disk ${d.temp ? GB(d.temp.free) : '?'}.`);
-    fs.rmSync(raw, { force: true });
-    db.exec(`VACUUM INTO '${raw.replace(/'/g, "''")}'`); // consistent snapshot, the live file is not touched
+    await fs.promises.rm(raw, { force: true });
+    await vacuumInto(DB_FILE, raw); // consistent snapshot in a worker thread, the live file is not touched
     dbBytes = fs.statSync(raw).size;
     await pipeline(fs.createReadStream(raw), zlib.createGzip({ level: 6 }), fs.createWriteStream(gzWork));
     gzBytes = fs.statSync(gzWork).size;
-    fs.rmSync(raw, { force: true });
+    await fs.promises.rm(raw, { force: true });
     if (remoteReady()) {
       try {
         await upload(gzWork, name);
@@ -215,11 +240,12 @@ async function doBackup(trigger: string) {
       }
     } else remote = remoteConfigured() ? 'skipped: BACKUP_KEY not set' : 'not set up';
     // server copy on the volume only while it keeps a safe margin (old copies are removed first)
-    for (const old of localList().slice(LOCAL_KEEP - 1)) fs.rmSync(path.join(BACKUP_DIR, old.name), { force: true });
+    for (const old of localList().slice(LOCAL_KEEP - 1)) await fs.promises.rm(path.join(BACKUP_DIR, old.name), { force: true });
     const vol = diskOf(DATA_DIR);
-    if (work === BACKUP_DIR) { fs.renameSync(gzWork, gzKeep); local = true; }
-    else if (vol && vol.free > gzBytes + 1e9) { fs.copyFileSync(gzWork, gzKeep); local = true; }
-    fs.rmSync(gzWork, { force: true });
+    // fix159: async copy (copyFileSync of the 120 MB file blocked the event loop ~2 s)
+    if (work === BACKUP_DIR) { await fs.promises.rename(gzWork, gzKeep); local = true; }
+    else if (vol && vol.free > gzBytes + 1e9) { await fs.promises.copyFile(gzWork, gzKeep); local = true; }
+    await fs.promises.rm(gzWork, { force: true });
     const ok = remote === 'uploaded' || (local && !remote.startsWith('failed'));
     const note = local ? remote : `${remote}; server copy skipped (volume nearly full)`;
     db.prepare('INSERT INTO backup_log (at, ok, trigger, file, db_bytes, gz_bytes, ms, remote, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
