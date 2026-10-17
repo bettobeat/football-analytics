@@ -2,7 +2,7 @@ import express from 'express';
 import { joinWaitlist, waitlistStats } from './services/waitlist';
 import { slimForList, clearPredictionCache } from './services/predCache';
 import { withLiveScore, liveBookStatus } from './services/liveScores';
-import { perfStatus, setJob, yieldLoop } from './services/perf';
+import { perfStatus, setJob, timed, yieldLoop } from './services/perf';
 import cors from 'cors';
 import helmet from 'helmet';
 import { Server } from 'socket.io';
@@ -2832,29 +2832,32 @@ setInterval(async () => {
   if (livePolling) return; // a slow poll (API waits) must not overlap the next one
   livePolling = true;
   try {
-    setJob('live poll');
+    // fix155: each part under its own label, so /api/perf names any freeze (football live / AF live / live push)
     const fresh = liveTick++ % 3 === 0;
-    const fdRaw: any[] = fresh ? await footballDataAPI.getLiveMatches(true) : footballDataAPI.liveSnapshot();
-    const afLiveNow = await pollAfLive(fdRaw.length > 0);
-    await syncFdLiveFromAf(fdRaw);
-    const fdLive = footballDataAPI.withPredictions(fdRaw.map(withLiveScore));
-    recordPredictions(fdLive); // locks anything that has kicked off (Football-Data.org matches only)
-    const live = [...fdLive, ...afWithPredictions(afLiveNow)].map(slimForList);
-    const ts = new Date().toISOString();
-    io.to('full').emit('matches:live', { data: live, timestamp: ts });
-    io.to('teaser').emit('matches:live', teaseDeep({ data: live, timestamp: ts }));
-    // Per-match rooms get their own update (score / status / minute)
-    for (const m of live) {
-      io.to(`match:${m.id}:full`).emit('match:live', m);
-      io.to(`match:${m.id}:teaser`).emit('match:live', teaseDeep({ m }).m);
-    }
+    const fdRaw: any[] = await timed('football live', () => (fresh ? footballDataAPI.getLiveMatches(true) : footballDataAPI.liveSnapshot()));
+    const afLiveNow = await timed('AF live', () => pollAfLive(fdRaw.length > 0));
+    await timed('AF live', () => syncFdLiveFromAf(fdRaw));
+    const live = await timed('football live', () => {
+      const fdLive = footballDataAPI.withPredictions(fdRaw.map(withLiveScore));
+      recordPredictions(fdLive); // locks anything that has kicked off (Football-Data.org matches only)
+      return [...fdLive, ...afWithPredictions(afLiveNow)].map(slimForList);
+    });
+    await timed('live push', () => {
+      const ts = new Date().toISOString();
+      io.to('full').emit('matches:live', { data: live, timestamp: ts });
+      io.to('teaser').emit('matches:live', teaseDeep({ data: live, timestamp: ts }));
+      // Per-match rooms get their own update (score / status / minute)
+      for (const m of live) {
+        io.to(`match:${m.id}:full`).emit('match:live', m);
+        io.to(`match:${m.id}:teaser`).emit('match:live', teaseDeep({ m }).m);
+      }
+    });
     markFresh('live', `${live.length} live`);
   } catch (error: any) {
     logger.warn('Live poll failed', { message: error.message });
     markFailed('live', error);
   } finally {
     livePolling = false;
-    setJob(null);
   }
 }, LIVE_POLL_MS);
 

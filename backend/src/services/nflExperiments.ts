@@ -181,9 +181,12 @@ async function earlyRatings(games: G[], k: number, from = 0): Promise<Map<number
 
 const STATS = ['ypp', 'fdpp', 'to', 'sackRate', 'third', 'rz'] as const;
 const STAT_PEN = [6, 6, 30, 10, 8, 10]; // turnovers heavily shrunk
+/** fix155: parsed once, then only the rows added since (">=": a replaced last row can keep its rowid). */
+const effCache = { row: 0, map: new Map<string, (number | null)[]>() };
 function loadEffBox(): Map<string, (number | null)[]> {
-  const out = new Map<string, (number | null)[]>();
-  for (const r of db.prepare(`SELECT s.game_id, s.team_id, s.json FROM nfl_team_stats s JOIN nfl_games g ON g.game_id = s.game_id WHERE g.league = 1`).all() as any[]) {
+  const out = effCache.map;
+  for (const r of db.prepare(`SELECT s.rowid AS rid, s.game_id, s.team_id, s.json FROM nfl_team_stats s JOIN nfl_games g ON g.game_id = s.game_id WHERE g.league = 1 AND s.rowid >= ? ORDER BY s.rowid`).all(effCache.row) as any[]) {
+    effCache.row = Math.max(effCache.row, r.rid);
     let j: any = null; try { j = JSON.parse(r.json); } catch { j = null; }
     const b = teamBox(j);
     if (!b) continue;
@@ -499,9 +502,12 @@ export function v2Prob(g: G, pr: Pre): number | null {
   return predV(c.live.model, xOf(c.live.variant, g, { p: pr.p, gap: pr.eloH - pr.eloA, home: g.neutral ? 0 : 1, total: pr.total }, c.F, c.live.c2, c.live.c6));
 }
 let refreshing = false;
-/** Rebuild the live features (games from 10 days ago on) when a game has finished since, at most every 30 min. */
+let checkedAt = 0;
+/** Rebuild the live features (games from 10 days ago on) when a game has finished since, at most every 30 min.
+ *  fix155: v2Prob asks for every game it has no features for — the check itself runs at most every 5 s. */
 export async function refreshV2(): Promise<void> {
-  if (refreshing) return;
+  if (refreshing || Date.now() - checkedAt < 5000) return;
+  checkedAt = Date.now();
   const live = M.readSync('model|v2');
   if (!live) { v2Cache = null; return; }
   const games = M.loadGames(1);

@@ -578,15 +578,19 @@ export function startNflScheduler() {
   setTimeout(() => void tick(), 10 * 60 * 1000).unref(); // after the football and basketball start-up work
   setInterval(() => void tick(), 30 * 60 * 1000).unref();
   // live scores every 30 s while a game is on; box score right after full time
+  // fix155: only the last 8 hours are looked at; a game that ended adds its result to the ratings (no replay) and the
+  // coming predictions are re-saved asynchronously (yields between games), under their own label for /api/perf
   setInterval(() => void timed('nfl live', async () => {
-    const before = new Set((db.prepare(`SELECT game_id FROM nfl_games WHERE status IN ('FT','AOT') AND COALESCE(stats, 0) = 0`).all() as any[]).map(r => r.game_id));
+    const since = () => new Date(Date.now() - 8 * 3600 * 1000).toISOString();
+    const recentEnded = () => (db.prepare(`SELECT game_id FROM nfl_games WHERE status IN ('FT','AOT') AND COALESCE(stats, 0) = 0 AND kickoff > ?`).all(since()) as any[]).map(r => r.game_id as number);
+    const before = new Set(recentEnded());
     await nflLiveTick();
-    const ended = (db.prepare(`SELECT game_id FROM nfl_games WHERE status IN ('FT','AOT') AND COALESCE(stats, 0) = 0 AND kickoff > ?`).all(new Date(Date.now() - 8 * 3600 * 1000).toISOString()) as any[])
-      .filter(r => !before.has(r.game_id));
-    for (const g of ended) if (budget() >= 2) { try { await syncBoxScore(g.game_id); } catch (e: any) { logger.warn(`NFL box score ${g.game_id}: ${e.message}`); } }
-    // fix139: a game ended → ratings replay on next use; refresh the saved predictions of the coming games
-    if (ended.length) { const { saveNflPredictions } = await import('./nflModel'); await yieldLoop(); saveNflPredictions(); }
+    const ended = recentEnded().filter(id => !before.has(id));
+    for (const id of ended) if (budget() >= 2) { try { await syncBoxScore(id); } catch (e: any) { logger.warn(`NFL box score ${id}: ${e.message}`); } await yieldLoop(); }
+    if (ended.length) { const { saveNflPredictions } = await import('./nflModel'); await yieldLoop(); await timed('nfl live predictions', () => saveNflPredictions()); }
   }).catch(e => logger.warn(`NFL live: ${e.message}`)), 30 * 1000).unref();
+  // fix155: the live ratings are built in the background (with yields) instead of on the first request
+  setTimeout(() => void (async () => { const { rebuildLive } = await import('./nflModel'); for (const lg of LEAGUES) await timed('nfl ratings', () => rebuildLive(lg)); })().catch(e => logger.warn(`NFL ratings: ${e.message}`)), 60 * 1000).unref();
 }
 
 export const nflClientStatus = () => ({ callsThisBoot, remainingDay, limitDay, lastError });

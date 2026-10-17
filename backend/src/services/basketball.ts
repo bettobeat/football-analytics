@@ -370,7 +370,7 @@ export function startBasketballScheduler() {
   })(), 15 * 1000).unref();
   setTimeout(() => void bbTick(), 45 * 1000).unref();
   setInterval(() => void bbTick(), 30 * 60 * 1000).unref();
-  setInterval(() => void liveTick(), 60 * 1000).unref();
+  setInterval(() => void timed('bb live', () => liveTick()), 60 * 1000).unref(); // fix155: named in /api/perf
   // NBA injury list every 15 minutes; the coming games' predictions are re-saved with it (until tip-off)
   const injuries = async () => {
     const n = await refreshNbaInjuries();

@@ -67,3 +67,6 @@ Backtest: admins only. NFL itself stays admin-only until `NFL_PUBLIC=1`.
 2. `passersOf` finds the Passing group (field names guessed: comp/att, yards, touch downs, interceptions, sacks "n-yds").
    If `data.withQb` in the report is 0, the names differ → fix the regexes.
 3. The report: keep D only if it beats A+B; does qbW tune above 0? (On synthetic data the QB effect was small.)
+
+## Live ratings (fix156, 17 Oct 2026)
+The live engine is built once (background, with yields) and each newly finished game is added on top with  +  — the same steps a full replay does, so the numbers match (checked: 0.000 points). A full replay still runs in the background every 6 h, after a re-tune, and when a result arrives more than 12 h out of order. Games and box-score lines are cached ( signature, rowid-incremental  / ).

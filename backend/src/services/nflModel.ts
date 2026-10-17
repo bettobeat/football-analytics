@@ -73,7 +73,27 @@ function collegeNeutral(stage: string | null, venue: string | null, stadium: str
   return /post|bowl/i.test(stage || '');
 }
 
+/**
+ * fix155: the games of a league are read once and kept; a cheap signature (number of games, finished games, their
+ * scores, latest kick-off) is checked at most every 2 s, and the list is re-read when it changed or after 10 min.
+ * Live score changes don't touch the signature (only finished games count), so a live tick never re-reads them.
+ */
+const gamesCache = new Map<LeagueId, { sig: string; checked: number; loaded: number; games: G[] }>();
+function gamesSig(league: LeagueId): string {
+  const r = db.prepare(`SELECT COUNT(*) AS n, SUM(CASE WHEN status IN ('FT','AOT') AND home_pts IS NOT NULL AND away_pts IS NOT NULL THEN 1 ELSE 0 END) AS d,
+    SUM(CASE WHEN status IN ('FT','AOT') THEN COALESCE(home_pts, 0) * 1000 + COALESCE(away_pts, 0) ELSE 0 END) AS s, MAX(kickoff) AS k FROM nfl_games WHERE league = ?`).get(league) as any;
+  return `${r?.n}|${r?.d}|${r?.s}|${r?.k}`;
+}
 function loadGames(league: LeagueId = 1): G[] {
+  const c = gamesCache.get(league), now = Date.now();
+  if (c && now - c.checked < 2000) return c.games;
+  const sig = gamesSig(league);
+  if (c && c.sig === sig && now - c.loaded < 10 * 60 * 1000) { c.checked = now; return c.games; }
+  const games = readGames(league);
+  gamesCache.set(league, { sig, checked: now, loaded: now, games });
+  return games;
+}
+function readGames(league: LeagueId = 1): G[] {
   const stadium = league === 2 ? new Map((db.prepare(`SELECT team_id, stadium FROM nfl_teams WHERE league = 2`).all() as any[]).map(r => [r.team_id, r.stadium as string | null])) : null;
   return (db.prepare(`SELECT game_id, season, week, stage, kickoff, home_id, away_id, home_name, away_name, status, home_pts, away_pts, venue FROM nfl_games
       WHERE league = ? ${HIDE_OTHER} AND kickoff IS NOT NULL AND home_id IS NOT NULL AND away_id IS NOT NULL AND (stage IS NULL OR stage NOT LIKE 'Pre%') ORDER BY kickoff, game_id`).all(league) as any[])
@@ -118,21 +138,24 @@ export function passersOf(json: string | null): Passer[] {
   return out.sort((a, b) => b.att - a.att);
 }
 
-const ctxCache = new Map<LeagueId, { n: number; ctx: Ctx }>();
-/** QB lines and efficiency numbers of every game with a box score (parsed once; rebuilt when new box scores arrive). */
+/**
+ * QB lines and efficiency numbers of every game with a box score. fix155: parsed once; afterwards only the rows added
+ * (or replaced) since the last read are parsed, into the same maps the engine already holds. Team levels (college) are
+ * re-read when they change.
+ */
+const ctxCache = new Map<LeagueId, { ctx: Ctx; pRow: number; tRow: number; teamsSig: string }>();
 function loadCtx(league: LeagueId = 1): Ctx {
-  const n = (db.prepare(`SELECT COUNT(*) AS n FROM nfl_team_stats`).get() as any)?.n + (db.prepare(`SELECT COUNT(*) AS n FROM nfl_player_stats`).get() as any)?.n
-    + (db.prepare(`SELECT COUNT(*) AS n FROM nfl_teams WHERE league = ?`).get(league) as any)?.n
-    + 1000 * ((db.prepare(`SELECT COUNT(*) AS n FROM nfl_teams WHERE league = ? AND level = 'FBS'`).get(league) as any)?.n || 0)
-    + 1e6 * ((db.prepare(`SELECT COUNT(*) AS n FROM nfl_teams WHERE league = ? AND level = 'FCS'`).get(league) as any)?.n || 0);
-  const c = ctxCache.get(league);
-  if (c && c.n === n) return c.ctx;
-  const qb = new Map<string, Passer[]>(), box = new Map<string, Box>();
-  for (const r of db.prepare(`SELECT s.game_id, s.team_id, s.json FROM nfl_player_stats s JOIN nfl_games g ON g.game_id = s.game_id WHERE g.league = ?`).all(league) as any[]) {
+  let c = ctxCache.get(league);
+  if (!c) { c = { ctx: { qb: new Map(), box: new Map(), teams: new Map() }, pRow: 0, tRow: 0, teamsSig: '' }; ctxCache.set(league, c); }
+  const { qb, box, teams } = c.ctx;
+  // ">=": a replaced last row can get the same rowid back (re-reading one row is harmless)
+  for (const r of db.prepare(`SELECT s.rowid AS rid, s.game_id, s.team_id, s.json FROM nfl_player_stats s JOIN nfl_games g ON g.game_id = s.game_id WHERE g.league = ? AND s.rowid >= ? ORDER BY s.rowid`).all(league, c.pRow) as any[]) {
+    c.pRow = Math.max(c.pRow, r.rid);
     const list = passersOf(r.json);
     if (list.length) qb.set(`${r.game_id}|${r.team_id}`, list);
   }
-  for (const r of db.prepare(`SELECT s.game_id, s.team_id, s.json FROM nfl_team_stats s JOIN nfl_games g ON g.game_id = s.game_id WHERE g.league = ?`).all(league) as any[]) {
+  for (const r of db.prepare(`SELECT s.rowid AS rid, s.game_id, s.team_id, s.json FROM nfl_team_stats s JOIN nfl_games g ON g.game_id = s.game_id WHERE g.league = ? AND s.rowid >= ? ORDER BY s.rowid`).all(league, c.tRow) as any[]) {
+    c.tRow = Math.max(c.tRow, r.rid);
     let s: any = null;
     try { s = JSON.parse(r.json); } catch { s = null; }
     const b = teamBox(s);
@@ -142,11 +165,16 @@ function loadCtx(league: LeagueId = 1): Ctx {
     });
   }
   // college teams: conference (regression target) and level (FCS start lower); a team we have no row for = FCS
-  const teams = new Map<number, { conf: string | null; fcs: boolean; fbs: boolean; isFcs?: boolean }>();
-  if (league === 2) for (const r of db.prepare(`SELECT team_id, conference, level FROM nfl_teams WHERE league = 2`).all() as any[]) teams.set(r.team_id, { conf: r.conference || null, fcs: r.level !== 'FBS', fbs: r.level === 'FBS', isFcs: r.level === 'FCS' });
-  const ctx = { qb, box, teams };
-  ctxCache.set(league, { n, ctx });
-  return ctx;
+  if (league === 2) {
+    const t = db.prepare(`SELECT COUNT(*) AS n, SUM(level = 'FBS') AS fbs, SUM(level = 'FCS') AS fcs, COUNT(conference) AS conf FROM nfl_teams WHERE league = 2`).get() as any;
+    const sig = `${t?.n}|${t?.fbs}|${t?.fcs}|${t?.conf}`;
+    if (sig !== c.teamsSig) {
+      c.teamsSig = sig;
+      teams.clear();
+      for (const r of db.prepare(`SELECT team_id, conference, level FROM nfl_teams WHERE league = 2`).all() as any[]) teams.set(r.team_id, { conf: r.conference || null, fcs: r.level !== 'FBS', fbs: r.level === 'FBS', isFcs: r.level === 'FCS' });
+    }
+  }
+  return c.ctx;
 }
 
 /* ---------- the engine ---------- */
@@ -533,7 +561,11 @@ export async function buildReport(league: LeagueId = 1): Promise<Report> {
 
 /* ---------- live model ---------- */
 
-interface Live { params: Params; blend: Blend | null; trained: number[]; builtAt: string; finishedCount: number; engine: Engine; games: G[] }
+interface Live {
+  params: Params; blend: Blend | null; trained: number[]; builtAt: string; finishedCount: number; engine: Engine; games: G[]
+  /** fix155: games already in the ratings, the latest kick-off among them, games by id */
+  applied: Set<number>; lastT: number; byId: Map<number, G>; outOfOrder: boolean
+}
 const lives = new Map<LeagueId, Live>();
 const sync = (key: string, v: unknown) => db.prepare(`INSERT OR REPLACE INTO nfl_sync (key, at, detail) VALUES (?, ?, ?)`).run(key, new Date().toISOString(), JSON.stringify(v));
 const readSync = (key: string): any => { const r = db.prepare(`SELECT detail FROM nfl_sync WHERE key = ?`).get(key) as any; try { return r ? JSON.parse(r.detail) : null; } catch { return null; } };
@@ -562,23 +594,76 @@ export async function retrain(league: LeagueId = 1): Promise<Report> {
   }
   sync(`${KEY_OF[league]}|params`, { params, blend, trained, at: new Date().toISOString() });
   sync(`${KEY_OF[league]}|report`, report);
-  lives.delete(league); // replayed on next use
+  await rebuildLive(league); // fix155: replayed now, with yields (not on the next request)
   return report;
 }
 
-/** The current ratings: replayed from the stored settings when a game has finished since the last replay (cheap). */
-function current(league: LeagueId = 1): Live | null {
+/** A full replay of the stored settings over every finished game (sync: first use only). */
+function buildLive(league: LeagueId): Live | null {
   const games = loadGames(league);
-  const finishedCount = games.filter(g => g.done).length;
-  const live = lives.get(league);
-  if (live && live.finishedCount === finishedCount && Date.now() - Date.parse(live.builtAt) < 30 * 60 * 1000) return live;
-  if (finishedCount < 50) return null;
+  const done = games.filter(g => g.done);
+  if (done.length < 50) return null;
   const stored = readSync(`${KEY_OF[league]}|params`);
   const params: Params = { ...DEFAULTS[league], ...(stored?.params || {}) };
-  const ctx = loadCtx(league);
-  const engine = run(games, params, ctx, undefined, undefined, league);
-  const L: Live = { params, blend: stored?.blend || null, trained: stored?.trained || [], builtAt: new Date().toISOString(), finishedCount, engine, games };
-  lives.set(league, L);
+  const engine = run(games, params, loadCtx(league), undefined, undefined, league);
+  return liveOf(games, params, stored, engine);
+}
+function liveOf(games: G[], params: Params, stored: any, engine: Engine): Live {
+  const done = games.filter(g => g.done);
+  return { params, blend: stored?.blend || null, trained: stored?.trained || [], builtAt: new Date().toISOString(), finishedCount: done.length, engine, games,
+    applied: new Set(done.map(g => g.id)), lastT: done.reduce((m, g) => Math.max(m, g.t), 0), byId: new Map(games.map(g => [g.id, g])), outOfOrder: false };
+}
+/** fix155: the same replay without blocking the server (yields every 150 games); the live ratings are swapped at the end. */
+const replaying = new Set<LeagueId>();
+export async function rebuildLive(league: LeagueId): Promise<void> {
+  if (replaying.has(league)) return;
+  replaying.add(league);
+  try {
+    const games = loadGames(league);
+    if (games.filter(g => g.done).length < 50) return;
+    const stored = readSync(`${KEY_OF[league]}|params`);
+    const params: Params = { ...DEFAULTS[league], ...(stored?.params || {}) };
+    const E = new Engine(params, loadCtx(league), league);
+    let i = 0;
+    for (const g of games) {
+      if (!g.done) continue;
+      E.update(E.pre(g));
+      if (++i % 150 === 0) await yieldLoop();
+    }
+    lives.set(league, liveOf(games, params, stored, E));
+  } finally { replaying.delete(league); }
+}
+/**
+ * The current ratings. fix155: built once (full replay); afterwards each newly finished game is added on top (cheap,
+ * a few ms), so a live tick never replays ten seasons. A result that arrives out of order (an earlier kick-off than
+ * games already counted) or 6 hours since the last full replay starts a background replay that yields to visitors.
+ */
+function current(league: LeagueId = 1): Live | null {
+  const games = loadGames(league);
+  const live = lives.get(league);
+  if (live && live.games === games) {
+    if (Date.now() - Date.parse(live.builtAt) > 6 * 3600 * 1000) void rebuildLive(league).catch(e => logger.warn(`${MODEL_OF[league]} replay: ${e.message}`));
+    return live;
+  }
+  if (live) {
+    const fresh = games.filter(g => g.done && !live.applied.has(g.id)).sort((x, y) => x.t - y.t || x.id - y.id);
+    if (fresh.length <= 60) {
+      if (fresh.length) loadCtx(league); // the new box scores (same maps the engine reads)
+      for (const g of fresh) {
+        live.engine.update(live.engine.pre(g));
+        live.applied.add(g.id);
+        if (g.t < live.lastT - 12 * 3600 * 1000) live.outOfOrder = true;
+        live.lastT = Math.max(live.lastT, g.t);
+      }
+      live.games = games;
+      live.byId = new Map(games.map(g => [g.id, g]));
+      live.finishedCount = live.applied.size;
+      if (live.outOfOrder || Date.now() - Date.parse(live.builtAt) > 6 * 3600 * 1000) void rebuildLive(league).catch(e => logger.warn(`${MODEL_OF[league]} replay: ${e.message}`));
+      return live;
+    }
+  }
+  const L = buildLive(league);
+  if (L) lives.set(league, L);
   return L;
 }
 const leagueOfGame = (gameId: number): LeagueId => ((db.prepare(`SELECT league FROM nfl_games WHERE game_id = ?`).get(gameId) as any)?.league === 2 ? 2 : 1);
@@ -600,7 +685,7 @@ export function predictNfl(gameId: number): NflPred | null {
   const league = leagueOfGame(gameId);
   const L = current(league);
   if (!L) return null;
-  const g = L.games.find(x => x.id === gameId);
+  const g = L.byId.get(gameId);
   if (!g || g.done) return null;
   const outs = new Set([...injuredOut(g.h), ...injuredOut(g.a)]);
   // the engine's state is "after every finished game"; a copy is not needed: pre() only reads (team() may regress a new season)
@@ -626,24 +711,30 @@ export function predictNfl(gameId: number): NflPred | null {
   };
 }
 
-/** Save / refresh the predictions of the games of the next 9 days that have not started (frozen at kick-off). */
-export function saveNflPredictions(): number {
+/**
+ * Save / refresh the predictions of the games of the next 9 days that have not started (frozen at kick-off).
+ * fix155: async — yields to visitors every 25 games, then one short write.
+ */
+export async function saveNflPredictions(): Promise<number> {
   const now = new Date();
   const rows = db.prepare(`SELECT game_id, season, kickoff FROM nfl_games WHERE kickoff > ? AND kickoff < ? AND (status IS NULL OR status = 'NS') AND (stage IS NULL OR stage NOT LIKE 'Pre%')`)
     .all(now.toISOString(), new Date(now.getTime() + 9 * DAY).toISOString()) as any[];
+  const out: { r: any; pr: NflPred }[] = [];
+  let i = 0;
+  for (const r of rows) {
+    const pr = predictNfl(r.game_id);
+    if (pr) out.push({ r, pr });
+    if (++i % 25 === 0) await yieldLoop();
+  }
   const up = db.prepare(`INSERT OR REPLACE INTO nfl_predictions (game_id, season, kickoff, model, p_home, margin, total, home_pts, away_pts, why, made_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-  let n = 0;
+  const at = new Date().toISOString();
   db.exec('BEGIN');
   try {
-    for (const r of rows) {
-      const pr = predictNfl(r.game_id);
-      if (!pr) continue;
-      up.run(r.game_id, r.season, r.kickoff, pr.model, pr.pHome / 100, pr.margin, pr.total, pr.homePts, pr.awayPts, JSON.stringify(pr.why), now.toISOString());
-      n++;
-    }
+    // a game that kicked off while we were computing keeps the prediction it had at kick-off
+    for (const { r, pr } of out) if (Date.parse(r.kickoff) > Date.now()) up.run(r.game_id, r.season, r.kickoff, pr.model, pr.pHome / 100, pr.margin, pr.total, pr.homePts, pr.awayPts, JSON.stringify(pr.why), at);
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
-  return n;
+  return out.length;
 }
 
 /** The saved prediction of a game (what was shown before kick-off), with the result once it is over. */
@@ -788,7 +879,7 @@ export async function nflModelTick(): Promise<void> {
       if (fin >= 200 && (!ex || ex.version !== exps().EXP_VERSION || retrainedNfl)) await exps().runNflExperiments();
       await exps().refreshV2();
     } catch (e: any) { logger.warn(`nfl-exp: ${e.message}`); }
-    const n = saveNflPredictions();
+    const n = await saveNflPredictions();
     if (n) logger.info(`NFL / college: ${n} predictions saved`);
   } catch (e: any) {
     logger.warn(`NFL model: ${e.message}`);
