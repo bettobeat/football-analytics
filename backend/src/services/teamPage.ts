@@ -222,22 +222,75 @@ export async function searchPlayersRemote(q: string, limit = 6) {
 }
 
 /** Site team id (+ competition code / name for Football-Data.org teams) → API-Football team id. */
+/**
+ * fix164: a Football-Data.org team id → its API-Football team, from any link the site makes (league, cup, favorites,
+ * short names, no params). Steps, cheapest first, no API-Football call:
+ *  1. the link's league group (team_map → af_teams);
+ *  2. the FD id in every league group (a cup link: PSG from the Champions League, the code CL has no group);
+ *  3. the club matching the UEFA cups use (clubElo), with every name we stored for that FD id + the link's name;
+ *  4. a name search with the usual short names (PSG, Barça, Man City, Spurs, Inter, Atleti …).
+ * A hit is kept (team_resolve) so the next open is instant; a miss is logged once per id / code / name.
+ */
+db.exec(`CREATE TABLE IF NOT EXISTS team_resolve (fd_id INTEGER PRIMARY KEY, af_id INTEGER NOT NULL, via TEXT, at TEXT NOT NULL)`);
+const TEAM_ALIASES: Record<string, string> = {
+  psg: 'paris saint germain', 'paris sg': 'paris saint germain', barca: 'barcelona', 'man city': 'manchester city', 'man united': 'manchester united',
+  'man utd': 'manchester united', spurs: 'tottenham', inter: 'inter', atleti: 'atletico madrid', 'atletico de madrid': 'atletico madrid', wolves: 'wolverhampton',
+  bayern: 'bayern munich', 'bayern munchen': 'bayern munich', 'bayern münchen': 'bayern munich', juve: 'juventus', bvb: 'borussia dortmund', 'leverkusen': 'bayer leverkusen',
+  'real': 'real madrid', 'sporting cp': 'sporting cp', 'sporting': 'sporting cp', 'benfica': 'benfica', 'porto': 'fc porto', 'ajax': 'ajax', 'psv': 'psv eindhoven'
+}
+const missLogged = new Set<string>();
+const resolveMemo = new Map<number, number>();
+/** fix164: forget the resolved ids (the link check runs fresh; also for tests) */
+export const clearTeamResolveCache = (stored = false) => { resolveMemo.clear(); if (stored) db.exec(`DELETE FROM team_resolve`); };
 export function resolveAfTeamId(rawId: number, code?: string, name?: string): number | null {
   if (rawId >= AF_OFFSET) return rawId - AF_OFFSET;
-  if (code) {
-    const g = groupForCompetition(code);
-    const fdName = g ? fdNameFor(g, rawId) : null;
-    if (g && fdName) {
-      const row: any = db.prepare(`SELECT team_id FROM af_teams WHERE grp = ? AND fd_name = ?`).get(g, fdName);
-      if (row?.team_id) return row.team_id;
+  if (!Number.isFinite(rawId) || rawId <= 0) return name ? byName([name]) : null;
+  const memo = resolveMemo.get(rawId);
+  if (memo) return memo;
+  const keep = (af: number, via: string) => {
+    resolveMemo.set(rawId, af);
+    try { db.prepare(`INSERT OR REPLACE INTO team_resolve (fd_id, af_id, via, at) VALUES (?, ?, ?, ?)`).run(rawId, af, via, new Date().toISOString()); } catch { /* read-only copy */ }
+    return af;
+  };
+  const stored: any = db.prepare(`SELECT af_id FROM team_resolve WHERE fd_id = ?`).get(rawId);
+  if (stored?.af_id) { resolveMemo.set(rawId, stored.af_id); return stored.af_id; }
+  // 1. the link's league
+  const g0 = code ? groupForCompetition(code) : null;
+  if (g0) {
+    const fdName = fdNameFor(g0, rawId);
+    if (fdName) {
+      const row: any = db.prepare(`SELECT team_id FROM af_teams WHERE grp = ? AND fd_name = ?`).get(g0, fdName);
+      if (row?.team_id) return keep(row.team_id, `group ${g0}`);
     }
   }
-  if (name) {
-    const hit = searchTeams(name, 1)[0];
-    if (hit && normalizeName(hit.name) === normalizeName(name)) return hit.id - AF_OFFSET;
-    const loose = searchTeams(name, 1)[0];
-    if (loose) return loose.id - AF_OFFSET;
+  // 2. every league group that knows this FD id
+  for (const m of db.prepare(`SELECT grp, fd_name FROM team_map WHERE team_id = ?`).all(rawId) as any[]) {
+    const row: any = db.prepare(`SELECT team_id FROM af_teams WHERE grp = ? AND fd_name = ?`).get(m.grp, m.fd_name);
+    if (row?.team_id) return keep(row.team_id, `group ${m.grp}`);
   }
+  // the names this FD id has had in our predictions (full and short), + the link's
+  const names = [...new Set([name, ...(db.prepare(`SELECT home_team AS n FROM predictions WHERE home_team_id = ? UNION SELECT away_team FROM predictions WHERE away_team_id = ?`).all(rawId, rawId) as any[]).map(r => r.n)]
+    .filter((x): x is string => !!x && String(x).trim().length > 1))];
+  // 3. the UEFA-cup club matching
+  try {
+    const { afIdForFdTeam } = require('./clubElo') as typeof import('./clubElo');
+    for (const n of names) { const id = afIdForFdTeam({ name: n }); if (id) return keep(id, `club match "${n}"`); }
+  } catch { /* club ratings not loaded */ }
+  // 4. name search with aliases
+  const hit = byName(names);
+  if (hit) return keep(hit, 'name search');
+  const key = `${rawId}|${code || ''}|${name || ''}`;
+  if (!missLogged.has(key)) { missLogged.add(key); logger.warn(`team-page unresolved id=${rawId} c=${code || '-'} n=${name || '-'}`); }
+  return null;
+}
+/** Exact name (or alias) first, then the best loose hit of the first name. */
+function byName(names: string[]): number | null {
+  const tries = names.flatMap(n => { const k = normalizeName(n); const al = TEAM_ALIASES[k] || TEAM_ALIASES[String(n).toLowerCase().trim()]; return al ? [al, n] : [n]; });
+  for (const n of tries) {
+    const hit = searchTeams(n, 3).find(h => normalizeName(h.name) === normalizeName(n));
+    if (hit) return hit.id - AF_OFFSET;
+  }
+  for (const n of tries) { const loose = searchTeams(n, 1)[0]; if (loose) return loose.id - AF_OFFSET; }
   return null;
 }
 

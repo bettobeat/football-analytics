@@ -2,6 +2,7 @@ import express from 'express';
 import { joinWaitlist, waitlistStats } from './services/waitlist';
 import { slimForList, clearPredictionCache } from './services/predCache';
 import { withLiveScore, liveBookStatus } from './services/liveScores';
+import { runLinkCheck, lastLinkCheck, linkCheckTick } from './services/linkCheck';
 import { perfStatus, setJob, timed, yieldLoop, every, track, routeLabel } from './services/perf';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -2456,6 +2457,14 @@ app.get('/api/af/odds-backfill', async (_req, res) => {
 app.get('/api/af/xg', (_req, res) => {
   res.json({ data: xgCoverage(), timestamp: new Date().toISOString() });
 });
+
+// fix164: broken team links (matches of the last and next 7 days, every sport; resolver only). ?run=1 checks now.
+app.get('/api/admin/link-check', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try { res.json({ data: req.query.run === '1' || !lastLinkCheck() ? await runLinkCheck() : lastLinkCheck(), timestamp: new Date().toISOString() }); } catch (e) { sendError(res, e, 'Link check failed'); }
+});
+every('link check', linkCheckTick, 3600 * 1000).unref();
+setTimeout(() => void linkCheckTick(), 10 * 60 * 1000).unref();
 
 // Admin: event-loop stalls and how long the heavy jobs take (why the site feels slow)
 app.get('/api/perf', (_req, res) => {

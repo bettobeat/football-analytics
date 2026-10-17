@@ -97,6 +97,7 @@ export default function Admin() {
           <VisitorsCard />
           <ModelDailyCard />
           <SiteErrorsCard />
+          <LinkCheckCard />
           <BackupsCard />
           <BbResultsCard />
           <LeaguesCard />
@@ -432,6 +433,37 @@ function ModelDailyCard() {
         ))}
         {d.days.length === 0 && <li className="py-2 text-sm text-faint">No runs yet — the first one is at 04:00 UTC.</li>}
       </ul>
+    </section>
+  )
+}
+
+/** fix164: team links that would open "We couldn't find this team" (matches of the last and next 7 days, every sport). */
+function LinkCheckCard() {
+  const [d, setD] = useState<{ at: string; ms: number; checked: Record<string, number>; failures: { sport: string; teamId: number; name: string; competition: string; link: string }[] } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const load = (run = false) => { setBusy(run); return axios.get(`${API_URL}/admin/link-check`, { params: run ? { run: 1 } : {} }).then(r => setD(r.data.data)).catch(() => undefined).finally(() => setBusy(false)) }
+  useEffect(() => { load() }, [])
+  if (!d) return null
+  const n = d.failures.length, total = Object.values(d.checked).reduce((a, b) => a + b, 0)
+  return (
+    <section className="card p-5 sm:p-6 mb-8">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+        <h2 className="font-display text-lg font-bold text-ink">Broken team links: <span className={n ? 'text-loss' : 'text-win'}>{n}</span></h2>
+        <span className="text-xs text-faint">{total} teams of the last and next 7 days · checked {new Date(d.at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · daily after the 04:00 jobs
+          <button type="button" disabled={busy} onClick={() => load(true)} className="ml-3 font-semibold text-accent hover:underline disabled:opacity-50">{busy ? 'Checking…' : 'Check now'}</button>
+        </span>
+      </div>
+      {n === 0 ? <p className="text-sm text-faint">Every team link opens a team page.</p> : (
+        <ul className="divide-y divide-line/50 text-sm max-h-80 overflow-y-auto">
+          {d.failures.map(f => (
+            <li key={`${f.sport}${f.teamId}${f.competition}`} className="py-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span className="font-semibold text-ink">{f.name}</span>
+              <span className="text-xs text-faint">{f.sport} · {f.competition} · id {f.teamId}</span>
+              <a href={f.link} target="_blank" rel="noreferrer" className="text-xs text-accent hover:underline break-all">{f.link}</a>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   )
 }

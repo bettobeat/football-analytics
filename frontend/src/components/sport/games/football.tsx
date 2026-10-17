@@ -9,6 +9,7 @@ import { footballCountry, leagueShortName } from '../../../lib/leagueCountry'
 import { toGame, toResult, mainPred, type Match } from '../../SportHome/football'
 import { LeaguePanel } from '../../../pages/Dashboard'
 import type { GamesAdapter, GamesData, SGame, SLeague } from '../types'
+import { footballTeamHref } from '../../../lib/teamLink'
 
 /** Football's adapter for the shared Matches page (fix152a): data + labels only. */
 
@@ -78,7 +79,7 @@ function useData(): GamesData {
     return {
       loading, error, games, leagues: [...leagues.values()].sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name)),
       results: { rows: results ? results.map(toResult) : null, days: 30, link: { to: '/accuracy', label: tt("How accurate is the model? →") } },
-      favTeams: favList.filter(f => f.kind === 'team').map(f => ({ key: f.ref, name: f.name, logo: f.img || null, to: f.ids?.[0] ? `/team/${f.ids[0]}?${new URLSearchParams({ n: f.name }).toString()}` : '/favorites' })),
+      favTeams: favList.filter(f => f.kind === 'team').map(f => ({ key: f.ref, name: f.name, logo: f.img || null, to: f.ids?.[0] ? footballTeamHref(f.ids[0], f.name) : '/favorites' })),
       favLeagues: favList.filter(f => f.kind === 'league').map(f => f.code || f.ref),
       hasFavorites: favList.length > 0
     }

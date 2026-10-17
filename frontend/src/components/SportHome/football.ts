@@ -7,6 +7,7 @@ import { matchFame } from '../../lib/fame'
 import { useFavorites } from '../../lib/favorites'
 import { t as tt } from '../../lib/i18n'
 import type { SportAdapter, SportHomeData, HGame, HNews, HRecordRow, HResult, HSpecialItem } from './types'
+import { footballTeamHref } from '../../lib/teamLink'
 
 /** Football's adapter for components/SportHome (fix141): the data and labels of the football home. */
 
@@ -64,7 +65,7 @@ export function toGame(m: Match): HGame {
   const p = mainPred(m)
   const live = LIVE.has(m.status)
   // football shows the short club name everywhere ("Inter", not "FC Internazionale Milano")
-  const team = (t: Team) => ({ id: t.id, name: tn(t), short: tn(t), logo: t.crest || null, tla: t.tla || null, href: `/team/${t.id}?c=${m.competition.code}&n=${encodeURIComponent(t.name)}` })
+  const team = (t: Team) => ({ id: t.id, name: tn(t), short: tn(t), logo: t.crest || null, tla: t.tla || null, href: footballTeamHref(t.id, t.name, m.competition.code) })
   let pred: HGame['pred'] = { kind: 'none' }
   if (hasPct(p)) {
     // fix120: our pick is the double chance — both of its results are highlighted

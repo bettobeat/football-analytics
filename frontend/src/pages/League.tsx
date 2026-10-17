@@ -9,6 +9,7 @@ import { isCovered, revealMatch, useRevealState } from '../lib/reveal'
 import RecentResults from '../components/RecentResults'
 import { t as tt, LOCALE } from '../lib/i18n'
 import { hubFor } from '../lib/hubs'
+import { footballTeamHref } from '../lib/teamLink'
 
 /**
  * League page: /league/<code> (football-data codes like PL, API-Football codes like AF140).
@@ -79,7 +80,7 @@ const playerHref = (s: Scorer, code: string) =>
   code.startsWith('AF') || s.player.id >= 1_000_000_000
     ? `/player/${s.player.id}`
     : `/player/find?${new URLSearchParams({ name: s.player.name, team: String(s.team.id), c: code, n: s.team.name }).toString()}`
-const teamLink = (t: Team, code: string) => `/team/${t.id}?${new URLSearchParams({ c: code, n: t.name }).toString()}`
+const teamLink = (t: Team, code: string) => footballTeamHref(t.id, t.name, code)
 
 const Card = LCard
 

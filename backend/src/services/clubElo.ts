@@ -443,6 +443,11 @@ function teamIndex() {
  * club words ("FC Bayern München" = "Bayern München", "PSV" ⊂ "PSV Eindhoven", "ŠK Slovan Bratislava" = "Slovan
  * Bratislava"), then the old fuzzy match. A word match must be unique; ties go to the club with the most games.
  */
+/** fix164: the same club matching for team pages (an FD team linked from a cup page); null while the ratings are not built. */
+export function afIdForFdTeam(t: { name?: string; shortName?: string; tla?: string }): number | null {
+  if (!ratings.size) return null;
+  return matchFdTeam(t);
+}
 function matchFdTeam(t: { name?: string; shortName?: string; tla?: string }): number | null {
   const names = [t.name, t.shortName].filter((x): x is string => !!x);
   for (const n of names) { const id = byNorm.get(normalizeName(n)); if (id) return id; }

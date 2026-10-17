@@ -14,6 +14,7 @@ import PredictionStory from '../components/PredictionStory'
 import { FavStar, nameKey as favKey } from '../lib/favorites'
 import { t as tt, LOCALE, lang } from '../lib/i18n'
 import GamePage, { HeroLogo, GameNews } from '../components/sport/game/GamePage'
+import { footballTeamHref } from '../lib/teamLink'
 
 /* ---------- types (Football-Data.org v4 shapes, loosely) ---------- */
 
@@ -961,7 +962,7 @@ function MatchDetail() {
   const side = (team: Team) => ({
     name: team.shortName || team.name,
     logo: <HeroLogo src={team.crest} />,
-    href: `/team/${team.id}?${new URLSearchParams({ ...(m.competition?.code ? { c: m.competition.code } : {}), n: team.name }).toString()}`,
+    href: footballTeamHref(team.id, team.name, m.competition?.code),
     title: tt("{0}: team page", { 0: team.name }),
     linkLabel: tt("Team page →"),
     sub: team.coach?.name || null,
