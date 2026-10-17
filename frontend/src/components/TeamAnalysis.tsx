@@ -84,7 +84,7 @@ function ScoreBar({ label, v }: { label: string; v: number | undefined }) {
       <span className="flex-1 h-2 rounded-full bg-surface2 overflow-hidden">
         <span className="block h-full rounded-full bg-accent" style={{ width: `${Math.max(4, Math.min(100, v * 10))}%` }} />
       </span>
-      <span className="w-8 text-right text-xs font-bold text-ink num">{v.toFixed(1)}</span>
+      <span className="w-8 text-right text-xs font-bold text-ink num">{Math.min(10, Math.max(0, v)).toFixed(1)}</span>
     </div>
   )
 }

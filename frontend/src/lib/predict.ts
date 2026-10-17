@@ -175,3 +175,7 @@ export function doubleChanceOf(p: { home: number; draw: number; away: number }):
   const c = [{ k: '1X' as const, v: p.home + p.draw }, { k: 'X2' as const, v: p.draw + p.away }, { k: '12' as const, v: p.home + p.away }].sort((a, b) => b.v - a.v)[0]
   return { k: c.k, pct: Math.round((100 * c.v) / tot) }
 }
+
+/** fix163: a factor score as shown (0–10). The model's value scale is open on purpose (about -2 to 13, gridModel CONV); the
+ *  page never shows more than 10 — edges and labels keep the real values. */
+export const score10 = (x: number) => Math.min(10, Math.max(0, x))

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams, useLocation } from 'react-router-dom'
 import axios from 'axios'
 import { API_URL, socket } from '../lib/socket'
-import { modelInfo, isV3, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, pickOfPrediction, doubleChance, dcLabel, shortTeam, type DC, type Prediction } from '../lib/predict'
+import { modelInfo, isV3, score10, CONFIDENCE_LABEL, MATCH_TYPE_LABEL, pickOfPrediction, doubleChance, dcLabel, shortTeam, type DC, type Prediction } from '../lib/predict'
 import OurPick from '../components/DcPick'
 import WinProbability from '../components/WinProbability'
 import { useReveal, justRevealed, hideMatch, guessFirstOn } from '../lib/reveal'
@@ -299,8 +299,8 @@ function GridBreakdown({ p, home, away }: { p: Prediction; home: Team; away: Tea
             <tr key={r.id} className="border-t border-line/40" title={r.note}>
               <td className="py-1 text-muted">{tt(r.name)}</td>
               <td className="py-1 text-right num text-faint">{r.rel}</td>
-              <td className="py-1 text-right num text-ink">{r.home}</td>
-              <td className="py-1 text-right num text-ink">{r.away}</td>
+              <td className="py-1 text-right num text-ink">{Math.round(score10(r.home) * 10) / 10}</td>
+              <td className="py-1 text-right num text-ink">{Math.round(score10(r.away) * 10) / 10}</td>
               <td className={`py-1 text-right num font-semibold ${r.edge > 0 ? 'text-home' : r.edge < 0 ? 'text-away' : 'text-faint'}`}>
                 {r.edge > 0 ? '+' : ''}{r.edge}
               </td>

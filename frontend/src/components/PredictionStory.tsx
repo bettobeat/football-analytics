@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import type { Prediction } from '../lib/predict'
+import { score10, type Prediction } from '../lib/predict'
 import { explainPrediction } from '../lib/explain'
 import { t as tt } from '../lib/i18n'
 
@@ -77,7 +77,7 @@ function Tug({ r, max, total, hn, an }: { r: Row; max: number; total: number; hn
         </span>
       </div>
       <div className="mt-1.5 flex items-center gap-2">
-        <span className={`w-9 text-right num text-xs ${side === 'H' ? 'font-bold text-ink' : 'text-muted'}`}>{fmt(r.home)}</span>
+        <span className={`w-9 text-right num text-xs ${side === 'H' ? 'font-bold text-ink' : 'text-muted'}`}>{fmt(score10(r.home))}</span>
         <div className="relative flex-1 h-2.5 rounded-full bg-surface2">
           <span className="absolute left-1/2 top-[-3px] bottom-[-3px] w-px bg-line" aria-hidden />
           {side && (
@@ -87,7 +87,7 @@ function Tug({ r, max, total, hn, an }: { r: Row; max: number; total: number; hn
             />
           )}
         </div>
-        <span className={`w-9 num text-xs ${side === 'A' ? 'font-bold text-ink' : 'text-muted'}`}>{fmt(r.away)}</span>
+        <span className={`w-9 num text-xs ${side === 'A' ? 'font-bold text-ink' : 'text-muted'}`}>{fmt(score10(r.away))}</span>
       </div>
       {note && <div className="mt-1 text-[11px] text-faint">{note}</div>}
     </li>
